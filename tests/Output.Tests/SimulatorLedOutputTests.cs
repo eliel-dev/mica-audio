@@ -32,4 +32,12 @@ public class SimulatorLedOutputTests
 
         Assert.Contains(snapshot, px => px.R <= 255 && px.G <= 255 && px.B <= 255);
     }
+
+    [Fact]
+    public void SimulatorLedOutput_ShouldNotExposeFrameUpdatedEvent()
+    {
+        var frameUpdatedEvent = typeof(SimulatorLedOutput).GetEvent("FrameUpdated");
+
+        Assert.Null(frameUpdatedEvent);
+    }
 }
