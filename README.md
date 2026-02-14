@@ -11,6 +11,8 @@ Escopo atual: Windows-only, pipeline modular (`PCM -> FFT/bandas -> render -> ou
 - Output atual:
 - `NullLedOutput` (no-op)
 - `SimulatorLedOutput` (preview 64x32)
+
+Comportamento do simulador: o frame mais recente e mantido internamente e o preview HUB75 da UI consome esse snapshot por polling no ciclo de render (timer a 60 FPS). Nao existe evento de frame atualizado no simulador.
 - Saida UDP real para controlador externo: planejada para etapa futura.
 
 ## Principais recursos
@@ -180,7 +182,7 @@ Cobertura por projeto:
 - Testes de mapeamento de bandas (Log/Mel/Bark).
 - Testes de mode0 layout/contagem/monotonicidade.
 - `tests/Output.Tests`
-- Testes do `SimulatorLedOutput` (frame gerado, clamp de brilho).
+- Testes do `SimulatorLedOutput` (frame gerado, clamp de brilho, e ausencia do evento `FrameUpdated`).
 - `tests/Integration.Smoke`
 - Smoke de pipeline Analyzer -> Output.
 - Caso manual de loopback real marcado como `Skip` (execucao assistida).

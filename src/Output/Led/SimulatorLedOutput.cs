@@ -13,8 +13,6 @@ public sealed class SimulatorLedOutput : ILedOutput
 
     public bool IsAvailable => true;
 
-    public event EventHandler? FrameUpdated;
-
     public void Start(LedOutputConfig config)
     {
         lock (gate)
@@ -55,7 +53,6 @@ public sealed class SimulatorLedOutput : ILedOutput
             }
         }
 
-        FrameUpdated?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetBrightness(float value)
