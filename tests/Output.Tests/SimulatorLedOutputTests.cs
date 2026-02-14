@@ -9,14 +9,19 @@ public class SimulatorLedOutputTests
     public void SendBins_ShouldCreateNonEmptyFrame()
     {
         var simulator = new SimulatorLedOutput();
-        simulator.Start(new LedOutputConfig { Width = 64, Height = 32, Brightness = 1f });
+        simulator.Start(new LedOutputConfig
+        {
+            Width = LedDefaults.MatrixWidth,
+            Height = LedDefaults.MatrixHeight,
+            Brightness = LedDefaults.Brightness,
+        });
 
-        var bins = Enumerable.Repeat(0.75f, 64).ToArray();
+        var bins = Enumerable.Repeat(0.75f, LedDefaults.MatrixWidth).ToArray();
         simulator.Send(new LedPayload { Bins64 = bins, Level = 0.7f, PresetId = "test" });
 
         var snapshot = simulator.GetFrameSnapshot();
 
-        Assert.Equal(64 * 32, snapshot.Length);
+        Assert.Equal(LedDefaults.MatrixWidth * LedDefaults.MatrixHeight, snapshot.Length);
         Assert.Contains(snapshot, px => px.R > 0 || px.G > 0 || px.B > 0);
     }
 
@@ -27,7 +32,7 @@ public class SimulatorLedOutputTests
         simulator.Start(new LedOutputConfig());
         simulator.SetBrightness(3f);
 
-        simulator.Send(new LedPayload { Bins64 = Enumerable.Repeat(1f, 64).ToArray(), Level = 1f });
+        simulator.Send(new LedPayload { Bins64 = Enumerable.Repeat(1f, LedDefaults.MatrixWidth).ToArray(), Level = 1f });
         var snapshot = simulator.GetFrameSnapshot();
 
         Assert.Contains(snapshot, px => px.R <= 255 && px.G <= 255 && px.B <= 255);

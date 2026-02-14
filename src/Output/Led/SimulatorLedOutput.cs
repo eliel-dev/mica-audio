@@ -8,8 +8,8 @@ public sealed class SimulatorLedOutput : ILedOutput
     private readonly object gate = new();
 
     private LedOutputConfig config = new();
-    private RgbaColor[] frame = new RgbaColor[64 * 32];
-    private float brightness = 1f;
+    private RgbaColor[] frame = new RgbaColor[LedDefaults.MatrixWidth * LedDefaults.MatrixHeight];
+    private float brightness = LedDefaults.Brightness;
 
     public bool IsAvailable => true;
 
@@ -37,7 +37,7 @@ public sealed class SimulatorLedOutput : ILedOutput
             {
                 Array.Copy(payload.Frame64x32, frame, Math.Min(frame.Length, payload.Frame64x32.Length));
             }
-            else if (payload.Bins64 is { Length: 64 } bins)
+            else if (payload.Bins64 is { Length: LedDefaults.MatrixWidth } bins)
             {
                 RenderBins(bins, payload.Level);
             }
