@@ -1,0 +1,26 @@
+﻿# Build outputs
+**/bin/
+**/obj/
+.artifacts/
+
+# Local temp/work folders
+.tmp-*
+.tmp-*/
+
+# Logs and diagnostics
+publish-*.log
+*.log
+
+# Test outputs
+TestResults/
+*.trx
+
+# IDE/user files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+

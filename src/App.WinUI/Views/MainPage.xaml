@@ -1,0 +1,341 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="App.WinUI.Views.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" RequestedTheme="Dark">
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator
+            Key="F11"
+            Invoked="OnFullscreenAcceleratorInvoked" />
+        <KeyboardAccelerator
+            Key="Escape"
+            Invoked="OnFullscreenAcceleratorInvoked" />
+    </Page.KeyboardAccelerators>
+
+    <SplitView
+        x:Name="SettingsSplitView"
+        Background="{StaticResource SurfaceBaseBrush}"
+        CompactPaneLength="0"
+        DisplayMode="Overlay"
+        IsPaneOpen="False"
+        OpenPaneLength="380"
+        PanePlacement="Left">
+        <SplitView.Pane>
+            <Border
+                Padding="12"
+                Background="{StaticResource SurfacePanelBrush}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="18"
+                            Text="Configuracoes" />
+                        <Button
+                            Grid.Column="1"
+                            Width="32"
+                            Height="32"
+                            Click="OnSettingsPaneCloseClicked"
+                            ToolTipService.ToolTip="Fechar">
+                            <SymbolIcon Symbol="Cancel" />
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer
+                        Grid.Row="1"
+                        Margin="0,12,0,0"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Sensibilidade (dB)" />
+                            <StackPanel x:Name="DbSensitivityPanel" Spacing="6">
+                                <TextBlock
+                                    Opacity="0.8"
+                                    Text="Min dB (fundo):" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider
+                                        x:Name="SensitivityMinDbSlider"
+                                        Grid.Column="0"
+                                        Maximum="-30"
+                                        Minimum="-120"
+                                        SmallChange="1"
+                                        StepFrequency="1"
+                                        ValueChanged="OnSensitivityMinDbChanged" />
+                                    <TextBlock
+                                        x:Name="SensitivityMinDbValueText"
+                                        Grid.Column="1"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Text="-85 dB" />
+                                </Grid>
+                                <TextBlock
+                                    Opacity="0.8"
+                                    Text="Max dB (topo):" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider
+                                        x:Name="SensitivityMaxDbSlider"
+                                        Grid.Column="0"
+                                        Maximum="0"
+                                        Minimum="-60"
+                                        SmallChange="1"
+                                        StepFrequency="1"
+                                        ValueChanged="OnSensitivityMaxDbChanged" />
+                                    <TextBlock
+                                        x:Name="SensitivityMaxDbValueText"
+                                        Grid.Column="1"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Text="-25 dB" />
+                                </Grid>
+                            </StackPanel>
+                            <TextBlock Text="Linear Boost" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Slider
+                                    x:Name="LinearBoostSlider"
+                                    Grid.Column="0"
+                                    ValueChanged="OnLinearBoostChanged" />
+                                <TextBlock
+                                    x:Name="LinearBoostValueText"
+                                    Grid.Column="1"
+                                    Margin="10,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Text="x1.60" />
+                            </Grid>
+                            <StackPanel
+                                x:Name="BarCountPanel"
+                                Spacing="4">
+                                <TextBlock Text="Quantidade de barras" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider
+                                        x:Name="BarCountSlider"
+                                        Grid.Column="0"
+                                        Maximum="128"
+                                        Minimum="0"
+                                        SmallChange="1"
+                                        StepFrequency="1"
+                                        ValueChanged="OnBarCountChanged" />
+                                    <TextBlock
+                                        x:Name="BarCountValueText"
+                                        Grid.Column="1"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Text="38" />
+                                </Grid>
+                            </StackPanel>
+                            <TextBlock
+                                x:Name="CloneBarsHintText"
+                                Opacity="0.8"
+                                Text="No modo AudioMotion Clone, a quantidade de barras e automatica pela largura da tela."
+                                TextWrapping="Wrap"
+                                Visibility="Collapsed" />
+                            <TextBlock Text="FFT Size" />
+                            <ComboBox
+                                x:Name="FftSizeCombo"
+                                ToolTipService.ToolTip="Define a resolucao de frequencia. Maior FFT melhora detalhe e aumenta latencia."
+                                SelectionChanged="OnFftSizeChanged" />
+                            <TextBlock Text="FFT Smoothing" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Slider
+                                    x:Name="FftSmoothingSlider"
+                                    Grid.Column="0"
+                                    ValueChanged="OnFftSmoothingChanged" />
+                                <TextBlock
+                                    x:Name="FftSmoothingValueText"
+                                    Grid.Column="1"
+                                    Margin="10,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Text="0.80" />
+                            </Grid>
+                            <TextBlock Text="Weighting Filter" />
+                            <ComboBox
+                                x:Name="WeightingFilterCombo"
+                                ToolTipService.ToolTip="Aplica curva psicoacustica por frequencia (A, B, C, D ou 468)."
+                                SelectionChanged="OnWeightingFilterChanged" />
+                            <TextBlock Text="Escala de frequencia" />
+                            <ComboBox
+                                x:Name="FrequencyScaleCombo"
+                                ToolTipService.ToolTip="Define como as barras sao distribuidas no espectro."
+                                SelectionChanged="OnFrequencyScaleChanged" />
+                            <TextBlock Text="Faixa de frequencia" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox
+                                    x:Name="FrequencyMinCombo"
+                                    Grid.Column="0"
+                                    ToolTipService.ToolTip="Frequencia minima analisada."
+                                    SelectionChanged="OnFrequencyMinChanged" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Margin="8,0"
+                                    VerticalAlignment="Center"
+                                    Text="ate" />
+                                <ComboBox
+                                    x:Name="FrequencyMaxCombo"
+                                    Grid.Column="2"
+                                    ToolTipService.ToolTip="Frequencia maxima analisada."
+                                    SelectionChanged="OnFrequencyMaxChanged" />
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </SplitView.Pane>
+
+        <SplitView.Content>
+            <Grid Background="{StaticResource SurfaceBaseBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border
+                    x:Name="ControlsPanel"
+                    Margin="12"
+                    Padding="12"
+                    Background="{StaticResource SurfacePanelBrush}"
+                    CornerRadius="10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="260" />
+                            <ColumnDefinition Width="0" />
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="56" />
+                            <ColumnDefinition Width="105" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <ComboBox
+                            x:Name="PresetCombo"
+                            Grid.Column="0"
+                            Header="Predefinicao"
+                            IsEnabled="False"
+                            SelectionChanged="OnPresetSelectionChanged" />
+
+                        <ComboBox
+                            x:Name="RendererCombo"
+                            Grid.Column="1"
+                            Header="Renderizador"
+                            Visibility="Collapsed"
+                            SelectionChanged="OnRendererSelectionChanged" />
+
+                        <ToggleSwitch
+                            x:Name="Hub75Toggle"
+                            Grid.Column="2"
+                            Header="Modo HUB75"
+                            Toggled="OnHub75Toggled" />
+
+                        <Button
+                            x:Name="SettingsButton"
+                            Grid.Column="3"
+                            Width="40"
+                            Height="40"
+                            Margin="8,24,0,0"
+                            HorizontalAlignment="Left"
+                            Click="OnSettingsClicked"
+                            ToolTipService.ToolTip="Configuracoes">
+                            <Button.Content>
+                                <SymbolIcon Symbol="GlobalNavigationButton" />
+                            </Button.Content>
+                        </Button>
+
+                        <Button
+                            x:Name="FullscreenButton"
+                            Grid.Column="4"
+                            Margin="8,24,0,0"
+                            Click="OnFullscreenClicked"
+                            Content="Tela cheia" />
+
+                        <TextBlock
+                            x:Name="StatusText"
+                            Grid.Column="5"
+                            Margin="10,18,0,0"
+                            VerticalAlignment="Center"
+                            Foreground="{StaticResource AccentPrimaryBrush}"
+                            Text="Parado" />
+                    </Grid>
+                </Border>
+
+                <Grid
+                    x:Name="VisualizerLayout"
+                    Grid.Row="1"
+                    Margin="12,0,12,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition
+                            x:Name="HubPreviewColumn"
+                            Width="0" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border
+                        x:Name="MainCanvasBorder"
+                        CornerRadius="12">
+                        <canvas:CanvasControl
+                            x:Name="MainCanvas"
+                            Draw="OnMainCanvasDraw"
+                            SizeChanged="OnMainCanvasSizeChanged" />
+                    </Border>
+
+                    <Border
+                        x:Name="HubPreviewPanel"
+                        Grid.Column="1"
+                        Margin="12,0,0,0"
+                        Padding="10"
+                        Background="{StaticResource SurfacePanelBrush}"
+                        CornerRadius="12"
+                        Visibility="Collapsed">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                Margin="0,0,0,8"
+                                Foreground="{StaticResource AccentPrimaryBrush}"
+                                Text="Simulacao HUB75 64x32" />
+                            <canvas:CanvasControl
+                                x:Name="HubCanvas"
+                                Grid.Row="1"
+                                Draw="OnHubCanvasDraw" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+        </SplitView.Content>
+    </SplitView>
+</Page>
+
