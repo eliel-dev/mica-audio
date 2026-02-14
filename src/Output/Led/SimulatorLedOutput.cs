@@ -35,7 +35,15 @@ public sealed class SimulatorLedOutput : ILedOutput
         {
             if (payload.Frame64x32 is { Length: > 0 })
             {
-                Array.Copy(payload.Frame64x32, frame, Math.Min(frame.Length, payload.Frame64x32.Length));
+                var length = Math.Min(frame.Length, payload.Frame64x32.Length);
+                for (var i = 0; i < length; i++)
+                {
+                    var color = payload.Frame64x32[i];
+                    var r = (byte)Math.Clamp(color.R * brightness, 0f, 255f);
+                    var g = (byte)Math.Clamp(color.G * brightness, 0f, 255f);
+                    var b = (byte)Math.Clamp(color.B * brightness, 0f, 255f);
+                    frame[i] = new RgbaColor(r, g, b, color.A);
+                }
             }
             else if (payload.Bins64 is { Length: 64 } bins)
             {
