@@ -349,8 +349,8 @@ public partial class MainPage : Page
 
         var width = (float)sender.ActualWidth;
         var height = (float)sender.ActualHeight;
-        var matrixWidth = 64f;
-        var matrixHeight = 32f;
+        var matrixWidth = (float)LedDefaults.MatrixWidth;
+        var matrixHeight = (float)LedDefaults.MatrixHeight;
         var matrixAspect = matrixWidth / matrixHeight;
         var canvasAspect = width <= 0f || height <= 0f ? matrixAspect : (width / height);
         var drawWidth = width;
@@ -374,11 +374,11 @@ public partial class MainPage : Page
 
         args.DrawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
 
-        for (var y = 0; y < 32; y++)
+        for (var y = 0; y < LedDefaults.MatrixHeight; y++)
         {
-            for (var x = 0; x < 64; x++)
+            for (var x = 0; x < LedDefaults.MatrixWidth; x++)
             {
-                var pixel = snapshot[(y * 64) + x];
+                var pixel = snapshot[(y * LedDefaults.MatrixWidth) + x];
                 if (pixel.A == 0)
                 {
                     continue;
@@ -728,7 +728,7 @@ public partial class MainPage : Page
             DisplayMode = cloneMode ? DisplayMode.AudioMotionMode0 : DisplayMode.FixedBands,
             DisplayViewportWidthPx = cloneMode ? MathF.Max(2f, viewportWidth) : 0f,
             BarSpace = Math.Clamp(barSpace, 0f, 0.95f),
-            OutputBandCount = 64,
+            OutputBandCount = LedDefaults.MatrixWidth,
             MinHz = frequencyMinHz,
             MaxHz = frequencyMaxHz,
             ScaleMode = ScaleMode.Linear,
