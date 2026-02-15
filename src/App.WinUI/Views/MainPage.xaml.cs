@@ -334,8 +334,8 @@ public partial class MainPage : Page
         ledOutput = hubPreviewEnabled ? simulatorLedOutput : nullLedOutput;
         ledOutput.Start(new LedOutputConfig
         {
-            Width = LedDefaults.MatrixWidth,
-            Height = LedDefaults.MatrixHeight,
+            Width = 64,
+            Height = 32,
             Brightness = appSettings.Brightness,
         });
 
@@ -557,8 +557,8 @@ public partial class MainPage : Page
         ledOutput = hubPreviewEnabled ? simulatorLedOutput : nullLedOutput;
         ledOutput.Start(new LedOutputConfig
         {
-            Width = LedDefaults.MatrixWidth,
-            Height = LedDefaults.MatrixHeight,
+            Width = 64,
+            Height = 32,
             Brightness = appSettings.Brightness,
         });
 
