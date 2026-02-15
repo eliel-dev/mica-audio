@@ -25,6 +25,49 @@ internal static class DefaultPresets
                     new PaletteStop { Offset = 0.83f, Color = new RgbaColor(0, 80, 255) },
                     new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 0, 255) },
                 ]),
+            CreatePreset(
+                id: "audiomotion-sunset",
+                name: "AudioMotion Sunset",
+                glow: false,
+                barWidth: 0.08f,
+                stops:
+                [
+                    new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 72, 40) },
+                    new PaletteStop { Offset = 0.20f, Color = new RgbaColor(255, 128, 32) },
+                    new PaletteStop { Offset = 0.40f, Color = new RgbaColor(255, 186, 52) },
+                    new PaletteStop { Offset = 0.60f, Color = new RgbaColor(255, 108, 84) },
+                    new PaletteStop { Offset = 0.80f, Color = new RgbaColor(196, 66, 255) },
+                    new PaletteStop { Offset = 1.00f, Color = new RgbaColor(88, 54, 255) },
+                ]),
+            CreatePreset(
+                id: "audiomotion-arctic",
+                name: "AudioMotion Arctic",
+                glow: false,
+                barWidth: 0.08f,
+                stops:
+                [
+                    new PaletteStop { Offset = 0.00f, Color = new RgbaColor(0, 214, 255) },
+                    new PaletteStop { Offset = 0.20f, Color = new RgbaColor(0, 168, 255) },
+                    new PaletteStop { Offset = 0.40f, Color = new RgbaColor(74, 224, 255) },
+                    new PaletteStop { Offset = 0.60f, Color = new RgbaColor(144, 255, 219) },
+                    new PaletteStop { Offset = 0.80f, Color = new RgbaColor(68, 128, 255) },
+                    new PaletteStop { Offset = 1.00f, Color = new RgbaColor(144, 72, 255) },
+                ]),
+            CreatePreset(
+                id: "audiomotion-neon",
+                name: "AudioMotion Neon",
+                glow: false,
+                barWidth: 0.08f,
+                stops:
+                [
+                    new PaletteStop { Offset = 0.00f, Color = new RgbaColor(57, 255, 20) },
+                    new PaletteStop { Offset = 0.18f, Color = new RgbaColor(0, 255, 180) },
+                    new PaletteStop { Offset = 0.36f, Color = new RgbaColor(0, 220, 255) },
+                    new PaletteStop { Offset = 0.54f, Color = new RgbaColor(45, 120, 255) },
+                    new PaletteStop { Offset = 0.72f, Color = new RgbaColor(196, 80, 255) },
+                    new PaletteStop { Offset = 0.88f, Color = new RgbaColor(255, 46, 178) },
+                    new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 120, 64) },
+                ]),
         ];
     }
 
