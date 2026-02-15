@@ -13,6 +13,7 @@ using MicaAudio.Core.Config;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 using Output.Led;
+using Device.Server.Hosting;
 using Visual.Win2D.Engine;
 using Windows.Foundation;
 using Windows.Graphics;
@@ -43,6 +44,7 @@ public partial class MainPage : Page
     private readonly ILoopbackCapture capture = new WasapiLoopbackCaptureService();
     private readonly SimulatorLedOutput simulatorLedOutput = new();
     private readonly NullLedOutput nullLedOutput = new();
+    private readonly MatrixPortalLedOutput matrixPortalLedOutput;
 
     private readonly PresetRepository presetRepository;
     private readonly SettingsRepository settingsRepository;
@@ -110,7 +112,9 @@ public partial class MainPage : Page
         var appDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicaAudio");
         presetRepository = new PresetRepository(appDataRoot);
         settingsRepository = new SettingsRepository(appDataRoot);
-        pipelineCoordinator = new AudioPipelineCoordinator(capture, simulatorLedOutput, nullLedOutput, () => Volatile.Read(ref analyzer));
+        var serverHost = App.DeviceIntegration?.Host ?? new DeviceServerHost();
+        matrixPortalLedOutput = new MatrixPortalLedOutput(serverHost);
+        pipelineCoordinator = new AudioPipelineCoordinator(capture, simulatorLedOutput, matrixPortalLedOutput, nullLedOutput, () => Volatile.Read(ref analyzer));
 
         capture.StatusChanged += OnCaptureStatusChanged;
         pipelineCoordinator.StatusChanged += OnPipelineCoordinatorStatusChanged;
@@ -1370,4 +1374,7 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
+
+
+
 

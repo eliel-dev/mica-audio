@@ -8,10 +8,29 @@
     mc:Ignorable="d">
     <Application.Resources>
         <ResourceDictionary>
+            <!-- Fallbacks to avoid startup crash if merged dictionaries fail to load -->
+            <SolidColorBrush x:Key="AppSurfaceBaseBrush" Color="#0B0F14" />
+            <SolidColorBrush x:Key="AppSurfacePanelBrush" Color="#141A22" />
+            <SolidColorBrush x:Key="AppSurfaceElevatedBrush" Color="#1A2330" />
+            <SolidColorBrush x:Key="AppSurfaceStrokeBrush" Color="#313E51" />
+            <SolidColorBrush x:Key="AppTextPrimaryBrush" Color="#F5F7FA" />
+            <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="#B8C0CC" />
+            <SolidColorBrush x:Key="AppAccentBrush" Color="#26C98A" />
+            <SolidColorBrush x:Key="AppAccentTextBrush" Color="#001323" />
+            <SolidColorBrush x:Key="BrandAccentBrush" Color="#26C98A" />
+            <SolidColorBrush x:Key="SurfaceBaseBrush" Color="#0B0F14" />
+            <SolidColorBrush x:Key="SurfacePanelBrush" Color="#141A22" />
+            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#1A2330" />
+            <SolidColorBrush x:Key="SurfaceStrokeBrush" Color="#313E51" />
+            <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F5F7FA" />
+            <SolidColorBrush x:Key="MutedTextBrush" Color="#B8C0CC" />
+            <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#26C98A" />
+            <SolidColorBrush x:Key="AppFallbackSurfaceBaseBrush" Color="#0B0F14" />
+
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
-                <ResourceDictionary Source="ms-appx:///Styles/Fluent2/Fluent2Tokens.xaml" />
-                <ResourceDictionary Source="ms-appx:///Styles/Fluent2/Fluent2Controls.xaml" />
+                <ResourceDictionary Source="Styles/Fluent2/Fluent2Tokens.xaml" />
+                <ResourceDictionary Source="Styles/Fluent2/Fluent2Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

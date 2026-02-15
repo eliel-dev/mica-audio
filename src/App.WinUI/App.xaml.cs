@@ -1,15 +1,21 @@
+﻿using System.Text;
+using App.WinUI.Services.Devices;
 using App.WinUI.Views;
+using Device.Server.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
-using System.Text;
 
 namespace App.WinUI;
 
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
+
+    internal static DeviceIntegrationService? DeviceIntegration { get; private set; }
+
+    internal static DeviceOperationsCoordinator? DeviceOps { get; private set; }
 
     public App()
     {
@@ -36,13 +42,19 @@ public partial class App : Application
             MainWindow.Content = rootFrame;
         }
 
+        MainWindow.Closed -= OnMainWindowClosed;
+        MainWindow.Closed += OnMainWindowClosed;
+
         ApplySystemBackdrop(rootFrame);
+
+        EnsureDeviceIntegrationInitialized();
+        _ = StartDeviceIntegrationAsync();
 
         try
         {
             if (rootFrame.Content is null)
             {
-                rootFrame.Navigate(typeof(MainPage), args.Arguments);
+                rootFrame.Content = new ShellPage();
             }
         }
         catch (Exception ex)
@@ -52,6 +64,56 @@ public partial class App : Application
         }
 
         MainWindow.Activate();
+    }
+
+    private static void EnsureDeviceIntegrationInitialized()
+    {
+        if (DeviceIntegration is not null)
+        {
+            return;
+        }
+
+        var appDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicaAudio");
+        var registryStore = new JsonDeviceRegistryStore(appDataRoot);
+        DeviceIntegration = new DeviceIntegrationService(new DeviceServerHost(), registryStore, new FirmwareBuildService());
+        DeviceOps = new DeviceOperationsCoordinator(DeviceIntegration);
+    }
+
+    private static async Task StartDeviceIntegrationAsync()
+    {
+        if (DeviceIntegration is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await DeviceIntegration.StartAsync().ConfigureAwait(false);
+            DeviceOps?.RequestRefresh();
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog("DeviceIntegration.StartAsync failed", ex);
+        }
+    }
+
+    private static async void OnMainWindowClosed(object sender, WindowEventArgs args)
+    {
+        try
+        {
+            DeviceOps?.Dispose();
+            DeviceOps = null;
+
+            if (DeviceIntegration is not null)
+            {
+                await DeviceIntegration.DisposeAsync().ConfigureAwait(false);
+                DeviceIntegration = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog("DeviceIntegration.DisposeAsync failed", ex);
+        }
     }
 
     private static void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
@@ -93,7 +155,6 @@ public partial class App : Application
         }
     }
 
-
     private bool TryResolveFallbackBrush(out Brush? brush)
     {
         brush = null;
@@ -112,6 +173,7 @@ public partial class App : Application
 
         return false;
     }
+
     private static void WriteCrashLog(string header, Exception ex)
     {
         var path = GetCrashLogPath();
@@ -163,3 +225,5 @@ public partial class App : Application
         };
     }
 }
+
+
