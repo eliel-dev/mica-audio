@@ -27,6 +27,17 @@ public partial class MainPage : Page
     private const float DefaultMinDecibels = -85f;
     private const float DefaultMaxDecibels = -25f;
     private const float DefaultLinearBoost = 1.6f;
+    private const int DefaultBarCount = 38;
+    private const int DefaultFftSize = 2048;
+    private const float DefaultFftSmoothing = 0.75f;
+    private const WeightingFilter DefaultWeightingFilter = WeightingFilter.B;
+    private const FrequencyScale DefaultFrequencyScale = FrequencyScale.Bark;
+    private const float DefaultFrequencyMinHz = 20f;
+    private const float DefaultFrequencyMaxHz = 1000f;
+    private const double HubPreviewHeightRatio = 0.20;
+    private const double HubPreviewMinHeight = 84d;
+    private const double HubPreviewMaxHeight = 220d;
+    private const double FullscreenButtonAutoHideDelayMs = 1400d;
 
     private readonly VisualizerEngine visualizer = new();
     private readonly ILoopbackCapture capture = new WasapiLoopbackCaptureService();
@@ -44,6 +55,7 @@ public partial class MainPage : Page
 
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? renderTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? cloneViewportDebounceTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? fullscreenButtonHideTimer;
     private AppWindow? appWindow;
 
     private AppSettings appSettings = new();
@@ -137,6 +149,7 @@ public partial class MainPage : Page
         capture.StatusChanged -= OnCaptureStatusChanged;
         renderTimer?.Stop();
         cloneViewportDebounceTimer?.Stop();
+        fullscreenButtonHideTimer?.Stop();
 
         SaveWindowSizeIntoSettings();
         await settingsRepository.SaveAsync(appSettings);
@@ -259,8 +272,55 @@ public partial class MainPage : Page
         };
         renderTimer.Start();
         EnsureCloneViewportDebounceTimer();
+        EnsureFullscreenButtonHideTimer();
+    }
+    private void EnsureFullscreenButtonHideTimer()
+    {
+        if (fullscreenButtonHideTimer is not null)
+        {
+            return;
+        }
+
+        fullscreenButtonHideTimer = DispatcherQueue.CreateTimer();
+        fullscreenButtonHideTimer.Interval = TimeSpan.FromMilliseconds(FullscreenButtonAutoHideDelayMs);
+        fullscreenButtonHideTimer.Tick += (_, _) =>
+        {
+            fullscreenButtonHideTimer?.Stop();
+            if (fullscreen)
+            {
+                HideFullscreenButtonOverlay();
+            }
+        };
     }
 
+    private void ShowFullscreenButtonOverlay(bool restartAutoHide)
+    {
+        CanvasFullscreenButton.Visibility = Visibility.Visible;
+        CanvasFullscreenButton.IsHitTestVisible = true;
+
+        if (!fullscreen)
+        {
+            fullscreenButtonHideTimer?.Stop();
+            return;
+        }
+
+        if (!restartAutoHide)
+        {
+            return;
+        }
+
+        EnsureFullscreenButtonHideTimer();
+        fullscreenButtonHideTimer!.Stop();
+        fullscreenButtonHideTimer.Interval = TimeSpan.FromMilliseconds(FullscreenButtonAutoHideDelayMs);
+        fullscreenButtonHideTimer.Start();
+    }
+
+    private void HideFullscreenButtonOverlay()
+    {
+        CanvasFullscreenButton.Visibility = Visibility.Collapsed;
+        CanvasFullscreenButton.IsHitTestVisible = false;
+        fullscreenButtonHideTimer?.Stop();
+    }
     private void ScheduleCloneViewportAnalyzerRebuild()
     {
         if (!initialized || !IsClonePresetActive())
@@ -330,6 +390,24 @@ public partial class MainPage : Page
 
         lastCloneViewportWidth = width;
         ScheduleCloneViewportAnalyzerRebuild();
+    }
+    private void OnMainCanvasHostPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        ShowFullscreenButtonOverlay(restartAutoHide: true);
+    }
+
+    private void OnMainCanvasHostPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        ShowFullscreenButtonOverlay(restartAutoHide: true);
+    }
+
+    private void OnMainCanvasHostPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        HideFullscreenButtonOverlay();
+    }
+    private void OnVisualizerLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateHubPreviewVisibility();
     }
 
     private void OnHubCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
@@ -456,6 +534,86 @@ public partial class MainPage : Page
         SettingsSplitView.IsPaneOpen = false;
     }
 
+    
+    private void OnResetSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        sensitivityMinDb = DefaultMinDecibels;
+        sensitivityMaxDb = DefaultMaxDecibels;
+        linearBoost = DefaultLinearBoost;
+        displayBandCount = DefaultBarCount;
+        fftSize = DefaultFftSize;
+        fftSmoothing = DefaultFftSmoothing;
+        weightingFilter = DefaultWeightingFilter;
+        frequencyScale = DefaultFrequencyScale;
+        frequencyMinHz = DefaultFrequencyMinHz;
+        frequencyMaxHz = DefaultFrequencyMaxHz;
+
+        EnsureSensitivityDbOrder();
+        EnsureFrequencyRangeOrder();
+
+        suppressSensitivityMinChanged = true;
+        SensitivityMinDbSlider.Value = sensitivityMinDb;
+        suppressSensitivityMinChanged = false;
+
+        suppressSensitivityMaxChanged = true;
+        SensitivityMaxDbSlider.Value = sensitivityMaxDb;
+        suppressSensitivityMaxChanged = false;
+
+        suppressLinearBoostChanged = true;
+        LinearBoostSlider.Value = linearBoost;
+        suppressLinearBoostChanged = false;
+
+        suppressFftSizeChanged = true;
+        SelectComboOption(FftSizeCombo, FormatFftSizeId(fftSize));
+        suppressFftSizeChanged = false;
+
+        suppressFftSmoothingChanged = true;
+        FftSmoothingSlider.Value = fftSmoothing;
+        suppressFftSmoothingChanged = false;
+
+        suppressWeightingFilterChanged = true;
+        SelectComboOption(WeightingFilterCombo, ToWeightingFilterId(weightingFilter));
+        suppressWeightingFilterChanged = false;
+
+        suppressFrequencyScaleChanged = true;
+        SelectComboOption(FrequencyScaleCombo, frequencyScale.ToString());
+        suppressFrequencyScaleChanged = false;
+
+        UpdateFrequencyRangeCombos();
+        UpdateFrequencyScaleToolTip();
+        UpdateSensitivityDbTexts();
+        UpdateLinearBoostText();
+        UpdateFftSmoothingText();
+        ApplyBandCountBounds();
+
+        viewModel.SensitivityMinDb = sensitivityMinDb;
+        viewModel.SensitivityMaxDb = sensitivityMaxDb;
+        viewModel.LinearBoost = linearBoost;
+        viewModel.BarCount = displayBandCount;
+        viewModel.FftSize = fftSize;
+        viewModel.FftSmoothing = fftSmoothing;
+        viewModel.WeightingFilter = weightingFilter;
+        viewModel.FrequencyScale = frequencyScale;
+        viewModel.FrequencyMinHz = frequencyMinHz;
+        viewModel.FrequencyMaxHz = frequencyMaxHz;
+
+        lastCloneViewportWidth = GetAnalyzerViewportWidth();
+        Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
+
+        appSettings = settingsDomainService.Copy(appSettings, b =>
+        {
+            b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb);
+            b.SetLinearBoost(linearBoost);
+            b.SetBarCount(displayBandCount);
+            b.SetFftSize(fftSize);
+            b.SetFftSmoothing(fftSmoothing);
+            b.SetWeightingFilter(weightingFilter);
+            b.SetFrequencyScale(frequencyScale);
+            b.SetFrequencyRange(frequencyMinHz, frequencyMaxHz);
+        });
+
+        StatusText.Text = "Configuracoes restauradas";
+    }
     private void OnSensitivityMinDbChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (suppressSensitivityMinChanged)
@@ -642,6 +800,12 @@ public partial class MainPage : Page
         ToggleFullscreen(!fullscreen);
     }
 
+    
+    private void OnMainCanvasDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        ToggleFullscreen(!fullscreen);
+        e.Handled = true;
+    }
     private void OnFullscreenAcceleratorInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if (sender.Key == Windows.System.VirtualKey.F11)
@@ -682,13 +846,19 @@ public partial class MainPage : Page
     private void UpdateFullscreenUiState()
     {
         ControlsPanel.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible;
-        FullscreenButton.Content = fullscreen ? "Janela" : "Tela cheia";
         VisualizerLayout.Margin = fullscreen ? new Thickness(0) : new Thickness(12, 0, 12, 12);
         MainCanvasBorder.CornerRadius = fullscreen ? new CornerRadius(0) : new CornerRadius(12);
+        HubPreviewPanel.CornerRadius = fullscreen ? new CornerRadius(0) : new CornerRadius(12);
         if (fullscreen)
         {
             SettingsSplitView.IsPaneOpen = false;
+            ShowFullscreenButtonOverlay(restartAutoHide: true);
         }
+        else
+        {
+            HideFullscreenButtonOverlay();
+        }
+
         UpdateHubPreviewVisibility();
     }
 
@@ -753,10 +923,13 @@ public partial class MainPage : Page
 
     private void PopulatePresetCombo()
     {
-        PresetCombo.ItemsSource = presetsById.Values
+        var options = presetsById.Values
             .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .Select(p => new ComboOption(p.PresetId, p.Name))
             .ToList();
+
+        PresetCombo.ItemsSource = options;
+        PresetCombo.IsEnabled = options.Count > 1;
     }
 
     private void PopulateRendererCombo()
@@ -873,7 +1046,29 @@ public partial class MainPage : Page
     {
         var visible = hubPreviewEnabled;
         HubPreviewPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        HubPreviewColumn.Width = visible ? new GridLength(340) : new GridLength(0);
+
+        if (!visible)
+        {
+            HubPreviewRow.Height = new GridLength(0);
+            return;
+        }
+
+        var availableHeight = VisualizerLayout.ActualHeight;
+        if (!fullscreen)
+        {
+            availableHeight -= ControlsPanel.ActualHeight + ControlsPanel.Margin.Top + ControlsPanel.Margin.Bottom;
+        }
+
+        if (availableHeight <= 0d)
+        {
+            availableHeight = appWindow?.Size.Height ?? 720d;
+        }
+
+        var targetHeight = availableHeight * HubPreviewHeightRatio;
+        targetHeight = Math.Clamp(targetHeight, HubPreviewMinHeight, HubPreviewMaxHeight);
+        targetHeight = Math.Min(targetHeight, Math.Max(72d, availableHeight * 0.45d));
+
+        HubPreviewRow.Height = new GridLength(targetHeight);
     }
 
     private void ApplyBandCountBounds()
@@ -921,7 +1116,7 @@ public partial class MainPage : Page
     {
         fullscreen = false;
         ControlsPanel.Visibility = Visibility.Visible;
-        FullscreenButton.Content = "Tela cheia";
+        HideFullscreenButtonOverlay();
     }
 
     private static bool IsClonePreset(PresetDefinition preset)
@@ -1175,3 +1370,4 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
+
