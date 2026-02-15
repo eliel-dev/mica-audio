@@ -1,4 +1,4 @@
-using MicaAudio.Core.Led;
+﻿using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 
 namespace Output.Led;
@@ -33,14 +33,11 @@ public sealed class SimulatorLedOutput : ILedOutput
         {
             if (payload.Frame64x32 is { Length: > 0 })
             {
+                Array.Fill(frame, new RgbaColor(0, 0, 0, 255));
                 var length = Math.Min(frame.Length, payload.Frame64x32.Length);
                 for (var i = 0; i < length; i++)
                 {
-                    var color = payload.Frame64x32[i];
-                    var r = (byte)Math.Clamp(color.R * brightness, 0f, 255f);
-                    var g = (byte)Math.Clamp(color.G * brightness, 0f, 255f);
-                    var b = (byte)Math.Clamp(color.B * brightness, 0f, 255f);
-                    frame[i] = new RgbaColor(r, g, b, color.A);
+                    frame[i] = ApplyBrightness(payload.Frame64x32[i]);
                 }
             }
             else if (payload.Bins64 is { Length: LedDefaults.MatrixWidth } bins)
@@ -52,7 +49,6 @@ public sealed class SimulatorLedOutput : ILedOutput
                 return;
             }
         }
-
     }
 
     public void SetBrightness(float value)
@@ -95,10 +91,10 @@ public sealed class SimulatorLedOutput : ILedOutput
             for (var offset = 0; offset < litHalf; offset++)
             {
                 var t = x / (float)Math.Max(1, maxX - 1);
-                var r = (byte)Math.Clamp((65f + (170f * t)) * brightness, 0f, 255f);
-                var g = (byte)Math.Clamp((150f + (95f * (1f - MathF.Abs((2f * t) - 1f)))) * brightness, 0f, 255f);
-                var b = (byte)Math.Clamp((45f + (170f * (1f - t)) + (level * 28f)) * brightness, 0f, 255f);
-                var color = new RgbaColor(r, g, b, 255);
+                var r = (byte)Math.Clamp(65f + (170f * t), 0f, 255f);
+                var g = (byte)Math.Clamp(150f + (95f * (1f - MathF.Abs((2f * t) - 1f))), 0f, 255f);
+                var b = (byte)Math.Clamp(45f + (170f * (1f - t)) + (level * 28f), 0f, 255f);
+                var color = ApplyBrightness(new RgbaColor(r, g, b, 255));
 
                 var yTop = centerTop - offset;
                 if (yTop >= 0)
@@ -113,5 +109,13 @@ public sealed class SimulatorLedOutput : ILedOutput
                 }
             }
         }
+    }
+
+    private RgbaColor ApplyBrightness(RgbaColor color)
+    {
+        var r = (byte)Math.Clamp(color.R * brightness, 0f, 255f);
+        var g = (byte)Math.Clamp(color.G * brightness, 0f, 255f);
+        var b = (byte)Math.Clamp(color.B * brightness, 0f, 255f);
+        return new RgbaColor(r, g, b, color.A);
     }
 }

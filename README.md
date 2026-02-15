@@ -93,7 +93,7 @@ scripts/
 - `float[]? DisplayBarX` (opcional)
 - `float[]? DisplayBarWidth` (opcional)
 
-Regra importante: `Bands64` e derivado do mesmo espectro calculado no frame (sem segunda FFT).
+Regra importante: `Bands64` é derivado do mesmo espectro calculado no frame (sem segunda FFT).
 
 ### Output
 
@@ -109,6 +109,7 @@ Regra importante: `Bands64` e derivado do mesmo espectro calculado no frame (sem
 - .NET SDK conforme `global.json`:
 - `10.0.102`
 - Target da app: `net8.0-windows10.0.19041.0`.
+- Nota: o SDK 10.x e usado como toolchain para build/restore, enquanto o runtime alvo da aplicacao continua sendo .NET 8 (`net8.0-windows...`).
 - UI: WinUI 3 (`Microsoft.WindowsAppSDK` 1.8.x).
 - Render: Win2D.
 - Captura de audio: NAudio (WASAPI loopback).
@@ -303,3 +304,4 @@ Implementacao deste projeto segue arquitetura propria (sem port direto de codigo
 ## Licenca
 
 Ainda nao definida neste repositorio. Recomendado adicionar `LICENSE` antes da publicacao oficial no GitHub.
+
