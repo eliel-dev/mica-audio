@@ -1,6 +1,7 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using MicaAudio.Core.Audio;
+using Visual.Win2D.Engine;
 
 namespace App.WinUI.ViewModels;
 
@@ -47,3 +48,4 @@ internal sealed class MainPageViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
+

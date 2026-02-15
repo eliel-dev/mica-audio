@@ -1,4 +1,5 @@
-using MicaAudio.Core.Audio;
+﻿using MicaAudio.Core.Audio;
+using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 
 namespace App.WinUI.Services;
@@ -169,3 +170,4 @@ internal sealed class AppSettingsDomainService
         };
     }
 }
+
