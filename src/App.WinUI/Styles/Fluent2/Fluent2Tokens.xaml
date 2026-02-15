@@ -1,0 +1,71 @@
+﻿<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Color x:Key="BrandAccentColor">#26C98A</Color>
+    <SolidColorBrush x:Key="BrandAccentBrush" Color="{StaticResource BrandAccentColor}" />
+
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="AppSurfaceBaseBrush" Color="#F6F8FB" />
+            <SolidColorBrush x:Key="AppSurfacePanelBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="AppSurfaceElevatedBrush" Color="#EEF2F8" />
+            <SolidColorBrush x:Key="AppSurfaceStrokeBrush" Color="#D7DFEB" />
+            <SolidColorBrush x:Key="AppTextPrimaryBrush" Color="#1A1E27" />
+            <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="#4E5563" />
+            <SolidColorBrush x:Key="AppAccentBrush" Color="#0F6CBD" />
+            <SolidColorBrush x:Key="AppAccentTextBrush" Color="#FFFFFF" />
+
+            <SolidColorBrush x:Key="SurfaceBaseBrush" Color="#F6F8FB" />
+            <SolidColorBrush x:Key="SurfacePanelBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#EEF2F8" />
+            <SolidColorBrush x:Key="SurfaceStrokeBrush" Color="#D7DFEB" />
+            <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1A1E27" />
+            <SolidColorBrush x:Key="MutedTextBrush" Color="#4E5563" />
+            <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#26C98A" />
+
+            <SolidColorBrush x:Key="AppFallbackSurfaceBaseBrush" Color="#F6F8FB" />
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="AppSurfaceBaseBrush" Color="#0B0F14" />
+            <SolidColorBrush x:Key="AppSurfacePanelBrush" Color="#141A22" />
+            <SolidColorBrush x:Key="AppSurfaceElevatedBrush" Color="#1A2330" />
+            <SolidColorBrush x:Key="AppSurfaceStrokeBrush" Color="#313E51" />
+            <SolidColorBrush x:Key="AppTextPrimaryBrush" Color="#F5F7FA" />
+            <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="#B8C0CC" />
+            <SolidColorBrush x:Key="AppAccentBrush" Color="#6CB8FF" />
+            <SolidColorBrush x:Key="AppAccentTextBrush" Color="#001323" />
+
+            <SolidColorBrush x:Key="SurfaceBaseBrush" Color="#0B0F14" />
+            <SolidColorBrush x:Key="SurfacePanelBrush" Color="#141A22" />
+            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#1A2330" />
+            <SolidColorBrush x:Key="SurfaceStrokeBrush" Color="#313E51" />
+            <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F5F7FA" />
+            <SolidColorBrush x:Key="MutedTextBrush" Color="#B8C0CC" />
+            <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#26C98A" />
+
+            <SolidColorBrush x:Key="AppFallbackSurfaceBaseBrush" Color="#0B0F14" />
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="AppSurfaceBaseBrush" Color="Black" />
+            <SolidColorBrush x:Key="AppSurfacePanelBrush" Color="Black" />
+            <SolidColorBrush x:Key="AppSurfaceElevatedBrush" Color="Black" />
+            <SolidColorBrush x:Key="AppSurfaceStrokeBrush" Color="White" />
+            <SolidColorBrush x:Key="AppTextPrimaryBrush" Color="White" />
+            <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="White" />
+            <SolidColorBrush x:Key="AppAccentBrush" Color="Yellow" />
+            <SolidColorBrush x:Key="AppAccentTextBrush" Color="Black" />
+
+            <SolidColorBrush x:Key="SurfaceBaseBrush" Color="Black" />
+            <SolidColorBrush x:Key="SurfacePanelBrush" Color="Black" />
+            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="Black" />
+            <SolidColorBrush x:Key="SurfaceStrokeBrush" Color="White" />
+            <SolidColorBrush x:Key="PrimaryTextBrush" Color="White" />
+            <SolidColorBrush x:Key="MutedTextBrush" Color="White" />
+            <SolidColorBrush x:Key="AccentPrimaryBrush" Color="Yellow" />
+
+            <SolidColorBrush x:Key="AppFallbackSurfaceBaseBrush" Color="Black" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

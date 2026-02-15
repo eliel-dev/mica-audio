@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Analyzer.Dsp.Analysis;
 using App.WinUI.Services;
+using App.WinUI.ViewModels;
 using Audio.Loopback.Capture;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Dispatching;
@@ -26,6 +27,17 @@ public partial class MainPage : Page
     private const float DefaultMinDecibels = -85f;
     private const float DefaultMaxDecibels = -25f;
     private const float DefaultLinearBoost = 1.6f;
+    private const int DefaultBarCount = 38;
+    private const int DefaultFftSize = 2048;
+    private const float DefaultFftSmoothing = 0.75f;
+    private const WeightingFilter DefaultWeightingFilter = WeightingFilter.B;
+    private const FrequencyScale DefaultFrequencyScale = FrequencyScale.Bark;
+    private const float DefaultFrequencyMinHz = 20f;
+    private const float DefaultFrequencyMaxHz = 1000f;
+    private const double HubPreviewHeightRatio = 0.20;
+    private const double HubPreviewMinHeight = 84d;
+    private const double HubPreviewMaxHeight = 220d;
+    private const double FullscreenButtonAutoHideDelayMs = 1400d;
 
     private readonly VisualizerEngine visualizer = new();
     private readonly ILoopbackCapture capture = new WasapiLoopbackCaptureService();
@@ -34,18 +46,18 @@ public partial class MainPage : Page
 
     private readonly PresetRepository presetRepository;
     private readonly SettingsRepository settingsRepository;
+    private readonly AppSettingsDomainService settingsDomainService = new();
+    private readonly MainPageViewModel viewModel = new();
+    private readonly AudioPipelineCoordinator pipelineCoordinator;
     private readonly Dictionary<string, PresetDefinition> presetsById = new(StringComparer.OrdinalIgnoreCase);
 
     private IAnalyzer analyzer = new SpectrumAnalyzer(new AnalyzerConfig());
-    private ILedOutput ledOutput;
 
-    private CancellationTokenSource? pipelineCts;
-    private Task? pipelineTask;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? renderTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? cloneViewportDebounceTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? fullscreenButtonHideTimer;
     private AppWindow? appWindow;
 
-    private SpectrumFrame? latestFrame;
     private AppSettings appSettings = new();
     private PresetDefinition activePreset = new();
     private string selectedRendererId = RendererIds.AudioMotionClone;
@@ -54,7 +66,6 @@ public partial class MainPage : Page
     private long lastRenderQpc;
     private float lastCloneViewportWidth;
     private bool initialized;
-    private bool running;
     private bool hubPreviewEnabled;
     private bool fullscreen;
     private bool suppressSensitivityMinChanged;
@@ -99,9 +110,11 @@ public partial class MainPage : Page
         var appDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicaAudio");
         presetRepository = new PresetRepository(appDataRoot);
         settingsRepository = new SettingsRepository(appDataRoot);
-        ledOutput = nullLedOutput;
+        pipelineCoordinator = new AudioPipelineCoordinator(capture, simulatorLedOutput, nullLedOutput, () => Volatile.Read(ref analyzer));
 
         capture.StatusChanged += OnCaptureStatusChanged;
+        pipelineCoordinator.StatusChanged += OnPipelineCoordinatorStatusChanged;
+        DataContext = viewModel;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -132,10 +145,11 @@ public partial class MainPage : Page
 
     private async void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        await StopPipelineAsync();
+        await pipelineCoordinator.StopAsync();
         capture.StatusChanged -= OnCaptureStatusChanged;
         renderTimer?.Stop();
         cloneViewportDebounceTimer?.Stop();
+        fullscreenButtonHideTimer?.Stop();
 
         SaveWindowSizeIntoSettings();
         await settingsRepository.SaveAsync(appSettings);
@@ -145,7 +159,7 @@ public partial class MainPage : Page
     private async Task InitializeAsync()
     {
         appSettings = await settingsRepository.LoadAsync().ConfigureAwait(false);
-        appSettings = MigrateSettings(appSettings);
+        appSettings = settingsDomainService.Migrate(appSettings);
         var presets = await presetRepository.LoadOrSeedAsync().ConfigureAwait(false);
 
         presetsById.Clear();
@@ -213,25 +227,26 @@ public partial class MainPage : Page
             UpdateLinearBoostText();
             UpdateCloneModeUi();
 
+            viewModel.CurrentPresetId = currentPresetId;
+            viewModel.SelectedRendererId = selectedRendererId;
+            viewModel.SensitivityMinDb = sensitivityMinDb;
+            viewModel.SensitivityMaxDb = sensitivityMaxDb;
+            viewModel.LinearBoost = linearBoost;
+            viewModel.BarCount = displayBandCount;
+            viewModel.FftSize = fftSize;
+            viewModel.FftSmoothing = fftSmoothing;
+            viewModel.WeightingFilter = weightingFilter;
+            viewModel.FrequencyScale = frequencyScale;
+            viewModel.FrequencyMinHz = frequencyMinHz;
+            viewModel.FrequencyMaxHz = frequencyMaxHz;
+
             hubPreviewEnabled = appSettings.Hub75PreviewEnabled;
             Hub75Toggle.IsOn = hubPreviewEnabled;
             UpdateHubPreviewVisibility();
 
             lastCloneViewportWidth = GetAnalyzerViewportWidth();
             Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-            appSettings = CopySettings(
-                ActivePresetId: currentPresetId,
-                SensitivityMinDb: sensitivityMinDb,
-                SensitivityMaxDb: sensitivityMaxDb,
-                LinearBoost: linearBoost,
-                Sensitivity: sensitivityMaxDb,
-                FftSize: fftSize,
-                FftSmoothing: fftSmoothing,
-                WeightingFilter: weightingFilter,
-                FrequencyScale: frequencyScale,
-                FrequencyMinHz: frequencyMinHz,
-                FrequencyMaxHz: frequencyMaxHz,
-                BarCount: displayBandCount);
+            appSettings = settingsDomainService.Copy(appSettings, b => { b.SetActivePresetId(currentPresetId); b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb); b.SetLinearBoost(linearBoost); b.SetFftSize(fftSize); b.SetFftSmoothing(fftSmoothing); b.SetWeightingFilter(weightingFilter); b.SetFrequencyScale(frequencyScale); b.SetFrequencyRange(frequencyMinHz, frequencyMaxHz); b.SetBarCount(displayBandCount); });
             StatusText.Text = "Pronto";
         });
 
@@ -240,7 +255,7 @@ public partial class MainPage : Page
             SetupRenderTimer();
         });
 
-        await StartPipelineAsync().ConfigureAwait(false);
+        await pipelineCoordinator.StartAsync(hubPreviewEnabled, appSettings.Brightness, currentPresetId).ConfigureAwait(false);
     }
 
     private void SetupRenderTimer()
@@ -257,8 +272,55 @@ public partial class MainPage : Page
         };
         renderTimer.Start();
         EnsureCloneViewportDebounceTimer();
+        EnsureFullscreenButtonHideTimer();
+    }
+    private void EnsureFullscreenButtonHideTimer()
+    {
+        if (fullscreenButtonHideTimer is not null)
+        {
+            return;
+        }
+
+        fullscreenButtonHideTimer = DispatcherQueue.CreateTimer();
+        fullscreenButtonHideTimer.Interval = TimeSpan.FromMilliseconds(FullscreenButtonAutoHideDelayMs);
+        fullscreenButtonHideTimer.Tick += (_, _) =>
+        {
+            fullscreenButtonHideTimer?.Stop();
+            if (fullscreen)
+            {
+                HideFullscreenButtonOverlay();
+            }
+        };
     }
 
+    private void ShowFullscreenButtonOverlay(bool restartAutoHide)
+    {
+        CanvasFullscreenButton.Visibility = Visibility.Visible;
+        CanvasFullscreenButton.IsHitTestVisible = true;
+
+        if (!fullscreen)
+        {
+            fullscreenButtonHideTimer?.Stop();
+            return;
+        }
+
+        if (!restartAutoHide)
+        {
+            return;
+        }
+
+        EnsureFullscreenButtonHideTimer();
+        fullscreenButtonHideTimer!.Stop();
+        fullscreenButtonHideTimer.Interval = TimeSpan.FromMilliseconds(FullscreenButtonAutoHideDelayMs);
+        fullscreenButtonHideTimer.Start();
+    }
+
+    private void HideFullscreenButtonOverlay()
+    {
+        CanvasFullscreenButton.Visibility = Visibility.Collapsed;
+        CanvasFullscreenButton.IsHitTestVisible = false;
+        fullscreenButtonHideTimer?.Stop();
+    }
     private void ScheduleCloneViewportAnalyzerRebuild()
     {
         if (!initialized || !IsClonePresetActive())
@@ -294,130 +356,9 @@ public partial class MainPage : Page
         };
     }
 
-    private async Task StartPipelineAsync()
-    {
-        if (running)
-        {
-            return;
-        }
-
-        await DispatcherQueue.EnqueueAsync(() =>
-        {
-            Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-            lastRenderQpc = 0;
-            latestFrame = null;
-        });
-
-        pipelineCts = new CancellationTokenSource();
-
-        try
-        {
-            await capture.StartAsync(new CaptureConfig
-            {
-                TargetSampleRate = 48_000,
-                TargetChannels = 1,
-                ChannelCapacity = 8,
-                BufferMilliseconds = 12,
-            }).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            await DispatcherQueue.EnqueueAsync(() =>
-            {
-                StatusText.Text = $"Erro de audio: {ex.Message}";
-            });
-            pipelineCts.Dispose();
-            pipelineCts = null;
-            return;
-        }
-
-        ledOutput = hubPreviewEnabled ? simulatorLedOutput : nullLedOutput;
-        ledOutput.Start(new LedOutputConfig
-        {
-            Width = 64,
-            Height = 32,
-            Brightness = appSettings.Brightness,
-        });
-
-        pipelineTask = Task.Run(() => PipelineLoopAsync(pipelineCts.Token));
-        running = true;
-
-        await DispatcherQueue.EnqueueAsync(() =>
-        {
-            StatusText.Text = "Executando a 60 FPS";
-        });
-    }
-
-    private async Task StopPipelineAsync()
-    {
-        if (!running)
-        {
-            return;
-        }
-
-        pipelineCts?.Cancel();
-
-        try
-        {
-            await capture.StopAsync().ConfigureAwait(false);
-            if (pipelineTask is not null)
-            {
-                await pipelineTask.ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        finally
-        {
-            pipelineCts?.Dispose();
-            pipelineCts = null;
-            pipelineTask = null;
-            running = false;
-            ledOutput.Stop();
-        }
-
-        await DispatcherQueue.EnqueueAsync(() =>
-        {
-            StatusText.Text = "Parado";
-        });
-    }
-
-    private async Task PipelineLoopAsync(CancellationToken cancellationToken)
-    {
-        var reader = capture.Frames;
-
-        while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            while (reader.TryRead(out var pcmFrame))
-            {
-                var currentAnalyzer = Volatile.Read(ref analyzer);
-                var spectrum = currentAnalyzer.Process(in pcmFrame);
-                if (spectrum is null)
-                {
-                    continue;
-                }
-
-                Volatile.Write(ref latestFrame, spectrum);
-
-                if (!hubPreviewEnabled)
-                {
-                    continue;
-                }
-
-                ledOutput.Send(new LedPayload
-                {
-                    Bins64 = spectrum.Bands64,
-                    Level = spectrum.Level,
-                    PresetId = currentPresetId,
-                });
-            }
-        }
-    }
-
     private void OnMainCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
     {
-        var frame = Volatile.Read(ref latestFrame);
+        var frame = pipelineCoordinator.LatestFrame;
         if (frame is null)
         {
             args.DrawingSession.Clear(Color.FromArgb(255, 0, 0, 0));
@@ -450,6 +391,24 @@ public partial class MainPage : Page
         lastCloneViewportWidth = width;
         ScheduleCloneViewportAnalyzerRebuild();
     }
+    private void OnMainCanvasHostPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        ShowFullscreenButtonOverlay(restartAutoHide: true);
+    }
+
+    private void OnMainCanvasHostPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        ShowFullscreenButtonOverlay(restartAutoHide: true);
+    }
+
+    private void OnMainCanvasHostPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        HideFullscreenButtonOverlay();
+    }
+    private void OnVisualizerLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateHubPreviewVisibility();
+    }
 
     private void OnHubCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
     {
@@ -468,8 +427,8 @@ public partial class MainPage : Page
 
         var width = (float)sender.ActualWidth;
         var height = (float)sender.ActualHeight;
-        var matrixWidth = 64f;
-        var matrixHeight = 32f;
+        var matrixWidth = (float)LedDefaults.MatrixWidth;
+        var matrixHeight = (float)LedDefaults.MatrixHeight;
         var matrixAspect = matrixWidth / matrixHeight;
         var canvasAspect = width <= 0f || height <= 0f ? matrixAspect : (width / height);
         var drawWidth = width;
@@ -493,11 +452,11 @@ public partial class MainPage : Page
 
         args.DrawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
 
-        for (var y = 0; y < 32; y++)
+        for (var y = 0; y < LedDefaults.MatrixHeight; y++)
         {
-            for (var x = 0; x < 64; x++)
+            for (var x = 0; x < LedDefaults.MatrixWidth; x++)
             {
-                var pixel = snapshot[(y * 64) + x];
+                var pixel = snapshot[(y * LedDefaults.MatrixWidth) + x];
                 if (pixel.A == 0)
                 {
                     continue;
@@ -523,6 +482,7 @@ public partial class MainPage : Page
 
         activePreset = preset;
         currentPresetId = preset.PresetId;
+        pipelineCoordinator.SetCurrentPreset(currentPresetId);
         selectedRendererId = preset.RendererId;
 
         SelectComboOption(RendererCombo, selectedRendererId);
@@ -530,7 +490,7 @@ public partial class MainPage : Page
         lastCloneViewportWidth = GetAnalyzerViewportWidth();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
 
-        appSettings = CopySettings(ActivePresetId: currentPresetId);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetActivePresetId(currentPresetId));
     }
 
     private void OnRendererSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -554,15 +514,9 @@ public partial class MainPage : Page
         hubPreviewEnabled = Hub75Toggle.IsOn;
         UpdateHubPreviewVisibility();
 
-        ledOutput = hubPreviewEnabled ? simulatorLedOutput : nullLedOutput;
-        ledOutput.Start(new LedOutputConfig
-        {
-            Width = 64,
-            Height = 32,
-            Brightness = appSettings.Brightness,
-        });
+        pipelineCoordinator.SetHubPreview(hubPreviewEnabled, appSettings.Brightness);
 
-        appSettings = CopySettings(Hub75PreviewEnabled: hubPreviewEnabled);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetHub75PreviewEnabled(hubPreviewEnabled));
     }
 
     private void OnSettingsClicked(object sender, RoutedEventArgs e)
@@ -580,6 +534,86 @@ public partial class MainPage : Page
         SettingsSplitView.IsPaneOpen = false;
     }
 
+    
+    private void OnResetSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        sensitivityMinDb = DefaultMinDecibels;
+        sensitivityMaxDb = DefaultMaxDecibels;
+        linearBoost = DefaultLinearBoost;
+        displayBandCount = DefaultBarCount;
+        fftSize = DefaultFftSize;
+        fftSmoothing = DefaultFftSmoothing;
+        weightingFilter = DefaultWeightingFilter;
+        frequencyScale = DefaultFrequencyScale;
+        frequencyMinHz = DefaultFrequencyMinHz;
+        frequencyMaxHz = DefaultFrequencyMaxHz;
+
+        EnsureSensitivityDbOrder();
+        EnsureFrequencyRangeOrder();
+
+        suppressSensitivityMinChanged = true;
+        SensitivityMinDbSlider.Value = sensitivityMinDb;
+        suppressSensitivityMinChanged = false;
+
+        suppressSensitivityMaxChanged = true;
+        SensitivityMaxDbSlider.Value = sensitivityMaxDb;
+        suppressSensitivityMaxChanged = false;
+
+        suppressLinearBoostChanged = true;
+        LinearBoostSlider.Value = linearBoost;
+        suppressLinearBoostChanged = false;
+
+        suppressFftSizeChanged = true;
+        SelectComboOption(FftSizeCombo, FormatFftSizeId(fftSize));
+        suppressFftSizeChanged = false;
+
+        suppressFftSmoothingChanged = true;
+        FftSmoothingSlider.Value = fftSmoothing;
+        suppressFftSmoothingChanged = false;
+
+        suppressWeightingFilterChanged = true;
+        SelectComboOption(WeightingFilterCombo, ToWeightingFilterId(weightingFilter));
+        suppressWeightingFilterChanged = false;
+
+        suppressFrequencyScaleChanged = true;
+        SelectComboOption(FrequencyScaleCombo, frequencyScale.ToString());
+        suppressFrequencyScaleChanged = false;
+
+        UpdateFrequencyRangeCombos();
+        UpdateFrequencyScaleToolTip();
+        UpdateSensitivityDbTexts();
+        UpdateLinearBoostText();
+        UpdateFftSmoothingText();
+        ApplyBandCountBounds();
+
+        viewModel.SensitivityMinDb = sensitivityMinDb;
+        viewModel.SensitivityMaxDb = sensitivityMaxDb;
+        viewModel.LinearBoost = linearBoost;
+        viewModel.BarCount = displayBandCount;
+        viewModel.FftSize = fftSize;
+        viewModel.FftSmoothing = fftSmoothing;
+        viewModel.WeightingFilter = weightingFilter;
+        viewModel.FrequencyScale = frequencyScale;
+        viewModel.FrequencyMinHz = frequencyMinHz;
+        viewModel.FrequencyMaxHz = frequencyMaxHz;
+
+        lastCloneViewportWidth = GetAnalyzerViewportWidth();
+        Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
+
+        appSettings = settingsDomainService.Copy(appSettings, b =>
+        {
+            b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb);
+            b.SetLinearBoost(linearBoost);
+            b.SetBarCount(displayBandCount);
+            b.SetFftSize(fftSize);
+            b.SetFftSmoothing(fftSmoothing);
+            b.SetWeightingFilter(weightingFilter);
+            b.SetFrequencyScale(frequencyScale);
+            b.SetFrequencyRange(frequencyMinHz, frequencyMaxHz);
+        });
+
+        StatusText.Text = "Configuracoes restauradas";
+    }
     private void OnSensitivityMinDbChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (suppressSensitivityMinChanged)
@@ -597,7 +631,7 @@ public partial class MainPage : Page
         suppressSensitivityMaxChanged = false;
         UpdateSensitivityDbTexts();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(SensitivityMinDb: sensitivityMinDb, SensitivityMaxDb: sensitivityMaxDb, Sensitivity: sensitivityMaxDb);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb));
     }
 
     private void OnSensitivityMaxDbChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -617,7 +651,7 @@ public partial class MainPage : Page
         suppressSensitivityMaxChanged = false;
         UpdateSensitivityDbTexts();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(SensitivityMinDb: sensitivityMinDb, SensitivityMaxDb: sensitivityMaxDb, Sensitivity: sensitivityMaxDb);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb));
     }
 
     private void OnLinearBoostChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -633,7 +667,7 @@ public partial class MainPage : Page
         suppressLinearBoostChanged = false;
         UpdateLinearBoostText();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(LinearBoost: linearBoost);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetLinearBoost(linearBoost));
     }
 
     private void OnBarCountChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -647,7 +681,7 @@ public partial class MainPage : Page
         displayBandCount = (int)Math.Clamp(Math.Round(e.NewValue), minBands, 128);
         ApplyBandCountBounds();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(BarCount: displayBandCount);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetBarCount(displayBandCount));
     }
 
     private void OnFftSizeChanged(object sender, SelectionChangedEventArgs e)
@@ -669,7 +703,7 @@ public partial class MainPage : Page
 
         fftSize = CoerceFftSize(selectedFftSize);
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(FftSize: fftSize);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetFftSize(fftSize));
     }
 
     private void OnFftSmoothingChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -682,7 +716,7 @@ public partial class MainPage : Page
         fftSmoothing = CoerceFftSmoothing((float)e.NewValue);
         UpdateFftSmoothingText();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(FftSmoothing: fftSmoothing);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetFftSmoothing(fftSmoothing));
     }
 
     private void OnWeightingFilterChanged(object sender, SelectionChangedEventArgs e)
@@ -699,7 +733,7 @@ public partial class MainPage : Page
 
         weightingFilter = ParseWeightingFilterId(option.Id);
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(WeightingFilter: weightingFilter);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetWeightingFilter(weightingFilter));
     }
 
     private void OnFrequencyScaleChanged(object sender, SelectionChangedEventArgs e)
@@ -718,7 +752,7 @@ public partial class MainPage : Page
         frequencyScale = CoerceFrequencyScale(selectedScale);
         UpdateFrequencyScaleToolTip();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(FrequencyScale: frequencyScale);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetFrequencyScale(frequencyScale));
     }
 
     private void OnFrequencyMinChanged(object sender, SelectionChangedEventArgs e)
@@ -738,7 +772,7 @@ public partial class MainPage : Page
         EnsureFrequencyRangeOrder();
         UpdateFrequencyRangeCombos();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(FrequencyMinHz: frequencyMinHz, FrequencyMaxHz: frequencyMaxHz);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetFrequencyRange(frequencyMinHz, frequencyMaxHz));
     }
 
     private void OnFrequencyMaxChanged(object sender, SelectionChangedEventArgs e)
@@ -758,7 +792,7 @@ public partial class MainPage : Page
         EnsureFrequencyRangeOrder();
         UpdateFrequencyRangeCombos();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-        appSettings = CopySettings(FrequencyMinHz: frequencyMinHz, FrequencyMaxHz: frequencyMaxHz);
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetFrequencyRange(frequencyMinHz, frequencyMaxHz));
     }
 
     private void OnFullscreenClicked(object sender, RoutedEventArgs e)
@@ -766,6 +800,12 @@ public partial class MainPage : Page
         ToggleFullscreen(!fullscreen);
     }
 
+    
+    private void OnMainCanvasDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        ToggleFullscreen(!fullscreen);
+        e.Handled = true;
+    }
     private void OnFullscreenAcceleratorInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if (sender.Key == Windows.System.VirtualKey.F11)
@@ -806,13 +846,19 @@ public partial class MainPage : Page
     private void UpdateFullscreenUiState()
     {
         ControlsPanel.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible;
-        FullscreenButton.Content = fullscreen ? "Janela" : "Tela cheia";
         VisualizerLayout.Margin = fullscreen ? new Thickness(0) : new Thickness(12, 0, 12, 12);
         MainCanvasBorder.CornerRadius = fullscreen ? new CornerRadius(0) : new CornerRadius(12);
+        HubPreviewPanel.CornerRadius = fullscreen ? new CornerRadius(0) : new CornerRadius(12);
         if (fullscreen)
         {
             SettingsSplitView.IsPaneOpen = false;
+            ShowFullscreenButtonOverlay(restartAutoHide: true);
         }
+        else
+        {
+            HideFullscreenButtonOverlay();
+        }
+
         UpdateHubPreviewVisibility();
     }
 
@@ -852,7 +898,7 @@ public partial class MainPage : Page
             DisplayMode = cloneMode ? DisplayMode.AudioMotionMode0 : DisplayMode.FixedBands,
             DisplayViewportWidthPx = cloneMode ? MathF.Max(2f, viewportWidth) : 0f,
             BarSpace = Math.Clamp(barSpace, 0f, 0.95f),
-            OutputBandCount = 64,
+            OutputBandCount = LedDefaults.MatrixWidth,
             MinHz = frequencyMinHz,
             MaxHz = frequencyMaxHz,
             ScaleMode = ScaleMode.Linear,
@@ -877,10 +923,13 @@ public partial class MainPage : Page
 
     private void PopulatePresetCombo()
     {
-        PresetCombo.ItemsSource = presetsById.Values
+        var options = presetsById.Values
             .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .Select(p => new ComboOption(p.PresetId, p.Name))
             .ToList();
+
+        PresetCombo.ItemsSource = options;
+        PresetCombo.IsEnabled = options.Count > 1;
     }
 
     private void PopulateRendererCombo()
@@ -997,7 +1046,29 @@ public partial class MainPage : Page
     {
         var visible = hubPreviewEnabled;
         HubPreviewPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        HubPreviewColumn.Width = visible ? new GridLength(340) : new GridLength(0);
+
+        if (!visible)
+        {
+            HubPreviewRow.Height = new GridLength(0);
+            return;
+        }
+
+        var availableHeight = VisualizerLayout.ActualHeight;
+        if (!fullscreen)
+        {
+            availableHeight -= ControlsPanel.ActualHeight + ControlsPanel.Margin.Top + ControlsPanel.Margin.Bottom;
+        }
+
+        if (availableHeight <= 0d)
+        {
+            availableHeight = appWindow?.Size.Height ?? 720d;
+        }
+
+        var targetHeight = availableHeight * HubPreviewHeightRatio;
+        targetHeight = Math.Clamp(targetHeight, HubPreviewMinHeight, HubPreviewMaxHeight);
+        targetHeight = Math.Min(targetHeight, Math.Max(72d, availableHeight * 0.45d));
+
+        HubPreviewRow.Height = new GridLength(targetHeight);
     }
 
     private void ApplyBandCountBounds()
@@ -1045,7 +1116,7 @@ public partial class MainPage : Page
     {
         fullscreen = false;
         ControlsPanel.Visibility = Visibility.Visible;
-        FullscreenButton.Content = "Tela cheia";
+        HideFullscreenButtonOverlay();
     }
 
     private static bool IsClonePreset(PresetDefinition preset)
@@ -1237,66 +1308,6 @@ public partial class MainPage : Page
             System.Globalization.CultureInfo.InvariantCulture,
             out frequencyHz);
 
-    private static AppSettings MigrateSettings(AppSettings settings)
-    {
-        var minDb = CoerceSensitivityMinDb(settings.SensitivityMinDb);
-        var maxDb = CoerceSensitivityMaxDb(settings.SensitivityMaxDb);
-        var legacyMaxDb = CoerceLegacySensitivityToMaxDb(settings.Sensitivity);
-
-        var likelyLegacyOnlySensitivity = AreClose(settings.SensitivityMinDb, DefaultMinDecibels)
-            && AreClose(settings.SensitivityMaxDb, DefaultMaxDecibels)
-            && !AreClose(settings.Sensitivity, DefaultMaxDecibels);
-
-        if (likelyLegacyOnlySensitivity)
-        {
-            maxDb = legacyMaxDb;
-        }
-
-        if (maxDb <= minDb + 3f)
-        {
-            maxDb = Math.Clamp(minDb + 3f, -60f, 0f);
-            if (maxDb <= minDb)
-            {
-                minDb = Math.Clamp(maxDb - 3f, -120f, -30f);
-            }
-        }
-
-        var activePresetId = string.IsNullOrWhiteSpace(settings.ActivePresetId)
-            ? AudioMotionClonePresetId
-            : settings.ActivePresetId;
-
-        var minHz = CoerceFrequencyMin(settings.FrequencyMinHz);
-        var maxHz = CoerceFrequencyMax(settings.FrequencyMaxHz);
-        var linearBoost = CoerceLinearBoost(settings.LinearBoost);
-        if (maxHz <= minHz)
-        {
-            minHz = 20f;
-            maxHz = 1000f;
-        }
-
-        return new AppSettings
-        {
-            ActivePresetId = activePresetId,
-            Hub75PreviewEnabled = settings.Hub75PreviewEnabled,
-            Brightness = settings.Brightness,
-            Sensitivity = maxDb,
-            SensitivityMinDb = minDb,
-            SensitivityMaxDb = maxDb,
-            LinearBoost = linearBoost,
-            BarCount = settings.BarCount <= 0 ? 38 : settings.BarCount,
-            FrequencyScale = CoerceFrequencyScale(settings.FrequencyScale),
-            FrequencyMinHz = minHz,
-            FrequencyMaxHz = maxHz,
-            FftSize = CoerceFftSize(settings.FftSize),
-            FftSmoothing = CoerceFftSmoothing(settings.FftSmoothing),
-            WeightingFilter = CoerceWeightingFilter(settings.WeightingFilter),
-            WindowWidth = settings.WindowWidth,
-            WindowHeight = settings.WindowHeight,
-        };
-    }
-
-    private static bool AreClose(float a, float b) => MathF.Abs(a - b) < 0.001f;
-
     private void RestoreWindowSize()
     {
         if (appWindow is null || appSettings.WindowWidth < 640 || appSettings.WindowHeight < 480)
@@ -1315,16 +1326,15 @@ public partial class MainPage : Page
             return;
         }
 
-        appSettings = CopySettings(
-            WindowWidth: appWindow.Size.Width,
-            WindowHeight: appWindow.Size.Height,
-            Hub75PreviewEnabled: hubPreviewEnabled,
-            ActivePresetId: currentPresetId,
-            Sensitivity: sensitivityMaxDb,
-            SensitivityMinDb: sensitivityMinDb,
-            SensitivityMaxDb: sensitivityMaxDb,
-            LinearBoost: linearBoost,
-            BarCount: displayBandCount);
+        appSettings = settingsDomainService.Copy(appSettings, b =>
+        {
+            b.SetWindowSize(appWindow.Size.Width, appWindow.Size.Height);
+            b.SetHub75PreviewEnabled(hubPreviewEnabled);
+            b.SetActivePresetId(currentPresetId);
+            b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb);
+            b.SetLinearBoost(linearBoost);
+            b.SetBarCount(displayBandCount);
+        });
     }
 
     private void OnCaptureStatusChanged(object? sender, CaptureStatusChangedEventArgs e)
@@ -1335,43 +1345,12 @@ public partial class MainPage : Page
         });
     }
 
-    private AppSettings CopySettings(
-        string? ActivePresetId = null,
-        bool? Hub75PreviewEnabled = null,
-        float? Brightness = null,
-        float? Sensitivity = null,
-        float? SensitivityMinDb = null,
-        float? SensitivityMaxDb = null,
-        float? LinearBoost = null,
-        int? FftSize = null,
-        float? FftSmoothing = null,
-        WeightingFilter? WeightingFilter = null,
-        FrequencyScale? FrequencyScale = null,
-        float? FrequencyMinHz = null,
-        float? FrequencyMaxHz = null,
-        int? BarCount = null,
-        int? WindowWidth = null,
-        int? WindowHeight = null)
+    private void OnPipelineCoordinatorStatusChanged(object? sender, string message)
     {
-        return new AppSettings
+        _ = DispatcherQueue.EnqueueAsync(() =>
         {
-            ActivePresetId = ActivePresetId ?? appSettings.ActivePresetId,
-            Hub75PreviewEnabled = Hub75PreviewEnabled ?? appSettings.Hub75PreviewEnabled,
-            Brightness = Brightness ?? appSettings.Brightness,
-            Sensitivity = Sensitivity ?? appSettings.Sensitivity,
-            SensitivityMinDb = SensitivityMinDb ?? appSettings.SensitivityMinDb,
-            SensitivityMaxDb = SensitivityMaxDb ?? appSettings.SensitivityMaxDb,
-            LinearBoost = LinearBoost ?? appSettings.LinearBoost,
-            FftSize = FftSize ?? appSettings.FftSize,
-            FftSmoothing = FftSmoothing ?? appSettings.FftSmoothing,
-            WeightingFilter = WeightingFilter ?? appSettings.WeightingFilter,
-            FrequencyScale = FrequencyScale ?? appSettings.FrequencyScale,
-            FrequencyMinHz = FrequencyMinHz ?? appSettings.FrequencyMinHz,
-            FrequencyMaxHz = FrequencyMaxHz ?? appSettings.FrequencyMaxHz,
-            BarCount = BarCount ?? appSettings.BarCount,
-            WindowWidth = WindowWidth ?? appSettings.WindowWidth,
-            WindowHeight = WindowHeight ?? appSettings.WindowHeight,
-        };
+            StatusText.Text = message;
+        });
     }
 
     private static AppWindow? GetAppWindow()
@@ -1391,3 +1370,4 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
+

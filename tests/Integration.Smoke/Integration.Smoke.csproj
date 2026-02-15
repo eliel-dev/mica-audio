@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -23,7 +23,7 @@
     <ProjectReference Include="..\..\src\Analyzer.Dsp\Analyzer.Dsp.csproj" />
     <ProjectReference Include="..\..\src\Visual.Win2D\Visual.Win2D.csproj" />
     <ProjectReference Include="..\..\src\Output\Output.csproj" />
-    <ProjectReference Include="..\..\src\MicaAudio.Core\MicaAudio.Core.csproj" />
-  </ItemGroup>
+    <ProjectReference Include="..\..\src\MicaAudio.Core\MicaAudio.Core.csproj" />  </ItemGroup>
 
 </Project>
+

@@ -1,6 +1,7 @@
 using App.WinUI.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using System.Text;
 
@@ -35,6 +36,8 @@ public partial class App : Application
             MainWindow.Content = rootFrame;
         }
 
+        ApplySystemBackdrop(rootFrame);
+
         try
         {
             if (rootFrame.Content is null)
@@ -68,6 +71,47 @@ public partial class App : Application
         }
     }
 
+    private void ApplySystemBackdrop(Frame rootFrame)
+    {
+        if (MainWindow is null)
+        {
+            return;
+        }
+
+        try
+        {
+            MainWindow.SystemBackdrop = new MicaBackdrop();
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog("Mica backdrop unavailable. Using solid fallback.", ex);
+            MainWindow.SystemBackdrop = null;
+            if (TryResolveFallbackBrush(out var brush))
+            {
+                rootFrame.Background = brush;
+            }
+        }
+    }
+
+
+    private bool TryResolveFallbackBrush(out Brush? brush)
+    {
+        brush = null;
+
+        if (Resources.TryGetValue("AppSurfaceBaseBrush", out var primary) && primary is Brush primaryBrush)
+        {
+            brush = primaryBrush;
+            return true;
+        }
+
+        if (Resources.TryGetValue("AppFallbackSurfaceBaseBrush", out var fallback) && fallback is Brush fallbackBrush)
+        {
+            brush = fallbackBrush;
+            return true;
+        }
+
+        return false;
+    }
     private static void WriteCrashLog(string header, Exception ex)
     {
         var path = GetCrashLogPath();

@@ -11,6 +11,8 @@ Escopo atual: Windows-only, pipeline modular (`PCM -> FFT/bandas -> render -> ou
 - Output atual:
 - `NullLedOutput` (no-op)
 - `SimulatorLedOutput` (preview 64x32)
+
+Comportamento do simulador: o frame mais recente e mantido internamente e o preview HUB75 da UI consome esse snapshot por polling no ciclo de render (timer a 60 FPS). Nao existe evento de frame atualizado no simulador.
 - Saida UDP real para controlador externo: planejada para etapa futura.
 
 ## Principais recursos
@@ -91,7 +93,7 @@ scripts/
 - `float[]? DisplayBarX` (opcional)
 - `float[]? DisplayBarWidth` (opcional)
 
-Regra importante: `Bands64` e derivado do mesmo espectro calculado no frame (sem segunda FFT).
+Regra importante: `Bands64` é derivado do mesmo espectro calculado no frame (sem segunda FFT).
 
 ### Output
 
@@ -107,6 +109,7 @@ Regra importante: `Bands64` e derivado do mesmo espectro calculado no frame (sem
 - .NET SDK conforme `global.json`:
 - `10.0.102`
 - Target da app: `net8.0-windows10.0.19041.0`.
+- Nota: o SDK 10.x e usado como toolchain para build/restore, enquanto o runtime alvo da aplicacao continua sendo .NET 8 (`net8.0-windows...`).
 - UI: WinUI 3 (`Microsoft.WindowsAppSDK` 1.8.x).
 - Render: Win2D.
 - Captura de audio: NAudio (WASAPI loopback).
@@ -180,7 +183,7 @@ Cobertura por projeto:
 - Testes de mapeamento de bandas (Log/Mel/Bark).
 - Testes de mode0 layout/contagem/monotonicidade.
 - `tests/Output.Tests`
-- Testes do `SimulatorLedOutput` (frame gerado, clamp de brilho).
+- Testes do `SimulatorLedOutput` (frame gerado, clamp de brilho, e ausencia do evento `FrameUpdated`).
 - `tests/Integration.Smoke`
 - Smoke de pipeline Analyzer -> Output.
 - Caso manual de loopback real marcado como `Skip` (execucao assistida).
@@ -301,3 +304,4 @@ Implementacao deste projeto segue arquitetura propria (sem port direto de codigo
 ## Licenca
 
 Ainda nao definida neste repositorio. Recomendado adicionar `LICENSE` antes da publicacao oficial no GitHub.
+

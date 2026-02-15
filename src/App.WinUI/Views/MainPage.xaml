@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d" RequestedTheme="Dark">
+    mc:Ignorable="d">
     <Page.KeyboardAccelerators>
         <KeyboardAccelerator
             Key="F11"
@@ -18,16 +18,24 @@
 
     <SplitView
         x:Name="SettingsSplitView"
-        Background="{StaticResource SurfaceBaseBrush}"
+        Background="{ThemeResource AppSurfaceBaseBrush}"
         CompactPaneLength="0"
-        DisplayMode="Overlay"
+        DisplayMode="Inline"
         IsPaneOpen="False"
-        OpenPaneLength="380"
+        OpenPaneLength="360"
         PanePlacement="Left">
+        <SplitView.Transitions>
+            <TransitionCollection>
+                <RepositionThemeTransition />
+            </TransitionCollection>
+        </SplitView.Transitions>
+
         <SplitView.Pane>
             <Border
                 Padding="12"
-                Background="{StaticResource SurfacePanelBrush}">
+                Background="{ThemeResource AppSurfacePanelBrush}"
+                BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+                BorderThickness="1">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -40,13 +48,15 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock
+                            Style="{StaticResource AppHeaderTextStyle}"
                             VerticalAlignment="Center"
-                            FontSize="18"
+                            FontSize="20"
                             Text="Configuracoes" />
                         <Button
                             Grid.Column="1"
                             Width="32"
                             Height="32"
+                            Style="{StaticResource AppIconButtonStyle}"
                             Click="OnSettingsPaneCloseClicked"
                             ToolTipService.ToolTip="Fechar">
                             <SymbolIcon Symbol="Cancel" />
@@ -58,10 +68,19 @@
                         Margin="0,12,0,0"
                         VerticalScrollBarVisibility="Auto">
                         <StackPanel Spacing="8">
+                            <Button
+                                x:Name="ResetSettingsButton"
+                                HorizontalAlignment="Left"
+                                Style="{StaticResource AppChromeButtonStyle}"
+                                Click="OnResetSettingsClicked"
+                                Content="Restaurar padrao"
+                                ToolTipService.ToolTip="Restaura os parametros visuais e de analise para os valores recomendados." />
+
                             <TextBlock Text="Sensibilidade (dB)" />
                             <StackPanel x:Name="DbSensitivityPanel" Spacing="6">
                                 <TextBlock
                                     Opacity="0.8"
+                                    Style="{StaticResource AppMutedTextStyle}"
                                     Text="Min dB (fundo):" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -85,6 +104,7 @@
                                 </Grid>
                                 <TextBlock
                                     Opacity="0.8"
+                                    Style="{StaticResource AppMutedTextStyle}"
                                     Text="Max dB (topo):" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -107,6 +127,7 @@
                                         Text="-25 dB" />
                                 </Grid>
                             </StackPanel>
+
                             <TextBlock Text="Linear Boost" />
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -124,6 +145,7 @@
                                     VerticalAlignment="Center"
                                     Text="x1.60" />
                             </Grid>
+
                             <StackPanel
                                 x:Name="BarCountPanel"
                                 Spacing="4">
@@ -149,17 +171,21 @@
                                         Text="38" />
                                 </Grid>
                             </StackPanel>
+
                             <TextBlock
                                 x:Name="CloneBarsHintText"
-                                Opacity="0.8"
+                                Style="{StaticResource AppMutedTextStyle}"
                                 Text="No modo AudioMotion Clone, a quantidade de barras e automatica pela largura da tela."
                                 TextWrapping="Wrap"
                                 Visibility="Collapsed" />
+
                             <TextBlock Text="FFT Size" />
                             <ComboBox
                                 x:Name="FftSizeCombo"
+                                Style="{StaticResource AppChromeComboBoxStyle}"
                                 ToolTipService.ToolTip="Define a resolucao de frequencia. Maior FFT melhora detalhe e aumenta latencia."
                                 SelectionChanged="OnFftSizeChanged" />
+
                             <TextBlock Text="FFT Smoothing" />
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -177,16 +203,21 @@
                                     VerticalAlignment="Center"
                                     Text="0.80" />
                             </Grid>
+
                             <TextBlock Text="Weighting Filter" />
                             <ComboBox
                                 x:Name="WeightingFilterCombo"
+                                Style="{StaticResource AppChromeComboBoxStyle}"
                                 ToolTipService.ToolTip="Aplica curva psicoacustica por frequencia (A, B, C, D ou 468)."
                                 SelectionChanged="OnWeightingFilterChanged" />
+
                             <TextBlock Text="Escala de frequencia" />
                             <ComboBox
                                 x:Name="FrequencyScaleCombo"
+                                Style="{StaticResource AppChromeComboBoxStyle}"
                                 ToolTipService.ToolTip="Define como as barras sao distribuidas no espectro."
                                 SelectionChanged="OnFrequencyScaleChanged" />
+
                             <TextBlock Text="Faixa de frequencia" />
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -197,6 +228,7 @@
                                 <ComboBox
                                     x:Name="FrequencyMinCombo"
                                     Grid.Column="0"
+                                    Style="{StaticResource AppChromeComboBoxStyle}"
                                     ToolTipService.ToolTip="Frequencia minima analisada."
                                     SelectionChanged="OnFrequencyMinChanged" />
                                 <TextBlock
@@ -207,6 +239,7 @@
                                 <ComboBox
                                     x:Name="FrequencyMaxCombo"
                                     Grid.Column="2"
+                                    Style="{StaticResource AppChromeComboBoxStyle}"
                                     ToolTipService.ToolTip="Frequencia maxima analisada."
                                     SelectionChanged="OnFrequencyMaxChanged" />
                             </Grid>
@@ -217,125 +250,168 @@
         </SplitView.Pane>
 
         <SplitView.Content>
-            <Grid Background="{StaticResource SurfaceBaseBrush}">
+            <Grid
+                x:Name="VisualizerLayout"
+                Margin="12,0,12,12"
+                Background="{ThemeResource AppSurfaceBaseBrush}"
+                SizeChanged="OnVisualizerLayoutSizeChanged">
+                <Grid.Transitions>
+                    <TransitionCollection>
+                        <RepositionThemeTransition />
+                    </TransitionCollection>
+                </Grid.Transitions>
+
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition
+                        x:Name="HubPreviewRow"
+                        Height="0" />
                 </Grid.RowDefinitions>
 
                 <Border
                     x:Name="ControlsPanel"
-                    Margin="12"
-                    Padding="12"
-                    Background="{StaticResource SurfacePanelBrush}"
-                    CornerRadius="10">
-                    <Grid>
+                    Grid.Row="0"
+                    Margin="0,12,0,12"
+                    Padding="16,12"
+                    Background="{ThemeResource AppSurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <Grid ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="260" />
-                            <ColumnDefinition Width="0" />
-                            <ColumnDefinition Width="120" />
-                            <ColumnDefinition Width="56" />
-                            <ColumnDefinition Width="105" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <ComboBox
-                            x:Name="PresetCombo"
+                        <Grid
                             Grid.Column="0"
-                            Header="Predefinicao"
-                            IsEnabled="False"
-                            SelectionChanged="OnPresetSelectionChanged" />
+                            ColumnSpacing="10"
+                            VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                        <ComboBox
-                            x:Name="RendererCombo"
-                            Grid.Column="1"
-                            Header="Renderizador"
-                            Visibility="Collapsed"
-                            SelectionChanged="OnRendererSelectionChanged" />
-
-                        <ToggleSwitch
-                            x:Name="Hub75Toggle"
-                            Grid.Column="2"
-                            Header="Modo HUB75"
-                            Toggled="OnHub75Toggled" />
-
-                        <Button
-                            x:Name="SettingsButton"
-                            Grid.Column="3"
-                            Width="40"
-                            Height="40"
-                            Margin="8,24,0,0"
-                            HorizontalAlignment="Left"
-                            Click="OnSettingsClicked"
-                            ToolTipService.ToolTip="Configuracoes">
-                            <Button.Content>
+                            <Button
+                                x:Name="SettingsButton"
+                                Grid.Column="0"
+                                Width="40"
+                                Height="40"
+                                Style="{StaticResource AppIconButtonStyle}"
+                                Click="OnSettingsClicked"
+                                ToolTipService.ToolTip="Configuracoes">
                                 <SymbolIcon Symbol="GlobalNavigationButton" />
-                            </Button.Content>
-                        </Button>
+                            </Button>
 
-                        <Button
-                            x:Name="FullscreenButton"
-                            Grid.Column="4"
-                            Margin="8,24,0,0"
-                            Click="OnFullscreenClicked"
-                            Content="Tela cheia" />
+                            <StackPanel
+                                Grid.Column="1"
+                                Spacing="0">
+                                <ComboBox
+                                    x:Name="PresetCombo"
+                                    Width="260"
+                                    Style="{StaticResource AppChromeComboBoxStyle}"
+                                    Header="Predefinicao"
+                                    IsEnabled="False"
+                                    SelectionChanged="OnPresetSelectionChanged" />
+                                <ComboBox
+                                    x:Name="RendererCombo"
+                                    Style="{StaticResource AppChromeComboBoxStyle}"
+                                    Header="Renderizador"
+                                    Visibility="Collapsed"
+                                    SelectionChanged="OnRendererSelectionChanged" />
+                            </StackPanel>
+                        </Grid>
+
+                        <StackPanel
+                            Grid.Column="1"
+                            HorizontalAlignment="Center"
+                            Orientation="Horizontal"
+                            Spacing="12"
+                            VerticalAlignment="Center">
+                            <ToggleSwitch
+                                x:Name="Hub75Toggle"
+                                Style="{StaticResource AppChromeToggleSwitchStyle}"
+                                Header="Modo HUB75"
+                                Toggled="OnHub75Toggled" />
+                        </StackPanel>
 
                         <TextBlock
                             x:Name="StatusText"
-                            Grid.Column="5"
-                            Margin="10,18,0,0"
+                            Grid.Column="2"
+                            Style="{StaticResource AppStatusTextStyle}"
+                            HorizontalAlignment="Right"
                             VerticalAlignment="Center"
-                            Foreground="{StaticResource AccentPrimaryBrush}"
                             Text="Parado" />
                     </Grid>
                 </Border>
 
-                <Grid
-                    x:Name="VisualizerLayout"
+                <Border
+                    x:Name="MainCanvasBorder"
                     Grid.Row="1"
-                    Margin="12,0,12,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition
-                            x:Name="HubPreviewColumn"
-                            Width="0" />
-                    </Grid.ColumnDefinitions>
-
-                    <Border
-                        x:Name="MainCanvasBorder"
-                        CornerRadius="12">
+                    Margin="0,0,0,12"
+                    Background="Black"
+                    CornerRadius="12"
+                    PointerEntered="OnMainCanvasHostPointerEntered"
+                    PointerExited="OnMainCanvasHostPointerExited"
+                    PointerMoved="OnMainCanvasHostPointerMoved">
+                    <Grid>
                         <canvas:CanvasControl
                             x:Name="MainCanvas"
                             Draw="OnMainCanvasDraw"
+                            DoubleTapped="OnMainCanvasDoubleTapped"
                             SizeChanged="OnMainCanvasSizeChanged" />
-                    </Border>
+                        <Button
+                            x:Name="CanvasFullscreenButton"
+                            Width="40"
+                            Height="40"
+                            Margin="0,0,14,14"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Click="OnFullscreenClicked"
+                            IsHitTestVisible="False"
+                            Opacity="0.92"
+                            Style="{StaticResource AppIconButtonStyle}"
+                            ToolTipService.ToolTip="Tela cheia (F11). Em tela cheia, mova o mouse para exibir este botao."
+                            Visibility="Collapsed">
+                            <PathIcon
+                                x:Name="CanvasFullscreenIcon"
+                                Data="M2,2 H10 V4 H4 V10 H2 Z M14,2 H22 V10 H20 V4 H14 Z M14,22 H22 V14 H20 V20 H14 Z M2,14 H4 V20 H10 V22 H2 Z" />
+                        </Button>
+                    </Grid>
+                </Border>
 
-                    <Border
-                        x:Name="HubPreviewPanel"
-                        Grid.Column="1"
-                        Margin="12,0,0,0"
-                        Padding="10"
-                        Background="{StaticResource SurfacePanelBrush}"
-                        CornerRadius="12"
-                        Visibility="Collapsed">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <TextBlock
-                                Margin="0,0,0,8"
-                                Foreground="{StaticResource AccentPrimaryBrush}"
-                                Text="Simulacao HUB75 64x32" />
-                            <canvas:CanvasControl
-                                x:Name="HubCanvas"
-                                Grid.Row="1"
-                                Draw="OnHubCanvasDraw" />
-                        </Grid>
-                    </Border>
-                </Grid>
+                <Border
+                    x:Name="HubPreviewPanel"
+                    Grid.Row="2"
+                    Padding="10"
+                    Background="{ThemeResource AppSurfacePanelBrush}"
+                    BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Visibility="Collapsed">
+                    <Border.Transitions>
+                        <TransitionCollection>
+                            <RepositionThemeTransition />
+                        </TransitionCollection>
+                    </Border.Transitions>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            Margin="0,0,0,8"
+                            Style="{StaticResource AppStatusTextStyle}"
+                            Text="Simulacao HUB75 64x32 (horizontal)" />
+                        <canvas:CanvasControl
+                            x:Name="HubCanvas"
+                            Grid.Row="1"
+                            Draw="OnHubCanvasDraw" />
+                    </Grid>
+                </Border>
             </Grid>
         </SplitView.Content>
     </SplitView>
 </Page>
-
