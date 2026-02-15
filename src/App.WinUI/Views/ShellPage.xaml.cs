@@ -1,68 +1,64 @@
+﻿using App.WinUI.Services.Devices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
 namespace App.WinUI.Views;
 
-public sealed class ShellPage : Page
+public sealed partial class ShellPage : Page
 {
     private const string VisualizerTag = "visualizer";
     private const string DevicesTag = "devices";
+    private const string AppsTag = "apps";
+    private const string ServerTag = "server";
 
-    private readonly NavigationView rootNavigation;
-    private readonly Frame contentFrame;
-    private readonly DevicesPage devicesPage;
+    private readonly MainPage mainPage = new();
+    private readonly DevicesPage devicesPage = new();
+    private readonly AppsPage appsPage = new();
+    private readonly ServerPage serverPage = new();
 
     private string currentTag = string.Empty;
 
     public ShellPage()
     {
-        rootNavigation = new NavigationView
-        {
-            IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
-            IsSettingsVisible = false,
-            PaneDisplayMode = NavigationViewPaneDisplayMode.LeftCompact,
-        };
-
-        rootNavigation.MenuItems.Add(new NavigationViewItem
-        {
-            Tag = VisualizerTag,
-            Content = "Visualizador",
-            Icon = new SymbolIcon(Symbol.Library),
-        });
-
-        rootNavigation.MenuItems.Add(new NavigationViewItem
-        {
-            Tag = DevicesTag,
-            Content = "Dispositivos",
-            Icon = new SymbolIcon(Symbol.AllApps),
-        });
-
-        devicesPage = new DevicesPage();
-
-        contentFrame = new Frame();
-        rootNavigation.Content = contentFrame;
-        rootNavigation.SelectionChanged += OnNavigationSelectionChanged;
-
-        Content = rootNavigation;
+        InitializeComponent();
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
+
+    private DeviceOperationsCoordinator? DeviceOps => App.DeviceOps;
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (rootNavigation.MenuItems.Count == 0)
+        if (RootNavigation.MenuItems.Count == 0)
         {
             return;
         }
 
-        if (rootNavigation.SelectedItem is null)
+        if (RootNavigation.SelectedItem is null)
         {
-            rootNavigation.SelectedItem = rootNavigation.MenuItems[0];
+            RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
         }
 
         if (string.IsNullOrWhiteSpace(currentTag))
         {
             ShowPage(VisualizerTag);
         }
+
+        if (DeviceOps is not null)
+        {
+            DeviceOps.StateChanged += OnDeviceOpsStateChanged;
+            UpdateServerFooter();
+        }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (DeviceOps is null)
+        {
+            return;
+        }
+
+        DeviceOps.StateChanged -= OnDeviceOpsStateChanged;
     }
 
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -84,9 +80,23 @@ public sealed class ShellPage : Page
         }
 
         currentTag = tag;
+        ContentFrame.Content = tag.ToLowerInvariant() switch
+        {
+            DevicesTag => devicesPage,
+            AppsTag => appsPage,
+            ServerTag => serverPage,
+            _ => mainPage,
+        };
+    }
 
-        contentFrame.Content = string.Equals(tag, DevicesTag, StringComparison.OrdinalIgnoreCase)
-            ? devicesPage
-            : new MainPage();
+    private void OnDeviceOpsStateChanged(object? sender, EventArgs e)
+    {
+        _ = DispatcherQueue.TryEnqueue(UpdateServerFooter);
+    }
+
+    private void UpdateServerFooter()
+    {
+        var baseAddress = DeviceOps?.GetServerBaseAddress() ?? "http://127.0.0.1:5272";
+        ServerFooterText.Text = $"Servidor: {baseAddress}";
     }
 }

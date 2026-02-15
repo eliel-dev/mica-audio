@@ -527,15 +527,18 @@ public partial class MainPage : Page
     {
         if (fullscreen)
         {
+            SettingsButton.IsChecked = false;
             return;
         }
 
         SettingsSplitView.IsPaneOpen = !SettingsSplitView.IsPaneOpen;
+        SyncSettingsButtonState();
     }
 
     private void OnSettingsPaneCloseClicked(object sender, RoutedEventArgs e)
     {
         SettingsSplitView.IsPaneOpen = false;
+        SyncSettingsButtonState();
     }
 
     
@@ -856,6 +859,7 @@ public partial class MainPage : Page
         if (fullscreen)
         {
             SettingsSplitView.IsPaneOpen = false;
+            SyncSettingsButtonState();
             ShowFullscreenButtonOverlay(restartAutoHide: true);
         }
         else
@@ -1120,7 +1124,17 @@ public partial class MainPage : Page
     {
         fullscreen = false;
         ControlsPanel.Visibility = Visibility.Visible;
+        SettingsSplitView.IsPaneOpen = false;
+        SyncSettingsButtonState();
         HideFullscreenButtonOverlay();
+    }
+
+    private void SyncSettingsButtonState()
+    {
+        if (SettingsButton is not null)
+        {
+            SettingsButton.IsChecked = SettingsSplitView.IsPaneOpen;
+        }
     }
 
     private static bool IsClonePreset(PresetDefinition preset)
@@ -1374,7 +1388,4 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
-
-
-
 

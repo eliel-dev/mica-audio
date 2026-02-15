@@ -1,4 +1,4 @@
-using Device.Protocol.Models;
+﻿using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
@@ -202,6 +202,108 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         return result;
     }
 
+
+    public async Task<CommandDispatchResult> RunCommandAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return new CommandDispatchResult
+            {
+                DeviceId = string.Empty,
+                Accepted = false,
+                Completed = true,
+                Success = false,
+                ProgressPercent = 0,
+                Stage = "invalid",
+                Message = "Nenhum dispositivo selecionado.",
+                ErrorCode = "invalid_device",
+            };
+        }
+
+        lock (gate)
+        {
+            if (commandInProgress)
+            {
+                return new CommandDispatchResult
+                {
+                    DeviceId = deviceId,
+                    Accepted = false,
+                    Completed = true,
+                    Success = false,
+                    ProgressPercent = commandPercent,
+                    Stage = "busy",
+                    Message = "Ja existe uma operacao em andamento.",
+                    ErrorCode = "busy",
+                };
+            }
+
+            commandInProgress = true;
+            commandPercent = 0;
+            commandStatus = $"Comandos: 0% ({DescribeCommand(commandType)})";
+            lastCommandDeviceId = deviceId;
+            activeCommandId = null;
+        }
+
+        RaiseStateChanged();
+        AppendLog($"Comando iniciado ({DescribeCommand(commandType)}) para {deviceId}.");
+
+        var timeout = commandType == DeviceCommandType.StartOta ? OtaCommandTimeout : CommandTimeout;
+
+        CommandDispatchResult result;
+        try
+        {
+            result = await integration.Host
+                .SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            result = new CommandDispatchResult
+            {
+                DeviceId = deviceId,
+                Accepted = true,
+                Completed = true,
+                Success = false,
+                ProgressPercent = commandPercent,
+                Stage = "cancelled",
+                Message = "Operacao cancelada.",
+                ErrorCode = "cancelled",
+            };
+        }
+        catch (Exception ex)
+        {
+            result = new CommandDispatchResult
+            {
+                DeviceId = deviceId,
+                Accepted = true,
+                Completed = true,
+                Success = false,
+                ProgressPercent = commandPercent,
+                Stage = "error",
+                Message = ex.Message,
+                ErrorCode = "exception",
+            };
+        }
+
+        lock (gate)
+        {
+            commandInProgress = false;
+            commandPercent = Math.Clamp(Math.Max(commandPercent, result.ProgressPercent), 0, 100);
+            commandStatus = BuildFinalCommandStatus(result);
+            if (!string.IsNullOrWhiteSpace(result.CommandId))
+            {
+                activeCommandId = result.CommandId;
+            }
+        }
+
+        RaiseStateChanged();
+        AppendLog(BuildResultLogMessage(result));
+        return result;
+    }
     public async Task<CommandDispatchResult> StartOtaForDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
     {
         var mergedPath = ResolveLatestMergedBinPath();
@@ -250,6 +352,42 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         return await RunCommandAsync(deviceId, DeviceCommandType.StartOta, cancellationToken).ConfigureAwait(false);
     }
 
+    public Task<CommandDispatchResult> InstallAppAsync(string deviceId, DeviceAppCommandPayload payload, CancellationToken cancellationToken = default)
+    {
+        if (payload is null)
+        {
+            throw new ArgumentNullException(nameof(payload));
+        }
+
+        var parameters = payload.ToParameters();
+        return RunCommandAsync(deviceId, DeviceCommandType.InstallApp, parameters, cancellationToken);
+    }
+
+    public Task<CommandDispatchResult> ActivateAppAsync(string deviceId, string appId, string? appName = null, CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["appId"] = appId,
+        };
+
+        if (!string.IsNullOrWhiteSpace(appName))
+        {
+            parameters["displayName"] = appName;
+        }
+
+        return RunCommandAsync(deviceId, DeviceCommandType.ActivateApp, parameters, cancellationToken);
+    }
+
+    public Task<CommandDispatchResult> SetAppConfigAsync(string deviceId, string appId, string configJson, CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["appId"] = appId,
+            ["configJson"] = configJson,
+        };
+
+        return RunCommandAsync(deviceId, DeviceCommandType.SetAppConfig, parameters, cancellationToken);
+    }
     public async Task<string?> BuildAndExportAsync(string profile, CancellationToken cancellationToken = default)
     {
         var alreadyRunning = false;
@@ -514,7 +652,9 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
                 || !string.Equals(a.Profile, b.Profile, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.FirmwareVersion, b.FirmwareVersion, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.LastKnownIp, b.LastKnownIp, StringComparison.OrdinalIgnoreCase)
-                || a.LastKnownRssi != b.LastKnownRssi)
+                || a.LastKnownRssi != b.LastKnownRssi
+                || !string.Equals(a.ActiveAppId, b.ActiveAppId, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -593,6 +733,9 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
             DeviceCommandType.RevokeAndRestart => "revogar/reiniciar",
             DeviceCommandType.TestLed => "testar LED",
             DeviceCommandType.StartOta => "atualizar firmware OTA",
+            DeviceCommandType.InstallApp => "instalar app",
+            DeviceCommandType.ActivateApp => "ativar app",
+            DeviceCommandType.SetAppConfig => "configurar app",
             _ => "comando",
         };
 
@@ -718,3 +861,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         entries.RemoveRange(0, removeCount);
     }
 }
+
+
+
+

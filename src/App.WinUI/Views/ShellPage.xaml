@@ -11,8 +11,11 @@
         x:Name="RootNavigation"
         IsBackButtonVisible="Collapsed"
         IsSettingsVisible="False"
-        PaneDisplayMode="LeftCompact"
+        PaneDisplayMode="Auto"
+        CompactModeThresholdWidth="900"
+        ExpandedModeThresholdWidth="1200"
         SelectionChanged="OnNavigationSelectionChanged">
+
         <NavigationView.MenuItems>
             <NavigationViewItem Tag="visualizer" Content="Visualizador">
                 <NavigationViewItem.Icon>
@@ -24,7 +27,25 @@
                     <SymbolIcon Symbol="AllApps" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem Tag="apps" Content="Apps">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Shop" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Tag="server" Content="Servidor">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Globe" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
         </NavigationView.MenuItems>
+
+        <NavigationView.PaneFooter>
+            <TextBlock
+                x:Name="ServerFooterText"
+                Margin="12,8,12,12"
+                Style="{ThemeResource BodyStrongTextBlockStyle}"
+                Text="Servidor: inicializando..." />
+        </NavigationView.PaneFooter>
 
         <Frame x:Name="ContentFrame" />
     </NavigationView>

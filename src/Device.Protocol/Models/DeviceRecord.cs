@@ -1,4 +1,4 @@
-namespace Device.Protocol.Models;
+﻿namespace Device.Protocol.Models;
 
 public sealed class DeviceRecord
 {
@@ -19,4 +19,8 @@ public sealed class DeviceRecord
     public string? LastKnownIp { get; init; }
 
     public int? LastKnownRssi { get; init; }
+
+    public string? ActiveAppId { get; init; }
+
+    public string? ActiveAppName { get; init; }
 }

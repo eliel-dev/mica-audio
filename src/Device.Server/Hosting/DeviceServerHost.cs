@@ -1,4 +1,4 @@
-
+﻿
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -177,13 +177,23 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     public async Task<bool> SendCommandAsync(string deviceId, DeviceCommandType commandType, CancellationToken cancellationToken = default)
     {
-        var result = await SendTrackedCommandCoreAsync(deviceId, commandType, DefaultCommandTimeout, cancellationToken).ConfigureAwait(false);
+        var result = await SendTrackedCommandCoreAsync(deviceId, commandType, null, DefaultCommandTimeout, cancellationToken).ConfigureAwait(false);
         return result.Accepted;
+    }
+
+        public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        return SendCommandTrackedAsync(deviceId, commandType, parameters: null, timeout, cancellationToken);
     }
 
     public Task<CommandDispatchResult> SendCommandTrackedAsync(
         string deviceId,
         DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -193,7 +203,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             effectiveTimeout = DefaultCommandTimeout;
         }
 
-        return SendTrackedCommandCoreAsync(deviceId, commandType, effectiveTimeout, cancellationToken);
+        return SendTrackedCommandCoreAsync(deviceId, commandType, parameters, effectiveTimeout, cancellationToken);
     }
 
     public bool SetOtaArtifact(string mergedBinPath, string version)
@@ -516,8 +526,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         public DateTimeOffset LastActivityUtc { get; private set; }
 
         public CancellationToken SendToken => senderCts.Token;
-
-        public void MarkSeen(string? ip, int? rssi, string? firmwareVersion)
+        public void MarkSeen(string? ip, int? rssi, string? firmwareVersion, string? activeAppId = null, string? activeAppName = null)
         {
             LastActivityUtc = DateTimeOffset.UtcNow;
             Record = new DeviceRecord
@@ -531,6 +540,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 LastKnownIp = string.IsNullOrWhiteSpace(ip) ? Record.LastKnownIp : ip,
                 LastKnownRssi = rssi ?? Record.LastKnownRssi,
                 FirmwareVersion = string.IsNullOrWhiteSpace(firmwareVersion) ? Record.FirmwareVersion : firmwareVersion,
+                ActiveAppId = string.IsNullOrWhiteSpace(activeAppId) ? Record.ActiveAppId : activeAppId,
+                ActiveAppName = string.IsNullOrWhiteSpace(activeAppName) ? Record.ActiveAppName : activeAppName,
             };
         }
 
@@ -559,7 +570,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             Outgoing.Writer.TryWrite(frame);
         }
 
-        public DeviceSnapshot ToSnapshot()
+                public DeviceSnapshot ToSnapshot()
         {
             var staleTimeout = TimeSpan.FromSeconds(6);
             var online = Socket is { State: WebSocketState.Open } && (DateTimeOffset.UtcNow - LastActivityUtc) <= staleTimeout;
@@ -574,6 +585,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 LastKnownIp = Record.LastKnownIp,
                 LastKnownRssi = Record.LastKnownRssi,
                 FirmwareVersion = Record.FirmwareVersion,
+                ActiveAppId = Record.ActiveAppId,
+                ActiveAppName = Record.ActiveAppName,
             };
         }
 
@@ -601,6 +614,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 }
+
+
+
+
+
 
 
 

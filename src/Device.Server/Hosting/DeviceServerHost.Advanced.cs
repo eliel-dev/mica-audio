@@ -1,4 +1,4 @@
-
+﻿
 using System.Security.Cryptography;
 using System.Text.Json;
 using Device.Protocol.Models;
@@ -20,6 +20,7 @@ public sealed partial class DeviceServerHost
     private async Task<CommandDispatchResult> SendTrackedCommandCoreAsync(
         string deviceId,
         DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
@@ -61,12 +62,19 @@ public sealed partial class DeviceServerHost
             Message = "Comando enfileirado.",
         });
 
-        var payload = JsonSerializer.SerializeToUtf8Bytes(new
+                var commandEnvelope = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
-            type = "command",
-            commandId,
-            command = CommandTypeToWire(commandType),
-        }, JsonOptions);
+            ["type"] = "command",
+            ["commandId"] = commandId,
+            ["command"] = CommandTypeToWire(commandType),
+        };
+
+        if (parameters is not null && parameters.Count > 0)
+        {
+            commandEnvelope["parameters"] = parameters;
+        }
+
+        var payload = JsonSerializer.SerializeToUtf8Bytes(commandEnvelope, JsonOptions);
 
         try
         {
@@ -445,7 +453,7 @@ public sealed partial class DeviceServerHost
                 return false;
             }
 
-            state.MarkSeen(telemetry.IpAddress, telemetry.Rssi, telemetry.FirmwareVersion);
+            state.MarkSeen(telemetry.IpAddress, telemetry.Rssi, telemetry.FirmwareVersion, telemetry.ActiveAppId, telemetry.ActiveAppName);
             return true;
         }
         catch
@@ -486,6 +494,9 @@ public sealed partial class DeviceServerHost
             DeviceCommandType.RevokeAndRestart => "revoke_and_restart",
             DeviceCommandType.TestLed => "test_led",
             DeviceCommandType.StartOta => "start_ota",
+            DeviceCommandType.InstallApp => "install_app",
+            DeviceCommandType.ActivateApp => "activate_app",
+            DeviceCommandType.SetAppConfig => "set_app_config",
             _ => "unknown",
         };
     }
@@ -527,3 +538,5 @@ public sealed partial class DeviceServerHost
 
     private sealed record OtaSessionState(string DeviceId, DateTimeOffset ExpiresAtUtc);
 }
+
+

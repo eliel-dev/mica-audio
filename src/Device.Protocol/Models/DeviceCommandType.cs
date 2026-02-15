@@ -1,4 +1,4 @@
-namespace Device.Protocol.Models;
+﻿namespace Device.Protocol.Models;
 
 public enum DeviceCommandType
 {
@@ -6,4 +6,7 @@ public enum DeviceCommandType
     RevokeAndRestart = 2,
     TestLed = 3,
     StartOta = 4,
+    InstallApp = 5,
+    ActivateApp = 6,
+    SetAppConfig = 7,
 }

@@ -120,6 +120,14 @@ public class MatrixPortalLedOutputTests
                 ErrorCode = "not_implemented",
             });
 
+        public Task<CommandDispatchResult> SendCommandTrackedAsync(
+            string deviceId,
+            DeviceCommandType commandType,
+            IReadOnlyDictionary<string, string>? parameters,
+            TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default)
+            => SendCommandTrackedAsync(deviceId, commandType, timeout, cancellationToken);
+
         public bool SetOtaArtifact(string mergedBinPath, string version) => false;
 
         public bool RemoveDevice(string deviceId) => false;

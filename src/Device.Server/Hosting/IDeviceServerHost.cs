@@ -1,4 +1,4 @@
-using Device.Protocol.Contracts;
+﻿using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 
 namespace Device.Server.Hosting;
@@ -28,6 +28,13 @@ public interface IDeviceServerHost : IAsyncDisposable
     Task<CommandDispatchResult> SendCommandTrackedAsync(
         string deviceId,
         DeviceCommandType commandType,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default);
+
+    Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default);
 

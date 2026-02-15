@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
 using App.WinUI.Views;
 using Device.Server.Hosting;
@@ -16,6 +17,10 @@ public partial class App : Application
     internal static DeviceIntegrationService? DeviceIntegration { get; private set; }
 
     internal static DeviceOperationsCoordinator? DeviceOps { get; private set; }
+
+    internal static AppCatalogService? AppCatalog { get; private set; }
+
+    internal static AppDeploymentService? AppDeployment { get; private set; }
 
     public App()
     {
@@ -77,6 +82,8 @@ public partial class App : Application
         var registryStore = new JsonDeviceRegistryStore(appDataRoot);
         DeviceIntegration = new DeviceIntegrationService(new DeviceServerHost(), registryStore, new FirmwareBuildService());
         DeviceOps = new DeviceOperationsCoordinator(DeviceIntegration);
+        AppCatalog = new AppCatalogService(appDataRoot);
+        AppDeployment = new AppDeploymentService(DeviceOps);
     }
 
     private static async Task StartDeviceIntegrationAsync()
@@ -90,6 +97,10 @@ public partial class App : Application
         {
             await DeviceIntegration.StartAsync().ConfigureAwait(false);
             DeviceOps?.RequestRefresh();
+            if (AppCatalog is not null)
+            {
+                _ = await AppCatalog.LoadCatalogAsync().ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
@@ -103,6 +114,8 @@ public partial class App : Application
         {
             DeviceOps?.Dispose();
             DeviceOps = null;
+            AppDeployment = null;
+            AppCatalog = null;
 
             if (DeviceIntegration is not null)
             {
@@ -225,5 +238,3 @@ public partial class App : Application
         };
     }
 }
-
-

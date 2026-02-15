@@ -1,4 +1,4 @@
-namespace Device.Protocol.Models;
+﻿namespace Device.Protocol.Models;
 
 public sealed class DeviceCommandRequest
 {
@@ -7,4 +7,6 @@ public sealed class DeviceCommandRequest
     public string DeviceId { get; init; } = string.Empty;
 
     public DeviceCommandType CommandType { get; init; }
+
+    public IDictionary<string, string>? Parameters { get; init; }
 }

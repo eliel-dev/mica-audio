@@ -46,6 +46,9 @@ String gServerHost;
 uint16_t gServerPort = 5272;
 String gDeviceId;
 String gToken;
+String gActiveAppId;
+String gActiveAppName;
+String gActiveAppConfig;
 uint8_t gBins[kBinsCount] = {0};
 uint8_t gLevel = 0;
 uint8_t gServerBrightness = 255;
@@ -167,6 +170,12 @@ void sendTelemetry(bool force) {
   telemetry["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -100;
   telemetry["firmwareVersion"] = kFirmwareVersion;
   telemetry["ipAddress"] = WiFi.localIP().toString();
+  if (gActiveAppId.length() > 0) {
+    telemetry["activeAppId"] = gActiveAppId;
+  }
+  if (gActiveAppName.length() > 0) {
+    telemetry["activeAppName"] = gActiveAppName;
+  }
 
   String payload;
   serializeJson(telemetry, payload);
@@ -451,6 +460,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
   const char *command = control["command"] | "";
   String commandId = control["commandId"] | "";
+  JsonObjectConst parameters = control["parameters"].as<JsonObjectConst>();
 
   if (strcmp(command, "enter_provisioning") == 0) {
     sendCommandProgress(commandId, 20, "received", "Comando recebido.");
@@ -481,6 +491,73 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
   if (strcmp(command, "start_ota") == 0) {
     startOta(commandId);
+    return;
+  }
+
+  if (strcmp(command, "install_app") == 0) {
+    String appId = parameters["appId"] | "";
+    String appName = parameters["displayName"] | "";
+    String configJson = parameters["configJson"] | "";
+
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    if (appId.length() == 0) {
+      postCommandAck(commandId, false, "appId ausente.", 100, "invalid", "app_invalid");
+      sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
+      return;
+    }
+
+    sendCommandProgress(commandId, 70, "install-app", "Salvando app...");
+    gActiveAppId = appId;
+    gActiveAppName = appName.length() > 0 ? appName : appId;
+    gActiveAppConfig = configJson;
+    gPrefs.putString("activeAppId", gActiveAppId);
+    gPrefs.putString("activeAppName", gActiveAppName);
+    gPrefs.putString("activeAppConfig", gActiveAppConfig);
+
+    postCommandAck(commandId, true, "App instalado.", 100, "install-app");
+    sendCommandProgress(commandId, 100, "install-app", "App instalado.", 1);
+    return;
+  }
+
+  if (strcmp(command, "activate_app") == 0) {
+    String appId = parameters["appId"] | "";
+    String appName = parameters["displayName"] | "";
+
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    if (appId.length() == 0) {
+      postCommandAck(commandId, false, "appId ausente.", 100, "invalid", "app_invalid");
+      sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
+      return;
+    }
+
+    gActiveAppId = appId;
+    gActiveAppName = appName.length() > 0 ? appName : appId;
+    gPrefs.putString("activeAppId", gActiveAppId);
+    gPrefs.putString("activeAppName", gActiveAppName);
+
+    postCommandAck(commandId, true, "App ativado.", 100, "activate-app");
+    sendCommandProgress(commandId, 100, "activate-app", "App ativado.", 1);
+    return;
+  }
+
+  if (strcmp(command, "set_app_config") == 0) {
+    String appId = parameters["appId"] | "";
+    String configJson = parameters["configJson"] | "";
+
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    if (appId.length() == 0) {
+      postCommandAck(commandId, false, "appId ausente.", 100, "invalid", "app_invalid");
+      sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
+      return;
+    }
+
+    gActiveAppId = appId;
+    gActiveAppConfig = configJson;
+    gPrefs.putString("activeAppId", gActiveAppId);
+    gPrefs.putString("activeAppConfig", gActiveAppConfig);
+
+    postCommandAck(commandId, true, "Configuracao de app aplicada.", 100, "set-app-config");
+    sendCommandProgress(commandId, 100, "set-app-config", "Configuracao aplicada.", 1);
     return;
   }
 
@@ -519,6 +596,9 @@ void setup() {
   gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
   gDeviceId = gPrefs.getString("deviceId", "");
   gToken = gPrefs.getString("token", "");
+  gActiveAppId = gPrefs.getString("activeAppId", "");
+  gActiveAppName = gPrefs.getString("activeAppName", "");
+  gActiveAppConfig = gPrefs.getString("activeAppConfig", "");
 
   if (gServerHost.isEmpty() || gServerPort == 0 || WiFi.status() != WL_CONNECTED) {
     startProvisioningPortal();
@@ -558,3 +638,4 @@ void loop() {
   updateTestLed();
   drawBars();
 }
+

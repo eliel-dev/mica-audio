@@ -1,4 +1,4 @@
-namespace Device.Protocol.Models;
+﻿namespace Device.Protocol.Models;
 
 public sealed class DeviceSnapshot
 {
@@ -17,6 +17,10 @@ public sealed class DeviceSnapshot
     public int? LastKnownRssi { get; init; }
 
     public string? FirmwareVersion { get; init; }
+
+    public string? ActiveAppId { get; init; }
+
+    public string? ActiveAppName { get; init; }
 
     public bool IsConnected => Status == DeviceStatus.Online;
 }

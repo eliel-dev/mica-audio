@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="App.WinUI.Views.ServerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid
+        Background="{ThemeResource AppSurfaceBaseBrush}"
+        Padding="16"
+        RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border
+            Background="{ThemeResource AppSurfaceElevatedBrush}"
+            BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="12"
+            Padding="4">
+            <CommandBar Background="Transparent" DefaultLabelPosition="Right">
+                <AppBarButton Icon="Play" Label="Build stable" Click="OnBuildStableClicked" />
+                <AppBarButton Icon="Play" Label="Build dma_exp" Click="OnBuildDmaClicked" />
+                <AppBarSeparator />
+                <AppBarButton Icon="OpenFile" Label="Abrir pasta" Click="OnOpenFirmwareFolderClicked" />
+                <AppBarButton Icon="Copy" Label="Copiar host" Click="OnCopyHostClicked" />
+                <AppBarButton Icon="Refresh" Label="Atualizar" Click="OnRefreshClicked" />
+            </CommandBar>
+        </Border>
+
+        <Border
+            Grid.Row="1"
+            Background="{ThemeResource AppSurfacePanelBrush}"
+            BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="12"
+            Padding="12">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="4">
+                    <TextBlock
+                        x:Name="ServerInfoText"
+                        Style="{ThemeResource BodyStrongTextBlockStyle}"
+                        Text="Servidor: inicializando..." />
+                    <TextBlock x:Name="BuildStatusText" Text="Build: pronto" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    VerticalAlignment="Center">
+                    <ProgressRing
+                        x:Name="BuildProgressRing"
+                        Width="18"
+                        Height="18"
+                        IsActive="False"
+                        Visibility="Collapsed" />
+                    <TextBlock x:Name="BuildPercentText" Text="0%" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border
+            Grid.Row="2"
+            Background="{ThemeResource AppSurfacePanelBrush}"
+            BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="12"
+            Padding="12">
+            <TextBox
+                x:Name="LogsTextBox"
+                AcceptsReturn="True"
+                Header="Logs de servidor e build"
+                IsReadOnly="True"
+                MinHeight="260"
+                TextWrapping="Wrap"
+                VerticalScrollBarVisibility="Auto" />
+        </Border>
+    </Grid>
+</Page>
