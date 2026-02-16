@@ -22,6 +22,7 @@ using WinRT.Interop;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
 public partial class MainPage : Page
 {
     private const string AudioMotionClonePresetId = "audiomotion-clone";
@@ -138,26 +139,25 @@ public partial class MainPage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (initialized)
+        if (!initialized)
         {
+            initialized = true;
+            await InitializeAsync();
             return;
         }
 
-        initialized = true;
-        await InitializeAsync();
+        await ActivateVisualizerSessionAsync();
     }
 
     private async void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        await pipelineCoordinator.StopAsync();
-        capture.StatusChanged -= OnCaptureStatusChanged;
+        App.SetShellChromeHidden(false);
         renderTimer?.Stop();
         cloneViewportDebounceTimer?.Stop();
         fullscreenButtonHideTimer?.Stop();
 
         SaveWindowSizeIntoSettings();
         await settingsRepository.SaveAsync(appSettings);
-        await capture.DisposeAsync();
     }
 
     private async Task InitializeAsync()
@@ -187,7 +187,7 @@ public partial class MainPage : Page
 
             activePreset = ResolveActivePreset(appSettings.ActivePresetId);
             currentPresetId = activePreset.PresetId;
-            selectedRendererId = activePreset.RendererId;
+            selectedRendererId = ResolveSelectedRendererId(appSettings.SelectedRendererId, activePreset.RendererId);
             sensitivityMinDb = CoerceSensitivityMinDb(appSettings.SensitivityMinDb);
             sensitivityMaxDb = CoerceSensitivityMaxDb(appSettings.SensitivityMaxDb);
             linearBoost = CoerceLinearBoost(appSettings.LinearBoost);
@@ -250,34 +250,53 @@ public partial class MainPage : Page
 
             lastCloneViewportWidth = GetAnalyzerViewportWidth();
             Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
-            appSettings = settingsDomainService.Copy(appSettings, b => { b.SetActivePresetId(currentPresetId); b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb); b.SetLinearBoost(linearBoost); b.SetFftSize(fftSize); b.SetFftSmoothing(fftSmoothing); b.SetWeightingFilter(weightingFilter); b.SetFrequencyScale(frequencyScale); b.SetFrequencyRange(frequencyMinHz, frequencyMaxHz); b.SetBarCount(displayBandCount); });
+            appSettings = settingsDomainService.Copy(appSettings, b => { b.SetActivePresetId(currentPresetId); b.SetSelectedRendererId(selectedRendererId); b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb); b.SetLinearBoost(linearBoost); b.SetFftSize(fftSize); b.SetFftSmoothing(fftSmoothing); b.SetWeightingFilter(weightingFilter); b.SetFrequencyScale(frequencyScale); b.SetFrequencyRange(frequencyMinHz, frequencyMaxHz); b.SetBarCount(displayBandCount); });
             StatusText.Text = "Pronto";
         });
 
-        await DispatcherQueue.EnqueueAsync(() =>
-        {
-            SetupRenderTimer();
-        });
-
-        await pipelineCoordinator.StartAsync(hubPreviewEnabled, appSettings.Brightness, currentPresetId).ConfigureAwait(false);
+        await ActivateVisualizerSessionAsync().ConfigureAwait(false);
     }
 
-    private void SetupRenderTimer()
+    private async Task ActivateVisualizerSessionAsync()
     {
-        renderTimer = DispatcherQueue.CreateTimer();
-        renderTimer.Interval = TimeSpan.FromMilliseconds(1000d / 60d);
-        renderTimer.Tick += (_, _) =>
+        await pipelineCoordinator.StartAsync(hubPreviewEnabled, appSettings.Brightness, currentPresetId).ConfigureAwait(false);
+
+        await DispatcherQueue.EnqueueAsync(() =>
         {
+            EnsureRenderTimerStarted();
             MainCanvas.Invalidate();
             if (hubPreviewEnabled)
             {
                 HubCanvas.Invalidate();
             }
-        };
-        renderTimer.Start();
+        });
+    }
+
+    private void EnsureRenderTimerStarted()
+    {
+        if (renderTimer is null)
+        {
+            renderTimer = DispatcherQueue.CreateTimer();
+            renderTimer.Interval = TimeSpan.FromMilliseconds(1000d / 60d);
+            renderTimer.Tick += (_, _) =>
+            {
+                MainCanvas.Invalidate();
+                if (hubPreviewEnabled)
+                {
+                    HubCanvas.Invalidate();
+                }
+            };
+        }
+
+        if (!renderTimer.IsRunning)
+        {
+            renderTimer.Start();
+        }
+
         EnsureCloneViewportDebounceTimer();
         EnsureFullscreenButtonHideTimer();
     }
+
     private void EnsureFullscreenButtonHideTimer()
     {
         if (fullscreenButtonHideTimer is not null)
@@ -494,7 +513,7 @@ public partial class MainPage : Page
         lastCloneViewportWidth = GetAnalyzerViewportWidth();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
 
-        appSettings = settingsDomainService.Copy(appSettings, b => b.SetActivePresetId(currentPresetId));
+        appSettings = settingsDomainService.Copy(appSettings, b => { b.SetActivePresetId(currentPresetId); b.SetSelectedRendererId(selectedRendererId); });
     }
 
     private void OnRendererSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -511,6 +530,7 @@ public partial class MainPage : Page
         }
 
         selectedRendererId = option.Id;
+        appSettings = settingsDomainService.Copy(appSettings, b => b.SetSelectedRendererId(selectedRendererId));
     }
 
     private void OnHub75Toggled(object sender, RoutedEventArgs e)
@@ -852,6 +872,7 @@ public partial class MainPage : Page
 
     private void UpdateFullscreenUiState()
     {
+        App.SetShellChromeHidden(fullscreen);
         ControlsPanel.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible;
         VisualizerLayout.Margin = fullscreen ? new Thickness(0) : new Thickness(12, 0, 12, 12);
         MainCanvasBorder.CornerRadius = fullscreen ? new CornerRadius(0) : new CornerRadius(12);
@@ -891,6 +912,7 @@ public partial class MainPage : Page
 
     private IAnalyzer CreateAnalyzer(PresetDefinition preset)
     {
+        // DOCS: docs/wiki/guides/change-visualizer-settings.md#passos
         var cloneMode = IsClonePreset(preset);
         var viewportWidth = GetAnalyzerViewportWidth();
         var barSpace = preset.RendererParameters.TryGetValue("barSpace", out var configuredBarSpace)
@@ -1122,6 +1144,7 @@ public partial class MainPage : Page
 
     private void EnsureVisibleUiState()
     {
+        App.SetShellChromeHidden(false);
         fullscreen = false;
         ControlsPanel.Visibility = Visibility.Visible;
         SettingsSplitView.IsPaneOpen = false;
@@ -1144,6 +1167,16 @@ public partial class MainPage : Page
     }
 
     private bool IsClonePresetActive() => IsClonePreset(activePreset);
+
+    private string ResolveSelectedRendererId(string configuredRendererId, string fallbackRendererId)
+    {
+        var preferredId = string.IsNullOrWhiteSpace(configuredRendererId) ? fallbackRendererId : configuredRendererId;
+
+        var exists = visualizer.Renderers.Any(r =>
+            string.Equals(r.RendererId, preferredId, StringComparison.OrdinalIgnoreCase));
+
+        return exists ? preferredId : fallbackRendererId;
+    }
 
     private float GetAnalyzerViewportWidth()
     {
@@ -1349,6 +1382,7 @@ public partial class MainPage : Page
             b.SetWindowSize(appWindow.Size.Width, appWindow.Size.Height);
             b.SetHub75PreviewEnabled(hubPreviewEnabled);
             b.SetActivePresetId(currentPresetId);
+            b.SetSelectedRendererId(selectedRendererId);
             b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb);
             b.SetLinearBoost(linearBoost);
             b.SetBarCount(displayBandCount);
@@ -1388,4 +1422,3 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
-

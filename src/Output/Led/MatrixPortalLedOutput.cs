@@ -5,6 +5,7 @@ using MicaAudio.Core.Led;
 
 namespace Output.Led;
 
+// DOCS: docs/wiki/modules/output-led.md#modulo-output-led
 public sealed class MatrixPortalLedOutput : ILedOutput
 {
     private readonly IDeviceServerHost deviceServerHost;
@@ -40,6 +41,7 @@ public sealed class MatrixPortalLedOutput : ILedOutput
 
     public void Send(LedPayload payload)
     {
+        // DOCS: docs/wiki/modules/output-led.md#fluxo-de-execucao
         float[]? bins;
         float level;
         float localBrightness;
@@ -92,3 +94,5 @@ public sealed class MatrixPortalLedOutput : ILedOutput
         return (byte)Math.Clamp((int)MathF.Round(Math.Clamp(value, 0f, 1f) * 255f), 0, 255);
     }
 }
+
+

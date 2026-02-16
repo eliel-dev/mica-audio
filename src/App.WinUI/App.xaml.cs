@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
 using App.WinUI.Views;
@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Navigation;
 
 namespace App.WinUI;
 
+// DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
@@ -21,6 +22,10 @@ public partial class App : Application
     internal static AppCatalogService? AppCatalog { get; private set; }
 
     internal static AppDeploymentService? AppDeployment { get; private set; }
+
+    internal static bool IsShellChromeHidden { get; private set; }
+
+    internal static event Action<bool>? ShellChromeVisibilityChanged;
 
     public App()
     {
@@ -38,6 +43,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // DOCS: docs/wiki/architecture/02-runtime-lifecycle.md#startup
         MainWindow ??= new Window();
 
         if (MainWindow.Content is not Frame rootFrame)
@@ -128,6 +134,19 @@ public partial class App : Application
             WriteCrashLog("DeviceIntegration.DisposeAsync failed", ex);
         }
     }
+
+    internal static void SetShellChromeHidden(bool hidden)
+    {
+        if (IsShellChromeHidden == hidden)
+        {
+            return;
+        }
+
+        IsShellChromeHidden = hidden;
+        ShellChromeVisibilityChanged?.Invoke(hidden);
+    }
+
+
 
     private static void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
     {
@@ -238,3 +257,7 @@ public partial class App : Application
         };
     }
 }
+
+
+
+

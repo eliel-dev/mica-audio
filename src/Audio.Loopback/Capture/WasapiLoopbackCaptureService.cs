@@ -6,6 +6,7 @@ using NAudio.Wave;
 
 namespace Audio.Loopback.Capture;
 
+// DOCS: docs/wiki/modules/audio-loopback.md#modulo-audioloopback
 public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
 {
     private readonly object gate = new();
@@ -34,6 +35,7 @@ public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
 
     public Task StartAsync(CaptureConfig requestedConfig, CancellationToken cancellationToken = default)
     {
+        // DOCS: docs/wiki/modules/audio-loopback.md#fluxo-de-execucao
         lock (gate)
         {
             ThrowIfDisposed();
@@ -277,3 +279,5 @@ public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
         }
     }
 }
+
+

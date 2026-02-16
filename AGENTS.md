@@ -1,0 +1,43 @@
+# AGENTS - Mica Audio (solo + IA)
+
+Este arquivo e o contrato canonico para qualquer IA/Agente trabalhando neste repositorio.
+
+## Objetivo
+
+Padronizar execucao de tarefas para reduzir drift e erro em um fluxo solo com IA.
+
+## Regras de execucao
+
+1. Sempre ler `docs/wiki/ai/agent-entrypoint.md` antes de iniciar mudancas.
+2. Classificar a mudanca com base em `docs/wiki/ai/change-classification.md`.
+3. Executar validacoes obrigatorias definidas em `docs/wiki/reference/ai-contract.v1.yaml`.
+4. Em mudanca estrutural, criar handoff em `docs/handoffs/YYYY-MM-DD-<slug>.md` usando template oficial.
+5. Atualizar backlinks `DOCS:` em arquivos-chave alterados.
+
+## Acoes proibidas sem aprovacao explicita
+
+- `git reset --hard`
+- `git checkout -- <arquivo>`
+- `git clean -fd`
+- comandos que removem historico local sem backup
+
+## Fonte unica de politica
+
+- Manifesto: `docs/wiki/reference/ai-contract.v1.yaml`
+- Schema: `docs/wiki/reference/ai-contract.schema.json`
+- Playbooks: `docs/wiki/ai/incident-playbooks.md`
+
+## Fluxo rapido
+
+1. Ler objetivo e escopo da tarefa.
+2. Localizar pontos de alteracao em `docs/wiki/reference/code-index.md`.
+3. Executar mudancas minimas.
+4. Rodar validacao:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
+dotnet build MicaAudio.sln -c Debug
+```
+
+5. Gerar handoff quando aplicavel.

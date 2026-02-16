@@ -1,10 +1,11 @@
-﻿using App.WinUI.Services.Devices;
+using App.WinUI.Services.Devices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
 public sealed partial class ServerPage : Page
 {
     private DeviceOperationsState currentState = new();
@@ -55,6 +56,7 @@ public sealed partial class ServerPage : Page
         _ = DispatcherQueue.TryEnqueue(() => ApplyState(state));
     }
 
+    // DOCS: docs/wiki/reference/troubleshooting-matrix.md
     private void ApplyState(DeviceOperationsState state)
     {
         currentState = state;

@@ -1,9 +1,10 @@
-﻿using App.WinUI.Models.Apps;
+using App.WinUI.Models.Apps;
 using App.WinUI.Services.Devices;
 using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Apps;
 
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
 internal sealed class AppDeploymentService
 {
     private readonly DeviceOperationsCoordinator deviceOps;
@@ -13,6 +14,7 @@ internal sealed class AppDeploymentService
         this.deviceOps = deviceOps;
     }
 
+    // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
     public Task<CommandDispatchResult> InstallAsync(string deviceId, AppCatalogItem item, string? configJson = null, CancellationToken cancellationToken = default)
     {
         var payload = new DeviceAppCommandPayload

@@ -1,0 +1,80 @@
+{
+  "version": "1.0.0",
+  "structural_paths": [
+    "src/",
+    "firmware/",
+    "matrixportal-s3/",
+    "scripts/",
+    "MicaAudio.sln",
+    "global.json",
+    ".github/workflows/"
+  ],
+  "docs_evidence_paths": [
+    "docs/wiki/",
+    "docs/adr/",
+    "docs/handoffs/",
+    "README.md",
+    "AGENTS.md"
+  ],
+  "required_checks_by_scope": {
+    "documental": [
+      "powershell -ExecutionPolicy Bypass -File .\\scripts\\docs-validate.ps1"
+    ],
+    "funcional": [
+      "powershell -ExecutionPolicy Bypass -File .\\scripts\\docs-validate.ps1",
+      "dotnet build MicaAudio.sln -c Debug"
+    ],
+    "estrutural": [
+      "powershell -ExecutionPolicy Bypass -File .\\scripts\\docs-validate.ps1",
+      "powershell -ExecutionPolicy Bypass -File .\\scripts\\ai-governance-check.ps1",
+      "dotnet build MicaAudio.sln -c Debug"
+    ],
+    "firmware_protocolo": [
+      "powershell -ExecutionPolicy Bypass -File .\\scripts\\docs-validate.ps1",
+      "powershell -ExecutionPolicy Bypass -File .\\scripts\\ai-governance-check.ps1",
+      "dotnet build MicaAudio.sln -c Debug"
+    ]
+  },
+  "required_handoff_sections": [
+    "## Objetivo",
+    "## Escopo classificado",
+    "## Arquivos alterados",
+    "## Decisoes tomadas",
+    "## Validacoes executadas",
+    "## Riscos e rollback",
+    "## Proximos passos"
+  ],
+  "forbidden_commands": [
+    "git reset --hard",
+    "git checkout --",
+    "git clean -fd"
+  ],
+  "module_entrypoints": [
+    {
+      "path": "src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs",
+      "min_docs_markers": 2
+    },
+    {
+      "path": "src/App.WinUI/Services/Apps/AppDeploymentService.cs",
+      "min_docs_markers": 2
+    },
+    {
+      "path": "src/Device.Server/Hosting/DeviceServerHost.cs",
+      "min_docs_markers": 2
+    },
+    {
+      "path": "firmware/matrixportal-s3/src/main.cpp",
+      "min_docs_markers": 2
+    }
+  ],
+  "decision_sources": [
+    "AGENTS.md",
+    "docs/wiki/ai/agent-entrypoint.md",
+    "docs/wiki/ai/change-classification.md",
+    "docs/wiki/ai/validation-matrix.md",
+    "docs/wiki/ai/incident-playbooks.md",
+    "docs/adr/0001-governanca-documentacao-e-ci.md",
+    "docs/adr/0002-politica-pr-docs-estrutural.md",
+    "docs/adr/0003-mcp-viabilidade-e-estrategia-solo-ai.md"
+  ]
+}

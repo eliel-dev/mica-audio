@@ -6,6 +6,7 @@ using Windows.UI;
 
 namespace Visual.Win2D.Engine;
 
+// DOCS: docs/wiki/modules/visual-win2d.md#modulo-visualwin2d
 public sealed class VisualizerEngine
 {
     private readonly Dictionary<string, IRenderer> renderers;
@@ -38,6 +39,7 @@ public sealed class VisualizerEngine
 
     public void Render(CanvasDrawingSession drawingSession, float width, float height, SpectrumFrame frame, PresetDefinition preset, float deltaSeconds)
     {
+        // DOCS: docs/wiki/modules/visual-win2d.md#fluxo-de-execucao
         if (width <= 1f || height <= 1f)
         {
             return;
@@ -85,3 +87,5 @@ public sealed class VisualizerEngine
         return renderers[Engine.RendererIds.Bars];
     }
 }
+
+

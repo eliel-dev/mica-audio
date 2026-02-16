@@ -2,12 +2,14 @@ using System.Buffers.Binary;
 
 namespace Device.Protocol.Stream;
 
+// DOCS: docs/wiki/reference/ws-protocol-v1.md#estrutura-streamframev1
 public static class StreamFrameV1
 {
     public const byte Version = 1;
     public const byte MessageTypeBins64 = 1;
     public const int PayloadSize = 81;
 
+    // DOCS: docs/wiki/modules/output-led.md#fluxo-de-execucao
     public static byte[] Create(
         uint sequence,
         long timestampQpc,

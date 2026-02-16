@@ -136,8 +136,9 @@
                             Click="OnTestLedClicked" />
                         <AppBarButton
                             x:Name="OtaButton"
+                            IsEnabled="False"
                             Icon="Download"
-                            Label="OTA"
+                            Label="OTA manual"
                             Click="OnOtaClicked" />
                     </CommandBar>
                 </Border>
@@ -205,3 +206,4 @@
             Severity="Informational" />
     </Grid>
 </Page>
+

@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://micaaudio.local/schemas/ai-contract.v1.schema.json",
+  "title": "MicaAudio AI Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "structural_paths",
+    "docs_evidence_paths",
+    "required_checks_by_scope",
+    "required_handoff_sections",
+    "forbidden_commands",
+    "module_entrypoints",
+    "decision_sources"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "structural_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "docs_evidence_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "required_checks_by_scope": {
+      "type": "object",
+      "required": [
+        "documental",
+        "funcional",
+        "estrutural",
+        "firmware_protocolo"
+      ],
+      "properties": {
+        "documental": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "funcional": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "estrutural": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "firmware_protocolo": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "required_handoff_sections": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 3
+    },
+    "forbidden_commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "module_entrypoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "min_docs_markers"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "min_docs_markers": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "decision_sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  }
+}

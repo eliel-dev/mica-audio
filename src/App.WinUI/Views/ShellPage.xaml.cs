@@ -1,9 +1,10 @@
-﻿using App.WinUI.Services.Devices;
+using App.WinUI.Services.Devices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
 public sealed partial class ShellPage : Page
 {
     private const string VisualizerTag = "visualizer";
@@ -49,10 +50,15 @@ public sealed partial class ShellPage : Page
             DeviceOps.StateChanged += OnDeviceOpsStateChanged;
             UpdateServerFooter();
         }
+
+        App.ShellChromeVisibilityChanged += OnShellChromeVisibilityChanged;
+        ApplyShellChromeVisibility(App.IsShellChromeHidden);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        App.ShellChromeVisibilityChanged -= OnShellChromeVisibilityChanged;
+
         if (DeviceOps is null)
         {
             return;
@@ -74,6 +80,7 @@ public sealed partial class ShellPage : Page
 
     private void ShowPage(string tag)
     {
+        // DOCS: docs/wiki/architecture/02-runtime-lifecycle.md#navegacao
         if (string.Equals(currentTag, tag, StringComparison.OrdinalIgnoreCase))
         {
             return;
@@ -99,4 +106,24 @@ public sealed partial class ShellPage : Page
         var baseAddress = DeviceOps?.GetServerBaseAddress() ?? "http://127.0.0.1:5272";
         ServerFooterText.Text = $"Servidor: {baseAddress}";
     }
+
+    private void OnShellChromeVisibilityChanged(bool hideChrome)
+    {
+        _ = DispatcherQueue.TryEnqueue(() => ApplyShellChromeVisibility(hideChrome));
+    }
+
+    private void ApplyShellChromeVisibility(bool hideChrome)
+    {
+        RootNavigation.IsPaneVisible = !hideChrome;
+        RootNavigation.IsPaneToggleButtonVisible = !hideChrome;
+
+        if (hideChrome)
+        {
+            RootNavigation.IsPaneOpen = false;
+        }
+
+        ServerFooterText.Visibility = hideChrome ? Visibility.Collapsed : Visibility.Visible;
+    }
 }
+
+

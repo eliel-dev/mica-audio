@@ -1,8 +1,9 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using App.WinUI.Models.Apps;
 
 namespace App.WinUI.Services.Apps;
 
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
 internal sealed class AppCatalogService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -20,6 +21,7 @@ internal sealed class AppCatalogService
 
     public string CatalogPath => Path.Combine(appDataRoot, "apps", "catalog.json");
 
+    // DOCS: docs/wiki/guides/add-app-catalog-item.md#passos
     public async Task<IReadOnlyList<AppCatalogItem>> LoadCatalogAsync(CancellationToken cancellationToken = default)
     {
         await EnsureCatalogSeededAsync(cancellationToken).ConfigureAwait(false);

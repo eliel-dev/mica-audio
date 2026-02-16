@@ -1,7 +1,8 @@
-﻿using Device.Protocol.Models;
+using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
+// DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 internal sealed class DeviceOperationsCoordinator : IDisposable
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
@@ -101,6 +102,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         return pairing;
     }
 
+    // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
     public async Task<CommandDispatchResult> RunCommandAsync(
         string deviceId,
         DeviceCommandType commandType,
@@ -203,6 +205,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     }
 
 
+    // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
     public async Task<CommandDispatchResult> RunCommandAsync(
         string deviceId,
         DeviceCommandType commandType,
@@ -304,52 +307,32 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         AppendLog(BuildResultLogMessage(result));
         return result;
     }
-    public async Task<CommandDispatchResult> StartOtaForDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
+    public Task<CommandDispatchResult> StartOtaForDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
     {
-        var mergedPath = ResolveLatestMergedBinPath();
-        if (string.IsNullOrWhiteSpace(mergedPath) || !File.Exists(mergedPath))
+        var disabled = new CommandDispatchResult
         {
-            var noArtifact = new CommandDispatchResult
-            {
-                DeviceId = deviceId,
-                Accepted = false,
-                Completed = true,
-                Success = false,
-                Stage = "ota-artifact-missing",
-                Message = "Nenhum firmware consolidado encontrado. Gere um build antes da OTA.",
-                ErrorCode = "ota_artifact_missing",
-            };
+            DeviceId = deviceId,
+            Accepted = false,
+            Completed = true,
+            Success = false,
+            Stage = "ota-disabled",
+            Message = "OTA desativada temporariamente. Faca o flash manual do firmware.",
+            ErrorCode = "ota_disabled",
+        };
 
-            AppendLog(noArtifact.Message!);
-            lock (gate)
-            {
-                commandStatus = "Comandos: firmware OTA indisponivel";
-            }
+        AppendLog(disabled.Message!);
 
-            RaiseStateChanged();
-            return noArtifact;
+        lock (gate)
+        {
+            commandInProgress = false;
+            commandPercent = 0;
+            commandStatus = "Comandos: OTA desativada (flash manual)";
+            lastCommandDeviceId = deviceId;
+            activeCommandId = null;
         }
 
-        var version = Path.GetFileNameWithoutExtension(mergedPath);
-        if (!integration.Host.SetOtaArtifact(mergedPath, version))
-        {
-            var failed = new CommandDispatchResult
-            {
-                DeviceId = deviceId,
-                Accepted = false,
-                Completed = true,
-                Success = false,
-                Stage = "ota-artifact-config",
-                Message = "Falha ao preparar artefato OTA no servidor.",
-                ErrorCode = "ota_artifact_config_failed",
-            };
-
-            AppendLog(failed.Message!);
-            return failed;
-        }
-
-        AppendLog($"OTA preparada com {Path.GetFileName(mergedPath)} para {deviceId}.");
-        return await RunCommandAsync(deviceId, DeviceCommandType.StartOta, cancellationToken).ConfigureAwait(false);
+        RaiseStateChanged();
+        return Task.FromResult(disabled);
     }
 
     public Task<CommandDispatchResult> InstallAppAsync(string deviceId, DeviceAppCommandPayload payload, CancellationToken cancellationToken = default)
@@ -388,6 +371,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
         return RunCommandAsync(deviceId, DeviceCommandType.SetAppConfig, parameters, cancellationToken);
     }
+    // DOCS: docs/wiki/modules/server-build-and-artifacts.md#fluxo-de-execucao
     public async Task<string?> BuildAndExportAsync(string profile, CancellationToken cancellationToken = default)
     {
         var alreadyRunning = false;
@@ -861,6 +845,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         entries.RemoveRange(0, removeCount);
     }
 }
+
 
 
 

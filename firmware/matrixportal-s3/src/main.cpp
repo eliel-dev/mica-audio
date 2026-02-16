@@ -16,6 +16,7 @@
 #endif
 
 namespace {
+// DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#fluxo-de-execucao
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 81;
 constexpr unsigned long kProvisioningFallbackMs = 60000;
@@ -228,6 +229,8 @@ void handleOtaFailure(const String& commandId, const String& message, const char
   postOtaResult(commandId, false, message, errorCode);
 }
 
+// DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#pontos-de-alteracao-frequente
+// DOCS: docs/wiki/guides/debug-ota-http-failure.md#passos
 void startOta(const String& commandId) {
   if (commandId.isEmpty()) {
     return;
@@ -429,6 +432,7 @@ void enterProvisioningMode() {
   startProvisioningPortal();
 }
 
+// DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
 void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
   if (type == WStype_CONNECTED) {
     gDisconnectedSinceMs = 0;
@@ -638,4 +642,7 @@ void loop() {
   updateTestLed();
   drawBars();
 }
+
+
+
 

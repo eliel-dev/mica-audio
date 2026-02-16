@@ -1,4 +1,4 @@
-﻿
+
 using System.Security.Cryptography;
 using System.Text.Json;
 using Device.Protocol.Models;
@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.WebUtilities;
 
 namespace Device.Server.Hosting;
 
+// DOCS: docs/wiki/modules/device-server-protocol.md#pontos-de-alteracao-frequente
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(5);
@@ -17,6 +18,7 @@ public sealed partial class DeviceServerHost
 
     private OtaArtifactState? otaArtifact;
 
+    // DOCS: docs/wiki/guides/add-device-command.md#passos
     private async Task<CommandDispatchResult> SendTrackedCommandCoreAsync(
         string deviceId,
         DeviceCommandType commandType,
@@ -538,5 +540,6 @@ public sealed partial class DeviceServerHost
 
     private sealed record OtaSessionState(string DeviceId, DateTimeOffset ExpiresAtUtc);
 }
+
 
 

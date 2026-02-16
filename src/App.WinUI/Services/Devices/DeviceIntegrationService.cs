@@ -7,6 +7,7 @@ using Device.Server.Hosting;
 
 namespace App.WinUI.Services.Devices;
 
+// DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
 internal sealed class DeviceIntegrationService : IAsyncDisposable
 {
     private readonly IDeviceServerHost serverHost;
@@ -42,6 +43,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
 
     public string GetServerBaseAddress() => $"http://{publicHost}:{ServerPort}";
 
+    // DOCS: docs/wiki/architecture/05-device-session-and-reconnect.md#ciclo-de-sessao
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (started)

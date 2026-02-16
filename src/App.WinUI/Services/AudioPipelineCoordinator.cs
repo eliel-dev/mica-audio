@@ -6,6 +6,7 @@ using Output.Led;
 
 namespace App.WinUI.Services;
 
+// DOCS: docs/wiki/modules/app-winui.md#responsabilidades
 internal sealed class AudioPipelineCoordinator
 {
     private readonly ILoopbackCapture capture;
@@ -147,6 +148,7 @@ internal sealed class AudioPipelineCoordinator
 
     private async Task PipelineLoopAsync(CancellationToken cancellationToken)
     {
+        // DOCS: docs/wiki/architecture/01-system-overview.md#pipeline-principal
         var reader = capture.Frames;
 
         while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
@@ -183,3 +185,5 @@ internal sealed class AudioPipelineCoordinator
         }
     }
 }
+
+

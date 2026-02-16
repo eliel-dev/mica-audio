@@ -1,16 +1,19 @@
-﻿using MicaAudio.Core.Audio;
+using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 
 namespace App.WinUI.Services;
 
+// DOCS: docs/wiki/modules/settings-presets-persistence.md#modulo-settings-presets-e-persistencia
 internal sealed class AppSettingsDomainService
 {
     private const string DefaultPresetId = "audiomotion-clone";
+    private const string DefaultRendererId = "audiomotion-clone";
     private const float DefaultMinDecibels = -85f;
     private const float DefaultMaxDecibels = -25f;
     private const float DefaultLinearBoost = 1.6f;
 
+    // DOCS: docs/wiki/guides/change-visualizer-settings.md#passos
     public AppSettings Migrate(AppSettings settings)
     {
         var minDb = CoerceSensitivityMinDb(settings.SensitivityMinDb);
@@ -36,6 +39,10 @@ internal sealed class AppSettingsDomainService
         }
 
         var activePresetId = string.IsNullOrWhiteSpace(settings.ActivePresetId) ? DefaultPresetId : settings.ActivePresetId;
+        var selectedRendererId = string.IsNullOrWhiteSpace(settings.SelectedRendererId)
+            ? DefaultRendererId
+            : settings.SelectedRendererId;
+
         var minHz = Math.Clamp(settings.FrequencyMinHz, 16f, 10_000f);
         var maxHz = Math.Clamp(settings.FrequencyMaxHz, 250f, 20_000f);
         if (maxHz <= minHz)
@@ -47,6 +54,7 @@ internal sealed class AppSettingsDomainService
         return new AppSettings
         {
             ActivePresetId = activePresetId,
+            SelectedRendererId = selectedRendererId,
             Hub75PreviewEnabled = settings.Hub75PreviewEnabled,
             Brightness = settings.Brightness,
             Sensitivity = maxDb,
@@ -88,6 +96,7 @@ internal sealed class AppSettingsDomainService
         public AppSettingsBuilder(AppSettings source)
         {
             ActivePresetId = source.ActivePresetId;
+            SelectedRendererId = source.SelectedRendererId;
             Hub75PreviewEnabled = source.Hub75PreviewEnabled;
             Brightness = source.Brightness;
             Sensitivity = source.Sensitivity;
@@ -106,6 +115,7 @@ internal sealed class AppSettingsDomainService
         }
 
         public string ActivePresetId { get; private set; }
+        public string SelectedRendererId { get; private set; }
         public bool Hub75PreviewEnabled { get; private set; }
         public float Brightness { get; private set; }
         public float Sensitivity { get; private set; }
@@ -123,6 +133,7 @@ internal sealed class AppSettingsDomainService
         public int WindowHeight { get; private set; }
 
         public void SetActivePresetId(string value) => ActivePresetId = value;
+        public void SetSelectedRendererId(string value) => SelectedRendererId = value;
         public void SetHub75PreviewEnabled(bool value) => Hub75PreviewEnabled = value;
         public void SetSensitivity(float minDb, float maxDb)
         {
@@ -152,6 +163,7 @@ internal sealed class AppSettingsDomainService
         public AppSettings Build() => new()
         {
             ActivePresetId = ActivePresetId,
+            SelectedRendererId = SelectedRendererId,
             Hub75PreviewEnabled = Hub75PreviewEnabled,
             Brightness = Brightness,
             Sensitivity = Sensitivity,
@@ -170,4 +182,3 @@ internal sealed class AppSettingsDomainService
         };
     }
 }
-

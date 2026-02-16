@@ -4,6 +4,7 @@ using System.Text.Json;
 
 namespace App.WinUI.Services.Devices;
 
+// DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
 internal sealed class FirmwareBuildService : IFirmwareBuildService
 {
     private const string MergedFirmwareFileName = "matrixportal-s3_merged.bin";
@@ -63,6 +64,7 @@ internal sealed class FirmwareBuildService : IFirmwareBuildService
         }
     }
 
+    // DOCS: docs/wiki/guides/build-export-firmware.md#passos
     public async Task<FirmwareArtifactSet> BuildAsync(
         FirmwareBuildRequest request,
         IProgress<BuildProgressUpdate>? progress = null,

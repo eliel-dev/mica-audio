@@ -1,4 +1,4 @@
-﻿# Mica Audio
+# Mica Audio
 
 Visualizador de audio para Windows (WinUI 3 + Win2D) com captura WASAPI loopback em tempo real, foco em visual "bonito na tela" e caminho pronto para output LED futuro sem refatoracao grande.
 
@@ -15,6 +15,70 @@ Escopo atual: Windows-only, pipeline modular (`PCM -> FFT/bandas -> render -> ou
 Comportamento do simulador: o frame mais recente e mantido internamente e o preview HUB75 da UI consome esse snapshot por polling no ciclo de render (timer a 60 FPS). Nao existe evento de frame atualizado no simulador.
 - Saida UDP real para controlador externo: planejada para etapa futura.
 
+## Wiki tecnica
+
+A documentacao tecnica detalhada do projeto fica em `docs/wiki/README.md`.
+
+Validacao local dos links/referencias da wiki:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
+```
+### Documentacao operacional (Fase 2)
+
+- Guia operacional de dispositivos/build/firmware: `docs/wiki/modules/server-build-and-artifacts.md`
+- Operacao de dispositivos em campo: `docs/wiki/guides/operate-device-lifecycle.md`
+- Matriz de troubleshooting: `docs/wiki/reference/troubleshooting-matrix.md`
+- Saude da documentacao e metricas: `docs/wiki/reference/docs-health.md`
+
+Fluxo recomendado antes de commit relevante:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
+dotnet build MicaAudio.sln -c Debug
+```
+### Governanca de documentacao (Fase 3)
+
+- ADRs: `docs/adr/README.md`
+- Workflow CI: `.github/workflows/governance.yml`
+- Gate estrutural: `scripts/docs-structural-gate.ps1`
+- Template de PR: `.github/PULL_REQUEST_TEMPLATE.md`
+
+Politica resumida:
+
+1. Mudanca estrutural (`src/`, `firmware/`, `matrixportal-s3/`, `scripts/`, `MicaAudio.sln`, `global.json`) exige update de docs (`docs/wiki/`, `docs/adr/` ou `README.md`).
+2. Em PR, a label `docs-exempt` permite bypass controlado (com justificativa).
+3. Em push para `main`, o gate estrutural nao aceita bypass por label.
+
+Validacao local recomendada:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
+dotnet build MicaAudio.sln -c Debug
+```
+### Modo solo com IA (Fase 4)
+
+- Contrato canonico para agentes: `AGENTS.md`
+- Politica machine-readable: `docs/wiki/reference/ai-contract.v1.yaml`
+- Schema do contrato: `docs/wiki/reference/ai-contract.schema.json`
+- Guardrail local: `scripts/ai-governance-check.ps1`
+- Hooks versionados: `.githooks/pre-commit`, `.githooks/pre-push`
+- Bootstrap de hooks: `scripts/git-hooks-bootstrap.ps1`
+- Handoff estrutural: `docs/handoffs/YYYY-MM-DD-<slug>.md`
+
+Bootstrap local recomendado:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\git-hooks-bootstrap.ps1
+```
+
+Validacao completa recomendada antes de push:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
+dotnet build MicaAudio.sln -c Debug
+```
 ## Principais recursos
 
 - Captura de audio do dispositivo de saida padrao via WASAPI loopback.
@@ -93,7 +157,7 @@ scripts/
 - `float[]? DisplayBarX` (opcional)
 - `float[]? DisplayBarWidth` (opcional)
 
-Regra importante: `Bands64` é derivado do mesmo espectro calculado no frame (sem segunda FFT).
+Regra importante: `Bands64` � derivado do mesmo espectro calculado no frame (sem segunda FFT).
 
 ### Output
 
@@ -168,6 +232,7 @@ dotnet run --project .\src\App.WinUI\App.WinUI.csproj -c Debug -p:Platform=x64
 - `-SkipPublish`: reutiliza publish existente (quando aplicavel).
 - `-SingleFile`: tenta publicacao single-file.
 - `-RunMode dotnet|publish|auto`: escolhe estrategia de execucao.
+- `-ValidateDocs`: executa `scripts/docs-validate.ps1` antes do build/publish e falha cedo se houver link/referencia quebrado.
 
 ## Testes
 
@@ -304,4 +369,5 @@ Implementacao deste projeto segue arquitetura propria (sem port direto de codigo
 ## Licenca
 
 Ainda nao definida neste repositorio. Recomendado adicionar `LICENSE` antes da publicacao oficial no GitHub.
+
 

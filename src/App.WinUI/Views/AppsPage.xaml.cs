@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
 public sealed partial class AppsPage : Page
 {
     private readonly List<AppCatalogItem> allItems = new();
@@ -49,6 +50,7 @@ public sealed partial class AppsPage : Page
         }
     }
 
+    // DOCS: docs/wiki/guides/add-app-catalog-item.md#passos
     private async Task LoadCatalogAsync()
     {
         var service = CatalogService;

@@ -1,4 +1,4 @@
-﻿
+
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.WebUtilities;
 
 namespace Device.Server.Hosting;
 
+// DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -35,6 +36,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     public async Task StartAsync(ServerConfig config, CancellationToken cancellationToken = default)
     {
+        // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
         lock (gate)
         {
             if (app is not null)
@@ -181,7 +183,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         return result.Accepted;
     }
 
-        public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        // DOCS: docs/wiki/guides/add-device-command.md#passos
+    public Task<CommandDispatchResult> SendCommandTrackedAsync(
         string deviceId,
         DeviceCommandType commandType,
         TimeSpan? timeout = null,
@@ -190,6 +193,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         return SendCommandTrackedAsync(deviceId, commandType, parameters: null, timeout, cancellationToken);
     }
 
+    // DOCS: docs/wiki/guides/add-device-command.md#passos
     public Task<CommandDispatchResult> SendCommandTrackedAsync(
         string deviceId,
         DeviceCommandType commandType,
@@ -614,6 +618,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 }
+
 
 
 

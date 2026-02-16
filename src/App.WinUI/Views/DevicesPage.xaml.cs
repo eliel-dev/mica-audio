@@ -6,6 +6,7 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 public sealed partial class DevicesPage : Page
 {
     private readonly List<DeviceListItem> allItems = new();
@@ -136,6 +137,7 @@ public sealed partial class DevicesPage : Page
         await DeviceOps.RunCommandAsync(selected.DeviceId, commandType).ConfigureAwait(false);
     }
 
+    // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
     private void ApplyState(DeviceOperationsState state)
     {
         currentState = state;
@@ -269,7 +271,7 @@ public sealed partial class DevicesPage : Page
         EnterProvisioningButton.IsEnabled = commandEnabled;
         RevokeButton.IsEnabled = commandEnabled;
         TestLedButton.IsEnabled = commandEnabled;
-        OtaButton.IsEnabled = commandEnabled;
+        OtaButton.IsEnabled = false;
     }
 
     private sealed class DeviceListItem
