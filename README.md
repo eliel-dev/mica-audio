@@ -1,4 +1,4 @@
-# Mica Audio
+ï»¿# Mica Audio
 
 Visualizador de audio para Windows (WinUI 3 + Win2D) com captura WASAPI loopback em tempo real, foco em visual "bonito na tela" e caminho pronto para output LED futuro sem refatoracao grande.
 
@@ -41,12 +41,13 @@ dotnet build MicaAudio.sln -c Debug
 
 - ADRs: `docs/adr/README.md`
 - Workflow CI: `.github/workflows/governance.yml`
+- Workflow de release: `.github/workflows/release.yml`
 - Gate estrutural: `scripts/docs-structural-gate.ps1`
 - Template de PR: `.github/PULL_REQUEST_TEMPLATE.md`
 
 Politica resumida:
 
-1. Mudanca estrutural (`src/`, `firmware/`, `matrixportal-s3/`, `scripts/`, `MicaAudio.sln`, `global.json`) exige update de docs (`docs/wiki/`, `docs/adr/` ou `README.md`).
+1. Mudanca estrutural (`src/`, `firmware/`, `matrixportal-s3/`, `scripts/`, `installer/`, `MicaAudio.sln`, `global.json`) exige update de docs (`docs/wiki/`, `docs/adr/`, `docs/handoffs/` ou `README.md`).
 2. Em PR, a label `docs-exempt` permite bypass controlado (com justificativa).
 3. Em push para `main`, o gate estrutural nao aceita bypass por label.
 
@@ -157,7 +158,7 @@ scripts/
 - `float[]? DisplayBarX` (opcional)
 - `float[]? DisplayBarWidth` (opcional)
 
-Regra importante: `Bands64` é derivado do mesmo espectro calculado no frame (sem segunda FFT).
+Regra importante: `Bands64` Ã© derivado do mesmo espectro calculado no frame (sem segunda FFT).
 
 ### Output
 
@@ -179,6 +180,16 @@ Regra importante: `Bands64` é derivado do mesmo espectro calculado no frame (sem
 - Captura de audio: NAudio (WASAPI loopback).
 - Scripts auxiliares: PowerShell.
 
+## Instalacao para usuario final (Windows 11)
+
+Para usuarios finais (sem scripts PowerShell), a distribuicao oficial do 1.0 e feita por setup assinado no GitHub Releases.
+
+1. Baixe `MicaAudio-Setup-x64-vX.Y.Z.exe` na pagina de Releases.
+2. Execute o instalador com duplo clique.
+3. O setup instala o app em `%ProgramFiles%\MicaAudio` e aplica pre-requisitos automaticamente.
+4. Abra pelo Menu Iniciar (`Mica Audio`).
+
+Atualizacao no 1.0: manual (baixar e executar a versao mais recente do setup).
 ## Como executar (quick start)
 
 ### 1) Restore e build
@@ -369,5 +380,8 @@ Implementacao deste projeto segue arquitetura propria (sem port direto de codigo
 ## Licenca
 
 Ainda nao definida neste repositorio. Recomendado adicionar `LICENSE` antes da publicacao oficial no GitHub.
+
+
+
 
 

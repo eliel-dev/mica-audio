@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 Set-StrictMode -Version Latest
@@ -183,6 +183,7 @@ $expectedWikiFiles = @(
     'docs/wiki/guides/operate-device-lifecycle.md',
     'docs/wiki/guides/debug-ota-http-failure.md',
     'docs/wiki/guides/release-doc-checklist.md',
+    'docs/wiki/guides/release-1.0-installer.md',
     'docs/wiki/reference/code-index.md',
     'docs/wiki/reference/linking-conventions.md',
     'docs/wiki/reference/http-api-v1.md',
@@ -581,4 +582,5 @@ if ($warnings.Count -gt 0) {
 }
 
 exit 1
+
 

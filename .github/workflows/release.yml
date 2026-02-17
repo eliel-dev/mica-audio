@@ -1,0 +1,261 @@
+﻿name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Versao sem prefixo v (ex.: 1.0.0). Opcional no push por tag.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_DESKTOP_RUNTIME_VERSION: '8.0.24'
+  DOTNET_DESKTOP_RUNTIME_FILENAME: 'windowsdesktop-runtime-8.0.24-win-x64.exe'
+  DOTNET_DESKTOP_RUNTIME_URL: 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.24/windowsdesktop-runtime-8.0.24-win-x64.exe'
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Docs validate
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
+
+      - name: AI governance check
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1 -Fast
+
+      - name: Build solution Debug
+        shell: pwsh
+        run: dotnet build MicaAudio.sln -c Debug
+
+  publish-app:
+    runs-on: windows-latest
+    needs: validate
+    outputs:
+      release_version: ${{ steps.version.outputs.release_version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'push') {
+            $tag = '${{ github.ref_name }}'
+          }
+          else {
+            $inputVersion = '${{ inputs.release_version }}'
+            if ([string]::IsNullOrWhiteSpace($inputVersion)) {
+              throw 'workflow_dispatch exige input release_version (ex.: 1.0.0).'
+            }
+
+            if ($inputVersion.StartsWith('v')) {
+              $tag = $inputVersion
+            }
+            else {
+              $tag = "v$inputVersion"
+            }
+          }
+
+          $version = $tag.TrimStart('v')
+          "tag_name=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release_version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Publish App.WinUI (Release x64)
+        shell: pwsh
+        run: dotnet publish src/App.WinUI/App.WinUI.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=true -p:Version=${{ steps.version.outputs.release_version }} -p:FileVersion=${{ steps.version.outputs.release_version }}.0 -p:InformationalVersion=${{ steps.version.outputs.release_version }}+${{ github.sha }}
+
+      - name: Upload publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-publish-win-x64
+          path: src/App.WinUI/.artifacts/publish/win-x64
+          if-no-files-found: error
+
+  package-installer:
+    runs-on: windows-latest
+    needs: publish-app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Download publish artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-publish-win-x64
+          path: artifacts/publish/win-x64
+
+      - name: Prepare signing certificate
+        shell: pwsh
+        env:
+          SIGNING_CERT_PFX_BASE64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PFX_BASE64)) {
+            throw 'Secret SIGNING_CERT_PFX_BASE64 nao configurado.'
+          }
+
+          $pfxPath = Join-Path $pwd 'artifacts\signing\release-cert.pfx'
+          New-Item -ItemType Directory -Path (Split-Path -Parent $pfxPath) -Force | Out-Null
+          [System.IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:SIGNING_CERT_PFX_BASE64))
+          "PFX_PATH=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Sign app binaries (before MSI)
+        shell: pwsh
+        env:
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PASSWORD)) {
+            throw 'Secret SIGNING_CERT_PASSWORD nao configurado.'
+          }
+
+          powershell -ExecutionPolicy Bypass -File .\scripts\sign-release.ps1 -CertPath "$env:PFX_PATH" -CertPassword "$env:SIGNING_CERT_PASSWORD" -InputPaths @('artifacts/publish/win-x64/*.exe','artifacts/publish/win-x64/*.dll')
+
+      - name: Download .NET Desktop Runtime installer (offline payload)
+        shell: pwsh
+        run: |
+          $targetDir = Join-Path $pwd 'artifacts\dotnet'
+          New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+          $targetFile = Join-Path $targetDir '${{ env.DOTNET_DESKTOP_RUNTIME_FILENAME }}'
+          Invoke-WebRequest -Uri '${{ env.DOTNET_DESKTOP_RUNTIME_URL }}' -OutFile $targetFile
+          "DOTNET_RUNTIME_PATH=$targetFile" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build MSI (WiX)
+        shell: pwsh
+        run: dotnet build installer/MicaAudio.Installer/MicaAudio.Installer.wixproj -c Release -p:ProductVersion=${{ needs.publish-app.outputs.release_version }} -p:PublishDir="${{ github.workspace }}\artifacts\publish\win-x64"
+
+      - name: Sign MSI
+        shell: pwsh
+        env:
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          $msiPath = Join-Path $pwd "installer\MicaAudio.Installer\bin\x64\Release\MicaAudio-x64-v${{ needs.publish-app.outputs.release_version }}.msi"
+          if (-not (Test-Path -LiteralPath $msiPath)) {
+            throw "MSI nao encontrado: $msiPath"
+          }
+
+          powershell -ExecutionPolicy Bypass -File .\scripts\sign-release.ps1 -CertPath "$env:PFX_PATH" -CertPassword "$env:SIGNING_CERT_PASSWORD" -InputPaths @($msiPath)
+
+      - name: Build Bundle EXE (WiX Burn)
+        shell: pwsh
+        run: |
+          $msiPath = Join-Path $pwd "installer\MicaAudio.Installer\bin\x64\Release\MicaAudio-x64-v${{ needs.publish-app.outputs.release_version }}.msi"
+          dotnet build installer/MicaAudio.Bundle/MicaAudio.Bundle.wixproj -c Release -p:ProductVersion=${{ needs.publish-app.outputs.release_version }} -p:MsiPath="$msiPath" -p:DotNetDesktopRuntimeInstaller="$env:DOTNET_RUNTIME_PATH"
+
+      - name: Upload installer artifact (unsigned bundle)
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-release-x64
+          path: |
+            installer/MicaAudio.Installer/bin/x64/Release/MicaAudio-x64-v${{ needs.publish-app.outputs.release_version }}.msi
+            installer/MicaAudio.Bundle/bin/x64/Release/MicaAudio-Setup-x64-v${{ needs.publish-app.outputs.release_version }}.exe
+          if-no-files-found: error
+
+  sign-and-release:
+    runs-on: windows-latest
+    needs:
+      - publish-app
+      - package-installer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-release-x64
+          path: artifacts/release
+
+      - name: Prepare signing certificate
+        shell: pwsh
+        env:
+          SIGNING_CERT_PFX_BASE64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PFX_BASE64)) {
+            throw 'Secret SIGNING_CERT_PFX_BASE64 nao configurado.'
+          }
+
+          $pfxPath = Join-Path $pwd 'artifacts\signing\release-cert.pfx'
+          New-Item -ItemType Directory -Path (Split-Path -Parent $pfxPath) -Force | Out-Null
+          [System.IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:SIGNING_CERT_PFX_BASE64))
+          "PFX_PATH=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Sign setup bundle (final EXE)
+        shell: pwsh
+        env:
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          $setupPath = Join-Path $pwd "artifacts\release\MicaAudio-Setup-x64-v${{ needs.publish-app.outputs.release_version }}.exe"
+          if (-not (Test-Path -LiteralPath $setupPath)) {
+            throw "Setup EXE nao encontrado: $setupPath"
+          }
+
+          powershell -ExecutionPolicy Bypass -File .\scripts\sign-release.ps1 -CertPath "$env:PFX_PATH" -CertPassword "$env:SIGNING_CERT_PASSWORD" -InputPaths @($setupPath)
+
+      - name: Generate checksum and release notes
+        shell: pwsh
+        run: |
+          $version = '${{ needs.publish-app.outputs.release_version }}'
+          $tag = '${{ needs.publish-app.outputs.tag_name }}'
+          $setupName = "MicaAudio-Setup-x64-v$version.exe"
+          $setupPath = Join-Path $pwd "artifacts\release\$setupName"
+          $hashPath = Join-Path $pwd "artifacts\release\MicaAudio-Setup-x64-v$version.sha256"
+          $notesPath = Join-Path $pwd "artifacts\release\release-notes.md"
+
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $setupPath).Hash.ToLowerInvariant()
+          "$hash  $setupName" | Out-File -FilePath $hashPath -Encoding ascii
+
+          @"
+          # Mica Audio $tag
+
+          ## Artefatos
+          - $setupName
+          - MicaAudio-Setup-x64-v$version.sha256
+
+          ## Instalacao
+          1. Baixe o setup.
+          2. Execute MicaAudio-Setup-x64-v$version.exe.
+          3. O instalador aplica pre-requisitos automaticamente.
+
+          ## Integridade
+          Verifique o SHA-256 com o arquivo .sha256 publicado junto.
+          "@ | Out-File -FilePath $notesPath -Encoding utf8
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.publish-app.outputs.tag_name }}
+          name: Mica Audio ${{ needs.publish-app.outputs.tag_name }}
+          body_path: artifacts/release/release-notes.md
+          files: |
+            artifacts/release/MicaAudio-Setup-x64-v${{ needs.publish-app.outputs.release_version }}.exe
+            artifacts/release/MicaAudio-Setup-x64-v${{ needs.publish-app.outputs.release_version }}.sha256
+

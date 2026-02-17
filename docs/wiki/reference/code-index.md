@@ -1,4 +1,4 @@
-# Code Index
+﻿# Code Index
 
 Indice expandido para localizar rapidamente pontos de alteracao por pagina, servico e protocolo.
 
@@ -54,6 +54,12 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [docs-structural-gate.ps1](../../../scripts/docs-structural-gate.ps1#L1)
 - [ai-governance-check.ps1](../../../scripts/ai-governance-check.ps1#L1)
 - [git-hooks-bootstrap.ps1](../../../scripts/git-hooks-bootstrap.ps1#L1)
+- [release.yml](../../../.github/workflows/release.yml#L1)
+- [sign-release.ps1](../../../scripts/sign-release.ps1#L1)
+- [MicaAudio.Installer.wixproj](../../../installer/MicaAudio.Installer/MicaAudio.Installer.wixproj#L1)
+- [Product.wxs](../../../installer/MicaAudio.Installer/Product.wxs#L1)
+- [MicaAudio.Bundle.wixproj](../../../installer/MicaAudio.Bundle/MicaAudio.Bundle.wixproj#L1)
+- [Bundle.wxs](../../../installer/MicaAudio.Bundle/Bundle.wxs#L1)
 
 ## Governanca IA
 
@@ -68,3 +74,4 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [AppSettings](../../../src/MicaAudio.Core/Presets/AppSettings.cs#L5)
 - [SettingsRepository](../../../src/App.WinUI/Services/SettingsRepository.cs#L6)
 - [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L6)
+

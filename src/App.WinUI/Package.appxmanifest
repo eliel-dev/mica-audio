@@ -8,15 +8,16 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="4ea6dc11-3872-49b4-a758-63a426660b4b"
-    Publisher="CN=User Name"
+    Name="MicaAudio.WinUI"
+    Publisher="CN=MicaAudio"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="4ea6dc11-3872-49b4-a758-63a426660b4b" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>App.WinUI</DisplayName>
-    <PublisherDisplayName>User Name</PublisherDisplayName>
+    <DisplayName>Mica Audio</DisplayName>
+    <PublisherDisplayName>Mica Audio</PublisherDisplayName>
+    <Description>Visualizador de audio em tempo real para Windows 11.</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
@@ -34,8 +35,8 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="App.WinUI"
-        Description="App.WinUI"
+        DisplayName="Mica Audio"
+        Description="Visualizador de audio em tempo real para Windows 11."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
@@ -49,3 +50,4 @@
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
 </Package>
+

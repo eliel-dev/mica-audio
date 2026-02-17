@@ -1,4 +1,4 @@
-# Docs Health
+﻿# Docs Health
 
 ## Objetivo
 
@@ -33,6 +33,7 @@ Checks esperados no GitHub Actions:
 Arquivo de workflow:
 
 - [governance.yml](../../../.github/workflows/governance.yml)
+- [release.yml](../../../.github/workflows/release.yml)
 
 ## Politica de governanca
 
@@ -49,3 +50,4 @@ Arquivo de workflow:
 - [git-hooks-bootstrap.ps1](../../../scripts/git-hooks-bootstrap.ps1#L1)
 - [AI contract](ai-contract.v1.yaml)
 - [Wiki index](../README.md)
+

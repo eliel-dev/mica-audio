@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$ChangedFilesPath,
@@ -57,6 +57,7 @@ $structuralPatterns = @(
     '^firmware/',
     '^matrixportal-s3/',
     '^scripts/',
+    '^installer/',
     '^MicaAudio\.sln$',
     '^global\.json$',
     '^\.github/workflows/'
@@ -111,6 +112,7 @@ $structuralFiles | Sort-Object -Unique | ForEach-Object { Write-Host " - $_" -Fo
 Write-Host '[docs-structural-gate] Adicione docs em docs/wiki/, docs/adr/, docs/handoffs/, README.md ou AGENTS.md.' -ForegroundColor Red
 
 exit 1
+
 
 
 

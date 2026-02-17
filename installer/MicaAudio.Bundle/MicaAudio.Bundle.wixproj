@@ -1,0 +1,21 @@
+﻿<Project Sdk="WixToolset.Sdk/5.0.2">
+  <PropertyGroup>
+    <OutputType>Bundle</OutputType>
+    <Platform>x64</Platform>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">1.0.0</ProductVersion>
+    <MsiPath Condition="'$(MsiPath)' == ''">$(MSBuildThisFileDirectory)..\MicaAudio.Installer\bin\x64\$(Configuration)\MicaAudio-x64-v$(ProductVersion).msi</MsiPath>
+    <DotNetDesktopRuntimeInstaller Condition="'$(DotNetDesktopRuntimeInstaller)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\dotnet\windowsdesktop-runtime-8.0.24-win-x64.exe</DotNetDesktopRuntimeInstaller>
+    <OutputName>MicaAudio-Setup-x64-v$(ProductVersion)</OutputName>
+    <DefineConstants>ProductVersion=$(ProductVersion);MsiPath=$(MsiPath);DotNetDesktopRuntimeInstaller=$(DotNetDesktopRuntimeInstaller)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Bal.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.Netfx.wixext" Version="5.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MicaAudio.Installer\MicaAudio.Installer.wixproj" />
+  </ItemGroup>
+</Project>
