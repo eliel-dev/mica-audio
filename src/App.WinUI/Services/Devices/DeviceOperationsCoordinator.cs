@@ -1,4 +1,4 @@
-using Device.Protocol.Models;
+﻿using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
@@ -7,29 +7,22 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan OtaCommandTimeout = TimeSpan.FromMinutes(10);
     private const int MaxLogEntries = 600;
 
     private readonly DeviceIntegrationService integration;
     private readonly object gate = new();
     private readonly List<string> logs = new();
-    private readonly List<string> buildLogs = new();
     private readonly List<DeviceSnapshot> devicesSnapshot = new();
     private readonly Timer refreshTimer;
 
     private int refreshInFlight;
     private bool refreshActive;
-    private bool buildInProgress;
-    private int buildPercent;
-    private string buildStatus = "Build: pronto";
     private bool commandInProgress;
     private int commandPercent;
     private string commandStatus = "Comandos: pronto";
     private string? lastCommandDeviceId;
     private string? activeCommandId;
     private DateTimeOffset lastRefreshUtc;
-    private string? lastExportDirectory;
-    private string? latestMergedBinPath;
     private bool disposed;
 
     public DeviceOperationsCoordinator(DeviceIntegrationService integration)
@@ -44,8 +37,6 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
     public event EventHandler? StateChanged;
 
-    public event EventHandler<string>? BuildLogReceived;
-
     public event EventHandler? DeviceListChanged;
 
     public DeviceOperationsState GetStateSnapshot()
@@ -54,17 +45,12 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         {
             return new DeviceOperationsState
             {
-                BuildInProgress = buildInProgress,
-                BuildPercent = buildPercent,
-                BuildStatus = buildStatus,
-                BuildLogs = buildLogs.ToArray(),
                 CommandInProgress = commandInProgress,
                 CommandPercent = commandPercent,
                 CommandStatus = commandStatus,
                 LastCommandDeviceId = lastCommandDeviceId,
                 DeviceListSnapshot = devicesSnapshot.ToArray(),
                 LastRefreshUtc = lastRefreshUtc,
-                LastExportDirectory = lastExportDirectory,
                 ServerBaseAddress = integration.GetServerBaseAddress(),
                 Logs = logs.ToArray(),
             };
@@ -103,245 +89,26 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     }
 
     // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
-    public async Task<CommandDispatchResult> RunCommandAsync(
+    public Task<CommandDispatchResult> RunCommandAsync(
         string deviceId,
         DeviceCommandType commandType,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(deviceId))
-        {
-            return new CommandDispatchResult
-            {
-                DeviceId = string.Empty,
-                Accepted = false,
-                Completed = true,
-                Success = false,
-                ProgressPercent = 0,
-                Stage = "invalid",
-                Message = "Nenhum dispositivo selecionado.",
-                ErrorCode = "invalid_device",
-            };
-        }
-
-        lock (gate)
-        {
-            if (commandInProgress)
-            {
-                return new CommandDispatchResult
-                {
-                    DeviceId = deviceId,
-                    Accepted = false,
-                    Completed = true,
-                    Success = false,
-                    ProgressPercent = commandPercent,
-                    Stage = "busy",
-                    Message = "Ja existe uma operacao em andamento.",
-                    ErrorCode = "busy",
-                };
-            }
-
-            commandInProgress = true;
-            commandPercent = 0;
-            commandStatus = $"Comandos: 0% ({DescribeCommand(commandType)})";
-            lastCommandDeviceId = deviceId;
-            activeCommandId = null;
-        }
-
-        RaiseStateChanged();
-        AppendLog($"Comando iniciado ({DescribeCommand(commandType)}) para {deviceId}.");
-
-        var timeout = commandType == DeviceCommandType.StartOta ? OtaCommandTimeout : CommandTimeout;
-
-        CommandDispatchResult result;
-        try
-        {
-            result = await integration.Host
-                .SendCommandTrackedAsync(deviceId, commandType, timeout, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            result = new CommandDispatchResult
-            {
-                DeviceId = deviceId,
-                Accepted = true,
-                Completed = true,
-                Success = false,
-                ProgressPercent = commandPercent,
-                Stage = "cancelled",
-                Message = "Operacao cancelada.",
-                ErrorCode = "cancelled",
-            };
-        }
-        catch (Exception ex)
-        {
-            result = new CommandDispatchResult
-            {
-                DeviceId = deviceId,
-                Accepted = true,
-                Completed = true,
-                Success = false,
-                ProgressPercent = commandPercent,
-                Stage = "error",
-                Message = ex.Message,
-                ErrorCode = "exception",
-            };
-        }
-
-        lock (gate)
-        {
-            commandInProgress = false;
-            commandPercent = Math.Clamp(Math.Max(commandPercent, result.ProgressPercent), 0, 100);
-            commandStatus = BuildFinalCommandStatus(result);
-            if (!string.IsNullOrWhiteSpace(result.CommandId))
-            {
-                activeCommandId = result.CommandId;
-            }
-        }
-
-        RaiseStateChanged();
-        AppendLog(BuildResultLogMessage(result));
-        return result;
+        return RunCommandCoreAsync(deviceId, commandType, parameters: null, cancellationToken);
     }
 
-
-    // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
-    public async Task<CommandDispatchResult> RunCommandAsync(
+    public Task<CommandDispatchResult> RunCommandAsync(
         string deviceId,
         DeviceCommandType commandType,
         IReadOnlyDictionary<string, string>? parameters,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(deviceId))
-        {
-            return new CommandDispatchResult
-            {
-                DeviceId = string.Empty,
-                Accepted = false,
-                Completed = true,
-                Success = false,
-                ProgressPercent = 0,
-                Stage = "invalid",
-                Message = "Nenhum dispositivo selecionado.",
-                ErrorCode = "invalid_device",
-            };
-        }
-
-        lock (gate)
-        {
-            if (commandInProgress)
-            {
-                return new CommandDispatchResult
-                {
-                    DeviceId = deviceId,
-                    Accepted = false,
-                    Completed = true,
-                    Success = false,
-                    ProgressPercent = commandPercent,
-                    Stage = "busy",
-                    Message = "Ja existe uma operacao em andamento.",
-                    ErrorCode = "busy",
-                };
-            }
-
-            commandInProgress = true;
-            commandPercent = 0;
-            commandStatus = $"Comandos: 0% ({DescribeCommand(commandType)})";
-            lastCommandDeviceId = deviceId;
-            activeCommandId = null;
-        }
-
-        RaiseStateChanged();
-        AppendLog($"Comando iniciado ({DescribeCommand(commandType)}) para {deviceId}.");
-
-        var timeout = commandType == DeviceCommandType.StartOta ? OtaCommandTimeout : CommandTimeout;
-
-        CommandDispatchResult result;
-        try
-        {
-            result = await integration.Host
-                .SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            result = new CommandDispatchResult
-            {
-                DeviceId = deviceId,
-                Accepted = true,
-                Completed = true,
-                Success = false,
-                ProgressPercent = commandPercent,
-                Stage = "cancelled",
-                Message = "Operacao cancelada.",
-                ErrorCode = "cancelled",
-            };
-        }
-        catch (Exception ex)
-        {
-            result = new CommandDispatchResult
-            {
-                DeviceId = deviceId,
-                Accepted = true,
-                Completed = true,
-                Success = false,
-                ProgressPercent = commandPercent,
-                Stage = "error",
-                Message = ex.Message,
-                ErrorCode = "exception",
-            };
-        }
-
-        lock (gate)
-        {
-            commandInProgress = false;
-            commandPercent = Math.Clamp(Math.Max(commandPercent, result.ProgressPercent), 0, 100);
-            commandStatus = BuildFinalCommandStatus(result);
-            if (!string.IsNullOrWhiteSpace(result.CommandId))
-            {
-                activeCommandId = result.CommandId;
-            }
-        }
-
-        RaiseStateChanged();
-        AppendLog(BuildResultLogMessage(result));
-        return result;
-    }
-    public Task<CommandDispatchResult> StartOtaForDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
-    {
-        var disabled = new CommandDispatchResult
-        {
-            DeviceId = deviceId,
-            Accepted = false,
-            Completed = true,
-            Success = false,
-            Stage = "ota-disabled",
-            Message = "OTA desativada temporariamente. Faca o flash manual do firmware.",
-            ErrorCode = "ota_disabled",
-        };
-
-        AppendLog(disabled.Message!);
-
-        lock (gate)
-        {
-            commandInProgress = false;
-            commandPercent = 0;
-            commandStatus = "Comandos: OTA desativada (flash manual)";
-            lastCommandDeviceId = deviceId;
-            activeCommandId = null;
-        }
-
-        RaiseStateChanged();
-        return Task.FromResult(disabled);
+        return RunCommandCoreAsync(deviceId, commandType, parameters, cancellationToken);
     }
 
     public Task<CommandDispatchResult> InstallAppAsync(string deviceId, DeviceAppCommandPayload payload, CancellationToken cancellationToken = default)
     {
-        if (payload is null)
-        {
-            throw new ArgumentNullException(nameof(payload));
-        }
-
+        ArgumentNullException.ThrowIfNull(payload);
         var parameters = payload.ToParameters();
         return RunCommandAsync(deviceId, DeviceCommandType.InstallApp, parameters, cancellationToken);
     }
@@ -371,126 +138,6 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
         return RunCommandAsync(deviceId, DeviceCommandType.SetAppConfig, parameters, cancellationToken);
     }
-    // DOCS: docs/wiki/modules/server-build-and-artifacts.md#fluxo-de-execucao
-    public async Task<string?> BuildAndExportAsync(string profile, CancellationToken cancellationToken = default)
-    {
-        var alreadyRunning = false;
-
-        lock (gate)
-        {
-            if (buildInProgress)
-            {
-                AppendLogLocked("Build ja em andamento. Aguarde concluir.");
-                alreadyRunning = true;
-            }
-            else
-            {
-                buildInProgress = true;
-                buildPercent = 0;
-                buildStatus = $"Build: 0% ({profile})";
-            }
-        }
-
-        if (alreadyRunning)
-        {
-            RaiseStateChanged();
-            return null;
-        }
-
-        RaiseStateChanged();
-        AppendLog($"Build iniciado: {profile}");
-
-        try
-        {
-            var request = new FirmwareBuildRequest
-            {
-                Profile = profile,
-                WorkingDirectory = ResolveFirmwareWorkingDirectory(),
-            };
-
-            var progress = new Progress<BuildProgressUpdate>(OnBuildProgress);
-            var artifacts = await integration.FirmwareBuildService
-                .BuildAsync(request, progress, cancellationToken)
-                .ConfigureAwait(false);
-
-            OnBuildProgress(new BuildProgressUpdate
-            {
-                Percent = 96,
-                Stage = "export",
-                Message = "Exportando pacote de firmware...",
-            });
-
-            var exportPath = await integration.FirmwareBuildService
-                .ExportAsync(artifacts, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), cancellationToken)
-                .ConfigureAwait(false);
-
-            lock (gate)
-            {
-                latestMergedBinPath = artifacts.MergedBinPath;
-                lastExportDirectory = exportPath;
-                buildPercent = 100;
-                buildStatus = "Build: 100% (concluido)";
-            }
-
-            if (!string.IsNullOrWhiteSpace(artifacts.MergedBinPath))
-            {
-                var version = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss");
-                _ = integration.Host.SetOtaArtifact(artifacts.MergedBinPath, version);
-            }
-
-            AppendBuildLog($"Firmware exportado em: {exportPath}");
-            RaiseStateChanged();
-            return exportPath;
-        }
-        catch (Exception ex)
-        {
-            lock (gate)
-            {
-                buildStatus = "Build: erro";
-            }
-
-            AppendBuildLog($"Erro no build/export: {ex.Message}");
-            RaiseStateChanged();
-            return null;
-        }
-        finally
-        {
-            lock (gate)
-            {
-                buildInProgress = false;
-                if (buildStatus == "Build: pronto")
-                {
-                    buildPercent = 0;
-                }
-            }
-
-            RaiseStateChanged();
-        }
-    }
-
-    public string ResolveFirmwareDirectoryToOpen()
-    {
-        lock (gate)
-        {
-            if (!string.IsNullOrWhiteSpace(lastExportDirectory) && Directory.Exists(lastExportDirectory))
-            {
-                return lastExportDirectory;
-            }
-        }
-
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MicaAudio", "firmware");
-        if (!Directory.Exists(root))
-        {
-            return root;
-        }
-
-        var latest = new DirectoryInfo(root)
-            .EnumerateDirectories()
-            .OrderByDescending(directory => directory.LastWriteTimeUtc)
-            .FirstOrDefault();
-
-        return latest?.FullName ?? root;
-    }
 
     public void Dispose()
     {
@@ -504,6 +151,106 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         integration.DevicesChanged -= OnDevicesChanged;
         integration.LogMessage -= OnLogMessage;
         integration.Host.CommandProgressChanged -= OnHostCommandProgressChanged;
+    }
+
+    private async Task<CommandDispatchResult> RunCommandCoreAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return new CommandDispatchResult
+            {
+                DeviceId = string.Empty,
+                Accepted = false,
+                Completed = true,
+                Success = false,
+                ProgressPercent = 0,
+                Stage = "invalid",
+                Message = "Nenhum dispositivo selecionado.",
+                ErrorCode = "invalid_device",
+            };
+        }
+
+        lock (gate)
+        {
+            if (commandInProgress)
+            {
+                return new CommandDispatchResult
+                {
+                    DeviceId = deviceId,
+                    Accepted = false,
+                    Completed = true,
+                    Success = false,
+                    ProgressPercent = commandPercent,
+                    Stage = "busy",
+                    Message = "Ja existe uma operacao em andamento.",
+                    ErrorCode = "busy",
+                };
+            }
+
+            commandInProgress = true;
+            commandPercent = 0;
+            commandStatus = $"Comandos: 0% ({DescribeCommand(commandType)})";
+            lastCommandDeviceId = deviceId;
+            activeCommandId = null;
+        }
+
+        RaiseStateChanged();
+        AppendLog($"Comando iniciado ({DescribeCommand(commandType)}) para {deviceId}.");
+
+        CommandDispatchResult result;
+        try
+        {
+            result = await integration.Host
+                .SendCommandTrackedAsync(deviceId, commandType, parameters, CommandTimeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            result = new CommandDispatchResult
+            {
+                DeviceId = deviceId,
+                Accepted = true,
+                Completed = true,
+                Success = false,
+                ProgressPercent = commandPercent,
+                Stage = "cancelled",
+                Message = "Operacao cancelada.",
+                ErrorCode = "cancelled",
+            };
+        }
+        catch (Exception ex)
+        {
+            result = new CommandDispatchResult
+            {
+                DeviceId = deviceId,
+                Accepted = true,
+                Completed = true,
+                Success = false,
+                ProgressPercent = commandPercent,
+                Stage = "error",
+                Message = ex.Message,
+                ErrorCode = "exception",
+            };
+        }
+
+        lock (gate)
+        {
+            commandInProgress = false;
+            commandPercent = Math.Clamp(Math.Max(commandPercent, result.ProgressPercent), 0, 100);
+            commandStatus = BuildFinalCommandStatus(result);
+            if (!string.IsNullOrWhiteSpace(result.CommandId))
+            {
+                activeCommandId = result.CommandId;
+            }
+        }
+
+        RaiseStateChanged();
+        AppendLog(BuildResultLogMessage(result));
+        return result;
     }
 
     private void OnRefreshTimerTick(object? _)
@@ -647,31 +394,6 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         return true;
     }
 
-    private void OnBuildProgress(BuildProgressUpdate update)
-    {
-        lock (gate)
-        {
-            buildInProgress = !update.IsTerminal;
-            buildPercent = Math.Clamp(update.Percent, 0, 100);
-            buildStatus = BuildBuildStatus(update);
-        }
-
-        if (!string.IsNullOrWhiteSpace(update.Message))
-        {
-            AppendBuildLog(update.Message);
-        }
-        else
-        {
-            RaiseStateChanged();
-        }
-    }
-
-    private static string BuildBuildStatus(BuildProgressUpdate update)
-    {
-        var stage = string.IsNullOrWhiteSpace(update.Stage) ? "build" : update.Stage;
-        return $"Build: {Math.Clamp(update.Percent, 0, 100)}% ({stage})";
-    }
-
     private static string BuildLiveCommandStatus(DeviceCommandProgressMessage progress)
     {
         var stage = DescribeStage(progress.Stage);
@@ -690,7 +412,6 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
             "timeout" => "Comandos: sem resposta do dispositivo",
             "device_offline" => "Comandos: dispositivo offline",
             "send_error" => "Comandos: erro de rede",
-            "ota_artifact_missing" => "Comandos: firmware OTA indisponivel",
             _ => "Comandos: erro",
         };
     }
@@ -716,7 +437,6 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
             DeviceCommandType.EnterProvisioning => "entrar em provisioning",
             DeviceCommandType.RevokeAndRestart => "revogar/reiniciar",
             DeviceCommandType.TestLed => "testar LED",
-            DeviceCommandType.StartOta => "atualizar firmware OTA",
             DeviceCommandType.InstallApp => "instalar app",
             DeviceCommandType.ActivateApp => "ativar app",
             DeviceCommandType.SetAppConfig => "configurar app",
@@ -733,100 +453,21 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         return stage;
     }
 
-    private string ResolveFirmwareWorkingDirectory()
-    {
-        var candidates = new[]
-        {
-            Path.Combine(AppContext.BaseDirectory, "firmware", "matrixportal-s3"),
-            Path.Combine(Environment.CurrentDirectory, "firmware", "matrixportal-s3"),
-            Path.Combine(Environment.CurrentDirectory, "..", "..", "..", "firmware", "matrixportal-s3"),
-        }
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        foreach (var candidate in candidates)
-        {
-            if (Directory.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return candidates[0];
-    }
-
-    private string? ResolveLatestMergedBinPath()
-    {
-        lock (gate)
-        {
-            if (!string.IsNullOrWhiteSpace(latestMergedBinPath) && File.Exists(latestMergedBinPath))
-            {
-                return latestMergedBinPath;
-            }
-        }
-
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MicaAudio", "firmware");
-        if (!Directory.Exists(root))
-        {
-            return null;
-        }
-
-        var candidate = new DirectoryInfo(root)
-            .EnumerateDirectories()
-            .OrderByDescending(directory => directory.LastWriteTimeUtc)
-            .Select(directory => Path.Combine(directory.FullName, "matrixportal-s3_merged.bin"))
-            .FirstOrDefault(File.Exists);
-
-        lock (gate)
-        {
-            latestMergedBinPath = candidate;
-        }
-
-        return candidate;
-    }
-
-    private void AppendBuildLog(string message)
-    {
-        var line = AppendLog(message, isBuildLog: true);
-        BuildLogReceived?.Invoke(this, line);
-    }
-
-    private string AppendLog(string message, bool isBuildLog = false)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return string.Empty;
-        }
-
-        string line;
-        lock (gate)
-        {
-            line = $"[{DateTimeOffset.Now:HH:mm:ss}] {message}";
-            logs.Add(line);
-            TrimToLimit(logs, MaxLogEntries);
-
-            if (isBuildLog)
-            {
-                buildLogs.Add(line);
-                TrimToLimit(buildLogs, MaxLogEntries);
-            }
-        }
-
-        RaiseStateChanged();
-        return line;
-    }
-
-    private void AppendLogLocked(string message)
+    private void AppendLog(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
         {
             return;
         }
 
-        var line = $"[{DateTimeOffset.Now:HH:mm:ss}] {message}";
-        logs.Add(line);
-        TrimToLimit(logs, MaxLogEntries);
+        lock (gate)
+        {
+            var line = $"[{DateTimeOffset.Now:HH:mm:ss}] {message}";
+            logs.Add(line);
+            TrimToLimit(logs, MaxLogEntries);
+        }
+
+        RaiseStateChanged();
     }
 
     private void RaiseStateChanged()
@@ -845,8 +486,3 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         entries.RemoveRange(0, removeCount);
     }
 }
-
-
-
-
-

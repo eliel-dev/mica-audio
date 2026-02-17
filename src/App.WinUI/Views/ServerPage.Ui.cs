@@ -8,9 +8,9 @@ namespace App.WinUI.Views;
 public sealed partial class ServerPage
 {
     private TextBlock ServerInfoText = null!;
-    private TextBlock BuildStatusText = null!;
-    private ProgressRing BuildProgressRing = null!;
-    private TextBlock BuildPercentText = null!;
+    private TextBlock DownloadStatusText = null!;
+    private ProgressRing DownloadProgressRing = null!;
+    private TextBlock DownloadPercentText = null!;
     private TextBox LogsTextBox = null!;
 
     private void InitializeComponent()
@@ -32,21 +32,18 @@ public sealed partial class ServerPage
             DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
         };
 
-        var buildStable = new AppBarButton { Label = "Build stable", Icon = new SymbolIcon(Symbol.Play) };
-        buildStable.Click += OnBuildStableClicked;
-        var buildDma = new AppBarButton { Label = "Build dma_exp", Icon = new SymbolIcon(Symbol.Play) };
-        buildDma.Click += OnBuildDmaClicked;
-        var openFolder = new AppBarButton { Label = "Abrir pasta", Icon = new SymbolIcon(Symbol.OpenFile) };
-        openFolder.Click += OnOpenFirmwareFolderClicked;
+        var downloadStable = new AppBarButton { Label = "Baixar stable", Icon = new SymbolIcon(Symbol.Download) };
+        downloadStable.Click += OnDownloadStableClicked;
+        var downloadDma = new AppBarButton { Label = "Baixar dma_exp", Icon = new SymbolIcon(Symbol.Download) };
+        downloadDma.Click += OnDownloadDmaClicked;
         var copyHost = new AppBarButton { Label = "Copiar host", Icon = new SymbolIcon(Symbol.Copy) };
         copyHost.Click += OnCopyHostClicked;
         var refresh = new AppBarButton { Label = "Atualizar", Icon = new SymbolIcon(Symbol.Refresh) };
         refresh.Click += OnRefreshClicked;
 
-        topBar.PrimaryCommands.Add(buildStable);
-        topBar.PrimaryCommands.Add(buildDma);
+        topBar.PrimaryCommands.Add(downloadStable);
+        topBar.PrimaryCommands.Add(downloadDma);
         topBar.PrimaryCommands.Add(new AppBarSeparator());
-        topBar.PrimaryCommands.Add(openFolder);
         topBar.PrimaryCommands.Add(copyHost);
         topBar.PrimaryCommands.Add(refresh);
 
@@ -63,9 +60,9 @@ public sealed partial class ServerPage
             Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
             TextWrapping = TextWrapping.Wrap,
         };
-        BuildStatusText = new TextBlock { Text = "Build: pronto", TextWrapping = TextWrapping.Wrap };
+        DownloadStatusText = new TextBlock { Text = "Download: pronto", TextWrapping = TextWrapping.Wrap };
         statusStack.Children.Add(ServerInfoText);
-        statusStack.Children.Add(BuildStatusText);
+        statusStack.Children.Add(DownloadStatusText);
 
         var progressStack = new StackPanel
         {
@@ -74,16 +71,16 @@ public sealed partial class ServerPage
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        BuildProgressRing = new ProgressRing
+        DownloadProgressRing = new ProgressRing
         {
             Width = 18,
             Height = 18,
             IsActive = false,
             Visibility = Visibility.Collapsed,
         };
-        BuildPercentText = new TextBlock { Text = "0%" };
-        progressStack.Children.Add(BuildProgressRing);
-        progressStack.Children.Add(BuildPercentText);
+        DownloadPercentText = new TextBlock { Text = "0%" };
+        progressStack.Children.Add(DownloadProgressRing);
+        progressStack.Children.Add(DownloadPercentText);
 
         Grid.SetColumn(progressStack, 1);
         statusGrid.Children.Add(statusStack);
@@ -95,7 +92,7 @@ public sealed partial class ServerPage
 
         LogsTextBox = new TextBox
         {
-            Header = "Logs de servidor e build",
+            Header = "Logs de servidor e download",
             AcceptsReturn = true,
             IsReadOnly = true,
             TextWrapping = TextWrapping.Wrap,
@@ -130,4 +127,3 @@ public sealed partial class ServerPage
         return UiResourceResolver.ResolveBrush(key, fallback);
     }
 }
-

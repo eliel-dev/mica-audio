@@ -1,16 +1,16 @@
-# Troubleshooting Matrix
+﻿# Troubleshooting Matrix
 
 | Sintoma | Diagnostico rapido | Causa comum | Acao recomendada |
 |---|---|---|---|
-| App abre sem visualizacao | Ver `MainPage` + estado de sessao | pipeline pausado apos navegacao | validar `ActivateVisualizerSessionAsync` e `PauseVisualizerSession` |
+| App abre sem visualizacao | Ver `MainPage` + estado de sessao | pipeline pausado apos navegacao | validar ativacao/pausa da sessao de visualizacao |
 | Comando device timeout | Ver status em DevicesPage/ServerPage | device offline ou WS sem resposta | confirmar online, repetir comando, revisar timeout |
-| OTA falha com HTTP error | Ver logs de OTA no coordinator e firmware | host/token/sessao invalida | revisar host publico, token e endpoint `/firmware/download` |
-| Build falha sem artifacts | Ver logs do `FirmwareBuildService` | toolchain incompleta ou profile quebrado | rodar `EnsureToolchainAsync` e validar `platformio.ini` |
-| texto ilegivel em tema | comparar tema sistema e brushes | style sem recurso semantico | revisar Fluent2 tokens e bindings |
+| Download de firmware falha | Ver logs da aba Servidor | BIN ausente no pacote ou falha de permissao no destino | validar assets em `AppData/Firmware` e repetir salvar |
+| Botao de salvar abre e cancela | Ver status `Download: cancelado` | usuario cancelou FileSavePicker | comportamento esperado |
+| Texto ilegivel em tema | comparar tema sistema e brushes | style sem recurso semantico | revisar Fluent2 tokens e bindings |
 
 ## Referencias de codigo
 
-- [DeviceOperationsCoordinator logs](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L785)
-- [FirmwareBuildService errors](../../../src/App.WinUI/Services/Devices/FirmwareBuildService.cs#L117)
-- [ServerPage.UpdateLogs](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L75)
-- [DevicesPage.ApplyState](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L139)
+- [DeviceOperationsCoordinator logs](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
+- [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
+- [ServerPage.SaveFirmwareAsync](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1)
+- [DevicesPage.ApplyState](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)

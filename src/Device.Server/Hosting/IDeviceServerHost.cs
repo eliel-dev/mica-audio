@@ -38,8 +38,6 @@ public interface IDeviceServerHost : IAsyncDisposable
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default);
 
-    bool SetOtaArtifact(string mergedBinPath, string version);
-
     bool RemoveDevice(string deviceId);
 
     void BroadcastFrame(byte[] framePayload);

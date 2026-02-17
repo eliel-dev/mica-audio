@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -16,7 +16,6 @@ public sealed partial class DevicesPage
     private AppBarButton EnterProvisioningButton = null!;
     private AppBarButton RevokeButton = null!;
     private AppBarButton TestLedButton = null!;
-    private AppBarButton OtaButton = null!;
     private ProgressRing CommandProgressRing = null!;
     private TextBlock CommandStatusText = null!;
     private TextBlock CommandPercentText = null!;
@@ -114,14 +113,10 @@ public sealed partial class DevicesPage
         RevokeButton.Click += OnRevokeClicked;
         TestLedButton = new AppBarButton { Label = "Testar LED", Icon = new SymbolIcon(Symbol.TouchPointer) };
         TestLedButton.Click += OnTestLedClicked;
-        OtaButton = new AppBarButton { Label = "OTA manual", Icon = new SymbolIcon(Symbol.Download), IsEnabled = false };
-        ToolTipService.SetToolTip(OtaButton, "OTA desativada temporariamente. Atualize o firmware manualmente.");
-        OtaButton.Click += OnOtaClicked;
 
         actionsCommandBar.PrimaryCommands.Add(EnterProvisioningButton);
         actionsCommandBar.PrimaryCommands.Add(RevokeButton);
         actionsCommandBar.PrimaryCommands.Add(TestLedButton);
-        actionsCommandBar.PrimaryCommands.Add(OtaButton);
 
         var actionsCard = CreateCard(actionsCommandBar, padding: 4);
         Grid.SetRow(actionsCard, 1);
@@ -216,5 +211,3 @@ public sealed partial class DevicesPage
         return UiResourceResolver.ResolveBrush(key, fallback);
     }
 }
-
-

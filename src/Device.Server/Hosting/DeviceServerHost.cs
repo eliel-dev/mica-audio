@@ -1,4 +1,4 @@
-
+﻿
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -70,9 +70,6 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         localApp.MapPost("/api/v1/pair", (Delegate)HandlePairAsync);
         localApp.MapGet("/api/v1/device/config", (Delegate)HandleDeviceConfig);
         localApp.MapPost("/api/v1/device/command-ack", (Delegate)HandleCommandAckAsync);
-        localApp.MapGet("/api/v1/device/firmware/latest", (Delegate)HandleFirmwareLatestAsync);
-        localApp.MapGet("/api/v1/device/firmware/download", (Delegate)HandleFirmwareDownloadAsync);
-        localApp.MapPost("/api/v1/device/ota/result", (Delegate)HandleOtaResultAsync);
         localApp.Map("/ws/v1/stream", (RequestDelegate)HandleWebSocketAsync);
 
         await localApp.StartAsync(appCts!.Token).ConfigureAwait(false);
@@ -208,11 +205,6 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         return SendTrackedCommandCoreAsync(deviceId, commandType, parameters, effectiveTimeout, cancellationToken);
-    }
-
-    public bool SetOtaArtifact(string mergedBinPath, string version)
-    {
-        return SetOtaArtifactCore(mergedBinPath, version);
     }
 
     public bool RemoveDevice(string deviceId)
@@ -618,6 +610,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 }
+
+
 
 
 

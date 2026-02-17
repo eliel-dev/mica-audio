@@ -1,9 +1,6 @@
-
-using System.Security.Cryptography;
-using System.Text.Json;
+﻿using System.Text.Json;
 using Device.Protocol.Models;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.WebUtilities;
 
 namespace Device.Server.Hosting;
 
@@ -11,12 +8,8 @@ namespace Device.Server.Hosting;
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan OtaSessionTtl = TimeSpan.FromMinutes(2);
 
     private readonly Dictionary<string, PendingTrackedCommand> pendingTrackedCommands = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, OtaSessionState> otaDownloadSessions = new(StringComparer.OrdinalIgnoreCase);
-
-    private OtaArtifactState? otaArtifact;
 
     // DOCS: docs/wiki/guides/add-device-command.md#passos
     private async Task<CommandDispatchResult> SendTrackedCommandCoreAsync(
@@ -64,7 +57,7 @@ public sealed partial class DeviceServerHost
             Message = "Comando enfileirado.",
         });
 
-                var commandEnvelope = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        var commandEnvelope = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
             ["type"] = "command",
             ["commandId"] = commandId,
@@ -167,168 +160,6 @@ public sealed partial class DeviceServerHost
                 pendingTrackedCommands.Remove(commandId);
             }
         }
-    }
-
-    private bool SetOtaArtifactCore(string mergedBinPath, string version)
-    {
-        if (string.IsNullOrWhiteSpace(mergedBinPath) || !File.Exists(mergedBinPath))
-        {
-            return false;
-        }
-
-        string sha256;
-        long size;
-        using (var stream = File.OpenRead(mergedBinPath))
-        {
-            size = stream.Length;
-            sha256 = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-        }
-
-        lock (gate)
-        {
-            otaArtifact = new OtaArtifactState(
-                mergedBinPath,
-                string.IsNullOrWhiteSpace(version) ? DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss") : version,
-                sha256,
-                size,
-                DateTimeOffset.UtcNow);
-
-            CleanupOtaSessionsLocked();
-        }
-
-        Log($"Artefato OTA configurado: {Path.GetFileName(mergedBinPath)} ({size} bytes)");
-        return true;
-    }
-
-    private IResult HandleFirmwareLatestAsync(HttpContext ctx)
-    {
-        if (!TryAuthenticate(ctx, out var state))
-        {
-            return Results.Unauthorized();
-        }
-
-        OtaArtifactState? artifact;
-        lock (gate)
-        {
-            artifact = otaArtifact;
-        }
-
-        if (artifact is null || !File.Exists(artifact.MergedBinPath))
-        {
-            return Results.NotFound(new { error = "ota_artifact_not_available" });
-        }
-
-        var sessionId = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(18));
-        var expiresAt = DateTimeOffset.UtcNow.Add(OtaSessionTtl);
-
-        lock (gate)
-        {
-            CleanupOtaSessionsLocked();
-            otaDownloadSessions[sessionId] = new OtaSessionState(state.Record.DeviceId, expiresAt);
-        }
-
-        var host = ResolveHost(ctx);
-        var query = $"deviceId={Uri.EscapeDataString(state.Record.DeviceId)}&token={Uri.EscapeDataString(state.Record.Token)}&session={Uri.EscapeDataString(sessionId)}";
-        var downloadUrl = $"http://{host}:{config.Port}/api/v1/device/firmware/download?{query}";
-
-        return Results.Ok(new DeviceFirmwareLatestResponse
-        {
-            Version = artifact.Version,
-            Sha256 = artifact.Sha256,
-            SizeBytes = artifact.SizeBytes,
-            DownloadUrl = downloadUrl,
-            ExpiresAtUtc = expiresAt,
-        });
-    }
-
-    private IResult HandleFirmwareDownloadAsync(HttpContext ctx)
-    {
-        if (!TryAuthenticate(ctx, out var state))
-        {
-            return Results.Unauthorized();
-        }
-
-        var session = ctx.Request.Query["session"].ToString();
-        if (string.IsNullOrWhiteSpace(session))
-        {
-            Log($"OTA download rejeitado para {state.Record.DeviceId}: session ausente.");
-            return Results.BadRequest(new { error = "missing_session" });
-        }
-
-        OtaArtifactState? artifact;
-        lock (gate)
-        {
-            CleanupOtaSessionsLocked();
-
-            if (!otaDownloadSessions.TryGetValue(session, out var sessionState)
-                || !string.Equals(sessionState.DeviceId, state.Record.DeviceId, StringComparison.OrdinalIgnoreCase)
-                || sessionState.ExpiresAtUtc <= DateTimeOffset.UtcNow)
-            {
-                Log($"OTA download rejeitado para {state.Record.DeviceId}: sessao invalida/expirada.");
-                return Results.Unauthorized();
-            }
-
-            otaDownloadSessions.Remove(session);
-            artifact = otaArtifact;
-        }
-
-        if (artifact is null || !File.Exists(artifact.MergedBinPath))
-        {
-            Log($"OTA download indisponivel para {state.Record.DeviceId}: artefato ausente.");
-            return Results.NotFound(new { error = "ota_artifact_not_available" });
-        }
-
-        Log($"OTA download liberado para {state.Record.DeviceId}: {Path.GetFileName(artifact.MergedBinPath)}");
-        return Results.File(
-            artifact.MergedBinPath,
-            contentType: "application/octet-stream",
-            fileDownloadName: "matrixportal-s3_merged.bin",
-            enableRangeProcessing: false);
-    }
-
-    private async Task<IResult> HandleOtaResultAsync(HttpContext ctx)
-    {
-        if (!TryAuthenticate(ctx, out var state))
-        {
-            return Results.Unauthorized();
-        }
-
-        var request = await JsonSerializer.DeserializeAsync<DeviceOtaResultRequest>(ctx.Request.Body, JsonOptions).ConfigureAwait(false)
-            ?? new DeviceOtaResultRequest();
-
-        state.MarkSeen(ctx.Connection.RemoteIpAddress?.ToString(), state.Record.LastKnownRssi, state.Record.FirmwareVersion);
-
-        if (!string.IsNullOrWhiteSpace(request.CommandId))
-        {
-            PublishCommandProgress(new DeviceCommandProgressMessage
-            {
-                DeviceId = state.Record.DeviceId,
-                CommandId = request.CommandId,
-                ProgressPercent = request.Success ? 100 : 99,
-                Stage = request.Success ? "ota-complete" : "ota-failed",
-                Message = request.Message,
-                Success = request.Success,
-            });
-
-            TryCompletePending(
-                request.CommandId,
-                new CommandDispatchResult
-                {
-                    DeviceId = state.Record.DeviceId,
-                    CommandId = request.CommandId,
-                    Accepted = true,
-                    Completed = true,
-                    Success = request.Success,
-                    ProgressPercent = request.Success ? 100 : 99,
-                    Stage = request.Success ? "ota-complete" : "ota-failed",
-                    Message = request.Message,
-                    ErrorCode = request.ErrorCode,
-                });
-        }
-
-        Log($"OTA result de {state.Record.DeviceId}: success={request.Success} cmd={request.CommandId}");
-        NotifyDevicesChanged();
-        return Results.Ok(new { ok = true });
     }
 
     private async Task<IResult> HandleCommandAckTrackedAsync(HttpContext ctx)
@@ -495,21 +326,11 @@ public sealed partial class DeviceServerHost
             DeviceCommandType.EnterProvisioning => "enter_provisioning",
             DeviceCommandType.RevokeAndRestart => "revoke_and_restart",
             DeviceCommandType.TestLed => "test_led",
-            DeviceCommandType.StartOta => "start_ota",
             DeviceCommandType.InstallApp => "install_app",
             DeviceCommandType.ActivateApp => "activate_app",
             DeviceCommandType.SetAppConfig => "set_app_config",
             _ => "unknown",
         };
-    }
-
-    private void CleanupOtaSessionsLocked()
-    {
-        var now = DateTimeOffset.UtcNow;
-        foreach (var session in otaDownloadSessions.Where(pair => pair.Value.ExpiresAtUtc <= now).ToArray())
-        {
-            otaDownloadSessions.Remove(session.Key);
-        }
     }
 
     private sealed class PendingTrackedCommand
@@ -535,11 +356,4 @@ public sealed partial class DeviceServerHost
 
         public bool TrySetResult(CommandDispatchResult result) => tcs.TrySetResult(result);
     }
-
-    private sealed record OtaArtifactState(string MergedBinPath, string Version, string Sha256, long SizeBytes, DateTimeOffset CreatedAtUtc);
-
-    private sealed record OtaSessionState(string DeviceId, DateTimeOffset ExpiresAtUtc);
 }
-
-
-

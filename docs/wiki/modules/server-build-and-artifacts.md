@@ -1,52 +1,50 @@
-# Modulo Server Build and Artifacts
+﻿# Modulo Server Build and Artifacts
 
 ## Objetivo
 
-Cobrir startup do servidor local, geracao/export de firmware e localizacao de artefatos consumidos por flash manual e OTA.
+Cobrir startup do servidor local e o fluxo simplificado de firmware na UI: download de BINs pre-compilados para flash manual.
 
 ## Responsabilidades
 
 - Inicializar servidor local com host publico e mDNS.
-- Gerar build PlatformIO por perfil.
-- Gerar arquivo merged e pacote de export.
-- Expor status/log para ServerPage.
+- Expor estado/log na ServerPage.
+- Resolver e copiar BIN pre-compilado (`stable` e `dma_exp`) para destino escolhido.
 
 ## Fluxo de execucao
 
 1. `DeviceIntegrationService.StartAsync` sobe host HTTP/WS.
-2. `DeviceOperationsCoordinator.BuildAndExportAsync` dispara build.
-3. `FirmwareBuildService.BuildAsync` compila e coleta artifacts.
-4. `FirmwareBuildService.ExportAsync` cria pasta final para uso operacional.
+2. `ServerPage` mostra host/log e acoes de download.
+3. `PrecompiledFirmwareService.TryResolveSource` encontra o BIN no pacote.
+4. `PrecompiledFirmwareService.CopyToAsync` salva no caminho escolhido.
 
 ## Pontos de alteracao frequente
 
-- Porta e host publicados.
-- Perfis `stable` e `dma_exp`.
-- Nome e conteudo do pacote exportado.
-- Parser de progresso de build.
+- Nome/descricao das opcoes de firmware na UI.
+- Localizacao dos assets de firmware no pacote.
+- Mensagens de status/log da ServerPage.
 
 ## Riscos e efeitos colaterais
 
-- Toolchain inconsistente quebra build.
-- Sem merged bin valido OTA/flash falham.
-- Mudanca de path afeta botao "Abrir pasta".
+- BIN ausente no pacote impede download.
+- Caminho sem permissao falha no salvamento.
+- Alteracao de nome de arquivo quebra resolucao de asset.
 
 ## Checklist apos alteracao
 
-- Build stable conclui e exporta pasta.
-- Build logs exibidos em tempo real.
-- Botao abrir pasta aponta para diretorio correto.
+- Download `stable` conclui com sucesso.
+- Download `dma_exp` conclui com sucesso.
+- Cancelamento do dialogo nao gera excecao.
+- Logs e status refletem sucesso/falha corretamente.
 
 ## Referencias de codigo
 
-- [DeviceIntegrationService.StartAsync](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L45) - assinatura: `Task StartAsync(CancellationToken)`
-- [FirmwareBuildService](../../../src/App.WinUI/Services/Devices/FirmwareBuildService.cs#L7) - assinatura: `internal sealed class FirmwareBuildService`
-- [FirmwareBuildService.BuildAsync](../../../src/App.WinUI/Services/Devices/FirmwareBuildService.cs#L66) - assinatura: `Task<FirmwareArtifactSet> BuildAsync(...)`
-- [FirmwareBuildService.ExportAsync](../../../src/App.WinUI/Services/Devices/FirmwareBuildService.cs#L154) - assinatura: `Task<string> ExportAsync(...)`
-- [ServerPage.OnBuildStableClicked](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L100) - assinatura: `private async void OnBuildStableClicked(...)`
+- [DeviceIntegrationService.StartAsync](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L1) - assinatura: `Task StartAsync(CancellationToken)`
+- [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1) - assinatura: `internal sealed class PrecompiledFirmwareService`
+- [PrecompiledFirmwareService.CopyToAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1) - assinatura: `Task CopyToAsync(...)`
+- [ServerPage](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1) - assinatura: `public sealed partial class ServerPage : Page`
 
 ## Backlinks no codigo
 
 - `src/App.WinUI/Services/Devices/DeviceIntegrationService.cs`
-- `src/App.WinUI/Services/Devices/FirmwareBuildService.cs`
+- `src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs`
 - `src/App.WinUI/Views/ServerPage.xaml.cs`

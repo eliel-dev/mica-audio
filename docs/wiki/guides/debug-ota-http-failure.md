@@ -1,28 +1,28 @@
-# Guia - Debug OTA HTTP failure
+﻿# Guia - Falhas de download e salvamento local de firmware
 
 ## Objetivo
 
-Diagnosticar falha de OTA quando status mostra erro HTTP no download do firmware.
+Diagnosticar falhas no novo fluxo de firmware pre-compilado (sem OTA), quando o app nao consegue localizar ou salvar o BIN.
 
 ## Passos
 
-1. Confirmar host publico ativo no app (`ServerBaseAddress`).
-2. Confirmar que `matrixportal-s3_merged.bin` existe na pasta exportada.
-3. Verificar token do device e sessao OTA com TTL valido.
-4. Testar endpoint `GET /api/v1/device/firmware/latest` e `download`.
-5. Revisar logs do coordinator e do firmware para `ota-download` e `ota-failed`.
-6. Repetir OTA apos refresh/reconnect do device.
+1. Confirmar que os assets existem em `src/App.WinUI/AppData/Firmware/`.
+2. Validar publish/output contem os BINs esperados.
+3. Na aba `Servidor`, tentar `Baixar stable` e observar status/log.
+4. Se falhar antes do dialogo, validar `TryResolveSource`.
+5. Se falhar apos dialogo, validar permissao/caminho escolhido.
+6. Repetir salvando em `Downloads` como teste base.
 
 ## Referencias de codigo
 
-- [DeviceOperationsCoordinator.StartOtaForDeviceAsync](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L307) - assinatura: `Task<CommandDispatchResult> StartOtaForDeviceAsync(...)`
-- [DeviceServerHost.Advanced.HandleFirmwareLatestAsync](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L203) - assinatura: `IResult HandleFirmwareLatestAsync(HttpContext ctx)`
-- [DeviceServerHost.Advanced.HandleFirmwareDownloadAsync](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L244) - assinatura: `IResult HandleFirmwareDownloadAsync(HttpContext ctx)`
-- [Firmware startOta](../../../firmware/matrixportal-s3/src/main.cpp#L233) - assinatura: `void startOta(const String& commandId)`
+- [PrecompiledFirmwareService.TryResolveSource](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1) - assinatura: `bool TryResolveSource(...)`
+- [PrecompiledFirmwareService.CopyToAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1) - assinatura: `Task CopyToAsync(...)`
+- [ServerPage.SaveFirmwareAsync](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1) - assinatura: `private async Task SaveFirmwareAsync(string optionId)`
+- [ServerPage.PickDestinationFileAsync](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1) - assinatura: `private static async Task<StorageFile?> PickDestinationFileAsync(...)`
 
 ## Checklist rapido
 
-- [ ] Endpoint latest retorna metadata valida.
-- [ ] Endpoint download retorna binario para token/sessao validos.
-- [ ] Device recebe progresso OTA > 0.
-- [ ] Em falha, status final explicita erro e nao trava UI.
+- [ ] `TryResolveSource` encontra arquivo para `stable` e `dma_exp`.
+- [ ] Cancelamento do FileSavePicker nao quebra estado da UI.
+- [ ] Erro de escrita aparece em log com mensagem clara.
+- [ ] Salvamento bem sucedido atualiza status para `Download: concluido`.

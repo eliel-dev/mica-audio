@@ -1,26 +1,27 @@
-# Guia - Build e export de firmware
+﻿# Guia - Download de firmware pre-compilado
 
 ## Objetivo
 
-Padronizar build local dos perfis de firmware e artefatos para flash manual.
+Baixar no app um dos BINs pre-compilados (`stable` ou `dma_exp`) e salvar no local escolhido pelo usuario para flash manual externo.
 
 ## Passos
 
 1. Abrir aba `Servidor` no app.
-2. Selecionar perfil (`stable` ou `dma_exp`).
-3. Rodar build/export.
-4. Abrir pasta de firmware exportado e flash manual externo.
+2. Clicar em `Baixar stable` ou `Baixar dma_exp`.
+3. Escolher pasta/arquivo no dialogo de salvar.
+4. Confirmar status `Download: concluido`.
+5. Fazer flash manual com ferramenta externa.
 
 ## Referencias de codigo
 
-- [FirmwareBuildService](../../../src/App.WinUI/Services/Devices/FirmwareBuildService.cs#L7) - assinatura: `internal sealed class FirmwareBuildService`
-- [IFirmwareBuildService.BuildAsync](../../../src/App.WinUI/Services/Devices/IFirmwareBuildService.cs#L7) - assinatura: `Task<FirmwareArtifactSet> BuildAsync(...)`
-- [platformio stable](../../../firmware/matrixportal-s3/platformio.ini#L19) - assinatura: `[env:matrixportal_s3_stable]`
-- [platformio dma_exp](../../../firmware/matrixportal-s3/platformio.ini#L27) - assinatura: `[env:matrixportal_s3_dma_exp]`
-- [dev-run.ps1 param](../../../scripts/dev-run.ps1#L2) - assinatura: `param(...)`
+- [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1) - assinatura: `internal sealed class PrecompiledFirmwareService`
+- [PrecompiledFirmwareService.CopyToAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1) - assinatura: `Task CopyToAsync(string optionId, string destinationPath, CancellationToken)`
+- [ServerPage.SaveFirmwareAsync](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1) - assinatura: `private async Task SaveFirmwareAsync(string optionId)`
+- [ServerPage FileSavePicker](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1) - assinatura: `private static async Task<StorageFile?> PickDestinationFileAsync(...)`
 
 ## Checklist rapido
 
-- Build conclui sem erro.
-- Artefato esperado e gerado.
-- Logs ficam salvos no app.
+- [ ] Botao abre dialogo de salvar.
+- [ ] Nome sugerido vem correto (`matrixportal-s3-stable_merged.bin` ou `matrixportal-s3-dma_exp_merged.bin`).
+- [ ] Cancelar nao gera erro.
+- [ ] Arquivo salvo fica com tamanho > 0.

@@ -20,7 +20,6 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
   </PropertyGroup>
-
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
@@ -33,7 +32,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.3.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260209005" />
@@ -41,11 +39,9 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" PrivateAssets="all" ExcludeAssets="runtime" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
-
   <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
     <ProjectCapability Include="Msix" />
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\MicaAudio.Core\MicaAudio.Core.csproj" />
     <ProjectReference Include="..\Audio.Loopback\Audio.Loopback.csproj" />
@@ -55,39 +51,25 @@
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
     <ProjectReference Include="..\Device.Server\Device.Server.csproj" />
   </ItemGroup>
-
   <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
     <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
   </PropertyGroup>
-
   <ItemGroup>
-    <Content Include="..\..\firmware\matrixportal-s3\**\*" Exclude="..\..\firmware\matrixportal-s3\.pio\**\*">
-      <Link>firmware\matrixportal-s3\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    <Content Include="AppData\Firmware\*.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
-
   <ItemGroup>
     <Page Remove="Views\DevicesPage.xaml" />
     <Page Remove="Views\AppsPage.xaml" />
     <Page Remove="Views\ServerPage.xaml" />
   </ItemGroup>
-
   <Target Name="PruneMuiToPtBr" AfterTargets="Publish">
     <ItemGroup>
-      <_MicaMuiFilesToDelete Include="$(PublishDir)**\*.mui"
-                             Exclude="$(PublishDir)pt-BR\**\*.mui;$(PublishDir)pt-br\**\*.mui" />
+      <_MicaMuiFilesToDelete Include="$(PublishDir)**\*.mui" Exclude="$(PublishDir)pt-BR\**\*.mui;$(PublishDir)pt-br\**\*.mui" />
     </ItemGroup>
-
-    <Message Importance="high"
-             Text="Pruning non-pt-BR MUI resources from publish output."
-             Condition="'@(_MicaMuiFilesToDelete)' != ''" />
-
+    <Message Importance="high" Text="Pruning non-pt-BR MUI resources from publish output." Condition="'@(_MicaMuiFilesToDelete)' != ''" />
     <Delete Files="@(_MicaMuiFilesToDelete)" />
   </Target>
 </Project>
-
-
-
-
-

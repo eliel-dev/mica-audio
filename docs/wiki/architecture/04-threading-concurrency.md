@@ -1,15 +1,15 @@
-# 04 - Threading and Concurrency
+﻿# 04 - Threading and Concurrency
 
 ## Objetivo
 
-Documentar como o app usa concorrencia para manter UI responsiva, render estavel e operacoes longas (build/comandos) sem bloquear a thread principal.
+Documentar como o app usa concorrencia para manter UI responsiva, render estavel e operacoes de dispositivo sem bloquear a thread principal.
 
 ## Modelo de concorrencia
 
 1. UI WinUI executa em thread unica com marshaling via `DispatcherQueue`.
 2. Captura e pipeline de audio rodam em tasks dedicadas.
 3. Refresh de dispositivos roda por timer leve e publica snapshot.
-4. Build de firmware roda fora da UI e reporta progresso incremental.
+4. Comandos tracked rodam fora da UI e retornam progresso/status.
 
 ## Regras praticas
 
@@ -20,11 +20,11 @@ Documentar como o app usa concorrencia para manter UI responsiva, render estavel
 
 ## Referencias de codigo
 
-- [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L5) - assinatura: `internal sealed class DeviceOperationsCoordinator : IDisposable`
-- [DeviceOperationsCoordinator.RefreshDevicesAsync](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L569) - assinatura: `private async Task RefreshDevicesAsync(bool forcePublish)`
-- [DeviceOperationsCoordinator.OnBuildProgress](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L646) - assinatura: `private void OnBuildProgress(BuildProgressUpdate update)`
-- [MainPage.ActivateVisualizerSessionAsync](../../../src/App.WinUI/Views/MainPage.xaml.cs#L244) - assinatura: `private async Task ActivateVisualizerSessionAsync()`
-- [AudioPipelineCoordinator.PipelineLoopAsync](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L74) - assinatura: `private async Task PipelineLoopAsync(CancellationToken token)`
+- [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1) - assinatura: `internal sealed class DeviceOperationsCoordinator : IDisposable`
+- [DeviceOperationsCoordinator.RefreshDevicesAsync](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1) - assinatura: `private async Task RefreshDevicesAsync(bool forcePublish)`
+- [DeviceOperationsCoordinator.OnHostCommandProgressChanged](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1) - assinatura: `private void OnHostCommandProgressChanged(...)`
+- [MainPage.ActivateVisualizerSessionAsync](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1) - assinatura: `private async Task ActivateVisualizerSessionAsync()`
+- [AudioPipelineCoordinator.PipelineLoopAsync](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1) - assinatura: `private async Task PipelineLoopAsync(CancellationToken token)`
 
 ## Backlinks no codigo
 

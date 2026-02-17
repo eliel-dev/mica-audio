@@ -1,4 +1,4 @@
-using Device.Protocol.Models;
+﻿using Device.Protocol.Models;
 using Device.Protocol.Stream;
 using Device.Server.Hosting;
 using MicaAudio.Core.Led;
@@ -128,8 +128,6 @@ public class MatrixPortalLedOutputTests
             CancellationToken cancellationToken = default)
             => SendCommandTrackedAsync(deviceId, commandType, timeout, cancellationToken);
 
-        public bool SetOtaArtifact(string mergedBinPath, string version) => false;
-
         public bool RemoveDevice(string deviceId) => false;
 
         public void BroadcastFrame(byte[] framePayload)
@@ -140,3 +138,4 @@ public class MatrixPortalLedOutputTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }
+

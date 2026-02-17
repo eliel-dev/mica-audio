@@ -2,7 +2,6 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
-#include <Update.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -140,19 +139,6 @@ void postCommandAck(
   postJsonWithAuth("/api/v1/device/command-ack", ack);
 }
 
-void postOtaResult(const String& commandId, bool success, const String& message, const char* errorCode = nullptr) {
-  JsonDocument result;
-  result["deviceId"] = gDeviceId;
-  result["commandId"] = commandId;
-  result["success"] = success;
-  result["message"] = message;
-  if (errorCode != nullptr && errorCode[0] != '\0') {
-    result["errorCode"] = errorCode;
-  }
-
-  postJsonWithAuth("/api/v1/device/ota/result", result);
-}
-
 void sendTelemetry(bool force) {
   if (!gWs.isConnected() || gDeviceId.isEmpty()) {
     return;
@@ -221,144 +207,6 @@ void updateTestLed() {
     digitalWrite(kTestLedPin, gTestLedState ? HIGH : LOW);
     gTestLedNextToggleMs = now + kTestLedTogglePeriodMs;
   }
-}
-
-void handleOtaFailure(const String& commandId, const String& message, const char* errorCode) {
-  sendCommandProgress(commandId, 99, "ota-failed", message, 0);
-  postCommandAck(commandId, false, message, 99, "ota-failed", errorCode);
-  postOtaResult(commandId, false, message, errorCode);
-}
-
-// DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#pontos-de-alteracao-frequente
-// DOCS: docs/wiki/guides/debug-ota-http-failure.md#passos
-void startOta(const String& commandId) {
-  if (commandId.isEmpty()) {
-    return;
-  }
-
-  sendCommandProgress(commandId, 1, "ota-init", "Iniciando OTA...");
-
-  HTTPClient latestHttp;
-  String latestUrl = "http://" + gServerHost + ":" + String(gServerPort)
-      + "/api/v1/device/firmware/latest?deviceId=" + gDeviceId + "&token=" + gToken;
-
-  if (!latestHttp.begin(latestUrl)) {
-    handleOtaFailure(commandId, "Falha ao abrir endpoint OTA (latest).", "ota_latest_begin_failed");
-    return;
-  }
-
-  int latestCode = latestHttp.GET();
-  String latestBody = latestHttp.getString();
-  latestHttp.end();
-
-  if (latestCode < 200 || latestCode >= 300) {
-    handleOtaFailure(commandId, "Servidor nao disponibilizou firmware OTA.", "ota_latest_http_error");
-    return;
-  }
-
-  JsonDocument latestJson;
-  if (deserializeJson(latestJson, latestBody) != DeserializationError::Ok) {
-    handleOtaFailure(commandId, "Resposta OTA invalida.", "ota_latest_parse_error");
-    return;
-  }
-
-  String downloadUrl = latestJson["downloadUrl"] | "";
-  if (downloadUrl.isEmpty()) {
-    handleOtaFailure(commandId, "URL de download OTA ausente.", "ota_download_url_missing");
-    return;
-  }
-
-  sendCommandProgress(commandId, 10, "ota-download", "Baixando firmware...");
-
-  HTTPClient downloadHttp;
-  if (!downloadHttp.begin(downloadUrl)) {
-    handleOtaFailure(commandId, "Falha ao iniciar download OTA.", "ota_download_begin_failed");
-    return;
-  }
-
-  int downloadCode = downloadHttp.GET();
-  if (downloadCode != HTTP_CODE_OK) {
-    String responseBody = downloadHttp.getString();
-    downloadHttp.end();
-    String message = "Download OTA retornou erro HTTP " + String(downloadCode);
-    if (responseBody.length() > 0) {
-      responseBody.replace("\n", " ");
-      responseBody.replace("\r", " ");
-      if (responseBody.length() > 120) {
-        responseBody = responseBody.substring(0, 120);
-      }
-      message += ": " + responseBody;
-    }
-
-    handleOtaFailure(commandId, message, "ota_download_http_error");
-    return;
-  }
-
-  int totalSize = downloadHttp.getSize();
-  if (!Update.begin(totalSize > 0 ? static_cast<size_t>(totalSize) : UPDATE_SIZE_UNKNOWN)) {
-    downloadHttp.end();
-    handleOtaFailure(commandId, "Falha ao iniciar gravacao OTA.", "ota_update_begin_failed");
-    return;
-  }
-
-  WiFiClient* stream = downloadHttp.getStreamPtr();
-  uint8_t buffer[1024];
-  size_t writtenTotal = 0;
-  int lastPercent = 10;
-
-  while (downloadHttp.connected() && (totalSize < 0 || writtenTotal < static_cast<size_t>(totalSize))) {
-    size_t available = stream->available();
-    if (available == 0) {
-      delay(1);
-      continue;
-    }
-
-    size_t toRead = available > sizeof(buffer) ? sizeof(buffer) : available;
-    int readCount = stream->readBytes(reinterpret_cast<char*>(buffer), toRead);
-    if (readCount <= 0) {
-      delay(1);
-      continue;
-    }
-
-    size_t written = Update.write(buffer, static_cast<size_t>(readCount));
-    if (written != static_cast<size_t>(readCount)) {
-      downloadHttp.end();
-      handleOtaFailure(commandId, "Falha ao gravar bloco OTA.", "ota_update_write_failed");
-      return;
-    }
-
-    writtenTotal += written;
-
-    int percent = lastPercent;
-    if (totalSize > 0) {
-      percent = 10 + static_cast<int>((writtenTotal * 85ULL) / static_cast<size_t>(totalSize));
-      if (percent > 95) {
-        percent = 95;
-      }
-    } else if (percent < 95) {
-      percent += 1;
-    }
-
-    if (percent > lastPercent) {
-      lastPercent = percent;
-      sendCommandProgress(commandId, static_cast<uint8_t>(lastPercent), "ota-write", "Aplicando firmware...");
-    }
-  }
-
-  bool otaOk = Update.end(true) && Update.isFinished();
-  downloadHttp.end();
-
-  if (!otaOk) {
-    handleOtaFailure(commandId, "Finalizacao OTA falhou.", "ota_finalize_failed");
-    return;
-  }
-
-  sendCommandProgress(commandId, 100, "ota-complete", "OTA concluida. Reiniciando...", 1);
-  postCommandAck(commandId, true, "OTA concluida.", 100, "ota-complete");
-  postOtaResult(commandId, true, "OTA concluida.");
-
-  delay(600);
-  ESP.restart();
 }
 
 void startProvisioningPortal() {
@@ -492,12 +340,6 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
     sendCommandProgress(commandId, 100, "test-led", "Teste de LED acionado.", 1);
     return;
   }
-
-  if (strcmp(command, "start_ota") == 0) {
-    startOta(commandId);
-    return;
-  }
-
   if (strcmp(command, "install_app") == 0) {
     String appId = parameters["appId"] | "";
     String appName = parameters["displayName"] | "";

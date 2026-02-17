@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using Device.Protocol.Contracts;
@@ -7,14 +7,13 @@ using Device.Server.Hosting;
 
 namespace App.WinUI.Services.Devices;
 
-// DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
+// DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 internal sealed class DeviceIntegrationService : IAsyncDisposable
 {
     private readonly IDeviceServerHost serverHost;
     private readonly IDeviceRegistryStore registryStore;
 
     private const int ServerPort = 5272;
-
     private static readonly TimeSpan RegistrySaveMinInterval = TimeSpan.FromSeconds(10);
 
     private readonly object registrySaveGate = new();
@@ -23,17 +22,14 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
     private string publicHost = "127.0.0.1";
     private DateTimeOffset lastRegistrySaveUtc = DateTimeOffset.MinValue;
 
-    public DeviceIntegrationService(IDeviceServerHost serverHost, IDeviceRegistryStore registryStore, IFirmwareBuildService firmwareBuildService)
+    public DeviceIntegrationService(IDeviceServerHost serverHost, IDeviceRegistryStore registryStore)
     {
         this.serverHost = serverHost;
         this.registryStore = registryStore;
-        FirmwareBuildService = firmwareBuildService;
 
         serverHost.DevicesChanged += OnDevicesChanged;
         serverHost.LogMessage += (_, msg) => LogMessage?.Invoke(this, msg);
     }
-
-    public IFirmwareBuildService FirmwareBuildService { get; }
 
     public IDeviceServerHost Host => serverHost;
 

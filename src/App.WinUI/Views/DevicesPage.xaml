@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="App.WinUI.Views.DevicesPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -133,14 +133,7 @@
                             x:Name="TestLedButton"
                             Icon="TouchPointer"
                             Label="Testar LED"
-                            Click="OnTestLedClicked" />
-                        <AppBarButton
-                            x:Name="OtaButton"
-                            IsEnabled="False"
-                            Icon="Download"
-                            Label="OTA manual"
-                            Click="OnOtaClicked" />
-                    </CommandBar>
+                            Click="OnTestLedClicked" />                    </CommandBar>
                 </Border>
 
                 <Border
@@ -206,4 +199,5 @@
             Severity="Informational" />
     </Grid>
 </Page>
+
 

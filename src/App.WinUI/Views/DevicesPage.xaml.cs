@@ -1,4 +1,4 @@
-using App.WinUI.Services.Devices;
+﻿using App.WinUI.Services.Devices;
 using Device.Protocol.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -106,17 +106,6 @@ public sealed partial class DevicesPage : Page
     private async void OnTestLedClicked(object sender, RoutedEventArgs e)
     {
         await RunSelectedCommandAsync(DeviceCommandType.TestLed).ConfigureAwait(false);
-    }
-
-    private async void OnOtaClicked(object sender, RoutedEventArgs e)
-    {
-        var selected = DevicesList.SelectedItem as DeviceListItem;
-        if (selected is null || DeviceOps is null)
-        {
-            return;
-        }
-
-        await DeviceOps.StartOtaForDeviceAsync(selected.DeviceId).ConfigureAwait(false);
     }
 
     private void OnCopyHostClicked(object sender, RoutedEventArgs e)
@@ -271,7 +260,6 @@ public sealed partial class DevicesPage : Page
         EnterProvisioningButton.IsEnabled = commandEnabled;
         RevokeButton.IsEnabled = commandEnabled;
         TestLedButton.IsEnabled = commandEnabled;
-        OtaButton.IsEnabled = false;
     }
 
     private sealed class DeviceListItem
@@ -287,4 +275,3 @@ public sealed partial class DevicesPage : Page
         public override string ToString() => $"{Name} ({DeviceId})";
     }
 }
-

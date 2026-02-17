@@ -493,7 +493,7 @@ $docsCoverageTargets = @(
     'firmware/matrixportal-s3/src/main.cpp',
     'src/App.WinUI/Services/Devices/DeviceIntegrationService.cs',
     'src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs',
-    'src/App.WinUI/Services/Devices/FirmwareBuildService.cs',
+    'src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs',
     'src/App.WinUI/Services/Apps/AppCatalogService.cs',
     'src/App.WinUI/Services/Apps/AppDeploymentService.cs',
     'src/App.WinUI/Views/DevicesPage.xaml.cs',
@@ -582,5 +582,6 @@ if ($warnings.Count -gt 0) {
 }
 
 exit 1
+
 
 

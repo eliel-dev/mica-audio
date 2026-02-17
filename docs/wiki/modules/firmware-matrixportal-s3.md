@@ -1,4 +1,4 @@
-# Modulo Firmware Matrix Portal S3
+﻿# Modulo Firmware Matrix Portal S3
 
 ## Objetivo
 
@@ -9,7 +9,7 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 - Provisionamento Wi-Fi e host do servidor.
 - Conexao WebSocket para stream/comandos.
 - ACK/progresso de comandos.
-- OTA pull (quando habilitado).
+- Telemetria periodica (RSSI, IP, versao, app ativo).
 
 ## Fluxo de execucao
 
@@ -26,7 +26,7 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 ## Pontos de alteracao frequente
 
 - Parser de comando WS (`onWsEvent`).
-- Fluxo OTA (`startOta`).
+- Telemetria e ACK.
 - Render da matriz e limites de brilho.
 
 ## Riscos e efeitos colaterais
@@ -43,11 +43,10 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 
 ## Referencias de codigo
 
-- [main.cpp kStreamFrameSize](../../../firmware/matrixportal-s3/src/main.cpp#L21) - assinatura: `constexpr size_t kStreamFrameSize = 81;`
-- [startOta](../../../firmware/matrixportal-s3/src/main.cpp#L233) - assinatura: `void startOta(const String& commandId)`
-- [onWsEvent](../../../firmware/matrixportal-s3/src/main.cpp#L434) - assinatura: `void onWsEvent(WStype_t type, uint8_t *payload, size_t len)`
-- [platformio.ini](../../../firmware/matrixportal-s3/platformio.ini#L19) - assinatura: `[env:matrixportal_s3_stable]`
-- [platformio.ini dma_exp](../../../firmware/matrixportal-s3/platformio.ini#L27) - assinatura: `[env:matrixportal_s3_dma_exp]`
+- [main.cpp kStreamFrameSize](../../../firmware/matrixportal-s3/src/main.cpp#L1) - assinatura: `constexpr size_t kStreamFrameSize = 81;`
+- [onWsEvent](../../../firmware/matrixportal-s3/src/main.cpp#L1) - assinatura: `void onWsEvent(WStype_t type, uint8_t *payload, size_t len)`
+- [platformio.ini stable](../../../firmware/matrixportal-s3/platformio.ini#L1) - assinatura: `[env:matrixportal_s3_stable]`
+- [platformio.ini dma_exp](../../../firmware/matrixportal-s3/platformio.ini#L1) - assinatura: `[env:matrixportal_s3_dma_exp]`
 
 ## Backlinks no codigo
 

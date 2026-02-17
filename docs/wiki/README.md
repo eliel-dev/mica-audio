@@ -19,8 +19,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 ## Navegacao rapida por tarefa
 
 - Quero mexer em captura/analise/render: [architecture/01-system-overview.md](architecture/01-system-overview.md)
-- Quero operar dispositivos e build de firmware: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
-- Quero debugar OTA HTTP: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
+- Quero operar dispositivos e servidor: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
+- Quero baixar firmware pre-compilado: [guides/build-export-firmware.md](guides/build-export-firmware.md)
+- Quero debugar falha de download/salvamento de firmware: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
 - Quero adicionar app no catalogo: [guides/add-app-catalog-item.md](guides/add-app-catalog-item.md)
 - Quero ver status da documentacao: [reference/docs-health.md](reference/docs-health.md)
 - Quero operar release 1.0 com setup assinado: [guides/release-1.0-installer.md](guides/release-1.0-installer.md)
@@ -53,11 +54,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Mudar configuracao do visualizador](guides/change-visualizer-settings.md)
 - [Adicionar novo renderer](guides/add-new-renderer.md)
 - [Adicionar novo comando de dispositivo](guides/add-device-command.md)
-- [Build e export de firmware](guides/build-export-firmware.md)
+- [Download de firmware pre-compilado](guides/build-export-firmware.md)
 - [Debug: visualizacao nao aparece](guides/debug-no-visualization.md)
 - [Adicionar item no catalogo de apps](guides/add-app-catalog-item.md)
 - [Operar ciclo de vida de dispositivo](guides/operate-device-lifecycle.md)
-- [Debug OTA HTTP failure](guides/debug-ota-http-failure.md)
+- [Debug de download/salvamento de firmware](guides/debug-ota-http-failure.md)
 - [Checklist de release de documentacao](guides/release-doc-checklist.md)
 - [Release 1.0 com setup assinado](guides/release-1.0-installer.md)
 
@@ -109,4 +110,3 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Codigo -> wiki: sempre marcador `DOCS:` em comentario.
 - Cada mudanca tecnica relevante deve atualizar wiki e backlinks.
 - Politica canonica: `docs/wiki/reference/ai-contract.v1.yaml`.
-

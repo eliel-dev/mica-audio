@@ -26,7 +26,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
 ```
 ### Documentacao operacional (Fase 2)
 
-- Guia operacional de dispositivos/build/firmware: `docs/wiki/modules/server-build-and-artifacts.md`
+- Guia operacional de dispositivos/servidor/firmware pre-compilado: `docs/wiki/modules/server-build-and-artifacts.md`
 - Operacao de dispositivos em campo: `docs/wiki/guides/operate-device-lifecycle.md`
 - Matriz de troubleshooting: `docs/wiki/reference/troubleshooting-matrix.md`
 - Saude da documentacao e metricas: `docs/wiki/reference/docs-health.md`
@@ -380,6 +380,7 @@ Implementacao deste projeto segue arquitetura propria (sem port direto de codigo
 ## Licenca
 
 Ainda nao definida neste repositorio. Recomendado adicionar `LICENSE` antes da publicacao oficial no GitHub.
+
 
 
 

@@ -1,4 +1,4 @@
-# WS Protocol v1
+﻿# WS Protocol v1
 
 Referencia do canal WebSocket entre servidor e firmware.
 
@@ -24,8 +24,7 @@ Referencia do canal WebSocket entre servidor e firmware.
 
 ## Referencias de codigo
 
-- [StreamFrameV1](../../../src/Device.Protocol/Stream/StreamFrameV1.cs#L5)
-- [StreamFrameV1.Create](../../../src/Device.Protocol/Stream/StreamFrameV1.cs#L11)
-- [DeviceCommandRequest](../../../src/Device.Protocol/Models/DeviceCommandRequest.cs#L3)
-- [DeviceCommandProgressMessage](../../../src/Device.Protocol/Models/DeviceCommandProgressMessage.cs#L3)
-- [DeviceServerHost.Advanced WS handler](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L63)
+- [StreamFrameV1](../../../src/Device.Protocol/Stream/StreamFrameV1.cs#L1)
+- [DeviceCommandRequest](../../../src/Device.Protocol/Models/DeviceCommandRequest.cs#L1)
+- [DeviceCommandProgressMessage](../../../src/Device.Protocol/Models/DeviceCommandProgressMessage.cs#L1)
+- [DeviceServerHost.Advanced WS handler](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1)
