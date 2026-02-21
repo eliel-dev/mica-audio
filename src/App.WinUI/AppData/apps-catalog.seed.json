@@ -1,225 +1,90 @@
-﻿{
-  "schemaVersion": 1,
+{
+  "schemaVersion": 2,
   "apps": [
     {
-      "id": "word-clock",
-      "name": "Word Clock",
-      "summary": "Relogio por palavras",
-      "description": "Mostra a hora em formato textual legivel.",
-      "author": "tronbyt community",
-      "packageName": "wordclock",
-      "fileName": "word_clock.star",
-      "recommendedIntervalMinutes": 0,
-      "category": "relogio"
-    },
-    {
-      "id": "analogclock",
-      "name": "Analog Clock",
-      "summary": "Relogio analogico",
-      "description": "Renderiza relogio analogico classico no painel.",
-      "author": "tronbyt community",
-      "packageName": "analogclock",
-      "fileName": "analogclock.star",
-      "recommendedIntervalMinutes": 0,
-      "category": "relogio"
-    },
-    {
-      "id": "worldclock",
-      "name": "World Clock",
-      "summary": "Hora em diferentes regioes",
-      "description": "Exibe hora local e fusos internacionais.",
-      "author": "tronbyt community",
-      "packageName": "worldclock",
-      "fileName": "worldclock.star",
-      "recommendedIntervalMinutes": 1,
-      "category": "relogio"
-    },
-    {
-      "id": "yearprogress",
-      "name": "Year Progress",
-      "summary": "Progresso do ano",
-      "description": "Mostra quanto do ano ja passou em barra percentual.",
-      "author": "tronbyt community",
-      "packageName": "yearprogress",
-      "fileName": "yearprogress.star",
-      "recommendedIntervalMinutes": 15,
-      "category": "produtividade"
-    },
-    {
       "id": "accuweather",
-      "name": "AccuWeather",
-      "summary": "Previsao de tempo",
-      "description": "Mostra previsao de tempo com base na API AccuWeather.",
-      "author": "tronbyt community",
+      "name": "Clima",
+      "summary": "Previsão do tempo",
+      "description": "Mostra condições e previsão do tempo para a cidade selecionada.",
+      "author": "mica audio",
       "packageName": "accuweather",
       "fileName": "accuweather.star",
       "recommendedIntervalMinutes": 5,
-      "category": "clima"
+      "category": "clima",
+      "preview": {
+        "kind": "weather",
+        "speed": 1
+      },
+      "modifiers": [
+        {
+          "key": "city",
+          "label": "Cidade",
+          "type": "CityAutocomplete",
+          "description": "Cidade base para consulta do clima.",
+          "placeholder": "Ex: São Paulo",
+          "defaultValue": "",
+          "required": true
+        },
+        {
+          "key": "units",
+          "label": "Unidades",
+          "type": "Select",
+          "description": "Sistema de unidades de temperatura.",
+          "defaultValue": "metric",
+          "required": true,
+          "options": [
+            { "label": "Métrico (C)", "value": "metric" },
+            { "label": "Imperial (F)", "value": "imperial" }
+          ]
+        },
+        {
+          "key": "lang",
+          "label": "Idioma",
+          "type": "Select",
+          "description": "Idioma dos textos mostrados.",
+          "defaultValue": "pt",
+          "required": true,
+          "options": [
+            { "label": "Português", "value": "pt" },
+            { "label": "English", "value": "en" },
+            { "label": "Espanhol", "value": "es" }
+          ]
+        }
+      ]
     },
     {
-      "id": "airquality",
-      "name": "Air Quality",
-      "summary": "Qualidade do ar",
-      "description": "Monitora indice de qualidade do ar da regiao configurada.",
-      "author": "tronbyt community",
-      "packageName": "airquality",
-      "fileName": "airquality.star",
-      "recommendedIntervalMinutes": 10,
-      "category": "clima"
-    },
-    {
-      "id": "airnow",
-      "name": "AirNow",
-      "summary": "AQI via AirNow",
-      "description": "Mostra dados de poluicao usando servico AirNow.",
-      "author": "tronbyt community",
-      "packageName": "airnow",
-      "fileName": "airnow.star",
-      "recommendedIntervalMinutes": 10,
-      "category": "clima"
-    },
-    {
-      "id": "xboxgamerscore",
-      "name": "Xbox Gamerscore",
-      "summary": "Pontuacao Xbox",
-      "description": "Exibe gamerscore e status da conta Xbox.",
-      "author": "tronbyt community",
-      "packageName": "xboxgamerscore",
-      "fileName": "xboxgamerscore.star",
-      "recommendedIntervalMinutes": 15,
-      "category": "games"
-    },
-    {
-      "id": "wordlebyt",
-      "name": "WordleByt",
-      "summary": "Status do Wordle",
-      "description": "Painel com estatisticas e resultados do Wordle.",
-      "author": "tronbyt community",
-      "packageName": "wordlebyt",
-      "fileName": "wordlebyt.star",
-      "recommendedIntervalMinutes": 30,
-      "category": "games"
-    },
-    {
-      "id": "github-contributions",
-      "name": "GitHub Contributions",
-      "summary": "Contribuicoes GitHub",
-      "description": "Mostra mapa de contribuicoes de usuario no GitHub.",
-      "author": "tronbyt community",
-      "packageName": "GitHubContributions",
-      "fileName": "github_contributions.star",
-      "recommendedIntervalMinutes": 30,
-      "category": "dev"
-    },
-    {
-      "id": "wsjnews",
-      "name": "WSJ News",
-      "summary": "Noticias WSJ",
-      "description": "Titulos mais recentes do Wall Street Journal.",
-      "author": "tronbyt community",
-      "packageName": "wsjnews",
-      "fileName": "wsjnews.star",
-      "recommendedIntervalMinutes": 10,
-      "category": "noticias"
-    },
-    {
-      "id": "wordoftheday",
-      "name": "Word of the Day",
-      "summary": "Palavra do dia",
-      "description": "Mostra uma palavra nova com significado diariamente.",
-      "author": "tronbyt community",
-      "packageName": "wordoftheday",
-      "fileName": "wordoftheday.star",
-      "recommendedIntervalMinutes": 60,
-      "category": "educacao"
-    },
-    {
-      "id": "advice",
-      "name": "Advice",
-      "summary": "Dica aleatoria",
-      "description": "Mostra dicas e frases curtas periodicamente.",
-      "author": "tronbyt community",
-      "packageName": "advice",
-      "fileName": "advice.star",
-      "recommendedIntervalMinutes": 30,
-      "category": "util"
-    },
-    {
-      "id": "ynab",
-      "name": "YNAB",
-      "summary": "Orcamento pessoal",
-      "description": "Resumo de categorias e saldo da conta YNAB.",
-      "author": "tronbyt community",
-      "packageName": "ynab",
-      "fileName": "ynab.star",
-      "recommendedIntervalMinutes": 15,
-      "category": "financas"
-    },
-    {
-      "id": "wowtoken",
-      "name": "WoW Token",
-      "summary": "Preco WoW Token",
-      "description": "Monitora valor atual do token de World of Warcraft.",
-      "author": "tronbyt community",
-      "packageName": "wowtoken",
-      "fileName": "wowtoken.star",
-      "recommendedIntervalMinutes": 10,
-      "category": "games"
-    },
-    {
-      "id": "aflscores",
-      "name": "AFL Scores",
-      "summary": "Placares AFL",
-      "description": "Resultados e jogos recentes da liga AFL.",
-      "author": "tronbyt community",
-      "packageName": "aflscores",
-      "fileName": "aflscores.star",
-      "recommendedIntervalMinutes": 5,
-      "category": "esportes"
-    },
-    {
-      "id": "xflscores",
-      "name": "XFL Scores",
-      "summary": "Placares XFL",
-      "description": "Acompanha placares da liga XFL em tempo quase real.",
-      "author": "tronbyt community",
-      "packageName": "xflscores",
-      "fileName": "xflscores.star",
-      "recommendedIntervalMinutes": 5,
-      "category": "esportes"
-    },
-    {
-      "id": "wtatennis",
-      "name": "WTA Tennis",
-      "summary": "Ranking e jogos WTA",
-      "description": "Informacoes de partidas e ranking do circuito WTA.",
-      "author": "tronbyt community",
-      "packageName": "wtatennis",
-      "fileName": "wtatennis.star",
-      "recommendedIntervalMinutes": 10,
-      "category": "esportes"
-    },
-    {
-      "id": "zmanim",
-      "name": "Zmanim",
-      "summary": "Horarios religiosos",
-      "description": "Mostra horarios judaicos diarios com base na localizacao.",
-      "author": "tronbyt community",
-      "packageName": "zmanim",
-      "fileName": "zmanim.star",
-      "recommendedIntervalMinutes": 30,
-      "category": "cultura"
-    },
-    {
-      "id": "yulelog",
-      "name": "Yule Log",
-      "summary": "Animacao decorativa",
-      "description": "Animacao tematica para uso decorativo do painel.",
-      "author": "tronbyt community",
-      "packageName": "yulelog",
-      "fileName": "yulelog.star",
+      "id": "analogclock",
+      "name": "Relógio",
+      "summary": "Relógio digital",
+      "description": "Exibe a hora atual em estilo de painel HUB75.",
+      "author": "mica audio",
+      "packageName": "analogclock",
+      "fileName": "analogclock.star",
       "recommendedIntervalMinutes": 0,
-      "category": "visual"
+      "category": "relógio",
+      "preview": {
+        "kind": "clock",
+        "speed": 1
+      },
+      "modifiers": [
+        {
+          "key": "timezone",
+          "label": "Fuso horário",
+          "type": "Text",
+          "description": "Identificador IANA do fuso (ex: America/Sao_Paulo).",
+          "placeholder": "America/Sao_Paulo",
+          "defaultValue": "America/Sao_Paulo",
+          "required": true
+        },
+        {
+          "key": "format24h",
+          "label": "Formato 24h",
+          "type": "Toggle",
+          "description": "Alterna entre formato 24h e 12h.",
+          "required": false,
+          "defaultToggle": true
+        }
+      ]
     }
   ]
 }

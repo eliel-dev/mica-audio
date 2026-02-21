@@ -1,4 +1,4 @@
-﻿namespace App.WinUI.Models.Apps;
+namespace App.WinUI.Models.Apps;
 
 public sealed class AppCatalogItem
 {
@@ -19,6 +19,10 @@ public sealed class AppCatalogItem
     public int RecommendedIntervalMinutes { get; init; }
 
     public string Category { get; init; } = "geral";
+
+    public AppPreviewDefinition? Preview { get; init; }
+
+    public IReadOnlyList<AppModifierDefinition> Modifiers { get; init; } = Array.Empty<AppModifierDefinition>();
 
     public bool IsValid()
     {

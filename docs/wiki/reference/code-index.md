@@ -16,6 +16,11 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
 - [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L1)
+- [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)
+- [CityAutocompleteService](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L1)
+- [AppPreviewRendererRegistry](../../../src/App.WinUI/Views/Controls/AppPreviewRendererRegistry.cs#L1)
+- [AppPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/AppPreviewThumbnailControl.cs#L1)
+- [AppCatalogCardControl](../../../src/App.WinUI/Views/Controls/AppCatalogCardControl.cs#L1)
 ## Audio, DSP and visual
 - [WasapiLoopbackCaptureService](../../../src/Audio.Loopback/Capture/WasapiLoopbackCaptureService.cs#L1)
 - [SpectrumAnalyzer](../../../src/Analyzer.Dsp/Analysis/SpectrumAnalyzer.cs#L1)
@@ -66,3 +71,4 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [AppSettings](../../../src/MicaAudio.Core/Presets/AppSettings.cs#L1)
 - [SettingsRepository](../../../src/App.WinUI/Services/SettingsRepository.cs#L1)
 - [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L1)
+

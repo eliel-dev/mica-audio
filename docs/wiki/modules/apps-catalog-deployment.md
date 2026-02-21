@@ -2,49 +2,61 @@
 
 ## Objetivo
 
-Documentar o fluxo de catalogo local de apps e envio de comandos de install/activate/config para um dispositivo online.
+Documentar o fluxo de catalogo local, miniaturas animadas, modificadores dinamicos por app e envio de comandos `install/activate/set_app_config` para dispositivo online.
 
 ## Responsabilidades
 
-- Seed e leitura de catalogo JSON.
-- Filtro e exibicao de apps na UI.
-- Traducao de item de catalogo para payload de comando.
-- Disparo de comandos tracked no coordinator.
+- Carregar catalogo (`schemaVersion: 2`) com `preview` e `modifiers`.
+- Renderizar cards com preview animado procedural (Win2D).
+- Persistir modificadores por escopo `deviceId + appId`.
+- Buscar cidade (clima) via Open-Meteo Geocoding.
+- Enviar comandos tracked para install/activate/config no coordinator.
 
 ## Fluxo de execucao
 
-1. `AppCatalogService.LoadCatalogAsync` garante seed e carrega itens validos.
-2. `AppsPage` aplica filtro e selecao.
-3. `AppDeploymentService` converte selecao em `DeviceAppCommandPayload`.
-4. `DeviceOperationsCoordinator` envia comando tracked ao servidor.
+1. `AppCatalogService.LoadCatalogAsync` carrega `catalog.json` e valida itens.
+2. `AppsPage` monta cards (`AppCatalogCardControl`) e anima previews visiveis/selecionado.
+3. Selecionar app + dispositivo carrega draft em `AppModifierStateStore`.
+4. `Salvar` persiste localmente os modificadores.
+5. `Aplicar` envia `set_app_config` via `AppDeploymentService`.
+6. `Instalar` usa draft salvo para incluir `configJson` no payload quando houver.
 
 ## Pontos de alteracao frequente
 
-- Schema do catalogo local.
-- Criticidade de validacao de item.
-- Campos de payload para firmware.
+- Schema do catalogo (`preview/modifiers`).
+- Tipos de campo dinamico (`AppModifierFieldType`).
+- Renderizadores de preview por categoria.
+- Validacao/serializacao de `configJson`.
 
 ## Riscos e efeitos colaterais
 
-- Mudanca de schema sem migracao pode invalidar catalogo existente.
-- Divergencia entre payload e firmware causa comando sem efeito.
+- Modificador mal definido no catalogo pode bloquear salvamento/aplicacao.
+- Excesso de previews ativos pode aumentar custo de render.
+- Falha de autocomplete nao deve bloquear entrada manual de cidade.
 
 ## Checklist apos alteracao
 
 - Recarregar catalogo sem erro.
-- Instalar e ativar app em device online.
-- Verificar logs e status de comando.
+- Cards exibem preview animado no viewport.
+- `Salvar` persiste por `deviceId+appId`.
+- `Aplicar` envia comando tracked e atualiza logs/progresso.
+- `Instalar` inclui config salvo quando disponivel.
 
 ## Referencias de codigo
 
-- [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L6) - assinatura: `internal sealed class AppCatalogService`
-- [LoadCatalogAsync](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L23) - assinatura: `Task<IReadOnlyList<AppCatalogItem>> LoadCatalogAsync(...)`
-- [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L7) - assinatura: `internal sealed class AppDeploymentService`
-- [InstallAsync](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L16) - assinatura: `Task<CommandDispatchResult> InstallAsync(...)`
-- [AppsPage.LoadCatalogAsync](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L52) - assinatura: `private async Task LoadCatalogAsync()`
+- [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L7) - assinatura: `internal sealed class AppCatalogService`
+- [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L7) - assinatura: `internal sealed class AppModifierStateStore`
+- [CityAutocompleteService](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L7) - assinatura: `internal sealed class CityAutocompleteService`
+- [AppsPage](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L16) - assinatura: `public sealed partial class AppsPage`
+- [AppPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/AppPreviewThumbnailControl.cs#L12) - assinatura: `internal sealed class AppPreviewThumbnailControl`
+- [AppPreviewRendererRegistry](../../../src/App.WinUI/Views/Controls/AppPreviewRendererRegistry.cs#L6) - assinatura: `internal static class AppPreviewRendererRegistry`
+- [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L8) - assinatura: `internal sealed class AppDeploymentService`
 
 ## Backlinks no codigo
 
 - `src/App.WinUI/Services/Apps/AppCatalogService.cs`
-- `src/App.WinUI/Services/Apps/AppDeploymentService.cs`
+- `src/App.WinUI/Services/Apps/AppModifierStateStore.cs`
+- `src/App.WinUI/Services/Apps/CityAutocompleteService.cs`
 - `src/App.WinUI/Views/AppsPage.xaml.cs`
+- `src/App.WinUI/Views/AppsPage.Ui.cs`
+- `src/App.WinUI/Services/Apps/AppDeploymentService.cs`

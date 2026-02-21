@@ -23,6 +23,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Quero baixar firmware pre-compilado: [guides/build-export-firmware.md](guides/build-export-firmware.md)
 - Quero debugar falha de download/salvamento de firmware: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
 - Quero adicionar app no catalogo: [guides/add-app-catalog-item.md](guides/add-app-catalog-item.md)
+- Quero configurar modificadores dinamicos de app: [guides/configure-app-modifiers.md](guides/configure-app-modifiers.md)
+- Quero resolver busca de cidade no clima: [guides/troubleshoot-city-autocomplete.md](guides/troubleshoot-city-autocomplete.md)
 - Quero ver status da documentacao: [reference/docs-health.md](reference/docs-health.md)
 - Quero aplicar hardening security-first: [guides/security-quality-hardening.md](guides/security-quality-hardening.md)
 - Quero operar release 1.0 com setup assinado: [guides/release-1.0-installer.md](guides/release-1.0-installer.md)
@@ -58,6 +60,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Download de firmware pre-compilado](guides/build-export-firmware.md)
 - [Debug: visualizacao nao aparece](guides/debug-no-visualization.md)
 - [Adicionar item no catalogo de apps](guides/add-app-catalog-item.md)
+- [Configurar modificadores de apps](guides/configure-app-modifiers.md)
+- [Troubleshoot autocomplete de cidade](guides/troubleshoot-city-autocomplete.md)
 - [Operar ciclo de vida de dispositivo](guides/operate-device-lifecycle.md)
 - [Debug de download/salvamento de firmware](guides/debug-ota-http-failure.md)
 - [Checklist de release de documentacao](guides/release-doc-checklist.md)
@@ -112,3 +116,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Codigo -> wiki: sempre marcador `DOCS:` em comentario.
 - Cada mudanca tecnica relevante deve atualizar wiki e backlinks.
 - Politica canonica: `docs/wiki/reference/ai-contract.v1.yaml`.
+
+

@@ -1,9 +1,12 @@
-﻿using Microsoft.UI.Xaml;
+using App.WinUI.Views.Controls;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
 namespace App.WinUI.Views;
+
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
 
 public sealed partial class AppsPage
 {
@@ -17,6 +20,13 @@ public sealed partial class AppsPage
     private TextBlock OperationStatusText = null!;
     private TextBlock OperationPercentText = null!;
     private TextBox LogsTextBox = null!;
+    private TextBlock ModifiersHintText = null!;
+    private StackPanel ModifiersPanel = null!;
+    private Button InstallButton = null!;
+    private Button ActivateButton = null!;
+    private Button SaveModifiersButton = null!;
+    private Button ApplyModifiersButton = null!;
+    private Button ResetModifiersButton = null!;
 
     private void InitializeComponent()
     {
@@ -35,6 +45,7 @@ public sealed partial class AppsPage
             Background = null,
             DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
         };
+
         var reload = new AppBarButton { Label = "Recarregar", Icon = new SymbolIcon(Symbol.Refresh) };
         reload.Click += OnReloadCatalogClicked;
         topCommandBar.PrimaryCommands.Add(reload);
@@ -61,7 +72,7 @@ public sealed partial class AppsPage
 
         catalogHost.Children.Add(new TextBlock
         {
-            Text = "Catalogo de apps",
+            Text = "Catálogo de apps",
             Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
         });
 
@@ -71,6 +82,8 @@ public sealed partial class AppsPage
             SelectionMode = ListViewSelectionMode.Single,
         };
         CatalogGrid.ItemClick += OnCatalogItemClick;
+        CatalogGrid.SelectionChanged += OnCatalogSelectionChanged;
+
         Grid.SetRow(CatalogGrid, 1);
         catalogHost.Children.Add(CatalogGrid);
 
@@ -78,6 +91,8 @@ public sealed partial class AppsPage
 
         var right = new Grid { RowSpacing = 10 };
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -96,7 +111,7 @@ public sealed partial class AppsPage
         details.Children.Add(SelectedAppDescriptionText);
         right.Children.Add(CreateCard(details));
 
-        var deployBar = new CommandBar
+        var deviceBar = new CommandBar
         {
             Background = null,
             DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
@@ -105,20 +120,80 @@ public sealed partial class AppsPage
         TargetDeviceCombo = new ComboBox
         {
             PlaceholderText = "Dispositivo online",
-            MinWidth = 220,
+            MinWidth = 240,
         };
-        deployBar.PrimaryCommands.Add(new AppBarElementContainer { Content = TargetDeviceCombo });
+        TargetDeviceCombo.SelectionChanged += OnTargetDeviceSelectionChanged;
 
-        var install = new AppBarButton { Label = "Instalar", Icon = new SymbolIcon(Symbol.Download) };
-        install.Click += OnInstallClicked;
-        var activate = new AppBarButton { Label = "Ativar", Icon = new SymbolIcon(Symbol.Accept) };
-        activate.Click += OnActivateClicked;
-        deployBar.PrimaryCommands.Add(install);
-        deployBar.PrimaryCommands.Add(activate);
+        deviceBar.PrimaryCommands.Add(new AppBarElementContainer { Content = TargetDeviceCombo });
+        var deviceCard = CreateCard(deviceBar, padding: 4);
+        Grid.SetRow(deviceCard, 1);
+        right.Children.Add(deviceCard);
 
-        var deployCard = CreateCard(deployBar, padding: 4);
-        Grid.SetRow(deployCard, 1);
-        right.Children.Add(deployCard);
+        var modifiersHost = new StackPanel { Spacing = 8 };
+        ModifiersHintText = new TextBlock
+        {
+            Text = "Modificadores do app selecionado.",
+            Opacity = 0.82,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        ModifiersPanel = new StackPanel { Spacing = 10 };
+        var modifierScroll = new ScrollViewer
+        {
+            MinHeight = 170,
+            MaxHeight = 280,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = ModifiersPanel,
+        };
+
+        modifiersHost.Children.Add(new TextBlock
+        {
+            Text = "Modificadores",
+            Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
+        });
+        modifiersHost.Children.Add(ModifiersHintText);
+        modifiersHost.Children.Add(modifierScroll);
+
+        var modifiersCard = CreateCard(modifiersHost);
+        Grid.SetRow(modifiersCard, 2);
+        right.Children.Add(modifiersCard);
+
+        var actionsGrid = new Grid { ColumnSpacing = 8 };
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        InstallButton = new Button { Content = "Instalar" };
+        InstallButton.Click += OnInstallClicked;
+
+        ActivateButton = new Button { Content = "Ativar" };
+        ActivateButton.Click += OnActivateClicked;
+
+        SaveModifiersButton = new Button { Content = "Salvar" };
+        SaveModifiersButton.Click += OnSaveModifiersClicked;
+
+        ApplyModifiersButton = new Button { Content = "Aplicar" };
+        ApplyModifiersButton.Click += OnApplyModifiersClicked;
+
+        ResetModifiersButton = new Button { Content = "Restaurar" };
+        ResetModifiersButton.Click += OnResetModifiersClicked;
+
+        Grid.SetColumn(ActivateButton, 1);
+        Grid.SetColumn(SaveModifiersButton, 2);
+        Grid.SetColumn(ApplyModifiersButton, 3);
+        Grid.SetColumn(ResetModifiersButton, 4);
+
+        actionsGrid.Children.Add(InstallButton);
+        actionsGrid.Children.Add(ActivateButton);
+        actionsGrid.Children.Add(SaveModifiersButton);
+        actionsGrid.Children.Add(ApplyModifiersButton);
+        actionsGrid.Children.Add(ResetModifiersButton);
+
+        var actionsCard = CreateCard(actionsGrid);
+        Grid.SetRow(actionsCard, 3);
+        right.Children.Add(actionsCard);
 
         var statusGrid = new Grid { ColumnSpacing = 10 };
         statusGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -136,7 +211,7 @@ public sealed partial class AppsPage
 
         OperationStatusText = new TextBlock
         {
-            Text = "Operacoes: pronto",
+            Text = "Operações: pronto",
             VerticalAlignment = VerticalAlignment.Center,
             TextWrapping = TextWrapping.Wrap,
         };
@@ -155,12 +230,12 @@ public sealed partial class AppsPage
         statusGrid.Children.Add(OperationPercentText);
 
         var statusCard = CreateCard(statusGrid);
-        Grid.SetRow(statusCard, 2);
+        Grid.SetRow(statusCard, 4);
         right.Children.Add(statusCard);
 
         LogsTextBox = new TextBox
         {
-            Header = "Historico",
+            Header = "Histórico",
             AcceptsReturn = true,
             IsReadOnly = true,
             TextWrapping = TextWrapping.Wrap,
@@ -169,7 +244,7 @@ public sealed partial class AppsPage
         ScrollViewer.SetVerticalScrollBarVisibility(LogsTextBox, ScrollBarVisibility.Auto);
 
         var logsCard = CreateCard(LogsTextBox);
-        Grid.SetRow(logsCard, 3);
+        Grid.SetRow(logsCard, 5);
         right.Children.Add(logsCard);
 
         content.Children.Add(right);
@@ -198,5 +273,7 @@ public sealed partial class AppsPage
         return UiResourceResolver.ResolveBrush(key, fallback);
     }
 }
+
+
 
 
