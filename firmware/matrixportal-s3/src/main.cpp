@@ -20,6 +20,16 @@ constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 81;
 constexpr unsigned long kProvisioningFallbackMs = 60000;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
+constexpr uint8_t kMatrixWidth = MICA_MATRIX_WIDTH;
+constexpr uint8_t kMatrixHeight = MICA_MATRIX_HEIGHT;
+constexpr uint8_t kMatrixHalfHeight = kMatrixHeight / 2;
+static_assert((kMatrixHeight % 2) == 0, "MICA_MATRIX_HEIGHT must be even.");
+
+constexpr uint8_t kMatrixRgbPins[6] = {42, 41, 40, 38, 39, 37};
+constexpr uint8_t kMatrixAddrPins[5] = {45, 36, 48, 35, 21};
+constexpr uint8_t kMatrixClockPin = 2;
+constexpr uint8_t kMatrixLatchPin = 47;
+constexpr uint8_t kMatrixOePin = 14;
 
 #if defined(LED_BUILTIN)
 constexpr int kTestLedPin = LED_BUILTIN;
@@ -58,6 +68,163 @@ unsigned long gLastTelemetryMs = 0;
 unsigned long gTestLedUntilMs = 0;
 unsigned long gTestLedNextToggleMs = 0;
 bool gTestLedState = false;
+bool gMatrixReady = false;
+uint8_t gAppliedBrightness = 255;
+
+#if defined(MICA_PROFILE_STABLE)
+Adafruit_Protomatter gMatrix(
+    kMatrixWidth,
+    4,
+    1,
+    const_cast<uint8_t*>(kMatrixRgbPins),
+    4,
+    const_cast<uint8_t*>(kMatrixAddrPins),
+    kMatrixClockPin,
+    kMatrixLatchPin,
+    kMatrixOePin,
+    true);
+#endif
+
+#if defined(MICA_PROFILE_DMA_EXP)
+MatrixPanel_I2S_DMA* gMatrix = nullptr;
+#endif
+
+struct RgbColor {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+};
+
+RgbColor rainbowColorForColumn(uint16_t column, uint16_t columnCount) {
+  if (columnCount <= 1) {
+    return {255, 0, 0};
+  }
+
+  const uint8_t hue = static_cast<uint8_t>((column * 255u) / (columnCount - 1u));
+  const uint8_t region = hue / 43u;
+  const uint8_t remainder = static_cast<uint8_t>((hue - (region * 43u)) * 6u);
+  const uint8_t q = static_cast<uint8_t>(255u - remainder);
+  const uint8_t t = remainder;
+
+  switch (region) {
+    case 0:
+      return {255, t, 0};
+    case 1:
+      return {q, 255, 0};
+    case 2:
+      return {0, 255, t};
+    case 3:
+      return {0, q, 255};
+    case 4:
+      return {t, 0, 255};
+    default:
+      return {255, 0, q};
+  }
+}
+
+void setMatrixBrightness(uint8_t brightness) {
+  if (!gMatrixReady || gAppliedBrightness == brightness) {
+    return;
+  }
+
+#if defined(MICA_PROFILE_DMA_EXP)
+  if (gMatrix != nullptr) {
+    gMatrix->setBrightness8(brightness);
+  }
+#endif
+
+  gAppliedBrightness = brightness;
+}
+
+void clearMatrix() {
+  if (!gMatrixReady) {
+    return;
+  }
+
+#if defined(MICA_PROFILE_STABLE)
+  gMatrix.fillScreen(0);
+#endif
+
+#if defined(MICA_PROFILE_DMA_EXP)
+  if (gMatrix != nullptr) {
+    gMatrix->clearScreen();
+  }
+#endif
+}
+
+void drawMatrixPixel(uint8_t x, uint8_t y, const RgbColor& color) {
+#if defined(MICA_PROFILE_STABLE)
+  const uint8_t scaledR = static_cast<uint8_t>((static_cast<uint16_t>(color.r) * gAppliedBrightness) / 255u);
+  const uint8_t scaledG = static_cast<uint8_t>((static_cast<uint16_t>(color.g) * gAppliedBrightness) / 255u);
+  const uint8_t scaledB = static_cast<uint8_t>((static_cast<uint16_t>(color.b) * gAppliedBrightness) / 255u);
+  gMatrix.drawPixel(x, y, gMatrix.color565(scaledR, scaledG, scaledB));
+#endif
+
+#if defined(MICA_PROFILE_DMA_EXP)
+  if (gMatrix != nullptr) {
+    gMatrix->drawPixelRGB888(x, y, color.r, color.g, color.b);
+  }
+#endif
+}
+
+void commitMatrixFrame() {
+#if defined(MICA_PROFILE_STABLE)
+  gMatrix.show();
+#endif
+}
+
+// DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#pontos-de-alteracao-frequente
+bool initMatrixDisplay() {
+#if defined(MICA_PROFILE_STABLE)
+  ProtomatterStatus status = gMatrix.begin();
+  if (status != PROTOMATTER_OK) {
+    Serial.printf("Falha ao inicializar Protomatter (status=%d)\n", static_cast<int>(status));
+    return false;
+  }
+#endif
+
+#if defined(MICA_PROFILE_DMA_EXP)
+  HUB75_I2S_CFG::i2s_pins pinMap = {
+      static_cast<int8_t>(kMatrixRgbPins[0]),
+      static_cast<int8_t>(kMatrixRgbPins[1]),
+      static_cast<int8_t>(kMatrixRgbPins[2]),
+      static_cast<int8_t>(kMatrixRgbPins[3]),
+      static_cast<int8_t>(kMatrixRgbPins[4]),
+      static_cast<int8_t>(kMatrixRgbPins[5]),
+      static_cast<int8_t>(kMatrixAddrPins[0]),
+      static_cast<int8_t>(kMatrixAddrPins[1]),
+      static_cast<int8_t>(kMatrixAddrPins[2]),
+      static_cast<int8_t>(kMatrixAddrPins[3]),
+      static_cast<int8_t>(-1),
+      static_cast<int8_t>(kMatrixLatchPin),
+      static_cast<int8_t>(kMatrixOePin),
+      static_cast<int8_t>(kMatrixClockPin)};
+
+  HUB75_I2S_CFG config(kMatrixWidth, kMatrixHeight, 1, pinMap);
+  config.i2sspeed = HUB75_I2S_CFG::HZ_10M;
+  config.clkphase = false;
+
+  gMatrix = new MatrixPanel_I2S_DMA(config);
+  if (gMatrix == nullptr) {
+    Serial.println("Falha ao alocar MatrixPanel_I2S_DMA.");
+    return false;
+  }
+
+  if (!gMatrix->begin()) {
+    Serial.println("Falha ao inicializar MatrixPanel_I2S_DMA.");
+    delete gMatrix;
+    gMatrix = nullptr;
+    return false;
+  }
+#endif
+
+  gMatrixReady = true;
+  gAppliedBrightness = gServerBrightness;
+  setMatrixBrightness(gServerBrightness);
+  clearMatrix();
+  commitMatrixFrame();
+  return true;
+}
 
 bool postJsonWithAuth(const String& path, JsonDocument& doc) {
   if (gDeviceId.isEmpty() || gToken.isEmpty() || gServerHost.isEmpty()) {
@@ -422,10 +589,39 @@ void connectWebSocket() {
   gWs.setReconnectInterval(2000);
 }
 
+// DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#fluxo-de-execucao
 void drawBars() {
-  // TODO: render bins64 in 64x32 mirror bars using Protomatter (stable)
-  // or HUB75 DMA library (dma_exp).
-  // gServerBrightness already carries server-side brightness cap (0..255).
+  if (!gMatrixReady) {
+    return;
+  }
+
+  setMatrixBrightness(gServerBrightness);
+  clearMatrix();
+
+  const uint16_t columnCount = (kBinsCount < kMatrixWidth) ? kBinsCount : kMatrixWidth;
+  for (uint16_t x = 0; x < columnCount; x++) {
+    const uint16_t binIndex = (x * kBinsCount) / columnCount;
+    const uint8_t amplitude = gBins[binIndex];
+    const uint8_t barHeight =
+        static_cast<uint8_t>((static_cast<uint16_t>(amplitude) * kMatrixHalfHeight + 254u) / 255u);
+
+    if (barHeight == 0) {
+      continue;
+    }
+
+    const RgbColor color = rainbowColorForColumn(x, columnCount);
+    for (uint8_t offset = 0; offset < barHeight; offset++) {
+      const uint8_t topY = static_cast<uint8_t>((kMatrixHalfHeight - 1u) - offset);
+      const uint8_t bottomY = static_cast<uint8_t>(kMatrixHalfHeight + offset);
+      drawMatrixPixel(static_cast<uint8_t>(x), topY, color);
+
+      if (bottomY < kMatrixHeight) {
+        drawMatrixPixel(static_cast<uint8_t>(x), bottomY, color);
+      }
+    }
+  }
+
+  commitMatrixFrame();
 }
 }  // namespace
 
@@ -433,6 +629,9 @@ void setup() {
   Serial.begin(115200);
   gPrefs.begin("micaaudio", false);
 
+  if (!initMatrixDisplay()) {
+    Serial.println("Painel HUB75 indisponivel: exibicao de barras desativada.");
+  }
   if (kTestLedPin >= 0) {
     pinMode(kTestLedPin, OUTPUT);
     digitalWrite(kTestLedPin, LOW);

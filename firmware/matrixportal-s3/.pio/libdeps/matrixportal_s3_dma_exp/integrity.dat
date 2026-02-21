@@ -1,0 +1,5 @@
+bblanchon/ArduinoJson @ ^7.0.4
+links2004/WebSockets @ ^2.6.1
+https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA.git
+tzapu/WiFiManager @ ^2.0.17
+adafruit/Adafruit GFX Library @ ^1.12.4
