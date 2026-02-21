@@ -1,4 +1,4 @@
-﻿
+
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -85,12 +85,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     public async Task StopAsync()
     {
         WebApplication? localApp;
-                CancellationTokenSource? localCts;
+        CancellationTokenSource? localCts;
+        DeviceState[] statesToDispose;
 
         lock (gate)
         {
             localApp = app;
-                        localCts = appCts;
+            localCts = appCts;
             app = null;
             appCts = null;
         }
@@ -104,7 +105,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         {
             localCts?.Cancel();
             await localApp.StopAsync().ConfigureAwait(false);
-                    }
+        }
         catch
         {
             // ignore shutdown races
@@ -112,19 +113,23 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         finally
         {
             localCts?.Dispose();
-            foreach (var state in devices.Values)
+            lock (gate)
+            {
+                statesToDispose = devices.Values.ToArray();
+                devices.Clear();
+                pairingCodes.Clear();
+            }
+
+            foreach (var state in statesToDispose)
             {
                 state.Dispose();
             }
 
-            devices.Clear();
-            pairingCodes.Clear();
             NotifyDevicesChanged();
         }
 
         Log("Servidor de dispositivos parado");
     }
-
     public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
     {
         var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
