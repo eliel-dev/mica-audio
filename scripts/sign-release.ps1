@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$CertPath,
@@ -9,7 +9,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string[]]$InputPaths,
 
-    [string]$TimestampUrl = 'http://timestamp.digicert.com',
+    [string]$TimestampUrl = 'https://timestamp.digicert.com',
 
     [string]$ExpectedSubject
 )
@@ -111,3 +111,4 @@ foreach ($file in $filesToSign) {
 }
 
 Write-Step 'Assinatura concluida com sucesso.'
+

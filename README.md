@@ -80,6 +80,26 @@ powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 dotnet build MicaAudio.sln -c Debug
 ```
+### Seguranca e qualidade (security-first)
+
+Hardening aplicado no runtime e no pipeline:
+
+- Rate limiting em endpoints criticos (`pair`, `command-ack`, handshake WS).
+- Politica de rede privada por padrao no servidor de dispositivos (`ServerConfig`).
+- Pareamento com limite anti-abuso por IP/janela.
+- Token de dispositivo criptografado em repouso (DPAPI) no `devices.json`.
+- Dependabot (NuGet + Actions), CodeQL e Dependency Review no GitHub.
+- Gate local/CI para vulnerabilidades de dependencias.
+
+Comando local recomendado:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dependency-vulnerability-gate.ps1 -ProjectOrSolution MicaAudio.sln
+```
+
+Guia operacional:
+- `docs/wiki/guides/security-quality-hardening.md`
+
 ## Principais recursos
 
 - Captura de audio do dispositivo de saida padrao via WASAPI loopback.
@@ -158,7 +178,7 @@ scripts/
 - `float[]? DisplayBarX` (opcional)
 - `float[]? DisplayBarWidth` (opcional)
 
-Regra importante: `Bands64` é derivado do mesmo espectro calculado no frame (sem segunda FFT).
+Regra importante: `Bands64` Ã© derivado do mesmo espectro calculado no frame (sem segunda FFT).
 
 ### Output
 
@@ -380,6 +400,7 @@ Implementacao deste projeto segue arquitetura propria (sem port direto de codigo
 ## Licenca
 
 Ainda nao definida neste repositorio. Recomendado adicionar `LICENSE` antes da publicacao oficial no GitHub.
+
 
 
 

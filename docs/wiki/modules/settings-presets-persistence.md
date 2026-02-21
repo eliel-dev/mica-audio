@@ -34,12 +34,18 @@ Centralizar configuracoes de sessao, presets e armazenamento em `%AppData%`.
 - Confirmar que valor permaneceu igual.
 - Testar arquivo `settings.json` limpo e legado.
 
+## Tokens de dispositivo em repouso
+
+- `devices.json` passa a persistir `TokenProtected` com DPAPI (`dpapi:v1:`).
+- Leitura segue backward-compatible com formato legado em texto puro.
+- Rotacao/repareamento deve sobrescrever token legado com formato protegido no proximo save.
 ## Referencias de codigo
 
 - [AppSettings](../../../src/MicaAudio.Core/Presets/AppSettings.cs#L5) - assinatura: `public sealed class AppSettings`
 - [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L7) - assinatura: `internal sealed class AppSettingsDomainService`
 - [SettingsRepository](../../../src/App.WinUI/Services/SettingsRepository.cs#L6) - assinatura: `internal sealed class SettingsRepository`
 - [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L6) - assinatura: `internal sealed class PresetRepository`
+- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1) - assinatura: `internal sealed class JsonDeviceRegistryStore`
 
 ## Backlinks no codigo
 

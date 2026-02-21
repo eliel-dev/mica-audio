@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "device.protocol": {
+        "type": "Project"
+      },
+      "device.server": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )"
+        }
+      },
+      "micaaudio.core": {
+        "type": "Project"
+      }
+    }
+  }
+}

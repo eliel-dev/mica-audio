@@ -12,6 +12,7 @@ Medir saude da documentacao e garantir que links/backlinks continuam rastreaveis
 - Cobertura minima de arquivos-chave com `DOCS:` >= 2.
 - Conformidade do contrato IA (`ai-contract.v1.yaml`).
 - Conformidade de handoff para mudanca estrutural.
+- Resultado de auditoria de dependencias (`dependency-vulnerability-gate`).
 
 ## Comandos locais
 
@@ -19,6 +20,7 @@ Medir saude da documentacao e garantir que links/backlinks continuam rastreaveis
 powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\git-hooks-bootstrap.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dependency-vulnerability-gate.ps1 -ProjectOrSolution MicaAudio.sln
 dotnet build MicaAudio.sln -c Debug
 ```
 
@@ -29,10 +31,14 @@ Checks esperados no GitHub Actions:
 1. `governance-structural-docs`
 2. `governance-ai-guardrails`
 3. `governance-build-debug`
+4. `dependency-review`
+5. `codeql`
 
 Arquivo de workflow:
 
 - [governance.yml](../../../.github/workflows/governance.yml)
+- [dependency-review.yml](../../../.github/workflows/dependency-review.yml)
+- [codeql.yml](../../../.github/workflows/codeql.yml)
 - [release.yml](../../../.github/workflows/release.yml)
 
 ## Politica de governanca
@@ -48,6 +54,6 @@ Arquivo de workflow:
 - [docs-structural-gate.ps1](../../../scripts/docs-structural-gate.ps1#L1)
 - [ai-governance-check.ps1](../../../scripts/ai-governance-check.ps1#L1)
 - [git-hooks-bootstrap.ps1](../../../scripts/git-hooks-bootstrap.ps1#L1)
+- [dependency-vulnerability-gate.ps1](../../../scripts/dependency-vulnerability-gate.ps1#L1)
 - [AI contract](ai-contract.v1.yaml)
 - [Wiki index](../README.md)
-

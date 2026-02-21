@@ -18,6 +18,8 @@ namespace {
 // DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#fluxo-de-execucao
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 81;
+constexpr uint8_t kStreamVersion = 1;
+constexpr uint8_t kStreamBinsMessageType = 1;
 constexpr unsigned long kProvisioningFallbackMs = 60000;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
 constexpr uint8_t kMatrixWidth = MICA_MATRIX_WIDTH;
@@ -48,6 +50,12 @@ constexpr const char* kFirmwareVersion = "vNext-dma_exp";
 #else
 constexpr const char* kFirmwareProfile = "stable";
 constexpr const char* kFirmwareVersion = "vNext-stable";
+#endif
+
+#if defined(MICA_SECURITY_PROFILE_RELEASE)
+constexpr const char* kSecurityProfile = "release";
+#else
+constexpr const char* kSecurityProfile = "dev";
 #endif
 
 Preferences gPrefs;
@@ -460,7 +468,15 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
     return;
   }
 
-  if (type == WStype_BIN && len >= kStreamFrameSize) {
+  if (type == WStype_BIN) {
+    if (payload == nullptr || len < kStreamFrameSize) {
+      return;
+    }
+
+    if (payload[0] != kStreamVersion || payload[1] != kStreamBinsMessageType) {
+      return;
+    }
+
     gLevel = payload[14];
     memcpy(gBins, payload + 15, kBinsCount);
     gServerBrightness = payload[79];
@@ -627,6 +643,9 @@ void drawBars() {
 
 void setup() {
   Serial.begin(115200);
+  if (strcmp(kSecurityProfile, "dev") == 0) {
+    Serial.printf("MicaAudio firmware profile=%s security=%s\\n", kFirmwareProfile, kSecurityProfile);
+  }
   gPrefs.begin("micaaudio", false);
 
   if (!initMatrixDisplay()) {
@@ -683,7 +702,3 @@ void loop() {
   updateTestLed();
   drawBars();
 }
-
-
-
-

@@ -1,4 +1,4 @@
-﻿# Code Index
+# Code Index
 Indice expandido para localizar rapidamente pontos de alteracao por pagina, servico e protocolo.
 ## App pages (WinUI)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
@@ -13,6 +13,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [DeviceIntegrationService](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L1)
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
+- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
 - [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L1)
 ## Audio, DSP and visual
@@ -30,6 +31,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [DeviceServerHost.Advanced](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1)
+- [ServerConfig](../../../src/Device.Protocol/Contracts/ServerConfig.cs#L1)
 - [DeviceCommandRequest](../../../src/Device.Protocol/Models/DeviceCommandRequest.cs#L1)
 - [DeviceCommandProgressMessage](../../../src/Device.Protocol/Models/DeviceCommandProgressMessage.cs#L1)
 - [StreamFrameV1](../../../src/Device.Protocol/Stream/StreamFrameV1.cs#L1)
@@ -40,13 +42,20 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [docs-validate.ps1](../../../scripts/docs-validate.ps1#L1)
 - [docs-structural-gate.ps1](../../../scripts/docs-structural-gate.ps1#L1)
 - [ai-governance-check.ps1](../../../scripts/ai-governance-check.ps1#L1)
+- [dependency-vulnerability-gate.ps1](../../../scripts/dependency-vulnerability-gate.ps1#L1)
 - [git-hooks-bootstrap.ps1](../../../scripts/git-hooks-bootstrap.ps1#L1)
 - [release.yml](../../../.github/workflows/release.yml#L1)
+- [codeql.yml](../../../.github/workflows/codeql.yml#L1)
+- [dependency-review.yml](../../../.github/workflows/dependency-review.yml#L1)
 - [sign-release.ps1](../../../scripts/sign-release.ps1#L1)
 - [MicaAudio.Installer.wixproj](../../../installer/MicaAudio.Installer/MicaAudio.Installer.wixproj#L1)
 - [Product.wxs](../../../installer/MicaAudio.Installer/Product.wxs#L1)
 - [MicaAudio.Bundle.wixproj](../../../installer/MicaAudio.Bundle/MicaAudio.Bundle.wixproj#L1)
 - [Bundle.wxs](../../../installer/MicaAudio.Bundle/Bundle.wxs#L1)
+- [dependabot.yml](../../../.github/dependabot.yml#L1)
+- [Directory.Build.props](../../../Directory.Build.props#L1)
+- [NuGet.config](../../../NuGet.config#L1)
+- [.editorconfig](../../../.editorconfig#L1)
 ## Governanca IA
 - [AGENTS](../../../AGENTS.md#L1)
 - [AI index](../ai/README.md)

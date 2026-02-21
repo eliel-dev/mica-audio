@@ -41,6 +41,10 @@ jobs:
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1 -Fast
 
+      - name: Dependency vulnerability gate
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File .\scripts\dependency-vulnerability-gate.ps1 -ProjectOrSolution MicaAudio.sln
+
       - name: Build solution Debug
         shell: pwsh
         run: dotnet build MicaAudio.sln -c Debug
@@ -250,7 +254,7 @@ jobs:
           "@ | Out-File -FilePath $notesPath -Encoding utf8
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b
         with:
           tag_name: ${{ needs.publish-app.outputs.tag_name }}
           name: Mica Audio ${{ needs.publish-app.outputs.tag_name }}
@@ -258,4 +262,6 @@ jobs:
           files: |
             artifacts/release/MicaAudio-Setup-x64-v${{ needs.publish-app.outputs.release_version }}.exe
             artifacts/release/MicaAudio-Setup-x64-v${{ needs.publish-app.outputs.release_version }}.sha256
+
+
 

@@ -1,4 +1,4 @@
-﻿# Wiki Tecnica do Mica Audio
+# Wiki Tecnica do Mica Audio
 
 Documentacao tecnica versionada junto com o codigo para acelerar manutencao, onboarding e continuidade por humanos e IA.
 
@@ -24,6 +24,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Quero debugar falha de download/salvamento de firmware: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
 - Quero adicionar app no catalogo: [guides/add-app-catalog-item.md](guides/add-app-catalog-item.md)
 - Quero ver status da documentacao: [reference/docs-health.md](reference/docs-health.md)
+- Quero aplicar hardening security-first: [guides/security-quality-hardening.md](guides/security-quality-hardening.md)
 - Quero operar release 1.0 com setup assinado: [guides/release-1.0-installer.md](guides/release-1.0-installer.md)
 - Quero operar no modo solo + IA: [ai/README.md](ai/README.md)
 
@@ -61,6 +62,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Debug de download/salvamento de firmware](guides/debug-ota-http-failure.md)
 - [Checklist de release de documentacao](guides/release-doc-checklist.md)
 - [Release 1.0 com setup assinado](guides/release-1.0-installer.md)
+- [Hardening de seguranca e qualidade](guides/security-quality-hardening.md)
 
 ### IA / Agentes
 - [IA index](ai/README.md)
