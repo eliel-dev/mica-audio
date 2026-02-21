@@ -6,6 +6,8 @@ public sealed class AppSettings
 {
     public string ActivePresetId { get; init; } = "audiomotion-clone";
 
+    public string SelectedRendererId { get; init; } = "audiomotion-clone";
+
     public bool Hub75PreviewEnabled { get; init; }
 
     public float Brightness { get; init; } = 0.9f;

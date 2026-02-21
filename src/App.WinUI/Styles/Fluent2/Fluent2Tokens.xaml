@@ -1,8 +1,28 @@
 ﻿<ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Color x:Key="BrandAccentColor">#26C98A</Color>
-    <SolidColorBrush x:Key="BrandAccentBrush" Color="{StaticResource BrandAccentColor}" />
+
+    <SolidColorBrush x:Key="AppSurfaceBaseBrush" Color="{ThemeResource LayerFillColorDefault}" />
+    <SolidColorBrush x:Key="AppSurfacePanelBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
+    <SolidColorBrush x:Key="AppSurfaceElevatedBrush" Color="{ThemeResource LayerFillColorAlt}" />
+    <SolidColorBrush x:Key="AppSurfaceStrokeBrush" Color="{ThemeResource CardStrokeColorDefault}" />
+
+    <SolidColorBrush x:Key="AppTextPrimaryBrush" Color="{ThemeResource TextFillColorPrimary}" />
+    <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="{ThemeResource TextFillColorSecondary}" />
+    <SolidColorBrush x:Key="AppAccentBrush" Color="{ThemeResource AccentFillColorDefault}" />
+    <SolidColorBrush x:Key="AppAccentTextBrush" Color="{ThemeResource AccentTextFillColorPrimary}" />
+
+    <SolidColorBrush x:Key="BrandAccentBrush" Color="#26C98A" />
+
+    <StaticResource x:Key="SurfaceBaseBrush" ResourceKey="AppSurfaceBaseBrush" />
+    <StaticResource x:Key="SurfacePanelBrush" ResourceKey="AppSurfacePanelBrush" />
+    <StaticResource x:Key="SurfaceElevatedBrush" ResourceKey="AppSurfaceElevatedBrush" />
+    <StaticResource x:Key="SurfaceStrokeBrush" ResourceKey="AppSurfaceStrokeBrush" />
+    <StaticResource x:Key="PrimaryTextBrush" ResourceKey="AppTextPrimaryBrush" />
+    <StaticResource x:Key="MutedTextBrush" ResourceKey="AppTextSecondaryBrush" />
+    <StaticResource x:Key="AccentPrimaryBrush" ResourceKey="BrandAccentBrush" />
+
+    <SolidColorBrush x:Key="AppFallbackSurfaceBaseBrush" Color="#0B0F14" />
 
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
@@ -14,16 +34,15 @@
             <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="#4E5563" />
             <SolidColorBrush x:Key="AppAccentBrush" Color="#0F6CBD" />
             <SolidColorBrush x:Key="AppAccentTextBrush" Color="#FFFFFF" />
-
-            <SolidColorBrush x:Key="SurfaceBaseBrush" Color="#F6F8FB" />
-            <SolidColorBrush x:Key="SurfacePanelBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#EEF2F8" />
-            <SolidColorBrush x:Key="SurfaceStrokeBrush" Color="#D7DFEB" />
-            <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1A1E27" />
-            <SolidColorBrush x:Key="MutedTextBrush" Color="#4E5563" />
-            <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#26C98A" />
-
             <SolidColorBrush x:Key="AppFallbackSurfaceBaseBrush" Color="#F6F8FB" />
+
+            <StaticResource x:Key="SurfaceBaseBrush" ResourceKey="AppSurfaceBaseBrush" />
+            <StaticResource x:Key="SurfacePanelBrush" ResourceKey="AppSurfacePanelBrush" />
+            <StaticResource x:Key="SurfaceElevatedBrush" ResourceKey="AppSurfaceElevatedBrush" />
+            <StaticResource x:Key="SurfaceStrokeBrush" ResourceKey="AppSurfaceStrokeBrush" />
+            <StaticResource x:Key="PrimaryTextBrush" ResourceKey="AppTextPrimaryBrush" />
+            <StaticResource x:Key="MutedTextBrush" ResourceKey="AppTextSecondaryBrush" />
+            <StaticResource x:Key="AccentPrimaryBrush" ResourceKey="BrandAccentBrush" />
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
@@ -35,16 +54,15 @@
             <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="#B8C0CC" />
             <SolidColorBrush x:Key="AppAccentBrush" Color="#6CB8FF" />
             <SolidColorBrush x:Key="AppAccentTextBrush" Color="#001323" />
-
-            <SolidColorBrush x:Key="SurfaceBaseBrush" Color="#0B0F14" />
-            <SolidColorBrush x:Key="SurfacePanelBrush" Color="#141A22" />
-            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#1A2330" />
-            <SolidColorBrush x:Key="SurfaceStrokeBrush" Color="#313E51" />
-            <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F5F7FA" />
-            <SolidColorBrush x:Key="MutedTextBrush" Color="#B8C0CC" />
-            <SolidColorBrush x:Key="AccentPrimaryBrush" Color="#26C98A" />
-
             <SolidColorBrush x:Key="AppFallbackSurfaceBaseBrush" Color="#0B0F14" />
+
+            <StaticResource x:Key="SurfaceBaseBrush" ResourceKey="AppSurfaceBaseBrush" />
+            <StaticResource x:Key="SurfacePanelBrush" ResourceKey="AppSurfacePanelBrush" />
+            <StaticResource x:Key="SurfaceElevatedBrush" ResourceKey="AppSurfaceElevatedBrush" />
+            <StaticResource x:Key="SurfaceStrokeBrush" ResourceKey="AppSurfaceStrokeBrush" />
+            <StaticResource x:Key="PrimaryTextBrush" ResourceKey="AppTextPrimaryBrush" />
+            <StaticResource x:Key="MutedTextBrush" ResourceKey="AppTextSecondaryBrush" />
+            <StaticResource x:Key="AccentPrimaryBrush" ResourceKey="BrandAccentBrush" />
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="HighContrast">
@@ -56,16 +74,15 @@
             <SolidColorBrush x:Key="AppTextSecondaryBrush" Color="White" />
             <SolidColorBrush x:Key="AppAccentBrush" Color="Yellow" />
             <SolidColorBrush x:Key="AppAccentTextBrush" Color="Black" />
-
-            <SolidColorBrush x:Key="SurfaceBaseBrush" Color="Black" />
-            <SolidColorBrush x:Key="SurfacePanelBrush" Color="Black" />
-            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="Black" />
-            <SolidColorBrush x:Key="SurfaceStrokeBrush" Color="White" />
-            <SolidColorBrush x:Key="PrimaryTextBrush" Color="White" />
-            <SolidColorBrush x:Key="MutedTextBrush" Color="White" />
-            <SolidColorBrush x:Key="AccentPrimaryBrush" Color="Yellow" />
-
             <SolidColorBrush x:Key="AppFallbackSurfaceBaseBrush" Color="Black" />
+
+            <StaticResource x:Key="SurfaceBaseBrush" ResourceKey="AppSurfaceBaseBrush" />
+            <StaticResource x:Key="SurfacePanelBrush" ResourceKey="AppSurfacePanelBrush" />
+            <StaticResource x:Key="SurfaceElevatedBrush" ResourceKey="AppSurfaceElevatedBrush" />
+            <StaticResource x:Key="SurfaceStrokeBrush" ResourceKey="AppSurfaceStrokeBrush" />
+            <StaticResource x:Key="PrimaryTextBrush" ResourceKey="AppTextPrimaryBrush" />
+            <StaticResource x:Key="MutedTextBrush" ResourceKey="AppTextSecondaryBrush" />
+            <StaticResource x:Key="AccentPrimaryBrush" ResourceKey="AppAccentBrush" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

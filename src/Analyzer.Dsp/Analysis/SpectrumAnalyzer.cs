@@ -5,6 +5,7 @@ using MicaAudio.Core.Config;
 
 namespace Analyzer.Dsp.Analysis;
 
+// DOCS: docs/wiki/modules/analyzer-dsp.md#modulo-analyzerdsp
 public sealed class SpectrumAnalyzer : IAnalyzer
 {
     private readonly AnalyzerConfig config;
@@ -76,6 +77,7 @@ public sealed class SpectrumAnalyzer : IAnalyzer
 
     public SpectrumFrame? Process(in PcmFrame frame)
     {
+        // DOCS: docs/wiki/modules/analyzer-dsp.md#fluxo-de-execucao
         if (frame.SamplesMono.Length == 0)
         {
             return null;

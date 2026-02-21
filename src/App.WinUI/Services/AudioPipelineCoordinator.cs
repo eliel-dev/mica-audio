@@ -6,33 +6,38 @@ using Output.Led;
 
 namespace App.WinUI.Services;
 
+// DOCS: docs/wiki/modules/app-winui.md#responsabilidades
 internal sealed class AudioPipelineCoordinator
 {
     private readonly ILoopbackCapture capture;
     private readonly ILedOutput simulatorLedOutput;
+    private readonly ILedOutput matrixPortalLedOutput;
     private readonly ILedOutput nullLedOutput;
     private readonly Func<IAnalyzer> analyzerFactory;
 
     private CancellationTokenSource? cts;
     private Task? loopTask;
     private bool running;
-    private ILedOutput activeLedOutput;
+    private bool hubPreviewEnabled;
+    private float brightness = LedDefaults.Brightness;
     private string currentPresetId = "audiomotion-clone";
 
     public AudioPipelineCoordinator(
         ILoopbackCapture capture,
         ILedOutput simulatorLedOutput,
+        ILedOutput matrixPortalLedOutput,
         ILedOutput nullLedOutput,
         Func<IAnalyzer> analyzerFactory)
     {
         this.capture = capture;
         this.simulatorLedOutput = simulatorLedOutput;
+        this.matrixPortalLedOutput = matrixPortalLedOutput;
         this.nullLedOutput = nullLedOutput;
         this.analyzerFactory = analyzerFactory;
-        activeLedOutput = nullLedOutput;
     }
 
     public SpectrumFrame? LatestFrame { get; private set; }
+
     public event EventHandler<string>? StatusChanged;
 
     public async Task StartAsync(bool hubPreviewEnabled, float brightness, string presetId, CancellationToken cancellationToken = default)
@@ -64,7 +69,7 @@ internal sealed class AudioPipelineCoordinator
 
         currentPresetId = presetId;
         LatestFrame = null;
-        SetHubPreview(hubPreviewEnabled, brightness);
+        ConfigureOutputs(hubPreviewEnabled, brightness);
 
         loopTask = Task.Run(() => PipelineLoopAsync(cts.Token));
         running = true;
@@ -97,7 +102,9 @@ internal sealed class AudioPipelineCoordinator
             cts = null;
             loopTask = null;
             running = false;
-            activeLedOutput.Stop();
+            simulatorLedOutput.Stop();
+            matrixPortalLedOutput.Stop();
+            nullLedOutput.Stop();
         }
 
         StatusChanged?.Invoke(this, "Parado");
@@ -105,14 +112,43 @@ internal sealed class AudioPipelineCoordinator
 
     public void SetHubPreview(bool enabled, float brightness)
     {
-        activeLedOutput = enabled ? simulatorLedOutput : nullLedOutput;
-        activeLedOutput.Start(new LedOutputConfig { Width = 64, Height = 32, Brightness = brightness });
+        ConfigureOutputs(enabled, brightness);
     }
 
     public void SetCurrentPreset(string presetId) => currentPresetId = presetId;
 
+    private void ConfigureOutputs(bool enableSimulator, float brightness)
+    {
+        hubPreviewEnabled = enableSimulator;
+        this.brightness = Math.Clamp(brightness, 0f, 1f);
+
+        var ledConfig = new LedOutputConfig
+        {
+            Width = LedDefaults.MatrixWidth,
+            Height = LedDefaults.MatrixHeight,
+            Brightness = this.brightness,
+        };
+
+        matrixPortalLedOutput.Start(ledConfig);
+        matrixPortalLedOutput.SetBrightness(this.brightness);
+
+        if (hubPreviewEnabled)
+        {
+            simulatorLedOutput.Start(ledConfig);
+            simulatorLedOutput.SetBrightness(this.brightness);
+        }
+        else
+        {
+            simulatorLedOutput.Stop();
+        }
+
+        nullLedOutput.Start(ledConfig);
+        nullLedOutput.SetBrightness(this.brightness);
+    }
+
     private async Task PipelineLoopAsync(CancellationToken cancellationToken)
     {
+        // DOCS: docs/wiki/architecture/01-system-overview.md#pipeline-principal
         var reader = capture.Frames;
 
         while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
@@ -127,13 +163,27 @@ internal sealed class AudioPipelineCoordinator
                 }
 
                 LatestFrame = spectrum;
-                activeLedOutput.Send(new LedPayload
+
+                var payload = new LedPayload
                 {
                     Bins64 = spectrum.Bands64,
                     Level = spectrum.Level,
                     PresetId = currentPresetId,
-                });
+                };
+
+                matrixPortalLedOutput.Send(payload);
+
+                if (hubPreviewEnabled)
+                {
+                    simulatorLedOutput.Send(payload);
+                }
+                else
+                {
+                    nullLedOutput.Send(payload);
+                }
             }
         }
     }
 }
+
+

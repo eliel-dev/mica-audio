@@ -1,0 +1,149 @@
+name: governance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  governance-structural-docs:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Compute changed files
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.sha }}
+        run: |
+          $changedPath = '.tmp-changed-files.txt'
+
+          if ($env:EVENT_NAME -eq 'pull_request') {
+            git diff --name-only $env:PR_BASE_SHA $env:PR_HEAD_SHA | Set-Content $changedPath
+          }
+          elseif ($env:EVENT_NAME -eq 'push') {
+            if ([string]::IsNullOrWhiteSpace($env:PUSH_BEFORE_SHA) -or $env:PUSH_BEFORE_SHA -match '^0+$') {
+              git show --pretty='' --name-only $env:PUSH_AFTER_SHA | Set-Content $changedPath
+            }
+            else {
+              git diff --name-only $env:PUSH_BEFORE_SHA $env:PUSH_AFTER_SHA | Set-Content $changedPath
+            }
+          }
+          else {
+            if ((git rev-list --count HEAD) -gt 1) {
+              git diff --name-only HEAD~1 HEAD | Set-Content $changedPath
+            }
+            else {
+              git show --pretty='' --name-only HEAD | Set-Content $changedPath
+            }
+          }
+
+      - name: Run structural docs gate
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HAS_DOCS_EXEMPT_LABEL: ${{ github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'docs-exempt') }}
+        run: |
+          $isPrArg = if ($env:EVENT_NAME -eq 'pull_request') { 1 } else { 0 }
+          $hasExemptArg = if ($env:HAS_DOCS_EXEMPT_LABEL -eq 'true') { 1 } else { 0 }
+
+          powershell -ExecutionPolicy Bypass -File .\scripts\docs-structural-gate.ps1 `
+            -ChangedFilesPath '.tmp-changed-files.txt' `
+            -IsPullRequest $isPrArg `
+            -HasDocsExemptLabel $hasExemptArg
+
+  governance-ai-guardrails:
+    runs-on: windows-latest
+    needs: governance-structural-docs
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Compute changed files
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.sha }}
+        run: |
+          $changedPath = '.tmp-changed-files.txt'
+
+          if ($env:EVENT_NAME -eq 'pull_request') {
+            git diff --name-only $env:PR_BASE_SHA $env:PR_HEAD_SHA | Set-Content $changedPath
+          }
+          elseif ($env:EVENT_NAME -eq 'push') {
+            if ([string]::IsNullOrWhiteSpace($env:PUSH_BEFORE_SHA) -or $env:PUSH_BEFORE_SHA -match '^0+$') {
+              git show --pretty='' --name-only $env:PUSH_AFTER_SHA | Set-Content $changedPath
+            }
+            else {
+              git diff --name-only $env:PUSH_BEFORE_SHA $env:PUSH_AFTER_SHA | Set-Content $changedPath
+            }
+          }
+          else {
+            if ((git rev-list --count HEAD) -gt 1) {
+              git diff --name-only HEAD~1 HEAD | Set-Content $changedPath
+            }
+            else {
+              git show --pretty='' --name-only HEAD | Set-Content $changedPath
+            }
+          }
+
+      - name: Run docs validate
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
+
+      - name: Run AI governance check
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1 -ChangedFilesPath '.tmp-changed-files.txt'
+
+      - name: Build solution Debug
+        shell: pwsh
+        run: |
+          dotnet build MicaAudio.sln -c Debug
+
+  governance-build-debug:
+    runs-on: windows-latest
+    needs: governance-ai-guardrails
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build solution Debug
+        shell: pwsh
+        run: |
+          dotnet build MicaAudio.sln -c Debug

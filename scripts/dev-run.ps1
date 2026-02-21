@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
@@ -8,9 +8,9 @@ param(
     [switch]$SkipDoctor,
     [switch]$SkipPublish,
     [switch]$NoSign,
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [switch]$ValidateDocs
 )
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -19,6 +19,21 @@ function Write-Step {
     Write-Host "[dev-run] $Message" -ForegroundColor Cyan
 }
 
+
+function Invoke-DocsValidation {
+    param([string]$RepoRoot)
+
+    $validatorScript = Join-Path $RepoRoot "scripts\docs-validate.ps1"
+    if (-not (Test-Path $validatorScript)) {
+        throw "Validacao solicitada, mas o script nao foi encontrado: $validatorScript"
+    }
+
+    Write-Step "Validando wiki tecnica (-ValidateDocs)"
+    & powershell -ExecutionPolicy Bypass -File $validatorScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "docs-validate.ps1 falhou com exit code $LASTEXITCODE"
+    }
+}
 function Resolve-PublishDir {
     param(
         [string]$RepoRoot,
@@ -58,6 +73,10 @@ if (-not (Test-Path $appProject)) {
 if (-not $SkipDoctor) {
     Write-Step "Executando diagnostico rapido"
     & (Join-Path $PSScriptRoot "dev-doctor.ps1") -CrashTailLines 12
+}
+
+if ($ValidateDocs) {
+    Invoke-DocsValidation -RepoRoot $repoRoot
 }
 
 $effectiveRunMode = $RunMode

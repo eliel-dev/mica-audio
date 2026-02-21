@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -e
+
+powershell -ExecutionPolicy Bypass -File ./scripts/docs-validate.ps1
+powershell -ExecutionPolicy Bypass -File ./scripts/ai-governance-check.ps1 -Fast
