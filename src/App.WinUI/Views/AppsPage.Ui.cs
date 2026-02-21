@@ -1,4 +1,4 @@
-using App.WinUI.Views.Controls;
+﻿using App.WinUI.Views.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -7,7 +7,6 @@ using Windows.UI;
 namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
-
 public sealed partial class AppsPage
 {
     private TextBox SearchBox = null!;
@@ -19,14 +18,10 @@ public sealed partial class AppsPage
     private ProgressRing OperationProgressRing = null!;
     private TextBlock OperationStatusText = null!;
     private TextBlock OperationPercentText = null!;
-    private TextBox LogsTextBox = null!;
     private TextBlock ModifiersHintText = null!;
     private StackPanel ModifiersPanel = null!;
     private Button InstallButton = null!;
-    private Button ActivateButton = null!;
     private Button SaveModifiersButton = null!;
-    private Button ApplyModifiersButton = null!;
-    private Button ResetModifiersButton = null!;
 
     private void InitializeComponent()
     {
@@ -53,7 +48,7 @@ public sealed partial class AppsPage
 
         SearchBox = new TextBox
         {
-            PlaceholderText = "Buscar por nome, categoria ou autor",
+            PlaceholderText = "Buscar por nome ou categoria",
             MinWidth = 320,
         };
         SearchBox.TextChanged += OnSearchTextChanged;
@@ -95,7 +90,6 @@ public sealed partial class AppsPage
         right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         Grid.SetColumn(right, 1);
 
         var details = new StackPanel { Spacing = 4 };
@@ -161,35 +155,17 @@ public sealed partial class AppsPage
         var actionsGrid = new Grid { ColumnSpacing = 8 };
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         InstallButton = new Button { Content = "Instalar" };
         InstallButton.Click += OnInstallClicked;
 
-        ActivateButton = new Button { Content = "Ativar" };
-        ActivateButton.Click += OnActivateClicked;
-
         SaveModifiersButton = new Button { Content = "Salvar" };
         SaveModifiersButton.Click += OnSaveModifiersClicked;
 
-        ApplyModifiersButton = new Button { Content = "Aplicar" };
-        ApplyModifiersButton.Click += OnApplyModifiersClicked;
-
-        ResetModifiersButton = new Button { Content = "Restaurar" };
-        ResetModifiersButton.Click += OnResetModifiersClicked;
-
-        Grid.SetColumn(ActivateButton, 1);
-        Grid.SetColumn(SaveModifiersButton, 2);
-        Grid.SetColumn(ApplyModifiersButton, 3);
-        Grid.SetColumn(ResetModifiersButton, 4);
+        Grid.SetColumn(SaveModifiersButton, 1);
 
         actionsGrid.Children.Add(InstallButton);
-        actionsGrid.Children.Add(ActivateButton);
         actionsGrid.Children.Add(SaveModifiersButton);
-        actionsGrid.Children.Add(ApplyModifiersButton);
-        actionsGrid.Children.Add(ResetModifiersButton);
 
         var actionsCard = CreateCard(actionsGrid);
         Grid.SetRow(actionsCard, 3);
@@ -233,20 +209,6 @@ public sealed partial class AppsPage
         Grid.SetRow(statusCard, 4);
         right.Children.Add(statusCard);
 
-        LogsTextBox = new TextBox
-        {
-            Header = "Histórico",
-            AcceptsReturn = true,
-            IsReadOnly = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 170,
-        };
-        ScrollViewer.SetVerticalScrollBarVisibility(LogsTextBox, ScrollBarVisibility.Auto);
-
-        var logsCard = CreateCard(LogsTextBox);
-        Grid.SetRow(logsCard, 5);
-        right.Children.Add(logsCard);
-
         content.Children.Add(right);
         root.Children.Add(content);
 
@@ -273,7 +235,3 @@ public sealed partial class AppsPage
         return UiResourceResolver.ResolveBrush(key, fallback);
     }
 }
-
-
-
-

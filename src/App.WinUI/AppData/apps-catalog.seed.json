@@ -1,12 +1,12 @@
-{
+﻿{
   "schemaVersion": 2,
   "apps": [
     {
       "id": "accuweather",
       "name": "Clima",
       "summary": "Previsão do tempo",
-      "description": "Mostra condições e previsão do tempo para a cidade selecionada.",
-      "author": "mica audio",
+      "description": "Mostra cidade, temperatura e condição atual em formato HUB75.",
+      "author": "Mica Audio",
       "packageName": "accuweather",
       "fileName": "accuweather.star",
       "recommendedIntervalMinutes": 5,
@@ -20,9 +20,9 @@
           "key": "city",
           "label": "Cidade",
           "type": "CityAutocomplete",
-          "description": "Cidade base para consulta do clima.",
-          "placeholder": "Ex: São Paulo",
-          "defaultValue": "",
+          "description": "Cidade usada para consulta no Open-Meteo.",
+          "placeholder": "Ex.: São Paulo",
+          "defaultValue": "São Paulo, São Paulo, Brasil|-23.5505|-46.6333",
           "required": true
         },
         {
@@ -33,21 +33,8 @@
           "defaultValue": "metric",
           "required": true,
           "options": [
-            { "label": "Métrico (C)", "value": "metric" },
-            { "label": "Imperial (F)", "value": "imperial" }
-          ]
-        },
-        {
-          "key": "lang",
-          "label": "Idioma",
-          "type": "Select",
-          "description": "Idioma dos textos mostrados.",
-          "defaultValue": "pt",
-          "required": true,
-          "options": [
-            { "label": "Português", "value": "pt" },
-            { "label": "English", "value": "en" },
-            { "label": "Espanhol", "value": "es" }
+            { "label": "Métrico (°C)", "value": "metric" },
+            { "label": "Imperial (°F)", "value": "imperial" }
           ]
         }
       ]
@@ -55,9 +42,9 @@
     {
       "id": "analogclock",
       "name": "Relógio",
-      "summary": "Relógio digital",
-      "description": "Exibe a hora atual em estilo de painel HUB75.",
-      "author": "mica audio",
+      "summary": "Relógio digital HUB75",
+      "description": "Exibe a hora de Brasília com watchfaces inspiradas em mostradores de smartwatch.",
+      "author": "Mica Audio",
       "packageName": "analogclock",
       "fileName": "analogclock.star",
       "recommendedIntervalMinutes": 0,
@@ -68,23 +55,44 @@
       },
       "modifiers": [
         {
-          "key": "timezone",
-          "label": "Fuso horário",
-          "type": "Text",
-          "description": "Identificador IANA do fuso (ex: America/Sao_Paulo).",
-          "placeholder": "America/Sao_Paulo",
-          "defaultValue": "America/Sao_Paulo",
-          "required": true
-        },
-        {
           "key": "format24h",
           "label": "Formato 24h",
           "type": "Toggle",
-          "description": "Alterna entre formato 24h e 12h.",
+          "description": "Alterna entre 24h e 12h.",
           "required": false,
           "defaultToggle": true
+        },
+        {
+          "key": "watchfaceStyle",
+          "label": "Estilo da watchface",
+          "type": "Select",
+          "description": "Define o estilo visual dos dígitos.",
+          "defaultValue": "pixel",
+          "required": true,
+          "options": [
+            { "label": "Pixel", "value": "pixel" },
+            { "label": "Segmentado", "value": "segment" },
+            { "label": "Arredondado", "value": "rounded" }
+          ]
+        },
+        {
+          "key": "fontColor",
+          "label": "Cor da fonte",
+          "type": "Select",
+          "description": "Paleta pronta para os dígitos no painel.",
+          "defaultValue": "cyan",
+          "required": true,
+          "options": [
+            { "label": "Ciano", "value": "cyan" },
+            { "label": "Branco", "value": "white" },
+            { "label": "Verde", "value": "green" },
+            { "label": "Amarelo", "value": "yellow" },
+            { "label": "Laranja", "value": "orange" },
+            { "label": "Magenta", "value": "magenta" }
+          ]
         }
       ]
     }
   ]
 }
+

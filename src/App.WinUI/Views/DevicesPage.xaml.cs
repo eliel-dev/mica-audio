@@ -1,4 +1,6 @@
-﻿using App.WinUI.Services.Devices;
+﻿using App.WinUI.Models.Apps;
+using App.WinUI.Services.Devices;
+using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,6 +13,7 @@ public sealed partial class DevicesPage : Page
 {
     private readonly List<DeviceListItem> allItems = new();
     private readonly List<DeviceListItem> visibleItems = new();
+    private readonly List<DeviceListVisualItem> renderedItems = new();
 
     private int lastRenderedLogCount;
     private string lastRenderedLogTail = string.Empty;
@@ -29,7 +32,7 @@ public sealed partial class DevicesPage : Page
     {
         if (DeviceOps is null)
         {
-            LogsTextBox.Text = "Servico de dispositivos indisponivel.";
+            LogsTextBox.Text = "Serviço de dispositivos indisponível.";
             return;
         }
 
@@ -43,14 +46,14 @@ public sealed partial class DevicesPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (DeviceOps is null)
+        if (DeviceOps is not null)
         {
-            return;
+            DeviceOps.StateChanged -= OnDeviceOpsStateChanged;
+            DeviceOps.DeviceListChanged -= OnDeviceOpsDeviceListChanged;
+            DeviceOps.SetDevicesPageVisible(false);
         }
 
-        DeviceOps.StateChanged -= OnDeviceOpsStateChanged;
-        DeviceOps.DeviceListChanged -= OnDeviceOpsDeviceListChanged;
-        DeviceOps.SetDevicesPageVisible(false);
+        ClearRenderedItems();
     }
 
     private void OnDeviceOpsStateChanged(object? sender, EventArgs e)
@@ -117,7 +120,7 @@ public sealed partial class DevicesPage : Page
 
     private async Task RunSelectedCommandAsync(DeviceCommandType commandType)
     {
-        var selected = DevicesList.SelectedItem as DeviceListItem;
+        var selected = GetSelectedDeviceItem();
         if (selected is null || DeviceOps is null)
         {
             return;
@@ -140,7 +143,7 @@ public sealed partial class DevicesPage : Page
         CommandPercentText.Text = $"{Math.Clamp(state.CommandPercent, 0, 100)}%";
 
         var refreshText = state.LastRefreshUtc == default
-            ? "sem atualizacao"
+            ? "sem atualização"
             : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss");
         ServerInfoText.Text = $"Servidor: {state.ServerBaseAddress} | mDNS: _micaaudio._tcp | Atualizado: {refreshText}";
 
@@ -150,41 +153,32 @@ public sealed partial class DevicesPage : Page
 
     private void ApplyDevices(IReadOnlyList<DeviceSnapshot> devices)
     {
-        var selectedId = (DevicesList.SelectedItem as DeviceListItem)?.DeviceId;
+        var selectedId = GetSelectedDeviceId();
 
         allItems.Clear();
-        foreach (var device in devices)
+        foreach (var device in devices.Where(static d => d.Status == DeviceStatus.Online))
         {
             allItems.Add(new DeviceListItem
             {
                 DeviceId = device.DeviceId,
                 Name = device.Name,
-                AppName = string.IsNullOrWhiteSpace(device.ActiveAppName) ? "-" : device.ActiveAppName!,
                 StatusLine = $"{device.Status} | Perfil {device.Profile} | IP {device.LastKnownIp ?? "-"} | RSSI {device.LastKnownRssi?.ToString() ?? "-"}",
+                AppId = string.IsNullOrWhiteSpace(device.ActiveAppId) ? string.Empty : device.ActiveAppId!,
+                AppName = string.IsNullOrWhiteSpace(device.ActiveAppName) ? "-" : device.ActiveAppName!,
             });
         }
 
-        ApplyFilter();
-
-        if (!string.IsNullOrWhiteSpace(selectedId))
-        {
-            var match = visibleItems.FirstOrDefault(item => string.Equals(item.DeviceId, selectedId, StringComparison.OrdinalIgnoreCase));
-            if (match is not null)
-            {
-                DevicesList.SelectedItem = match;
-            }
-        }
-
+        ApplyFilter(selectedId);
         ApplySelectionDetails();
         ApplyButtonState();
     }
 
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
     {
-        ApplyFilter();
+        ApplyFilter(GetSelectedDeviceId());
     }
 
-    private void ApplyFilter()
+    private void ApplyFilter(string? selectedDeviceId)
     {
         var query = SearchBox.Text?.Trim() ?? string.Empty;
         visibleItems.Clear();
@@ -200,9 +194,84 @@ public sealed partial class DevicesPage : Page
         }
 
         visibleItems.AddRange(source);
+        RebuildRenderedItems(selectedDeviceId);
+    }
+
+    private void RebuildRenderedItems(string? selectedDeviceId)
+    {
+        ClearRenderedItems();
+
+        foreach (var item in visibleItems)
+        {
+            var previewModel = BuildPreviewModel(item);
+            var visualItem = new DeviceListVisualItem(item, previewModel);
+            renderedItems.Add(visualItem);
+        }
 
         DevicesList.ItemsSource = null;
-        DevicesList.ItemsSource = visibleItems;
+        DevicesList.ItemsSource = renderedItems;
+
+        if (!string.IsNullOrWhiteSpace(selectedDeviceId))
+        {
+            var selectedVisual = renderedItems.FirstOrDefault(item => string.Equals(item.DeviceId, selectedDeviceId, StringComparison.OrdinalIgnoreCase));
+            if (selectedVisual is not null)
+            {
+                DevicesList.SelectedItem = selectedVisual;
+            }
+        }
+
+        UpdateDeviceRowSelection();
+    }
+
+    private void ClearRenderedItems()
+    {
+        foreach (var item in renderedItems)
+        {
+            item.StopPreview();
+        }
+
+        renderedItems.Clear();
+    }
+
+    private static AppCatalogItem BuildPreviewModel(DeviceListItem item)
+    {
+        var kind = ResolvePreviewKind(item.AppId, item.AppName);
+        var category = kind switch
+        {
+            "clock" => "relógio",
+            "weather" => "clima",
+            _ => "geral",
+        };
+
+        return new AppCatalogItem
+        {
+            Id = string.IsNullOrWhiteSpace(item.AppId) ? "device-preview" : item.AppId,
+            Name = item.AppName,
+            Category = category,
+            Preview = new AppPreviewDefinition
+            {
+                Kind = kind,
+                Speed = 1f,
+            },
+        };
+    }
+
+    private static string ResolvePreviewKind(string appId, string appName)
+    {
+        var id = appId.Trim().ToLowerInvariant();
+        var name = appName.Trim().ToLowerInvariant();
+
+        if (id.Contains("weather") || id.Contains("clima") || name.Contains("weather") || name.Contains("clima") || id.Contains("accuweather"))
+        {
+            return "weather";
+        }
+
+        if (id.Contains("clock") || id.Contains("relog") || id.Contains("relóg") || name.Contains("clock") || name.Contains("relog") || name.Contains("relóg") || id.Contains("analogclock"))
+        {
+            return "clock";
+        }
+
+        return "decorative";
     }
 
     private void UpdateLogs(IReadOnlyList<string> entries)
@@ -232,13 +301,23 @@ public sealed partial class DevicesPage : Page
 
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        UpdateDeviceRowSelection();
         ApplySelectionDetails();
         ApplyButtonState();
     }
 
+    private void UpdateDeviceRowSelection()
+    {
+        var selectedId = GetSelectedDeviceId();
+        foreach (var item in renderedItems)
+        {
+            item.SetSelected(string.Equals(item.DeviceId, selectedId, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
     private void ApplySelectionDetails()
     {
-        var selected = DevicesList.SelectedItem as DeviceListItem;
+        var selected = GetSelectedDeviceItem();
         if (selected is null)
         {
             SelectedDeviceTitleText.Text = "Nenhum dispositivo selecionado";
@@ -254,12 +333,22 @@ public sealed partial class DevicesPage : Page
 
     private void ApplyButtonState()
     {
-        var selected = DevicesList.SelectedItem as DeviceListItem;
+        var selected = GetSelectedDeviceItem();
         var commandEnabled = selected is not null && !currentState.CommandInProgress;
 
         EnterProvisioningButton.IsEnabled = commandEnabled;
         RevokeButton.IsEnabled = commandEnabled;
         TestLedButton.IsEnabled = commandEnabled;
+    }
+
+    private DeviceListItem? GetSelectedDeviceItem()
+    {
+        return (DevicesList.SelectedItem as DeviceListVisualItem)?.Item;
+    }
+
+    private string? GetSelectedDeviceId()
+    {
+        return (DevicesList.SelectedItem as DeviceListVisualItem)?.DeviceId;
     }
 
     private sealed class DeviceListItem
@@ -270,8 +359,103 @@ public sealed partial class DevicesPage : Page
 
         public string StatusLine { get; init; } = string.Empty;
 
-        public string AppName { get; init; } = "-";
+        public string AppId { get; init; } = string.Empty;
 
-        public override string ToString() => $"{Name} ({DeviceId})";
+        public string AppName { get; init; } = "-";
+    }
+
+    private sealed class DeviceListVisualItem : Grid
+    {
+        private readonly Border frame;
+
+        public DeviceListVisualItem(DeviceListItem item, AppCatalogItem previewModel)
+        {
+            Item = item;
+            DeviceId = item.DeviceId;
+            Margin = new Thickness(0, 0, 0, 6);
+
+            frame = new Border
+            {
+                CornerRadius = new CornerRadius(10),
+                BorderThickness = new Thickness(1),
+                BorderBrush = UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Windows.UI.Color.FromArgb(255, 49, 62, 81)),
+                Background = UiResourceResolver.ResolveBrush("AppSurfaceElevatedBrush", Windows.UI.Color.FromArgb(255, 20, 27, 37)),
+                Padding = new Thickness(8),
+            };
+
+            var layout = new Grid
+            {
+                ColumnSpacing = 8,
+            };
+            layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            Preview = new AppPreviewThumbnailControl
+            {
+                Width = 142,
+                Height = 72,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Preview.Bind(previewModel);
+            Preview.Start();
+            layout.Children.Add(Preview);
+
+            var textStack = new StackPanel
+            {
+                Spacing = 2,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(textStack, 1);
+
+            textStack.Children.Add(new TextBlock
+            {
+                Text = item.Name,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            textStack.Children.Add(new TextBlock
+            {
+                Text = item.DeviceId,
+                Opacity = 0.78,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            textStack.Children.Add(new TextBlock
+            {
+                Text = $"App: {item.AppName}",
+                Opacity = 0.9,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            textStack.Children.Add(new TextBlock
+            {
+                Text = item.StatusLine,
+                Opacity = 0.72,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+
+            layout.Children.Add(textStack);
+            frame.Child = layout;
+            Children.Add(frame);
+        }
+
+        public string DeviceId { get; }
+
+        public DeviceListItem Item { get; }
+
+        public AppPreviewThumbnailControl Preview { get; }
+
+        public void StopPreview()
+        {
+            Preview.Stop();
+        }
+
+        public void SetSelected(bool selected)
+        {
+            frame.BorderBrush = selected
+                ? UiResourceResolver.ResolveBrush("AppAccentBrush", Windows.UI.Color.FromArgb(255, 40, 170, 125))
+                : UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Windows.UI.Color.FromArgb(255, 49, 62, 81));
+        }
     }
 }
+
+

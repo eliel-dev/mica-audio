@@ -1,3 +1,5 @@
+﻿using System.Globalization;
+using System.Text;
 using Microsoft.Graphics.Canvas;
 using Windows.UI;
 
@@ -20,10 +22,36 @@ internal static class Hub75PreviewHelper
         ['7'] = ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
         ['8'] = ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
         ['9'] = ["01110", "10001", "10001", "01111", "00001", "00001", "01110"],
-        [':'] = ["00000", "00100", "00100", "00000", "00100", "00100", "00000"],
+        ['A'] = ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+        ['B'] = ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
         ['C'] = ["01110", "10001", "10000", "10000", "10000", "10001", "01110"],
-        ['S'] = ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+        ['D'] = ["11100", "10010", "10001", "10001", "10001", "10010", "11100"],
+        ['E'] = ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+        ['F'] = ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+        ['G'] = ["01110", "10001", "10000", "10111", "10001", "10001", "01110"],
+        ['H'] = ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+        ['I'] = ["01110", "00100", "00100", "00100", "00100", "00100", "01110"],
+        ['J'] = ["00111", "00010", "00010", "00010", "00010", "10010", "01100"],
+        ['K'] = ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+        ['L'] = ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+        ['M'] = ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+        ['N'] = ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+        ['O'] = ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
         ['P'] = ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+        ['Q'] = ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
+        ['R'] = ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+        ['S'] = ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+        ['T'] = ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+        ['U'] = ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+        ['V'] = ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+        ['W'] = ["10001", "10001", "10001", "10101", "10101", "10101", "01010"],
+        ['X'] = ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+        ['Y'] = ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
+        ['Z'] = ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
+        [':'] = ["00000", "00100", "00100", "00000", "00100", "00100", "00000"],
+        ['-'] = ["00000", "00000", "00000", "01110", "00000", "00000", "00000"],
+        ['.'] = ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
+        ['/'] = ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
         [' '] = ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
     };
 
@@ -41,6 +69,36 @@ internal static class Hub75PreviewHelper
         var ds = context.DrawingSession;
         ds.FillRoundedRectangle(ox - 2f, oy - 2f, drawWidth + 4f, drawHeight + 4f, 3f, 3f, Color.FromArgb(255, 3, 5, 8));
         ds.DrawRoundedRectangle(ox - 1f, oy - 1f, drawWidth + 2f, drawHeight + 2f, 2f, 2f, Color.FromArgb(255, 24, 34, 44), 1f);
+    }
+
+    public static string NormalizeForMatrix(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        var decomposed = text.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(decomposed.Length);
+        foreach (var ch in decomposed)
+        {
+            var category = CharUnicodeInfo.GetUnicodeCategory(ch);
+            if (category == UnicodeCategory.NonSpacingMark)
+            {
+                continue;
+            }
+
+            var upper = char.ToUpperInvariant(ch);
+            if (Font5x7.ContainsKey(upper))
+            {
+                builder.Append(upper);
+                continue;
+            }
+
+            builder.Append(char.IsWhiteSpace(ch) ? ' ' : '-');
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
     }
 
     public static void DrawPixel(CanvasDrawingSession ds, float ox, float oy, float pitch, float ledSize, int x, int y, Color color, bool glow = true)
@@ -69,10 +127,11 @@ internal static class Hub75PreviewHelper
             return;
         }
 
+        var normalized = NormalizeForMatrix(text);
         var cursor = x;
-        foreach (var ch in text)
+        foreach (var ch in normalized)
         {
-            if (!Font5x7.TryGetValue(char.ToUpperInvariant(ch), out var glyph))
+            if (!Font5x7.TryGetValue(ch, out var glyph))
             {
                 cursor += 6;
                 continue;
@@ -94,4 +153,3 @@ internal static class Hub75PreviewHelper
         }
     }
 }
-

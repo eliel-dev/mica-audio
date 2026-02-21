@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using App.WinUI.Models.Apps;
 
@@ -14,14 +14,12 @@ internal sealed class AppCatalogService
         Converters = { new JsonStringEnumConverter() },
     };
 
-    // Catálogo simplificado: apenas 2 apps habilitados na UI.
     private static readonly HashSet<string> EnabledAppIds = new(StringComparer.OrdinalIgnoreCase)
     {
         "accuweather",
         "analogclock",
     };
 
-    // Defaults para cobrir catálogos antigos que não tragam preview/modifiers.
     private static readonly IReadOnlyDictionary<string, AppCatalogItem> DefaultsById = new Dictionary<string, AppCatalogItem>(StringComparer.OrdinalIgnoreCase)
     {
         ["accuweather"] = new AppCatalogItem
@@ -29,8 +27,8 @@ internal sealed class AppCatalogService
             Id = "accuweather",
             Name = "Clima",
             Summary = "Previsão do tempo",
-            Description = "Mostra condições e previsão do tempo para a cidade selecionada.",
-            Author = "mica audio",
+            Description = "Mostra cidade, temperatura e condição atual em formato HUB75.",
+            Author = "Mica Audio",
             PackageName = "accuweather",
             FileName = "accuweather.star",
             RecommendedIntervalMinutes = 5,
@@ -43,9 +41,9 @@ internal sealed class AppCatalogService
                     Key = "city",
                     Label = "Cidade",
                     Type = AppModifierFieldType.CityAutocomplete,
-                    Description = "Cidade base para consulta do clima.",
-                    Placeholder = "Ex: São Paulo",
-                    DefaultValue = string.Empty,
+                    Description = "Cidade usada para consulta no Open-Meteo.",
+                    Placeholder = "Ex.: São Paulo",
+                    DefaultValue = "São Paulo, São Paulo, Brasil|-23.5505|-46.6333",
                     Required = true,
                 },
                 new AppModifierDefinition
@@ -58,23 +56,8 @@ internal sealed class AppCatalogService
                     Required = true,
                     Options =
                     [
-                        new AppModifierOption { Label = "Métrico (C)", Value = "metric" },
-                        new AppModifierOption { Label = "Imperial (F)", Value = "imperial" },
-                    ],
-                },
-                new AppModifierDefinition
-                {
-                    Key = "lang",
-                    Label = "Idioma",
-                    Type = AppModifierFieldType.Select,
-                    Description = "Idioma dos textos mostrados.",
-                    DefaultValue = "pt",
-                    Required = true,
-                    Options =
-                    [
-                        new AppModifierOption { Label = "Português", Value = "pt" },
-                        new AppModifierOption { Label = "English", Value = "en" },
-                        new AppModifierOption { Label = "Espanhol", Value = "es" },
+                        new AppModifierOption { Label = "Métrico (°C)", Value = "metric" },
+                        new AppModifierOption { Label = "Imperial (°F)", Value = "imperial" },
                     ],
                 },
             ],
@@ -83,9 +66,9 @@ internal sealed class AppCatalogService
         {
             Id = "analogclock",
             Name = "Relógio",
-            Summary = "Relógio digital",
-            Description = "Exibe a hora atual em estilo de painel HUB75.",
-            Author = "mica audio",
+            Summary = "Relógio digital HUB75",
+            Description = "Exibe a hora de Brasília com watchfaces inspiradas em mostradores de smartwatch.",
+            Author = "Mica Audio",
             PackageName = "analogclock",
             FileName = "analogclock.star",
             RecommendedIntervalMinutes = 0,
@@ -95,22 +78,45 @@ internal sealed class AppCatalogService
             [
                 new AppModifierDefinition
                 {
-                    Key = "timezone",
-                    Label = "Fuso horário",
-                    Type = AppModifierFieldType.Text,
-                    Description = "Identificador IANA do fuso (ex: America/Sao_Paulo).",
-                    Placeholder = "America/Sao_Paulo",
-                    DefaultValue = "America/Sao_Paulo",
-                    Required = true,
-                },
-                new AppModifierDefinition
-                {
                     Key = "format24h",
                     Label = "Formato 24h",
                     Type = AppModifierFieldType.Toggle,
-                    Description = "Alterna entre formato 24h e 12h.",
-                    Required = false,
+                    Description = "Alterna entre 24h e 12h.",
                     DefaultToggle = true,
+                    Required = false,
+                },
+                new AppModifierDefinition
+                {
+                    Key = "watchfaceStyle",
+                    Label = "Estilo da watchface",
+                    Type = AppModifierFieldType.Select,
+                    Description = "Define o estilo visual dos dígitos.",
+                    DefaultValue = "pixel",
+                    Required = true,
+                    Options =
+                    [
+                        new AppModifierOption { Label = "Pixel", Value = "pixel" },
+                        new AppModifierOption { Label = "Segmentado", Value = "segment" },
+                        new AppModifierOption { Label = "Arredondado", Value = "rounded" },
+                    ],
+                },
+                new AppModifierDefinition
+                {
+                    Key = "fontColor",
+                    Label = "Cor da fonte",
+                    Type = AppModifierFieldType.Select,
+                    Description = "Paleta pronta para os dígitos no painel.",
+                    DefaultValue = "cyan",
+                    Required = true,
+                    Options =
+                    [
+                        new AppModifierOption { Label = "Ciano", Value = "cyan" },
+                        new AppModifierOption { Label = "Branco", Value = "white" },
+                        new AppModifierOption { Label = "Verde", Value = "green" },
+                        new AppModifierOption { Label = "Amarelo", Value = "yellow" },
+                        new AppModifierOption { Label = "Laranja", Value = "orange" },
+                        new AppModifierOption { Label = "Magenta", Value = "magenta" },
+                    ],
                 },
             ],
         },
@@ -150,15 +156,13 @@ internal sealed class AppCatalogService
             return item;
         }
 
-        // Para os apps suportados na UI, usamos a definição canônica local
-        // para manter preview/modificadores consistentes e em PT-BR.
         return new AppCatalogItem
         {
             Id = defaults.Id,
             Name = defaults.Name,
             Summary = defaults.Summary,
             Description = defaults.Description,
-            Author = string.IsNullOrWhiteSpace(item.Author) ? defaults.Author : item.Author,
+            Author = defaults.Author,
             PackageName = string.IsNullOrWhiteSpace(item.PackageName) ? defaults.PackageName : item.PackageName,
             FileName = string.IsNullOrWhiteSpace(item.FileName) ? defaults.FileName : item.FileName,
             RecommendedIntervalMinutes = defaults.RecommendedIntervalMinutes,
@@ -212,3 +216,4 @@ internal sealed class AppCatalogService
         public IReadOnlyList<AppCatalogItem> Apps { get; init; } = Array.Empty<AppCatalogItem>();
     }
 }
+

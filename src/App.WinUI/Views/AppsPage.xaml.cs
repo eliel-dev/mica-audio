@@ -1,4 +1,4 @@
-
+﻿
 using System.Globalization;
 using System.Text.Json;
 using App.WinUI.Models.Apps;
@@ -16,12 +16,14 @@ namespace App.WinUI.Views;
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
 public sealed partial class AppsPage : Page
 {
+    private const string LocalDraftScope = "__local__";
     private readonly List<AppCatalogItem> allItems = new();
     private readonly List<AppCatalogItem> filteredItems = new();
     private readonly List<AppCatalogCardControl> catalogCards = new();
     private readonly HashSet<AppCatalogCardControl> activePreviewCards = new();
     private readonly Dictionary<string, ModifierControlBinding> modifierBindings = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<AutoSuggestBox, CancellationTokenSource> citySuggestCts = new();
+    private readonly Dictionary<AutoSuggestBox, Dictionary<string, CitySuggestion>> citySuggestionLookup = new();
 
     private AppCatalogItem? selectedItem;
     private DeviceOperationsState currentState = new();
@@ -75,6 +77,7 @@ public sealed partial class AppsPage : Page
         }
 
         citySuggestCts.Clear();
+        citySuggestionLookup.Clear();
         foreach (var card in catalogCards)
         {
             card.Preview.Stop();
@@ -183,7 +186,7 @@ public sealed partial class AppsPage : Page
             source = source.Where(item =>
                 item.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || item.Category.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || item.Author.Contains(query, StringComparison.OrdinalIgnoreCase)
+                
                 || item.Summary.Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -267,7 +270,7 @@ public sealed partial class AppsPage : Page
     {
         selectedItem = item;
         SelectedAppNameText.Text = item.Name;
-        SelectedAppMetaText.Text = $"{item.Category} | Autor: {item.Author} | Intervalo recomendado: {item.RecommendedIntervalMinutes} min";
+        SelectedAppMetaText.Text = $"{item.Category} | Intervalo recomendado: {item.RecommendedIntervalMinutes} min";
         SelectedAppDescriptionText.Text = item.Description;
 
         _ = LoadModifierEditorAsync();
@@ -407,53 +410,31 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        string? configJson = null;
-        string configError = string.Empty;
+        if (!TryBuildConfigFromEditor(item, out var values, out var rawValues, out var validationError))
+        {
+            AppendLog(validationError);
+            return;
+        }
+
+        var configJson = JsonSerializer.Serialize(values);
         var store = ModifierStore;
         if (store is not null)
         {
-            var draft = await store.GetDraftAsync(deviceId, item.Id).ConfigureAwait(false);
-            if (draft is not null && TryBuildConfigJsonFromDraft(item, draft.Values, out var builtJson, out configError))
-            {
-                configJson = builtJson;
-            }
+            await store.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
         }
 
         var result = await deployment.InstallAsync(deviceId, item, configJson).ConfigureAwait(false);
         _ = DispatcherQueue.TryEnqueue(() =>
         {
-            if (!string.IsNullOrWhiteSpace(configError))
-            {
-                AppendLog($"Configuração salva inválida para {item.Name}: {configError}");
-            }
-
+            ApplyPreviewDraftToCard(item.Id, rawValues);
             AppendLog(RenderResult("instalar", item.Name, result));
         });
     }
 
-    private async void OnActivateClicked(object sender, RoutedEventArgs e)
-    {
-        if (!TryGetSelection(out var deviceId, out var item, out var error))
-        {
-            AppendLog(error);
-            return;
-        }
-
-        var deployment = DeploymentService;
-        if (deployment is null)
-        {
-            AppendLog("Serviço de deploy indisponível.");
-            return;
-        }
-
-        var result = await deployment.ActivateAsync(deviceId, item).ConfigureAwait(false);
-        _ = DispatcherQueue.TryEnqueue(() => AppendLog(RenderResult("ativar", item.Name, result)));
-    }
-
-    // DOCS: docs/wiki/guides/configure-app-modifiers.md#passos
+    
     private async void OnSaveModifiersClicked(object sender, RoutedEventArgs e)
     {
-        if (!TryGetSelection(out var deviceId, out var item, out var error))
+        if (!TryGetSelectedItem(out var item, out var error))
         {
             AppendLog(error);
             return;
@@ -472,83 +453,24 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        await store.SetDraftAsync(deviceId, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
+        await store.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
         _ = DispatcherQueue.TryEnqueue(() =>
         {
             ApplyPreviewDraftToCard(item.Id, rawValues);
-            AppendLog($"Modificadores salvos para {item.Name} em {deviceId}.");
+            AppendLog($"Modificações salvas localmente para {item.Name}.");
         });
     }
 
-    private async void OnApplyModifiersClicked(object sender, RoutedEventArgs e)
+    
+    
+    private void OnTargetDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!TryGetSelection(out var deviceId, out var item, out var error))
-        {
-            AppendLog(error);
-            return;
-        }
-
-        var deployment = DeploymentService;
-        var store = ModifierStore;
-        if (deployment is null || store is null)
-        {
-            AppendLog("Serviços de app indisponíveis.");
-            return;
-        }
-
-        if (!TryBuildConfigFromEditor(item, out var values, out var rawValues, out var validationError))
-        {
-            AppendLog(validationError);
-            return;
-        }
-
-        var configJson = JsonSerializer.Serialize(values);
-        await store.SetDraftAsync(deviceId, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
-        var result = await deployment.SetConfigAsync(deviceId, item, configJson).ConfigureAwait(false);
-
-        _ = DispatcherQueue.TryEnqueue(() =>
-        {
-            ApplyPreviewDraftToCard(item.Id, rawValues);
-            AppendLog($"Configuração salva localmente para {item.Name}.");
-            AppendLog(RenderResult("configurar", item.Name, result));
-        });
-    }
-
-    private async void OnResetModifiersClicked(object sender, RoutedEventArgs e)
-    {
-        if (!TryGetSelection(out var deviceId, out var item, out var error))
-        {
-            AppendLog(error);
-            return;
-        }
-
-        var store = ModifierStore;
-        if (store is null)
-        {
-            AppendLog("Repositório de modificadores indisponível.");
-            return;
-        }
-
-        await store.ClearDraftAsync(deviceId, item.Id).ConfigureAwait(false);
-        _ = DispatcherQueue.TryEnqueue(async () =>
-        {
-            ApplyPreviewDraftToCard(item.Id, null);
-            AppendLog($"Modificadores restaurados para padrão em {item.Name}.");
-            await LoadModifierEditorAsync().ConfigureAwait(false);
-        });
-    }
-
-    private async void OnTargetDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        await LoadModifierEditorAsync().ConfigureAwait(false);
-        await RefreshPreviewDraftsAsync().ConfigureAwait(false);
         UpdateActionButtonsEnabled();
     }
 
     private async Task LoadModifierEditorAsync()
     {
         var item = selectedItem;
-        var selectedDeviceId = GetSelectedDeviceId();
 
         ModifiersPanel.Children.Clear();
         modifierBindings.Clear();
@@ -573,18 +495,16 @@ public sealed partial class AppsPage : Page
         }
 
         IReadOnlyDictionary<string, string> values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(selectedDeviceId) && ModifierStore is not null)
+        if (ModifierStore is not null)
         {
-            var draft = await ModifierStore.GetDraftAsync(selectedDeviceId, item.Id).ConfigureAwait(false);
+            var draft = await ModifierStore.GetDraftAsync(LocalDraftScope, item.Id).ConfigureAwait(false);
             if (draft is not null)
             {
                 values = draft.Values;
             }
         }
 
-        ModifiersHintText.Text = string.IsNullOrWhiteSpace(selectedDeviceId)
-            ? "Selecione um dispositivo para salvar e aplicar modificadores."
-            : $"Configuração para {selectedDeviceId}.";
+        ModifiersHintText.Text = "Salvar atualiza o preview local. Instalar envia a configuração atual para o dispositivo selecionado.";
 
         foreach (var modifier in modifiers)
         {
@@ -612,6 +532,7 @@ public sealed partial class AppsPage : Page
 
         UpdateActionButtonsEnabled();
     }
+
     private FrameworkElement CreateModifierControl(AppModifierDefinition definition, IReadOnlyDictionary<string, string> values)
     {
         values.TryGetValue(definition.Key, out var savedValue);
@@ -636,12 +557,17 @@ public sealed partial class AppsPage : Page
                 combo.SelectedItem = selected;
                 return combo;
             case AppModifierFieldType.CityAutocomplete:
+                ParseCityConfig(initialValue, out var cityDisplay, out var citySuggestion);
                 var suggest = new AutoSuggestBox
                 {
                     PlaceholderText = definition.Placeholder ?? "Digite a cidade",
-                    Text = initialValue ?? string.Empty,
-                    TextMemberPath = nameof(CitySuggestion.DisplayName),
+                    Text = cityDisplay,
                 };
+                if (citySuggestion is not null)
+                {
+                    suggest.Tag = citySuggestion;
+                }
+
                 suggest.TextChanged += OnCitySuggestTextChanged;
                 suggest.SuggestionChosen += OnCitySuggestionChosen;
                 return suggest;
@@ -667,8 +593,18 @@ public sealed partial class AppsPage : Page
 
     private async void OnCitySuggestTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput || sender.Text.Trim().Length < 2 || CityService is null)
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
         {
+            return;
+        }
+
+        sender.Tag = null;
+        citySuggestionLookup.Remove(sender);
+
+        var query = sender.Text.Trim();
+        if (query.Length < 2 || CityService is null)
+        {
+            sender.ItemsSource = null;
             return;
         }
 
@@ -683,12 +619,30 @@ public sealed partial class AppsPage : Page
 
         try
         {
-            var suggestions = await CityService.SearchAsync(sender.Text, cts.Token).ConfigureAwait(false);
-            _ = DispatcherQueue.TryEnqueue(() => sender.ItemsSource = suggestions);
+            var suggestions = await CityService.SearchAsync(query, cts.Token).ConfigureAwait(false);
+            var lookup = new Dictionary<string, CitySuggestion>(StringComparer.OrdinalIgnoreCase);
+            foreach (var suggestion in suggestions)
+            {
+                if (!lookup.ContainsKey(suggestion.DisplayName))
+                {
+                    lookup[suggestion.DisplayName] = suggestion;
+                }
+            }
+
+            var displayItems = lookup.Keys.ToArray();
+            _ = DispatcherQueue.TryEnqueue(() =>
+            {
+                citySuggestionLookup[sender] = lookup;
+                sender.ItemsSource = displayItems;
+            });
         }
         catch
         {
-            _ = DispatcherQueue.TryEnqueue(() => sender.ItemsSource = null);
+            _ = DispatcherQueue.TryEnqueue(() =>
+            {
+                citySuggestionLookup.Remove(sender);
+                sender.ItemsSource = null;
+            });
         }
         finally
         {
@@ -701,13 +655,75 @@ public sealed partial class AppsPage : Page
         }
     }
 
-    private static void OnCitySuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
+    private void OnCitySuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
     {
-        if (args.SelectedItem is CitySuggestion suggestion)
+        var selectedText = args.SelectedItem switch
         {
-            sender.Text = suggestion.DisplayName;
-            sender.Tag = suggestion;
+            CitySuggestion suggestion => suggestion.DisplayName,
+            string text => text,
+            _ => string.Empty,
+        };
+
+        if (string.IsNullOrWhiteSpace(selectedText))
+        {
+            return;
         }
+
+        sender.Text = selectedText;
+        if (citySuggestionLookup.TryGetValue(sender, out var lookup)
+            && lookup.TryGetValue(selectedText, out var mappedSuggestion))
+        {
+            sender.Tag = mappedSuggestion;
+            return;
+        }
+
+        ParseCityConfig(selectedText, out _, out var parsedSuggestion);
+        sender.Tag = parsedSuggestion;
+    }
+
+    private static void ParseCityConfig(string? raw, out string displayName, out CitySuggestion? suggestion)
+    {
+        displayName = string.Empty;
+        suggestion = null;
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return;
+        }
+
+        var parts = raw.Split('|', StringSplitOptions.TrimEntries);
+        displayName = parts[0].Trim();
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            displayName = raw.Trim();
+        }
+
+        var labels = displayName.Split(',', StringSplitOptions.TrimEntries);
+        var name = labels.Length > 0 ? labels[0] : displayName;
+        var region = labels.Length > 1 ? labels[1] : string.Empty;
+        var country = labels.Length > 2 ? labels[2] : "Brasil";
+
+        if (parts.Length >= 3
+            && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var lat)
+            && double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var lon))
+        {
+            suggestion = new CitySuggestion
+            {
+                Name = name,
+                Region = region,
+                Country = country,
+                Latitude = lat,
+                Longitude = lon,
+            };
+            return;
+        }
+
+        suggestion = new CitySuggestion
+        {
+            Name = name,
+            Region = region,
+            Country = country,
+        };
     }
 
     private void ApplyPreviewDraftToCard(string appId, IReadOnlyDictionary<string, string>? values)
@@ -719,9 +735,8 @@ public sealed partial class AppsPage : Page
     private async Task RefreshPreviewDraftsAsync()
     {
         var store = ModifierStore;
-        var selectedDeviceId = GetSelectedDeviceId();
 
-        if (string.IsNullOrWhiteSpace(selectedDeviceId) || store is null)
+        if (store is null)
         {
             _ = DispatcherQueue.TryEnqueue(() =>
             {
@@ -737,7 +752,7 @@ public sealed partial class AppsPage : Page
         var perAppValues = new Dictionary<string, IReadOnlyDictionary<string, string>?>(StringComparer.OrdinalIgnoreCase);
         foreach (var card in catalogCards)
         {
-            var draft = await store.GetDraftAsync(selectedDeviceId, card.Item.Id).ConfigureAwait(false);
+            var draft = await store.GetDraftAsync(LocalDraftScope, card.Item.Id).ConfigureAwait(false);
             perAppValues[card.Item.Id] = draft?.Values;
         }
 
@@ -749,6 +764,7 @@ public sealed partial class AppsPage : Page
             }
         });
     }
+
     private bool TryGetSelection(out string deviceId, out AppCatalogItem item, out string error)
     {
         deviceId = string.Empty;
@@ -772,6 +788,19 @@ public sealed partial class AppsPage : Page
         return true;
     }
 
+    private bool TryGetSelectedItem(out AppCatalogItem item, out string error)
+    {
+        if (selectedItem is null)
+        {
+            item = new AppCatalogItem();
+            error = "Selecione um app antes de continuar.";
+            return false;
+        }
+
+        item = selectedItem;
+        error = string.Empty;
+        return true;
+    }
     private bool TryBuildConfigFromEditor(AppCatalogItem item, out Dictionary<string, object?> jsonValues, out Dictionary<string, string> rawValues, out string error)
     {
         jsonValues = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
@@ -943,13 +972,8 @@ public sealed partial class AppsPage : Page
         var busy = currentState.CommandInProgress;
 
         InstallButton.IsEnabled = hasSelection && hasDevice && !busy;
-        ActivateButton.IsEnabled = hasSelection && hasDevice && !busy;
-        SaveModifiersButton.IsEnabled = hasSelection && hasDevice && !busy;
-        ApplyModifiersButton.IsEnabled = hasSelection && hasDevice && !busy;
-        ResetModifiersButton.IsEnabled = hasSelection && hasDevice && !busy;
+        SaveModifiersButton.IsEnabled = hasSelection;
     }
-
-    private string? GetSelectedDeviceId() => TargetDeviceCombo.SelectedItem is ComboBoxItem item && item.Tag is string deviceId ? deviceId : null;
     private static bool TryParseDouble(string? value, out double result) => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
@@ -980,9 +1004,15 @@ public sealed partial class AppsPage : Page
 
     private void AppendLog(string message)
     {
-        if (!string.IsNullOrWhiteSpace(message))
+        if (string.IsNullOrWhiteSpace(message))
         {
-            LogsTextBox.Text += $"[{DateTimeOffset.Now:HH:mm:ss}] {message}\r\n";
+            return;
+        }
+
+        OperationStatusText.Text = $"Operações: {message}";
+        if (!currentState.CommandInProgress)
+        {
+            OperationPercentText.Text = "0%";
         }
     }
 
@@ -998,6 +1028,22 @@ public sealed partial class AppsPage : Page
         public FrameworkElement Control { get; }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
