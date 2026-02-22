@@ -12,21 +12,31 @@ public sealed partial class ShellPage : Page
     private const string AppsTag = "apps";
     private const string ServerTag = "server";
 
-    private readonly MainPage mainPage = new();
-    private readonly DevicesPage devicesPage = new();
-    private readonly AppsPage appsPage = new();
-    private readonly ServerPage serverPage = new();
+    private readonly DeviceOperationsCoordinator deviceOps;
+    private readonly MainPage mainPage;
+    private readonly DevicesPage devicesPage;
+    private readonly AppsPage appsPage;
+    private readonly ServerPage serverPage;
 
     private string currentTag = string.Empty;
 
-    public ShellPage()
+    public ShellPage(
+        DeviceOperationsCoordinator deviceOps,
+        MainPage mainPage,
+        DevicesPage devicesPage,
+        AppsPage appsPage,
+        ServerPage serverPage)
     {
+        this.deviceOps = deviceOps;
+        this.mainPage = mainPage;
+        this.devicesPage = devicesPage;
+        this.appsPage = appsPage;
+        this.serverPage = serverPage;
+
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
-
-    private DeviceOperationsCoordinator? DeviceOps => App.DeviceOps;
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -45,11 +55,8 @@ public sealed partial class ShellPage : Page
             ShowPage(VisualizerTag);
         }
 
-        if (DeviceOps is not null)
-        {
-            DeviceOps.StateChanged += OnDeviceOpsStateChanged;
-            UpdateServerFooter();
-        }
+        deviceOps.StateChanged += OnDeviceOpsStateChanged;
+        UpdateServerFooter();
 
         App.ShellChromeVisibilityChanged += OnShellChromeVisibilityChanged;
         ApplyShellChromeVisibility(App.IsShellChromeHidden);
@@ -58,13 +65,7 @@ public sealed partial class ShellPage : Page
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         App.ShellChromeVisibilityChanged -= OnShellChromeVisibilityChanged;
-
-        if (DeviceOps is null)
-        {
-            return;
-        }
-
-        DeviceOps.StateChanged -= OnDeviceOpsStateChanged;
+        deviceOps.StateChanged -= OnDeviceOpsStateChanged;
     }
 
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -108,7 +109,7 @@ public sealed partial class ShellPage : Page
 
     private void UpdateServerFooter()
     {
-        var baseAddress = DeviceOps?.GetServerBaseAddress() ?? "http://127.0.0.1:5272";
+        var baseAddress = deviceOps.GetServerBaseAddress();
         ServerFooterText.Text = $"Servidor: {baseAddress}";
     }
 
@@ -130,5 +131,3 @@ public sealed partial class ShellPage : Page
         ServerFooterText.Visibility = hideChrome ? Visibility.Collapsed : Visibility.Visible;
     }
 }
-
-

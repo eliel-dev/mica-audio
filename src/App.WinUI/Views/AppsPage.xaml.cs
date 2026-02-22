@@ -6,7 +6,6 @@ using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Gif;
 using App.WinUI.Views.Controls;
-using Device.Server.Hosting;
 using Device.Protocol.Models;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
@@ -37,6 +36,11 @@ public sealed partial class AppsPage : Page
     private readonly Dictionary<AutoSuggestBox, CancellationTokenSource> citySuggestCts = new();
     private readonly Dictionary<AutoSuggestBox, Dictionary<string, CitySuggestion>> citySuggestionLookup = new();
     private readonly GifCatalogAppRuntimeService gifRuntimeService;
+    private readonly DeviceOperationsCoordinator deviceOps;
+    private readonly IAppCatalogService catalogService;
+    private readonly IAppDeploymentService deploymentService;
+    private readonly IAppModifierStateStore modifierStore;
+    private readonly CityAutocompleteService cityService;
 
     private AppCatalogItem? selectedItem;
     private DeviceOperationsState currentState = new();
@@ -49,9 +53,21 @@ public sealed partial class AppsPage : Page
     private RgbaColor[] gifPreviewFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
     private string lastGifRuntimeStatus = "Selecione o app GIF para iniciar.";
 
-    public AppsPage()
+    public AppsPage(
+        DeviceOperationsCoordinator deviceOps,
+        IAppCatalogService catalogService,
+        IAppDeploymentService deploymentService,
+        IAppModifierStateStore modifierStore,
+        CityAutocompleteService cityService,
+        DeviceIntegrationService deviceIntegration)
     {
-        var host = App.DeviceIntegration?.Host ?? new DeviceServerHost();
+        this.deviceOps = deviceOps;
+        this.catalogService = catalogService;
+        this.deploymentService = deploymentService;
+        this.modifierStore = modifierStore;
+        this.cityService = cityService;
+
+        var host = deviceIntegration.Host;
         gifRuntimeService = new GifCatalogAppRuntimeService(
             matrixOutput: new MatrixPortalLedOutput(host),
             simulatorOutput: new SimulatorLedOutput(),
@@ -66,21 +82,12 @@ public sealed partial class AppsPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private DeviceOperationsCoordinator? DeviceOps => App.DeviceOps;
-    private AppCatalogService? CatalogService => App.AppCatalog;
-    private AppDeploymentService? DeploymentService => App.AppDeployment;
-    private AppModifierStateStore? ModifierStore => App.AppModifierStore;
-    private CityAutocompleteService? CityService => App.CityAutocomplete;
-
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (DeviceOps is not null)
-        {
-            DeviceOps.StateChanged += OnDeviceOpsStateChanged;
-            currentState = DeviceOps.GetStateSnapshot();
-            ApplyDevices(currentState.DeviceListSnapshot);
-            ApplyState(currentState);
-        }
+        deviceOps.StateChanged += OnDeviceOpsStateChanged;
+        currentState = deviceOps.GetStateSnapshot();
+        ApplyDevices(currentState.DeviceListSnapshot);
+        ApplyState(currentState);
 
         CatalogGrid.SizeChanged += OnCatalogViewportChanged;
         EnsureCatalogScrollViewer();
@@ -90,10 +97,7 @@ public sealed partial class AppsPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (DeviceOps is not null)
-        {
-            DeviceOps.StateChanged -= OnDeviceOpsStateChanged;
-        }
+        deviceOps.StateChanged -= OnDeviceOpsStateChanged;
 
         CatalogGrid.SizeChanged -= OnCatalogViewportChanged;
         if (catalogScrollViewer is not null)
@@ -122,12 +126,7 @@ public sealed partial class AppsPage : Page
     // DOCS: docs/wiki/guides/add-app-catalog-item.md#passos
     private async Task LoadCatalogAsync()
     {
-        var service = CatalogService;
-        if (service is null)
-        {
-            AppendLog("Serviço de catálogo indisponível.");
-            return;
-        }
+        var service = catalogService;
 
         try
         {
@@ -148,13 +147,7 @@ public sealed partial class AppsPage : Page
 
     private void OnDeviceOpsStateChanged(object? sender, EventArgs e)
     {
-        var ops = DeviceOps;
-        if (ops is null)
-        {
-            return;
-        }
-
-        var state = ops.GetStateSnapshot();
+        var state = deviceOps.GetStateSnapshot();
         _ = DispatcherQueue.TryEnqueue(() =>
         {
             currentState = state;
@@ -483,12 +476,7 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        var deployment = DeploymentService;
-        if (deployment is null)
-        {
-            AppendLog("Serviço de deploy indisponível.");
-            return;
-        }
+        var deployment = deploymentService;
 
         if (!TryBuildConfigFromEditor(item, out var values, out var rawValues, out var validationError))
         {
@@ -497,11 +485,7 @@ public sealed partial class AppsPage : Page
         }
 
         var configJson = JsonSerializer.Serialize(values);
-        var store = ModifierStore;
-        if (store is not null)
-        {
-            await store.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
-        }
+        await modifierStore.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
 
         var result = await deployment.InstallAsync(deviceId, item, configJson).ConfigureAwait(false);
         _ = DispatcherQueue.TryEnqueue(() =>
@@ -526,14 +510,7 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        var store = ModifierStore;
-        if (store is null)
-        {
-            AppendLog("Repositório de modificadores indisponível.");
-            return;
-        }
-
-        await store.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
+        await modifierStore.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
         if (string.Equals(item.Id, GifAppId, StringComparison.OrdinalIgnoreCase) && IsGifAppSelected())
         {
             await ApplyGifRuntimeFromValuesAsync(rawValues).ConfigureAwait(false);
@@ -621,13 +598,7 @@ public sealed partial class AppsPage : Page
             values[modifier.Key] = modifier.DefaultValue ?? string.Empty;
         }
 
-        var store = ModifierStore;
-        if (store is null)
-        {
-            return values;
-        }
-
-        var draft = await store.GetDraftAsync(LocalDraftScope, item.Id).ConfigureAwait(false);
+        var draft = await modifierStore.GetDraftAsync(LocalDraftScope, item.Id).ConfigureAwait(false);
         if (draft?.Values is null)
         {
             return values;
@@ -882,13 +853,10 @@ public sealed partial class AppsPage : Page
         }
 
         IReadOnlyDictionary<string, string> values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (ModifierStore is not null)
+        var draft = await modifierStore.GetDraftAsync(LocalDraftScope, item.Id).ConfigureAwait(false);
+        if (draft is not null)
         {
-            var draft = await ModifierStore.GetDraftAsync(LocalDraftScope, item.Id).ConfigureAwait(false);
-            if (draft is not null)
-            {
-                values = draft.Values;
-            }
+            values = draft.Values;
         }
 
         ModifiersHintText.Text = "Salvar atualiza o preview local. Instalar envia a configuração atual para o dispositivo selecionado.";
@@ -989,7 +957,7 @@ public sealed partial class AppsPage : Page
         citySuggestionLookup.Remove(sender);
 
         var query = sender.Text.Trim();
-        if (query.Length < 2 || CityService is null)
+        if (query.Length < 2)
         {
             sender.ItemsSource = null;
             return;
@@ -1006,7 +974,7 @@ public sealed partial class AppsPage : Page
 
         try
         {
-            var suggestions = await CityService.SearchAsync(query, cts.Token).ConfigureAwait(false);
+            var suggestions = await cityService.SearchAsync(query, cts.Token).ConfigureAwait(false);
             var lookup = new Dictionary<string, CitySuggestion>(StringComparer.OrdinalIgnoreCase);
             foreach (var suggestion in suggestions)
             {
@@ -1121,25 +1089,10 @@ public sealed partial class AppsPage : Page
 
     private async Task RefreshPreviewDraftsAsync()
     {
-        var store = ModifierStore;
-
-        if (store is null)
-        {
-            _ = DispatcherQueue.TryEnqueue(() =>
-            {
-                foreach (var card in catalogCards)
-                {
-                    card.SetPreviewConfig(null);
-                }
-            });
-
-            return;
-        }
-
         var perAppValues = new Dictionary<string, IReadOnlyDictionary<string, string>?>(StringComparer.OrdinalIgnoreCase);
         foreach (var card in catalogCards)
         {
-            var draft = await store.GetDraftAsync(LocalDraftScope, card.Item.Id).ConfigureAwait(false);
+            var draft = await modifierStore.GetDraftAsync(LocalDraftScope, card.Item.Id).ConfigureAwait(false);
             perAppValues[card.Item.Id] = draft?.Values;
         }
 
@@ -1415,7 +1368,6 @@ public sealed partial class AppsPage : Page
         public FrameworkElement Control { get; }
     }
 }
-
 
 
 

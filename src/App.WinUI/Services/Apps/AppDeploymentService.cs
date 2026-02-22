@@ -5,7 +5,7 @@ using Device.Protocol.Models;
 namespace App.WinUI.Services.Apps;
 
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
-internal sealed class AppDeploymentService
+internal sealed class AppDeploymentService : IAppDeploymentService
 {
     private readonly DeviceOperationsCoordinator deviceOps;
 

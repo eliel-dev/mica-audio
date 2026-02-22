@@ -4,6 +4,7 @@ using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
 using App.WinUI.Views;
 using Device.Server.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -16,19 +17,21 @@ public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
 
-    internal static DeviceIntegrationService? DeviceIntegration { get; private set; }
+    internal static IServiceProvider? Services { get; private set; }
 
-    internal static DeviceOperationsCoordinator? DeviceOps { get; private set; }
+    internal static DeviceIntegrationService? DeviceIntegration => Services?.GetService<DeviceIntegrationService>();
 
-    internal static AppCatalogService? AppCatalog { get; private set; }
+    internal static DeviceOperationsCoordinator? DeviceOps => Services?.GetService<DeviceOperationsCoordinator>();
 
-    internal static AppDeploymentService? AppDeployment { get; private set; }
+    internal static IAppCatalogService? AppCatalog => Services?.GetService<IAppCatalogService>();
 
-    internal static AppModifierStateStore? AppModifierStore { get; private set; }
+    internal static IAppDeploymentService? AppDeployment => Services?.GetService<IAppDeploymentService>();
 
-    internal static CityAutocompleteService? CityAutocomplete { get; private set; }
+    internal static IAppModifierStateStore? AppModifierStore => Services?.GetService<IAppModifierStateStore>();
 
-    internal static PrecompiledFirmwareService? FirmwareService { get; private set; }
+    internal static CityAutocompleteService? CityAutocomplete => Services?.GetService<CityAutocompleteService>();
+
+    internal static PrecompiledFirmwareService? FirmwareService => Services?.GetService<PrecompiledFirmwareService>();
 
     internal static bool IsShellChromeHidden { get; private set; }
 
@@ -65,14 +68,14 @@ public partial class App : Application
 
         ApplySystemBackdrop(rootFrame);
 
-        EnsureDeviceIntegrationInitialized();
+        EnsureServicesInitialized();
         _ = StartDeviceIntegrationAsync();
 
         try
         {
             if (rootFrame.Content is null)
             {
-                rootFrame.Content = new ShellPage();
+                rootFrame.Content = Resolve<ShellPage>();
             }
         }
         catch (Exception ex)
@@ -84,34 +87,53 @@ public partial class App : Application
         MainWindow.Activate();
     }
 
-    private static void EnsureDeviceIntegrationInitialized()
+    internal static IServiceProvider BuildServiceProvider()
     {
-        if (DeviceIntegration is not null)
-        {
-            return;
-        }
-
         var appDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicaAudio");
-        var registryStore = new JsonDeviceRegistryStore(appDataRoot);
-        DeviceIntegration = new DeviceIntegrationService(new DeviceServerHost(), registryStore);
-        FirmwareService = new PrecompiledFirmwareService();
-        DeviceOps = new DeviceOperationsCoordinator(DeviceIntegration);
-        AppCatalog = new AppCatalogService(appDataRoot);
-        AppModifierStore = new AppModifierStateStore(appDataRoot);
-        CityAutocomplete = new CityAutocompleteService();
-        AppDeployment = new AppDeploymentService(DeviceOps);
+        var services = new ServiceCollection();
+
+        services.AddSingleton(new JsonDeviceRegistryStore(appDataRoot));
+        services.AddSingleton<DeviceServerHost>();
+        services.AddSingleton(sp => new DeviceIntegrationService(sp.GetRequiredService<DeviceServerHost>(), sp.GetRequiredService<JsonDeviceRegistryStore>()));
+        services.AddSingleton<DeviceOperationsCoordinator>();
+
+        services.AddSingleton<IAppCatalogService>(new AppCatalogService(appDataRoot));
+        services.AddSingleton<IAppModifierStateStore>(new AppModifierStateStore(appDataRoot));
+        services.AddSingleton<CityAutocompleteService>();
+        services.AddSingleton<IAppDeploymentService, AppDeploymentService>();
+        services.AddSingleton<PrecompiledFirmwareService>();
+
+        services.AddTransient<MainPage>();
+        services.AddTransient<DevicesPage>();
+        services.AddTransient<AppsPage>();
+        services.AddTransient<ServerPage>();
+        services.AddTransient<ShellPage>();
+
+        return services.BuildServiceProvider();
+    }
+
+    internal static void EnsureServicesInitialized()
+    {
+        Services ??= BuildServiceProvider();
+    }
+
+    internal static T Resolve<T>() where T : notnull
+    {
+        EnsureServicesInitialized();
+        return Services!.GetRequiredService<T>();
     }
 
     private static async Task StartDeviceIntegrationAsync()
     {
-        if (DeviceIntegration is null)
+        var deviceIntegration = DeviceIntegration;
+        if (deviceIntegration is null)
         {
             return;
         }
 
         try
         {
-            await DeviceIntegration.StartAsync().ConfigureAwait(false);
+            await deviceIntegration.StartAsync().ConfigureAwait(false);
             DeviceOps?.RequestRefresh();
             if (AppCatalog is not null)
             {
@@ -134,18 +156,22 @@ public partial class App : Application
         try
         {
             DeviceOps?.Dispose();
-            DeviceOps = null;
-            AppDeployment = null;
-            AppCatalog = null;
-            AppModifierStore = null;
-            CityAutocomplete = null;
-            FirmwareService = null;
 
             if (DeviceIntegration is not null)
             {
                 await DeviceIntegration.DisposeAsync().ConfigureAwait(false);
-                DeviceIntegration = null;
             }
+
+            if (Services is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else if (Services is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+
+            Services = null;
         }
         catch (Exception ex)
         {
@@ -163,8 +189,6 @@ public partial class App : Application
         IsShellChromeHidden = hidden;
         ShellChromeVisibilityChanged?.Invoke(hidden);
     }
-
-
 
     private static void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
     {
@@ -275,12 +299,3 @@ public partial class App : Application
         };
     }
 }
-
-
-
-
-
-
-
-
-
