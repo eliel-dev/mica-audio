@@ -14,10 +14,12 @@ internal static class AppPreviewRendererRegistry
         ["productivity"] = new ProductivityPreviewRenderer(),
         ["finance"] = new FinancePreviewRenderer(),
         ["decorative"] = new DecorativePreviewRenderer(),
+        ["gif"] = new GifPreviewRenderer(),
         ["generic"] = new DecorativePreviewRenderer(),
         ["relogio"] = new ClockPreviewRenderer(),
         ["relógio"] = new ClockPreviewRenderer(),
         ["clima"] = new WeatherPreviewRenderer(),
+        ["midia"] = new GifPreviewRenderer(),
     };
 
     public static IAppPreviewRenderer Resolve(AppCatalogItem item)

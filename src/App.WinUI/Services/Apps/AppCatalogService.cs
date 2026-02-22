@@ -18,6 +18,7 @@ internal sealed class AppCatalogService
     {
         "accuweather",
         "analogclock",
+        "gifhub75",
     };
 
     private static readonly IReadOnlyDictionary<string, AppCatalogItem> DefaultsById = new Dictionary<string, AppCatalogItem>(StringComparer.OrdinalIgnoreCase)
@@ -120,6 +121,61 @@ internal sealed class AppCatalogService
                 },
             ],
         },
+        ["gifhub75"] = new AppCatalogItem
+        {
+            Id = "gifhub75",
+            Name = "GIF HUB75",
+            Summary = "GIF por URL ou arquivo local",
+            Description = "Executa GIF no desktop com stream HUB75 64x32 para devices conectados (12 FPS fixos).",
+            Author = "Mica Audio",
+            PackageName = "gifhub75",
+            FileName = "gifhub75.star",
+            RecommendedIntervalMinutes = 0,
+            Category = "midia",
+            Preview = new AppPreviewDefinition { Kind = "gif", Speed = 1f },
+            Modifiers =
+            [
+                new AppModifierDefinition
+                {
+                    Key = "sourceMode",
+                    Label = "Fonte",
+                    Type = AppModifierFieldType.Select,
+                    Description = "Escolhe entre URL direta e arquivo local.",
+                    DefaultValue = "url",
+                    Required = true,
+                    Options =
+                    [
+                        new AppModifierOption { Label = "URL direta", Value = "url" },
+                        new AppModifierOption { Label = "Arquivo local", Value = "file" },
+                    ],
+                },
+                new AppModifierDefinition
+                {
+                    Key = "gifUrl",
+                    Label = "URL do GIF",
+                    Type = AppModifierFieldType.Text,
+                    Description = "URL direta do GIF (http/https).",
+                    Placeholder = "https://exemplo.com/animacao.gif",
+                    DefaultValue = string.Empty,
+                    Required = false,
+                },
+                new AppModifierDefinition
+                {
+                    Key = "scaleMode",
+                    Label = "Escala",
+                    Type = AppModifierFieldType.Select,
+                    Description = "Ajuste do frame para HUB75 64x32.",
+                    DefaultValue = "fit",
+                    Required = true,
+                    Options =
+                    [
+                        new AppModifierOption { Label = "Fit", Value = "fit" },
+                        new AppModifierOption { Label = "Fill", Value = "fill" },
+                        new AppModifierOption { Label = "Stretch", Value = "stretch" },
+                    ],
+                },
+            ],
+        },
     };
 
     private readonly string appDataRoot;
@@ -140,9 +196,20 @@ internal sealed class AppCatalogService
         var response = await JsonSerializer.DeserializeAsync<AppCatalogDocument>(stream, JsonOptions, cancellationToken).ConfigureAwait(false)
             ?? new AppCatalogDocument();
 
-        return response.Apps
+        var selected = response.Apps
             .Where(static item => item is not null && item.IsValid())
             .Where(item => EnabledAppIds.Contains(item.Id))
+            .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var enabledId in EnabledAppIds)
+        {
+            if (!selected.ContainsKey(enabledId) && DefaultsById.TryGetValue(enabledId, out var fallback))
+            {
+                selected[enabledId] = fallback;
+            }
+        }
+
+        return selected.Values
             .Select(EnrichSupportedItem)
             .OrderBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Device.Protocol.Stream;
 using Device.Server.Hosting;
 using MicaAudio.Core.Led;
+using MicaAudio.Core.Presets;
 
 namespace Output.Led;
 
@@ -43,6 +44,7 @@ public sealed class MatrixPortalLedOutput : ILedOutput
     {
         // DOCS: docs/wiki/modules/output-led.md#fluxo-de-execucao
         float[]? bins;
+        RgbaColor[]? frame;
         float level;
         float localBrightness;
         uint localSequence;
@@ -55,9 +57,28 @@ public sealed class MatrixPortalLedOutput : ILedOutput
             }
 
             bins = payload.Bins64;
+            frame = payload.Frame64x32;
             level = payload.Level;
             localBrightness = brightness;
             localSequence = ++sequence;
+        }
+
+        if (frame is { Length: StreamFrameV1.PixelCount64x32 })
+        {
+            Span<ushort> pixels = stackalloc ushort[StreamFrameV1.PixelCount64x32];
+            for (var i = 0; i < frame.Length; i++)
+            {
+                pixels[i] = ToRgb565(frame[i]);
+            }
+
+            var frameBytes = StreamFrameV1.CreateFrame64x32Rgb565(
+                sequence: localSequence,
+                timestampQpc: Stopwatch.GetTimestamp(),
+                pixels64x32Rgb565: pixels,
+                brightness0To255: ToByte01(localBrightness));
+
+            deviceServerHost.BroadcastFrame(frameBytes);
+            return;
         }
 
         if (bins is null || bins.Length != 64)
@@ -92,6 +113,14 @@ public sealed class MatrixPortalLedOutput : ILedOutput
     private static byte ToByte01(float value)
     {
         return (byte)Math.Clamp((int)MathF.Round(Math.Clamp(value, 0f, 1f) * 255f), 0, 255);
+    }
+
+    private static ushort ToRgb565(RgbaColor color)
+    {
+        var r = (ushort)((color.R >> 3) & 0x1F);
+        var g = (ushort)((color.G >> 2) & 0x3F);
+        var b = (ushort)((color.B >> 3) & 0x1F);
+        return (ushort)((r << 11) | (g << 5) | b);
     }
 }
 

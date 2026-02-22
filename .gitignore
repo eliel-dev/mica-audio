@@ -6,6 +6,8 @@
 # Local temp/work folders
 .tmp-*
 .tmp-*/
+.dotnet-home/
+**/.pio/
 
 # Logs and diagnostics
 publish-*.log

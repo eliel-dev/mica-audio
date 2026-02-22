@@ -18,13 +18,16 @@ namespace {
 // DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#fluxo-de-execucao
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 81;
+constexpr size_t kStreamFrame64x32Rgb565Size = 4112;
 constexpr uint8_t kStreamVersion = 1;
 constexpr uint8_t kStreamBinsMessageType = 1;
+constexpr uint8_t kStreamFrame64x32Rgb565MessageType = 2;
 constexpr unsigned long kProvisioningFallbackMs = 60000;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
 constexpr uint8_t kMatrixWidth = MICA_MATRIX_WIDTH;
 constexpr uint8_t kMatrixHeight = MICA_MATRIX_HEIGHT;
 constexpr uint8_t kMatrixHalfHeight = kMatrixHeight / 2;
+constexpr size_t kMatrixPixelCount = static_cast<size_t>(kMatrixWidth) * static_cast<size_t>(kMatrixHeight);
 static_assert((kMatrixHeight % 2) == 0, "MICA_MATRIX_HEIGHT must be even.");
 
 constexpr uint8_t kMatrixRgbPins[6] = {42, 41, 40, 38, 39, 37};
@@ -70,6 +73,7 @@ String gActiveAppConfig;
 uint8_t gBins[kBinsCount] = {0};
 uint8_t gLevel = 0;
 uint8_t gServerBrightness = 255;
+uint16_t gFrameRgb565[kMatrixPixelCount] = {0};
 unsigned long gLastFrameMs = 0;
 unsigned long gDisconnectedSinceMs = 0;
 unsigned long gLastTelemetryMs = 0;
@@ -78,6 +82,7 @@ unsigned long gTestLedNextToggleMs = 0;
 bool gTestLedState = false;
 bool gMatrixReady = false;
 uint8_t gAppliedBrightness = 255;
+bool gFrameModeActive = false;
 
 #if defined(MICA_PROFILE_STABLE)
 Adafruit_Protomatter gMatrix(
@@ -128,6 +133,17 @@ RgbColor rainbowColorForColumn(uint16_t column, uint16_t columnCount) {
     default:
       return {255, 0, q};
   }
+}
+
+RgbColor rgb565ToRgb888(uint16_t rgb565) {
+  const uint8_t r5 = static_cast<uint8_t>((rgb565 >> 11) & 0x1Fu);
+  const uint8_t g6 = static_cast<uint8_t>((rgb565 >> 5) & 0x3Fu);
+  const uint8_t b5 = static_cast<uint8_t>(rgb565 & 0x1Fu);
+
+  const uint8_t r = static_cast<uint8_t>((static_cast<uint16_t>(r5) * 255u + 15u) / 31u);
+  const uint8_t g = static_cast<uint8_t>((static_cast<uint16_t>(g6) * 255u + 31u) / 63u);
+  const uint8_t b = static_cast<uint8_t>((static_cast<uint16_t>(b5) * 255u + 15u) / 31u);
+  return {r, g, b};
 }
 
 void setMatrixBrightness(uint8_t brightness) {
@@ -469,18 +485,46 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
   }
 
   if (type == WStype_BIN) {
-    if (payload == nullptr || len < kStreamFrameSize) {
+    if (payload == nullptr || len < 2) {
       return;
     }
 
-    if (payload[0] != kStreamVersion || payload[1] != kStreamBinsMessageType) {
+    if (payload[0] != kStreamVersion) {
       return;
     }
 
-    gLevel = payload[14];
-    memcpy(gBins, payload + 15, kBinsCount);
-    gServerBrightness = payload[79];
-    gLastFrameMs = millis();
+    const uint8_t messageType = payload[1];
+    if (messageType == kStreamBinsMessageType) {
+      if (len < kStreamFrameSize) {
+        return;
+      }
+
+      gLevel = payload[14];
+      memcpy(gBins, payload + 15, kBinsCount);
+      gServerBrightness = payload[79];
+      gFrameModeActive = false;
+      gLastFrameMs = millis();
+      return;
+    }
+
+    if (messageType == kStreamFrame64x32Rgb565MessageType) {
+      if (len < kStreamFrame64x32Rgb565Size) {
+        return;
+      }
+
+      gServerBrightness = payload[14];
+      size_t offset = 15;
+      for (size_t i = 0; i < kMatrixPixelCount; i++) {
+        gFrameRgb565[i] = static_cast<uint16_t>(payload[offset]) |
+                          static_cast<uint16_t>(payload[offset + 1]) << 8;
+        offset += 2;
+      }
+
+      gFrameModeActive = true;
+      gLastFrameMs = millis();
+      return;
+    }
+
     return;
   }
 
@@ -639,6 +683,25 @@ void drawBars() {
 
   commitMatrixFrame();
 }
+
+void drawFrame64x32() {
+  if (!gMatrixReady) {
+    return;
+  }
+
+  setMatrixBrightness(gServerBrightness);
+  clearMatrix();
+
+  for (uint8_t y = 0; y < kMatrixHeight; y++) {
+    for (uint8_t x = 0; x < kMatrixWidth; x++) {
+      const size_t index = static_cast<size_t>(y) * static_cast<size_t>(kMatrixWidth) + static_cast<size_t>(x);
+      const RgbColor color = rgb565ToRgb888(gFrameRgb565[index]);
+      drawMatrixPixel(x, y, color);
+    }
+  }
+
+  commitMatrixFrame();
+}
 }  // namespace
 
 void setup() {
@@ -697,8 +760,14 @@ void loop() {
   if (millis() - gLastFrameMs > 15000) {
     memset(gBins, 0, sizeof(gBins));
     gLevel = 0;
+    memset(gFrameRgb565, 0, sizeof(gFrameRgb565));
+    gFrameModeActive = false;
   }
 
   updateTestLed();
-  drawBars();
+  if (gFrameModeActive) {
+    drawFrame64x32();
+  } else {
+    drawBars();
+  }
 }

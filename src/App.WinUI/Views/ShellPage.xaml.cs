@@ -94,6 +94,11 @@ public sealed partial class ShellPage : Page
             ServerTag => serverPage,
             _ => mainPage,
         };
+
+        if (string.Equals(tag, AppsTag, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = appsPage.ReloadCatalogFromDiskAsync();
+        }
     }
 
     private void OnDeviceOpsStateChanged(object? sender, EventArgs e)

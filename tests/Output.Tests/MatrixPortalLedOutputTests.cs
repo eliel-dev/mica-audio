@@ -2,6 +2,7 @@
 using Device.Protocol.Stream;
 using Device.Server.Hosting;
 using MicaAudio.Core.Led;
+using MicaAudio.Core.Presets;
 using Output.Led;
 
 namespace Output.Tests;
@@ -76,6 +77,46 @@ public class MatrixPortalLedOutputTests
         });
 
         Assert.Empty(host.BroadcastFrames);
+    }
+
+    [Fact]
+    public void Send_WithFrame64x32_ShouldBroadcastRgb565FramePayload()
+    {
+        var host = new FakeDeviceServerHost();
+        var output = new MatrixPortalLedOutput(host);
+
+        output.Start(new LedOutputConfig
+        {
+            Width = 64,
+            Height = 32,
+            Brightness = 1f,
+        });
+
+        var frame = new RgbaColor[64 * 32];
+        frame[0] = new RgbaColor(255, 0, 0, 255);
+        frame[1] = new RgbaColor(0, 255, 0, 255);
+        frame[2] = new RgbaColor(0, 0, 255, 255);
+
+        output.Send(new LedPayload
+        {
+            Frame64x32 = frame,
+            Level = 0.5f,
+            Bins64 = Enumerable.Repeat(0.2f, 64).ToArray(),
+        });
+
+        Assert.Single(host.BroadcastFrames);
+        var payload = host.BroadcastFrames[0];
+        Assert.Equal(StreamFrameV1.PayloadSizeFrame64x32Rgb565, payload.Length);
+        Assert.Equal(StreamFrameV1.MessageTypeFrame64x32Rgb565, payload[1]);
+        Assert.Equal((byte)255, payload[14]);
+
+        // RGB565 LE pixels start at byte 15.
+        Assert.Equal((byte)0x00, payload[15]); // red low
+        Assert.Equal((byte)0xF8, payload[16]); // red high
+        Assert.Equal((byte)0xE0, payload[17]); // green low
+        Assert.Equal((byte)0x07, payload[18]); // green high
+        Assert.Equal((byte)0x1F, payload[19]); // blue low
+        Assert.Equal((byte)0x00, payload[20]); // blue high
     }
 
     private sealed class FakeDeviceServerHost : IDeviceServerHost

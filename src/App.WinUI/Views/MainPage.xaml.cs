@@ -1,8 +1,11 @@
 using System.Diagnostics;
+using System.Net.Http;
 using Analyzer.Dsp.Analysis;
 using App.WinUI.Services;
+using App.WinUI.Services.Gif;
 using App.WinUI.ViewModels;
 using Audio.Loopback.Capture;
+using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
@@ -17,6 +20,8 @@ using Device.Server.Hosting;
 using Visual.Win2D.Engine;
 using Windows.Foundation;
 using Windows.Graphics;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.UI;
 using WinRT.Interop;
 
@@ -40,12 +45,19 @@ public partial class MainPage : Page
     private const double HubPreviewMinHeight = 84d;
     private const double HubPreviewMaxHeight = 220d;
     private const double FullscreenButtonAutoHideDelayMs = 1400d;
+    private const int GifTargetFps = 12;
+    private const int GifDownloadTimeoutSeconds = 10;
+    private const int GifMaxDownloadBytes = 25 * 1024 * 1024;
 
     private readonly VisualizerEngine visualizer = new();
     private readonly ILoopbackCapture capture = new WasapiLoopbackCaptureService();
     private readonly SimulatorLedOutput simulatorLedOutput = new();
     private readonly NullLedOutput nullLedOutput = new();
     private readonly MatrixPortalLedOutput matrixPortalLedOutput;
+    private readonly HttpClient gifHttpClient = new();
+    private readonly Hub75GifDecoder gifDecoder = new(Hub75GifDecoder.DefaultMaxGifFrames);
+    private readonly Hub75FrameFormatter gifFrameFormatter = new();
+    private readonly Hub75GifPlayer gifPlayer = new(TimeSpan.FromMilliseconds(1000d / GifTargetFps));
 
     private readonly PresetRepository presetRepository;
     private readonly SettingsRepository settingsRepository;
@@ -65,6 +77,12 @@ public partial class MainPage : Page
     private PresetDefinition activePreset = new();
     private string selectedRendererId = RendererIds.AudioMotionClone;
     private string currentPresetId = AudioMotionClonePresetId;
+    private GifContentSourceMode contentSourceMode = GifContentSourceMode.Audio;
+    private GifScaleMode gifScaleMode = GifScaleMode.Fit;
+    private IReadOnlyList<DecodedGifFrame> decodedGifFrames = Array.Empty<DecodedGifFrame>();
+    private IReadOnlyList<RgbaColor[]> gifFrames = Array.Empty<RgbaColor[]>();
+    private RgbaColor[]? lastGifFrame;
+    private CancellationTokenSource? gifLoadCts;
 
     private long lastRenderQpc;
     private float lastCloneViewportWidth;
@@ -81,6 +99,9 @@ public partial class MainPage : Page
     private bool suppressFrequencyScaleChanged;
     private bool suppressFrequencyMinChanged;
     private bool suppressFrequencyMaxChanged;
+    private bool suppressContentModeChanged;
+    private bool suppressGifScaleModeChanged;
+    private bool gifLoading;
     private float sensitivityMinDb = DefaultMinDecibels;
     private float sensitivityMaxDb = DefaultMaxDecibels;
     private float linearBoost = DefaultLinearBoost;
@@ -116,6 +137,7 @@ public partial class MainPage : Page
         var serverHost = App.DeviceIntegration?.Host ?? new DeviceServerHost();
         matrixPortalLedOutput = new MatrixPortalLedOutput(serverHost);
         pipelineCoordinator = new AudioPipelineCoordinator(capture, simulatorLedOutput, matrixPortalLedOutput, nullLedOutput, () => Volatile.Read(ref analyzer));
+        gifPlayer.FrameReady += OnGifFrameReady;
 
         capture.StatusChanged += OnCaptureStatusChanged;
         pipelineCoordinator.StatusChanged += OnPipelineCoordinatorStatusChanged;
@@ -146,6 +168,15 @@ public partial class MainPage : Page
             return;
         }
 
+        if (contentSourceMode == GifContentSourceMode.Gif)
+        {
+            pipelineCoordinator.ConfigureHubOutputs(ShouldShowHubPreview(), appSettings.Brightness);
+            EnsureRenderTimerStarted();
+            MainCanvas.Invalidate();
+            HubCanvas.Invalidate();
+            return;
+        }
+
         await ActivateVisualizerSessionAsync();
     }
 
@@ -155,6 +186,11 @@ public partial class MainPage : Page
         renderTimer?.Stop();
         cloneViewportDebounceTimer?.Stop();
         fullscreenButtonHideTimer?.Stop();
+        gifLoadCts?.Cancel();
+        gifLoadCts?.Dispose();
+        gifLoadCts = null;
+        gifPlayer.Stop();
+        await pipelineCoordinator.StopAsync().ConfigureAwait(true);
 
         SaveWindowSizeIntoSettings();
         await settingsRepository.SaveAsync(appSettings);
@@ -180,6 +216,8 @@ public partial class MainPage : Page
 
             PopulatePresetCombo();
             PopulateRendererCombo();
+            PopulateContentModeCombo();
+            PopulateGifScaleModeCombo();
             PopulateFftSizeCombo();
             PopulateWeightingFilterCombo();
             PopulateFrequencyScaleCombo();
@@ -224,12 +262,22 @@ public partial class MainPage : Page
             suppressFrequencyScaleChanged = true;
             SelectComboOption(FrequencyScaleCombo, frequencyScale.ToString());
             suppressFrequencyScaleChanged = false;
+            suppressContentModeChanged = true;
+            SelectComboOption(ContentModeCombo, GifContentSourceMode.Audio.ToString());
+            suppressContentModeChanged = false;
+            suppressGifScaleModeChanged = true;
+            SelectComboOption(GifScaleModeCombo, GifScaleMode.Fit.ToString());
+            suppressGifScaleModeChanged = false;
             UpdateFftSmoothingText();
             UpdateFrequencyScaleToolTip();
             UpdateFrequencyRangeCombos();
             UpdateSensitivityDbTexts();
             UpdateLinearBoostText();
             UpdateCloneModeUi();
+            UpdateGifControlsVisibility();
+            UpdateGifTransportState();
+            UpdateGifLoadingState(false);
+            UpdateGifLoadUrlButtonState();
 
             viewModel.CurrentPresetId = currentPresetId;
             viewModel.SelectedRendererId = selectedRendererId;
@@ -265,7 +313,7 @@ public partial class MainPage : Page
         {
             EnsureRenderTimerStarted();
             MainCanvas.Invalidate();
-            if (hubPreviewEnabled)
+            if (ShouldShowHubPreview())
             {
                 HubCanvas.Invalidate();
             }
@@ -281,7 +329,7 @@ public partial class MainPage : Page
             renderTimer.Tick += (_, _) =>
             {
                 MainCanvas.Invalidate();
-                if (hubPreviewEnabled)
+                if (ShouldShowHubPreview())
                 {
                     HubCanvas.Invalidate();
                 }
@@ -381,6 +429,19 @@ public partial class MainPage : Page
 
     private void OnMainCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
     {
+        if (contentSourceMode == GifContentSourceMode.Gif)
+        {
+            var gifFrame = lastGifFrame;
+            if (gifFrame is null || gifFrame.Length == 0)
+            {
+                args.DrawingSession.Clear(Color.FromArgb(255, 0, 0, 0));
+                return;
+            }
+
+            DrawHubFrame(args.DrawingSession, (float)sender.ActualWidth, (float)sender.ActualHeight, gifFrame);
+            return;
+        }
+
         var frame = pipelineCoordinator.LatestFrame;
         if (frame is null)
         {
@@ -435,7 +496,7 @@ public partial class MainPage : Page
 
     private void OnHubCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
     {
-        if (!hubPreviewEnabled)
+        if (!ShouldShowHubPreview())
         {
             args.DrawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
             return;
@@ -448,8 +509,11 @@ public partial class MainPage : Page
             return;
         }
 
-        var width = (float)sender.ActualWidth;
-        var height = (float)sender.ActualHeight;
+        DrawHubFrame(args.DrawingSession, (float)sender.ActualWidth, (float)sender.ActualHeight, snapshot);
+    }
+
+    private static void DrawHubFrame(CanvasDrawingSession drawingSession, float width, float height, IReadOnlyList<RgbaColor> pixels)
+    {
         var matrixWidth = (float)LedDefaults.MatrixWidth;
         var matrixHeight = (float)LedDefaults.MatrixHeight;
         var matrixAspect = matrixWidth / matrixHeight;
@@ -473,20 +537,19 @@ public partial class MainPage : Page
         var cellW = drawWidth / matrixWidth;
         var cellH = drawHeight / matrixHeight;
 
-        args.DrawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
-
+        drawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
         for (var y = 0; y < LedDefaults.MatrixHeight; y++)
         {
             for (var x = 0; x < LedDefaults.MatrixWidth; x++)
             {
-                var pixel = snapshot[(y * LedDefaults.MatrixWidth) + x];
+                var pixel = pixels[(y * LedDefaults.MatrixWidth) + x];
                 if (pixel.A == 0)
                 {
                     continue;
                 }
 
                 var color = Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B);
-                args.DrawingSession.FillRectangle(
+                drawingSession.FillRectangle(
                     offsetX + (x * cellW),
                     offsetY + (y * cellH),
                     Math.Max(1f, cellW),
@@ -536,11 +599,134 @@ public partial class MainPage : Page
     private void OnHub75Toggled(object sender, RoutedEventArgs e)
     {
         hubPreviewEnabled = Hub75Toggle.IsOn;
-        UpdateHubPreviewVisibility();
-
-        pipelineCoordinator.SetHubPreview(hubPreviewEnabled, appSettings.Brightness);
+        UpdateGifControlsVisibility();
+        pipelineCoordinator.ConfigureHubOutputs(ShouldShowHubPreview(), appSettings.Brightness);
+        if (contentSourceMode == GifContentSourceMode.Gif && lastGifFrame is { Length: > 0 } currentFrame)
+        {
+            pipelineCoordinator.SendHubFrame(currentFrame, forceSimulator: true);
+        }
 
         appSettings = settingsDomainService.Copy(appSettings, b => b.SetHub75PreviewEnabled(hubPreviewEnabled));
+    }
+
+    private async void OnContentModeSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (suppressContentModeChanged)
+        {
+            return;
+        }
+
+        if (ContentModeCombo.SelectedItem is not ComboOption option
+            || !Enum.TryParse<GifContentSourceMode>(option.Id, ignoreCase: true, out var mode))
+        {
+            return;
+        }
+
+        await SwitchContentModeAsync(mode).ConfigureAwait(true);
+    }
+
+    private async void OnGifScaleModeSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (suppressGifScaleModeChanged)
+        {
+            return;
+        }
+
+        if (GifScaleModeCombo.SelectedItem is not ComboOption option
+            || !Enum.TryParse<GifScaleMode>(option.Id, ignoreCase: true, out var mode))
+        {
+            return;
+        }
+
+        gifScaleMode = mode;
+        await ReformatLoadedGifFramesAsync().ConfigureAwait(true);
+    }
+
+    private void OnGifUrlTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateGifLoadUrlButtonState();
+    }
+
+    private async void OnGifLoadUrlClicked(object sender, RoutedEventArgs e)
+    {
+        var rawUrl = GifUrlTextBox.Text?.Trim() ?? string.Empty;
+        if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            StatusText.Text = "URL invalida: use http/https para um GIF direto.";
+            return;
+        }
+
+        await LoadGifAsync(
+            $"URL: {uri.Host}",
+            cancellationToken => DownloadGifFromUrlAsync(uri, cancellationToken)).ConfigureAwait(true);
+    }
+
+    private async void OnGifOpenFileClicked(object sender, RoutedEventArgs e)
+    {
+        var file = await PickGifFileAsync().ConfigureAwait(true);
+        if (file is null)
+        {
+            return;
+        }
+
+        await LoadGifAsync(
+            $"Arquivo: {file.Name}",
+            async cancellationToken =>
+            {
+                var fileInfo = new FileInfo(file.Path);
+                if (fileInfo.Length > GifMaxDownloadBytes)
+                {
+                    throw new InvalidDataException("Arquivo acima de 25MB.");
+                }
+
+                return await File.ReadAllBytesAsync(file.Path, cancellationToken).ConfigureAwait(false);
+            }).ConfigureAwait(true);
+    }
+
+    private async void OnGifPlayClicked(object sender, RoutedEventArgs e)
+    {
+        if (gifFrames.Count == 0)
+        {
+            StatusText.Text = "Carregue um GIF para iniciar.";
+            return;
+        }
+
+        if (contentSourceMode != GifContentSourceMode.Gif)
+        {
+            await SwitchContentModeAsync(GifContentSourceMode.Gif).ConfigureAwait(true);
+        }
+
+        if (gifPlayer.Play())
+        {
+            StatusText.Text = "GIF em reproducao (12 FPS).";
+            UpdateGifTransportState();
+        }
+    }
+
+    private void OnGifPauseClicked(object sender, RoutedEventArgs e)
+    {
+        gifPlayer.Pause();
+        StatusText.Text = "GIF pausado.";
+        UpdateGifTransportState();
+    }
+
+    private void OnGifStopClicked(object sender, RoutedEventArgs e)
+    {
+        gifPlayer.Stop();
+        if (gifFrames.Count > 0)
+        {
+            lastGifFrame = gifFrames[0];
+            pipelineCoordinator.SendHubFrame(lastGifFrame, forceSimulator: true);
+            MainCanvas.Invalidate();
+            if (ShouldShowHubPreview())
+            {
+                HubCanvas.Invalidate();
+            }
+        }
+
+        StatusText.Text = "GIF parado.";
+        UpdateGifTransportState();
     }
 
     private void OnSettingsClicked(object sender, RoutedEventArgs e)
@@ -970,6 +1156,25 @@ public partial class MainPage : Page
             .ToList();
     }
 
+    private void PopulateContentModeCombo()
+    {
+        ContentModeCombo.ItemsSource = new List<ComboOption>
+        {
+            new(GifContentSourceMode.Audio.ToString(), "Audio"),
+        };
+        ContentModeCombo.IsEnabled = false;
+    }
+
+    private void PopulateGifScaleModeCombo()
+    {
+        GifScaleModeCombo.ItemsSource = new List<ComboOption>
+        {
+            new(GifScaleMode.Fit.ToString(), "Fit", "Mantem proporcao com bordas."),
+            new(GifScaleMode.Fill.ToString(), "Fill", "Preenche tudo com recorte central."),
+            new(GifScaleMode.Stretch.ToString(), "Stretch", "Estica para ocupar toda a matriz."),
+        };
+    }
+
     private void PopulateFftSizeCombo()
     {
         FftSizeCombo.ItemsSource = FftSizeOptions
@@ -1074,7 +1279,7 @@ public partial class MainPage : Page
 
     private void UpdateHubPreviewVisibility()
     {
-        var visible = hubPreviewEnabled;
+        var visible = ShouldShowHubPreview();
         HubPreviewPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 
         if (!visible)
@@ -1087,6 +1292,10 @@ public partial class MainPage : Page
         if (!fullscreen)
         {
             availableHeight -= ControlsPanel.ActualHeight + ControlsPanel.Margin.Top + ControlsPanel.Margin.Bottom;
+            if (GifControlsPanel.Visibility == Visibility.Visible)
+            {
+                availableHeight -= GifControlsPanel.ActualHeight + GifControlsPanel.Margin.Top + GifControlsPanel.Margin.Bottom;
+            }
         }
 
         if (availableHeight <= 0d)
@@ -1099,6 +1308,294 @@ public partial class MainPage : Page
         targetHeight = Math.Min(targetHeight, Math.Max(72d, availableHeight * 0.45d));
 
         HubPreviewRow.Height = new GridLength(targetHeight);
+    }
+
+    private bool ShouldShowHubPreview() => hubPreviewEnabled || contentSourceMode == GifContentSourceMode.Gif;
+
+    private void UpdateGifControlsVisibility()
+    {
+        GifControlsPanel.Visibility = (!fullscreen && contentSourceMode == GifContentSourceMode.Gif)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        UpdateHubPreviewVisibility();
+    }
+
+    private void UpdateGifLoadUrlButtonState()
+    {
+        GifLoadUrlButton.IsEnabled = !gifLoading && !string.IsNullOrWhiteSpace(GifUrlTextBox.Text);
+    }
+
+    private void UpdateGifLoadingState(bool isLoading)
+    {
+        gifLoading = isLoading;
+        GifLoadingRing.IsActive = isLoading;
+        GifLoadingRing.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+        GifOpenFileButton.IsEnabled = !isLoading;
+        GifScaleModeCombo.IsEnabled = !isLoading;
+        UpdateGifLoadUrlButtonState();
+        UpdateGifTransportState();
+    }
+
+    private void UpdateGifTransportState()
+    {
+        var hasFrames = gifFrames.Count > 0;
+        GifPlayButton.IsEnabled = !gifLoading && hasFrames && !gifPlayer.IsPlaying;
+        GifPauseButton.IsEnabled = !gifLoading && hasFrames && gifPlayer.IsPlaying;
+        GifStopButton.IsEnabled = !gifLoading && hasFrames;
+    }
+
+    private async Task SwitchContentModeAsync(GifContentSourceMode targetMode)
+    {
+        if (contentSourceMode == targetMode)
+        {
+            return;
+        }
+
+        if (targetMode == GifContentSourceMode.Gif)
+        {
+            await pipelineCoordinator.StopAsync().ConfigureAwait(true);
+            contentSourceMode = GifContentSourceMode.Gif;
+            pipelineCoordinator.ConfigureHubOutputs(enableSimulator: true, brightness: appSettings.Brightness);
+            if (lastGifFrame is { Length: > 0 })
+            {
+                pipelineCoordinator.SendHubFrame(lastGifFrame, forceSimulator: true);
+            }
+
+            StatusText.Text = gifFrames.Count > 0
+                ? "Modo GIF ativo (12 FPS)."
+                : "Modo GIF ativo. Carregue um GIF para iniciar.";
+        }
+        else
+        {
+            gifPlayer.Stop();
+            contentSourceMode = GifContentSourceMode.Audio;
+            await pipelineCoordinator.StartAsync(hubPreviewEnabled, appSettings.Brightness, currentPresetId).ConfigureAwait(true);
+        }
+
+        suppressContentModeChanged = true;
+        SelectComboOption(ContentModeCombo, contentSourceMode.ToString());
+        suppressContentModeChanged = false;
+        UpdateGifControlsVisibility();
+        UpdateGifTransportState();
+        MainCanvas.Invalidate();
+        if (ShouldShowHubPreview())
+        {
+            HubCanvas.Invalidate();
+        }
+    }
+
+    private async Task ReformatLoadedGifFramesAsync()
+    {
+        if (decodedGifFrames.Count == 0)
+        {
+            return;
+        }
+
+        var wasPlaying = gifPlayer.IsPlaying;
+        var formatted = await Task.Run(() =>
+        {
+            var buffer = new List<RgbaColor[]>(decodedGifFrames.Count);
+            foreach (var decodedFrame in decodedGifFrames)
+            {
+                buffer.Add(gifFrameFormatter.Format(decodedFrame, gifScaleMode));
+            }
+
+            return (IReadOnlyList<RgbaColor[]>)buffer;
+        }).ConfigureAwait(true);
+
+        gifFrames = formatted;
+        gifPlayer.SetFrames(gifFrames);
+        lastGifFrame = gifFrames[0];
+
+        if (contentSourceMode == GifContentSourceMode.Gif)
+        {
+            pipelineCoordinator.SendHubFrame(lastGifFrame, forceSimulator: true);
+        }
+
+        if (wasPlaying)
+        {
+            gifPlayer.Play();
+        }
+
+        StatusText.Text = $"GIF reformado ({gifScaleMode}, {gifFrames.Count} frames).";
+        UpdateGifTransportState();
+        MainCanvas.Invalidate();
+        if (ShouldShowHubPreview())
+        {
+            HubCanvas.Invalidate();
+        }
+    }
+
+    private async Task LoadGifAsync(string sourceLabel, Func<CancellationToken, Task<byte[]>> acquireBytesAsync)
+    {
+        if (gifLoading)
+        {
+            return;
+        }
+
+        gifLoadCts?.Cancel();
+        gifLoadCts?.Dispose();
+        gifLoadCts = new CancellationTokenSource();
+        var cancellationToken = gifLoadCts.Token;
+
+        var shouldAutoplay = gifPlayer.IsPlaying || contentSourceMode == GifContentSourceMode.Gif;
+
+        try
+        {
+            UpdateGifLoadingState(true);
+            StatusText.Text = $"Carregando GIF ({sourceLabel})...";
+
+            var gifBytes = await acquireBytesAsync(cancellationToken).ConfigureAwait(true);
+            if (gifBytes.Length == 0)
+            {
+                throw new InvalidDataException("Conteudo vazio.");
+            }
+
+            if (gifBytes.Length > GifMaxDownloadBytes)
+            {
+                throw new InvalidDataException("Arquivo acima de 25MB.");
+            }
+
+            var decoded = await Task.Run(() => gifDecoder.Decode(gifBytes, cancellationToken), cancellationToken).ConfigureAwait(true);
+            if (decoded.Count == 0)
+            {
+                throw new InvalidDataException("GIF sem frames validos.");
+            }
+
+            var formatted = await Task.Run(() =>
+            {
+                var frameBuffer = new List<RgbaColor[]>(decoded.Count);
+                foreach (var decodedFrame in decoded)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    frameBuffer.Add(gifFrameFormatter.Format(decodedFrame, gifScaleMode));
+                }
+
+                return (IReadOnlyList<RgbaColor[]>)frameBuffer;
+            }, cancellationToken).ConfigureAwait(true);
+
+            decodedGifFrames = decoded;
+            gifFrames = formatted;
+            gifPlayer.SetFrames(gifFrames);
+            lastGifFrame = gifFrames[0];
+
+            if (contentSourceMode == GifContentSourceMode.Gif)
+            {
+                pipelineCoordinator.ConfigureHubOutputs(enableSimulator: true, brightness: appSettings.Brightness);
+                pipelineCoordinator.SendHubFrame(lastGifFrame, forceSimulator: true);
+            }
+
+            if (shouldAutoplay)
+            {
+                if (contentSourceMode != GifContentSourceMode.Gif)
+                {
+                    await SwitchContentModeAsync(GifContentSourceMode.Gif).ConfigureAwait(true);
+                }
+
+                gifPlayer.Play();
+            }
+
+            StatusText.Text = $"GIF carregado: {gifFrames.Count} frames, {GifTargetFps} FPS fixos.";
+            UpdateGifTransportState();
+            MainCanvas.Invalidate();
+            if (ShouldShowHubPreview())
+            {
+                HubCanvas.Invalidate();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = "Carregamento de GIF cancelado.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Erro ao carregar GIF: {ex.Message}";
+        }
+        finally
+        {
+            UpdateGifLoadingState(false);
+        }
+    }
+
+    private async Task<byte[]> DownloadGifFromUrlAsync(Uri uri, CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(GifDownloadTimeoutSeconds));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        using var response = await gifHttpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            timeoutCts.Token).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        if (response.Content.Headers.ContentLength is long contentLength && contentLength > GifMaxDownloadBytes)
+        {
+            throw new InvalidDataException("Download acima de 25MB.");
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(timeoutCts.Token).ConfigureAwait(false);
+        using var memory = new MemoryStream();
+        var buffer = new byte[32 * 1024];
+        var totalRead = 0L;
+        while (true)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), timeoutCts.Token).ConfigureAwait(false);
+            if (read <= 0)
+            {
+                break;
+            }
+
+            totalRead += read;
+            if (totalRead > GifMaxDownloadBytes)
+            {
+                throw new InvalidDataException("Download acima de 25MB.");
+            }
+
+            memory.Write(buffer, 0, read);
+        }
+
+        return memory.ToArray();
+    }
+
+    private static async Task<StorageFile?> PickGifFileAsync()
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.PicturesLibrary,
+        };
+
+        picker.FileTypeFilter.Add(".gif");
+
+        if (App.MainWindow is not null)
+        {
+            var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
+            InitializeWithWindow.Initialize(picker, hwnd);
+        }
+
+        return await picker.PickSingleFileAsync();
+    }
+
+    private void OnGifFrameReady(object? sender, RgbaColor[] frame)
+    {
+        if (frame.Length != LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
+        {
+            return;
+        }
+
+        lastGifFrame = frame;
+        pipelineCoordinator.SendHubFrame(frame, forceSimulator: true);
+
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            MainCanvas.Invalidate();
+            if (ShouldShowHubPreview())
+            {
+                HubCanvas.Invalidate();
+            }
+
+            UpdateGifTransportState();
+        });
     }
 
     private void ApplyBandCountBounds()
@@ -1391,6 +1888,11 @@ public partial class MainPage : Page
 
     private void OnCaptureStatusChanged(object? sender, CaptureStatusChangedEventArgs e)
     {
+        if (contentSourceMode == GifContentSourceMode.Gif)
+        {
+            return;
+        }
+
         _ = DispatcherQueue.EnqueueAsync(() =>
         {
             StatusText.Text = e.Message;
@@ -1399,6 +1901,11 @@ public partial class MainPage : Page
 
     private void OnPipelineCoordinatorStatusChanged(object? sender, string message)
     {
+        if (contentSourceMode == GifContentSourceMode.Gif)
+        {
+            return;
+        }
+
         _ = DispatcherQueue.EnqueueAsync(() =>
         {
             StatusText.Text = message;

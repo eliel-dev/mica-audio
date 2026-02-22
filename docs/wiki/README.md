@@ -28,6 +28,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Quero ver status da documentacao: [reference/docs-health.md](reference/docs-health.md)
 - Quero aplicar hardening security-first: [guides/security-quality-hardening.md](guides/security-quality-hardening.md)
 - Quero operar release 1.0 com setup assinado: [guides/release-1.0-installer.md](guides/release-1.0-installer.md)
+- Quero carregar GIF para HUB75 por URL/arquivo: [guides/load-gif-hub75.md](guides/load-gif-hub75.md)
 - Quero operar no modo solo + IA: [ai/README.md](ai/README.md)
 
 ## Indice
@@ -67,6 +68,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Checklist de release de documentacao](guides/release-doc-checklist.md)
 - [Release 1.0 com setup assinado](guides/release-1.0-installer.md)
 - [Hardening de seguranca e qualidade](guides/security-quality-hardening.md)
+- [Carregar GIF HUB75 (URL/arquivo)](guides/load-gif-hub75.md)
 
 ### IA / Agentes
 - [IA index](ai/README.md)

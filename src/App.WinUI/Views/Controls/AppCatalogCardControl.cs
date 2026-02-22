@@ -89,6 +89,7 @@ internal sealed class AppCatalogCardControl : UserControl
             "clima" => "Clima",
             "relogio" => "Relógio",
             "relógio" => "Relógio",
+            "midia" => "Mídia",
             _ => category,
         };
     }

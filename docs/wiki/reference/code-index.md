@@ -9,6 +9,9 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [ServerPage](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1)
 ## UI services
 - [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
+- [Hub75GifDecoder](../../../src/App.WinUI/Services/Gif/Hub75GifDecoder.cs#L1)
+- [Hub75FrameFormatter](../../../src/App.WinUI/Services/Gif/Hub75FrameFormatter.cs#L1)
+- [Hub75GifPlayer](../../../src/App.WinUI/Services/Gif/Hub75GifPlayer.cs#L1)
 - [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L1)
 - [DeviceIntegrationService](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L1)
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
@@ -16,11 +19,13 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
 - [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L1)
+- [GifCatalogAppRuntimeService](../../../src/App.WinUI/Services/Apps/GifCatalogAppRuntimeService.cs#L1)
 - [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)
 - [CityAutocompleteService](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L1)
 - [AppPreviewRendererRegistry](../../../src/App.WinUI/Views/Controls/AppPreviewRendererRegistry.cs#L1)
 - [AppPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/AppPreviewThumbnailControl.cs#L1)
 - [AppCatalogCardControl](../../../src/App.WinUI/Views/Controls/AppCatalogCardControl.cs#L1)
+- [GifPreviewRenderer](../../../src/App.WinUI/Views/Controls/Renderers/GifPreviewRenderer.cs#L1)
 ## Audio, DSP and visual
 - [WasapiLoopbackCaptureService](../../../src/Audio.Loopback/Capture/WasapiLoopbackCaptureService.cs#L1)
 - [SpectrumAnalyzer](../../../src/Analyzer.Dsp/Analysis/SpectrumAnalyzer.cs#L1)

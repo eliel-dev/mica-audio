@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Firmware do dispositivo para conectar ao servidor local, receber stream `bins64` e executar comandos remotos.
+Firmware do dispositivo para conectar ao servidor local, receber stream `bins64` (tipo `1`) ou frame RGB565 `64x32` (tipo `2`) e executar comandos remotos.
 
 ## Responsabilidades
 
@@ -10,15 +10,16 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 - Conexao WebSocket para stream/comandos.
 - ACK/progresso de comandos.
 - Telemetria periodica (RSSI, IP, versao, app ativo).
-- Render de barras espelhadas em painel HUB75 quando disponivel.
+- Render de barras espelhadas (tipo `1`) e render de frame completo RGB565 (tipo `2`) em painel HUB75 quando disponivel.
 
 ## Fluxo de execucao
 
 1. Boot carrega preferencias em NVS.
 2. Conecta Wi-Fi e WebSocket.
-3. Recebe `StreamFrameV1`, valida cabecalho (`version` e `messageType`) e atualiza `gBins/gLevel/gServerBrightness`.
-4. Desenha barras espelhadas no painel HUB75 (`drawBars`).
+3. Recebe `StreamFrameV1`, valida cabecalho (`version` e `messageType`) e atualiza `gBins` (tipo `1`) ou `gFrameRgb565` (tipo `2`).
+4. Renderiza no HUB75: `drawBars` para tipo `1` e `drawFrame64x32` para tipo `2`.
 5. Envia telemetria periodica e ACK de comando.
+6. Quando o app desktop para o runtime GIF, um frame legado tipo `1` zerado desativa `frame-mode` imediatamente.
 
 ## Perfis de build
 
@@ -45,6 +46,8 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 - Mudar formato de frame sem atualizar app quebra stream.
 - Perfil DMA pode impactar estabilidade de Wi-Fi dependendo do hardware.
 - Alterar provisionamento sem fallback pode prender device offline.
+- Firmware antigo ignora `messageType=2`; app deve manter preview local e aviso de compatibilidade.
+- Se o app nao enviar fallback tipo `1` ao stop do GIF, o ultimo frame pode parecer "preso" ate timeout.
 
 ## Checklist apos alteracao
 

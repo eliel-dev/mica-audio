@@ -92,6 +92,57 @@
           ]
         }
       ]
+    },
+    {
+      "id": "gifhub75",
+      "name": "GIF HUB75",
+      "summary": "GIF por URL ou arquivo local",
+      "description": "Executa GIF no desktop com stream HUB75 64x32 para devices conectados (12 FPS fixos).",
+      "author": "Mica Audio",
+      "packageName": "gifhub75",
+      "fileName": "gifhub75.star",
+      "recommendedIntervalMinutes": 0,
+      "category": "midia",
+      "preview": {
+        "kind": "gif",
+        "speed": 1
+      },
+      "modifiers": [
+        {
+          "key": "sourceMode",
+          "label": "Fonte",
+          "type": "Select",
+          "description": "Escolhe entre URL direta e arquivo local.",
+          "defaultValue": "url",
+          "required": true,
+          "options": [
+            { "label": "URL direta", "value": "url" },
+            { "label": "Arquivo local", "value": "file" }
+          ]
+        },
+        {
+          "key": "gifUrl",
+          "label": "URL do GIF",
+          "type": "Text",
+          "description": "URL direta do GIF (http/https).",
+          "placeholder": "https://exemplo.com/animacao.gif",
+          "defaultValue": "",
+          "required": false
+        },
+        {
+          "key": "scaleMode",
+          "label": "Escala",
+          "type": "Select",
+          "description": "Ajuste do frame para HUB75 64x32.",
+          "defaultValue": "fit",
+          "required": true,
+          "options": [
+            { "label": "Fit", "value": "fit" },
+            { "label": "Fill", "value": "fill" },
+            { "label": "Stretch", "value": "stretch" }
+          ]
+        }
+      ]
     }
   ]
 }

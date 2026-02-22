@@ -1,5 +1,6 @@
 ﻿using App.WinUI.Views.Controls;
 using Microsoft.UI.Xaml;
+using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -20,6 +21,11 @@ public sealed partial class AppsPage
     private TextBlock OperationPercentText = null!;
     private TextBlock ModifiersHintText = null!;
     private StackPanel ModifiersPanel = null!;
+    private Border GifRuntimePanel = null!;
+    private Button GifOpenFileButton = null!;
+    private TextBlock GifRuntimeStatusText = null!;
+    private TextBlock GifFirmwareWarningText = null!;
+    private CanvasControl GifRuntimeCanvas = null!;
     private Button InstallButton = null!;
     private Button SaveModifiersButton = null!;
 
@@ -90,6 +96,7 @@ public sealed partial class AppsPage
         right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetColumn(right, 1);
 
         var details = new StackPanel { Spacing = 4 };
@@ -152,6 +159,50 @@ public sealed partial class AppsPage
         Grid.SetRow(modifiersCard, 2);
         right.Children.Add(modifiersCard);
 
+        var gifRuntimeHost = new StackPanel { Spacing = 8 };
+        gifRuntimeHost.Children.Add(new TextBlock
+        {
+            Text = "Runtime GIF HUB75",
+            Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
+        });
+
+        GifRuntimeStatusText = new TextBlock
+        {
+            Text = "Selecione o app GIF para iniciar.",
+            Opacity = 0.9,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        GifOpenFileButton = new Button
+        {
+            Content = "Abrir arquivo GIF",
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        GifOpenFileButton.Click += OnGifOpenFileClicked;
+
+        GifFirmwareWarningText = new TextBlock
+        {
+            Text = "Aviso: firmware antigo ignora frame RGB565 (tipo 2). O runtime local continua ativo.",
+            Opacity = 0.76,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        GifRuntimeCanvas = new CanvasControl
+        {
+            Height = 110,
+        };
+        GifRuntimeCanvas.Draw += OnGifRuntimeCanvasDraw;
+
+        gifRuntimeHost.Children.Add(GifRuntimeStatusText);
+        gifRuntimeHost.Children.Add(GifOpenFileButton);
+        gifRuntimeHost.Children.Add(GifFirmwareWarningText);
+        gifRuntimeHost.Children.Add(GifRuntimeCanvas);
+
+        GifRuntimePanel = CreateCard(gifRuntimeHost);
+        GifRuntimePanel.Visibility = Visibility.Collapsed;
+        Grid.SetRow(GifRuntimePanel, 3);
+        right.Children.Add(GifRuntimePanel);
+
         var actionsGrid = new Grid { ColumnSpacing = 8 };
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -168,7 +219,7 @@ public sealed partial class AppsPage
         actionsGrid.Children.Add(SaveModifiersButton);
 
         var actionsCard = CreateCard(actionsGrid);
-        Grid.SetRow(actionsCard, 3);
+        Grid.SetRow(actionsCard, 4);
         right.Children.Add(actionsCard);
 
         var statusGrid = new Grid { ColumnSpacing = 10 };
@@ -206,7 +257,7 @@ public sealed partial class AppsPage
         statusGrid.Children.Add(OperationPercentText);
 
         var statusCard = CreateCard(statusGrid);
-        Grid.SetRow(statusCard, 4);
+        Grid.SetRow(statusCard, 5);
         right.Children.Add(statusCard);
 
         content.Children.Add(right);
