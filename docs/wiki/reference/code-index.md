@@ -69,6 +69,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 ## Governanca IA
 - [AGENTS](../../../AGENTS.md#L1)
 - [AI index](../ai/README.md)
+- [Consistencia no desenvolvimento com Codex](../ai/consistencia-codex.md)
 - [AI contract YAML](ai-contract.v1.yaml)
 - [AI contract schema](ai-contract.schema.json)
 - [Handoffs](../../../docs/handoffs/README.md#L1)
@@ -76,4 +77,3 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [AppSettings](../../../src/MicaAudio.Core/Presets/AppSettings.cs#L1)
 - [SettingsRepository](../../../src/App.WinUI/Services/SettingsRepository.cs#L1)
 - [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L1)
-
