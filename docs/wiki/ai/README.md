@@ -10,6 +10,7 @@ Objetivo: concentrar o contrato operacional para qualquer LLM/Agente no modo sol
 - [Matriz de validacao](validation-matrix.md)
 - [Playbooks de incidente](incident-playbooks.md)
 - [Viabilidade MCP](mcp-viability.md)
+- [Consistência Codex](consistencia-codex.md)
 
 ## Referencias
 
