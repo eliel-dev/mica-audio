@@ -35,6 +35,7 @@ internal sealed class AppCatalogService
             RecommendedIntervalMinutes = 5,
             Category = "clima",
             Preview = new AppPreviewDefinition { Kind = "weather", Speed = 1f },
+            Runtime = new AppRuntimeDefinition { Kind = "none" },
             Modifiers =
             [
                 new AppModifierDefinition
@@ -75,6 +76,7 @@ internal sealed class AppCatalogService
             RecommendedIntervalMinutes = 0,
             Category = "relógio",
             Preview = new AppPreviewDefinition { Kind = "clock", Speed = 1f },
+            Runtime = new AppRuntimeDefinition { Kind = "none" },
             Modifiers =
             [
                 new AppModifierDefinition
@@ -133,6 +135,7 @@ internal sealed class AppCatalogService
             RecommendedIntervalMinutes = 0,
             Category = "midia",
             Preview = new AppPreviewDefinition { Kind = "gif", Speed = 1f },
+            Runtime = new AppRuntimeDefinition { Kind = "gifhub75" },
             Modifiers =
             [
                 new AppModifierDefinition
@@ -235,6 +238,7 @@ internal sealed class AppCatalogService
             RecommendedIntervalMinutes = defaults.RecommendedIntervalMinutes,
             Category = defaults.Category,
             Preview = defaults.Preview,
+            Runtime = item.Runtime is null || string.IsNullOrWhiteSpace(item.Runtime.Kind) ? defaults.Runtime : item.Runtime,
             Modifiers = defaults.Modifiers,
         };
     }

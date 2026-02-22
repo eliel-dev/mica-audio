@@ -22,6 +22,8 @@ public sealed class AppCatalogItem
 
     public AppPreviewDefinition? Preview { get; init; }
 
+    public AppRuntimeDefinition? Runtime { get; init; }
+
     public IReadOnlyList<AppModifierDefinition> Modifiers { get; init; } = Array.Empty<AppModifierDefinition>();
 
     public bool IsValid()

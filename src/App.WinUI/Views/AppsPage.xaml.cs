@@ -28,7 +28,6 @@ namespace App.WinUI.Views;
 public sealed partial class AppsPage : Page
 {
     private const string LocalDraftScope = "__local__";
-    private const string GifAppId = "gifhub75";
     private readonly List<AppCatalogItem> allItems = new();
     private readonly List<AppCatalogItem> filteredItems = new();
     private readonly List<AppCatalogCardControl> catalogCards = new();
@@ -41,13 +40,12 @@ public sealed partial class AppsPage : Page
     private AppCatalogItem? selectedItem;
     private DeviceOperationsState currentState = new();
     private ScrollViewer? catalogScrollViewer;
-    private string? gifSessionFilePath;
-    private bool pendingGifAutostart;
-    private bool gifRuntimeBusy;
+    private bool pendingRuntimeAutostart;
     private bool catalogReloadInProgress;
-    private CancellationTokenSource? gifRuntimeRequestCts;
     private RgbaColor[] gifPreviewFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
-    private string lastGifRuntimeStatus = "Selecione o app GIF para iniciar.";
+    private string lastRuntimeStatus = "Selecione um app com runtime local para iniciar.";
+    private readonly AppRuntimeProviderRegistry runtimeProviderRegistry;
+    private IAppRuntimeProvider? activeRuntimeProvider;
 
     public AppsPage()
     {
@@ -58,10 +56,10 @@ public sealed partial class AppsPage : Page
             decoder: new Hub75GifDecoder(Hub75GifDecoder.DefaultMaxGifFrames),
             formatter: new Hub75FrameFormatter(),
             player: new Hub75GifPlayer(TimeSpan.FromMilliseconds(1000d / GifCatalogAppRuntimeService.TargetFps)));
-        gifRuntimeService.StatusChanged += OnGifRuntimeStatusChanged;
-        gifRuntimeService.FrameUpdated += OnGifRuntimeFrameUpdated;
+        runtimeProviderRegistry = new AppRuntimeProviderRegistry([new GifHub75RuntimeProvider()]);
 
         InitializeComponent();
+        AttachRuntimeProviders();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -84,7 +82,7 @@ public sealed partial class AppsPage : Page
 
         CatalogGrid.SizeChanged += OnCatalogViewportChanged;
         EnsureCatalogScrollViewer();
-        UpdateGifRuntimePanel();
+UpdateRuntimePanel();
         await ReloadCatalogFromDiskAsync().ConfigureAwait(false);
     }
 
@@ -115,8 +113,7 @@ public sealed partial class AppsPage : Page
         }
 
         activePreviewCards.Clear();
-        CancelGifRuntimeRequest();
-        gifRuntimeService.Stop();
+runtimeProviderRegistry.Dispose();
     }
 
     // DOCS: docs/wiki/guides/add-app-catalog-item.md#passos
@@ -281,7 +278,7 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        pendingGifAutostart = string.Equals(card.Item.Id, GifAppId, StringComparison.OrdinalIgnoreCase);
+        pendingRuntimeAutostart = runtimeProviderRegistry.Resolve(card.Item) is not null;
         if (ReferenceEquals(CatalogGrid.SelectedItem, card))
         {
             SetSelectedItem(card.Item);
@@ -325,28 +322,24 @@ public sealed partial class AppsPage : Page
 
     private void SetSelectedItem(AppCatalogItem item)
     {
-        var wasGifSelected = IsGifAppSelected();
+        var previousProvider = activeRuntimeProvider;
         selectedItem = item;
+        activeRuntimeProvider = runtimeProviderRegistry.Resolve(item);
+
         SelectedAppNameText.Text = item.Name;
         SelectedAppMetaText.Text = $"{item.Category} | Intervalo recomendado: {item.RecommendedIntervalMinutes} min";
         SelectedAppDescriptionText.Text = item.Description;
 
         _ = LoadModifierEditorAsync();
-        if (wasGifSelected && !IsGifAppSelected())
+
+        if (previousProvider is not null && !ReferenceEquals(previousProvider, activeRuntimeProvider))
         {
-            StopGifRuntime();
+            previousProvider.OnDeselected(item);
         }
 
-        if (IsGifAppSelected())
-        {
-            _ = EvaluateGifAutostartAsync();
-        }
-        else
-        {
-            pendingGifAutostart = false;
-        }
+        _ = EvaluateRuntimeAutostartAsync();
 
-        UpdateGifRuntimePanel();
+        UpdateRuntimePanel();
         UpdateSelectionVisuals();
         RefreshPreviewPlayback();
         UpdateActionButtonsEnabled();
@@ -354,20 +347,20 @@ public sealed partial class AppsPage : Page
 
     private void ClearSelectedItem()
     {
-        var wasGifSelected = IsGifAppSelected();
+        var previousProvider = activeRuntimeProvider;
         selectedItem = null;
+        activeRuntimeProvider = null;
+
         SelectedAppNameText.Text = "Selecione um app";
         SelectedAppMetaText.Text = "-";
         SelectedAppDescriptionText.Text = "Nenhum app selecionado.";
         ModifiersHintText.Text = "Selecione um app e um dispositivo para editar modificadores.";
         ModifiersPanel.Children.Clear();
         modifierBindings.Clear();
-        if (wasGifSelected)
-        {
-            StopGifRuntime();
-        }
 
-        UpdateGifRuntimePanel();
+        previousProvider?.OnDeselected(new AppCatalogItem());
+
+        UpdateRuntimePanel();
         UpdateSelectionVisuals();
         RefreshPreviewPlayback();
         UpdateActionButtonsEnabled();
@@ -534,9 +527,9 @@ public sealed partial class AppsPage : Page
         }
 
         await store.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
-        if (string.Equals(item.Id, GifAppId, StringComparison.OrdinalIgnoreCase) && IsGifAppSelected())
+        if (activeRuntimeProvider is not null && selectedItem is not null)
         {
-            await ApplyGifRuntimeFromValuesAsync(rawValues).ConfigureAwait(false);
+            await activeRuntimeProvider.OnConfigSavedAsync(selectedItem, rawValues, CancellationToken.None).ConfigureAwait(false);
         }
 
         _ = DispatcherQueue.TryEnqueue(() =>
@@ -546,62 +539,44 @@ public sealed partial class AppsPage : Page
         });
     }
 
-    private static bool IsGifApp(AppCatalogItem? item)
-        => item is not null && string.Equals(item.Id, GifAppId, StringComparison.OrdinalIgnoreCase);
-
-    private bool IsGifAppSelected() => IsGifApp(selectedItem);
-
-    private void UpdateGifRuntimePanel()
+    private void UpdateRuntimePanel()
     {
-        if (GifRuntimePanel is null)
-        {
-            return;
-        }
-
-        var selectedGif = IsGifAppSelected();
-        GifRuntimePanel.Visibility = selectedGif ? Visibility.Visible : Visibility.Collapsed;
-        GifOpenFileButton.IsEnabled = selectedGif && !gifRuntimeBusy;
-        GifRuntimeStatusText.Text = lastGifRuntimeStatus;
+        GifRuntimeStatusText.Text = lastRuntimeStatus;
+        GifRuntimePanel.Visibility = activeRuntimeProvider is null ? Visibility.Collapsed : Visibility.Visible;
         GifRuntimeCanvas.Invalidate();
     }
 
-    private void SetGifRuntimeStatus(string status)
+    private void SetRuntimeStatus(string status)
     {
         if (string.IsNullOrWhiteSpace(status))
         {
             return;
         }
 
-        lastGifRuntimeStatus = status;
-        _ = DispatcherQueue.TryEnqueue(() =>
-        {
-            if (GifRuntimeStatusText is not null)
-            {
-                GifRuntimeStatusText.Text = status;
-            }
-        });
+        lastRuntimeStatus = status;
+        _ = DispatcherQueue.TryEnqueue(() => GifRuntimeStatusText.Text = status);
     }
 
-    private async Task EvaluateGifAutostartAsync()
+    private async Task EvaluateRuntimeAutostartAsync()
     {
-        if (!IsGifAppSelected())
+        if (activeRuntimeProvider is null || selectedItem is null)
+        {
+            pendingRuntimeAutostart = false;
+            return;
+        }
+
+        activeRuntimeProvider.OnSelected(selectedItem);
+        if (!pendingRuntimeAutostart)
         {
             return;
         }
 
-        UpdateGifRuntimePanel();
-        if (!pendingGifAutostart)
-        {
-            SetGifRuntimeStatus("App GIF selecionado. O runtime inicia apenas em clique manual no card.");
-            return;
-        }
-
-        pendingGifAutostart = false;
-        var values = await ResolveModifierValuesForSelectedGifAsync().ConfigureAwait(false);
-        await ApplyGifRuntimeFromValuesAsync(values).ConfigureAwait(false);
+        pendingRuntimeAutostart = false;
+        var values = await ResolveRuntimeValuesAsync().ConfigureAwait(false);
+        await activeRuntimeProvider.OnConfigSavedAsync(selectedItem, values, CancellationToken.None).ConfigureAwait(false);
     }
 
-    private async Task<IReadOnlyDictionary<string, string>> ResolveModifierValuesForSelectedGifAsync()
+    private async Task<IReadOnlyDictionary<string, string>> ResolveRuntimeValuesAsync()
     {
         var item = selectedItem;
         if (item is null)
@@ -609,16 +584,17 @@ public sealed partial class AppsPage : Page
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
+        if (TryBuildConfigFromEditor(item, out _, out var rawValues, out _))
+        {
+            return rawValues;
+        }
+
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var modifier in item.Modifiers.Where(static modifier => modifier.IsValid()))
         {
-            if (modifier.Type == AppModifierFieldType.Toggle)
-            {
-                values[modifier.Key] = modifier.DefaultToggle is true ? "true" : "false";
-                continue;
-            }
-
-            values[modifier.Key] = modifier.DefaultValue ?? string.Empty;
+            values[modifier.Key] = modifier.Type == AppModifierFieldType.Toggle
+                ? (modifier.DefaultToggle is true ? "true" : "false")
+                : (modifier.DefaultValue ?? string.Empty);
         }
 
         var store = ModifierStore;
@@ -628,118 +604,40 @@ public sealed partial class AppsPage : Page
         }
 
         var draft = await store.GetDraftAsync(LocalDraftScope, item.Id).ConfigureAwait(false);
-        if (draft?.Values is null)
+        if (draft?.Values is not null)
         {
-            return values;
-        }
-
-        foreach (var pair in draft.Values)
-        {
-            values[pair.Key] = pair.Value;
+            foreach (var pair in draft.Values)
+            {
+                values[pair.Key] = pair.Value;
+            }
         }
 
         return values;
     }
 
-    private async Task ApplyGifRuntimeFromValuesAsync(IReadOnlyDictionary<string, string> values)
+    private void AttachRuntimeProviders()
     {
-        if (!IsGifAppSelected())
+        var host = new AppRuntimeHost
         {
-            return;
-        }
+            RuntimePanel = GifRuntimePanel,
+            RuntimeStatusText = GifRuntimeStatusText,
+            OpenFileButton = GifOpenFileButton,
+            FirmwareWarningText = GifFirmwareWarningText,
+            RuntimeCanvas = GifRuntimeCanvas,
+            DispatcherQueue = DispatcherQueue,
+            GifRuntimeService = gifRuntimeService,
+            PickGifFileAsync = PickGifFileAsync,
+            ResolveScaleMode = () => selectedItem is null || !TryBuildConfigFromEditor(selectedItem, out _, out var values, out _) ? GifScaleMode.Fit : ParseGifScaleMode(values.TryGetValue("scaleMode", out var mode) ? mode : null),
+            ResolveCurrentValuesAsync = ResolveRuntimeValuesAsync,
+            PersistCurrentValuesAsync = () => Task.CompletedTask,
+            UpdateFrame = frame => gifPreviewFrame = frame,
+            SetStatus = SetRuntimeStatus,
+        };
 
-        var item = selectedItem;
-        if (item is null)
+        foreach (var provider in runtimeProviderRegistry.Providers)
         {
-            return;
+            provider.Attach(host);
         }
-
-        values.TryGetValue("sourceMode", out var sourceModeRaw);
-        values.TryGetValue("gifUrl", out var gifUrl);
-        values.TryGetValue("scaleMode", out var scaleModeRaw);
-
-        var sourceMode = string.Equals(sourceModeRaw, "file", StringComparison.OrdinalIgnoreCase)
-            ? "file"
-            : "url";
-
-        var scaleMode = ParseGifScaleMode(scaleModeRaw);
-
-        CancellationToken cancellationToken;
-        try
-        {
-            cancellationToken = BeginGifRuntimeRequest();
-        }
-        catch (ObjectDisposedException)
-        {
-            return;
-        }
-
-        gifRuntimeBusy = true;
-        _ = DispatcherQueue.TryEnqueue(UpdateGifRuntimePanel);
-
-        try
-        {
-            if (sourceMode == "file")
-            {
-                if (string.IsNullOrWhiteSpace(gifSessionFilePath))
-                {
-                    SetGifRuntimeStatus("Modo arquivo ativo. Clique em 'Abrir arquivo GIF' para iniciar.");
-                    return;
-                }
-
-                await gifRuntimeService.StartFromFileAsync(gifSessionFilePath, scaleMode, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (!Uri.TryCreate(gifUrl, UriKind.Absolute, out var uri)
-                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-            {
-                SetGifRuntimeStatus("Modo URL ativo. Informe uma URL direta http/https e clique em Salvar.");
-                return;
-            }
-
-            await gifRuntimeService.StartFromUrlAsync(uri.ToString(), scaleMode, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            SetGifRuntimeStatus($"Erro no runtime GIF: {ex.Message}");
-        }
-        finally
-        {
-            gifRuntimeBusy = false;
-            _ = DispatcherQueue.TryEnqueue(UpdateGifRuntimePanel);
-        }
-    }
-
-    private void StopGifRuntime()
-    {
-        CancelGifRuntimeRequest();
-        gifRuntimeBusy = false;
-        gifRuntimeService.Stop();
-        gifPreviewFrame = gifRuntimeService.GetLatestFrame();
-        _ = DispatcherQueue.TryEnqueue(UpdateGifRuntimePanel);
-    }
-
-    private CancellationToken BeginGifRuntimeRequest()
-    {
-        CancelGifRuntimeRequest();
-        gifRuntimeRequestCts = new CancellationTokenSource();
-        return gifRuntimeRequestCts.Token;
-    }
-
-    private void CancelGifRuntimeRequest()
-    {
-        if (gifRuntimeRequestCts is null)
-        {
-            return;
-        }
-
-        gifRuntimeRequestCts.Cancel();
-        gifRuntimeRequestCts.Dispose();
-        gifRuntimeRequestCts = null;
     }
 
     private static GifScaleMode ParseGifScaleMode(string? raw)
@@ -750,34 +648,6 @@ public sealed partial class AppsPage : Page
             "stretch" => GifScaleMode.Stretch,
             _ => GifScaleMode.Fit,
         };
-    }
-
-    private async void OnGifOpenFileClicked(object sender, RoutedEventArgs e)
-    {
-        var file = await PickGifFileAsync().ConfigureAwait(true);
-        if (file is null)
-        {
-            return;
-        }
-
-        gifSessionFilePath = file.Path;
-        SetGifRuntimeStatus($"Arquivo selecionado: {file.Name}");
-        if (!IsGifAppSelected() || selectedItem is null)
-        {
-            return;
-        }
-
-        IReadOnlyDictionary<string, string> values;
-        if (TryBuildConfigFromEditor(selectedItem, out _, out var rawValues, out _))
-        {
-            values = rawValues;
-        }
-        else
-        {
-            values = await ResolveModifierValuesForSelectedGifAsync().ConfigureAwait(false);
-        }
-
-        await ApplyGifRuntimeFromValuesAsync(values).ConfigureAwait(false);
     }
 
     private static async Task<StorageFile?> PickGifFileAsync()
@@ -796,58 +666,6 @@ public sealed partial class AppsPage : Page
         }
 
         return await picker.PickSingleFileAsync();
-    }
-
-    private void OnGifRuntimeStatusChanged(object? sender, string status)
-    {
-        if (string.Equals(status, lastGifRuntimeStatus, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        SetGifRuntimeStatus(status);
-    }
-
-    private void OnGifRuntimeFrameUpdated(object? sender, RgbaColor[] frame)
-    {
-        gifPreviewFrame = frame.ToArray();
-        _ = DispatcherQueue.TryEnqueue(() => GifRuntimeCanvas.Invalidate());
-    }
-
-    private void OnGifRuntimeCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
-    {
-        args.DrawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
-        var frame = gifPreviewFrame;
-        if (frame.Length != LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
-        {
-            return;
-        }
-
-        var canvasWidth = (float)Math.Max(1d, sender.ActualWidth);
-        var canvasHeight = (float)Math.Max(1d, sender.ActualHeight);
-        var pixelSize = MathF.Max(
-            1f,
-            MathF.Min(canvasWidth / LedDefaults.MatrixWidth, canvasHeight / LedDefaults.MatrixHeight));
-
-        var drawWidth = pixelSize * LedDefaults.MatrixWidth;
-        var drawHeight = pixelSize * LedDefaults.MatrixHeight;
-        var originX = (canvasWidth - drawWidth) / 2f;
-        var originY = (canvasHeight - drawHeight) / 2f;
-
-        var gap = MathF.Max(0f, pixelSize - 1f);
-        var fillSize = MathF.Max(1f, pixelSize - gap);
-
-        for (var y = 0; y < LedDefaults.MatrixHeight; y++)
-        {
-            for (var x = 0; x < LedDefaults.MatrixWidth; x++)
-            {
-                var color = frame[(y * LedDefaults.MatrixWidth) + x];
-                var drawColor = Color.FromArgb(color.A, color.R, color.G, color.B);
-                var left = originX + (x * pixelSize);
-                var top = originY + (y * pixelSize);
-                args.DrawingSession.FillRectangle(left, top, fillSize, fillSize, drawColor);
-            }
-        }
     }
 
     private void OnTargetDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)

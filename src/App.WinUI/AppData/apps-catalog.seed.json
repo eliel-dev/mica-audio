@@ -1,4 +1,4 @@
-﻿{
+{
   "schemaVersion": 2,
   "apps": [
     {
@@ -33,11 +33,20 @@
           "defaultValue": "metric",
           "required": true,
           "options": [
-            { "label": "Métrico (°C)", "value": "metric" },
-            { "label": "Imperial (°F)", "value": "imperial" }
+            {
+              "label": "Métrico (°C)",
+              "value": "metric"
+            },
+            {
+              "label": "Imperial (°F)",
+              "value": "imperial"
+            }
           ]
         }
-      ]
+      ],
+      "runtime": {
+        "kind": "none"
+      }
     },
     {
       "id": "analogclock",
@@ -70,9 +79,18 @@
           "defaultValue": "pixel",
           "required": true,
           "options": [
-            { "label": "Pixel", "value": "pixel" },
-            { "label": "Segmentado", "value": "segment" },
-            { "label": "Arredondado", "value": "rounded" }
+            {
+              "label": "Pixel",
+              "value": "pixel"
+            },
+            {
+              "label": "Segmentado",
+              "value": "segment"
+            },
+            {
+              "label": "Arredondado",
+              "value": "rounded"
+            }
           ]
         },
         {
@@ -83,15 +101,36 @@
           "defaultValue": "cyan",
           "required": true,
           "options": [
-            { "label": "Ciano", "value": "cyan" },
-            { "label": "Branco", "value": "white" },
-            { "label": "Verde", "value": "green" },
-            { "label": "Amarelo", "value": "yellow" },
-            { "label": "Laranja", "value": "orange" },
-            { "label": "Magenta", "value": "magenta" }
+            {
+              "label": "Ciano",
+              "value": "cyan"
+            },
+            {
+              "label": "Branco",
+              "value": "white"
+            },
+            {
+              "label": "Verde",
+              "value": "green"
+            },
+            {
+              "label": "Amarelo",
+              "value": "yellow"
+            },
+            {
+              "label": "Laranja",
+              "value": "orange"
+            },
+            {
+              "label": "Magenta",
+              "value": "magenta"
+            }
           ]
         }
-      ]
+      ],
+      "runtime": {
+        "kind": "none"
+      }
     },
     {
       "id": "gifhub75",
@@ -116,8 +155,14 @@
           "defaultValue": "url",
           "required": true,
           "options": [
-            { "label": "URL direta", "value": "url" },
-            { "label": "Arquivo local", "value": "file" }
+            {
+              "label": "URL direta",
+              "value": "url"
+            },
+            {
+              "label": "Arquivo local",
+              "value": "file"
+            }
           ]
         },
         {
@@ -137,13 +182,24 @@
           "defaultValue": "fit",
           "required": true,
           "options": [
-            { "label": "Fit", "value": "fit" },
-            { "label": "Fill", "value": "fill" },
-            { "label": "Stretch", "value": "stretch" }
+            {
+              "label": "Fit",
+              "value": "fit"
+            },
+            {
+              "label": "Fill",
+              "value": "fill"
+            },
+            {
+              "label": "Stretch",
+              "value": "stretch"
+            }
           ]
         }
-      ]
+      ],
+      "runtime": {
+        "kind": "gifhub75"
+      }
     }
   ]
 }
-
