@@ -202,7 +202,7 @@ foreach ($source in $decisionSources) {
     }
 }
 
-$changedFiles = Resolve-ChangedFiles -ChangedFileList $ChangedFilesPath -FastMode:$Fast
+$changedFiles = @(Resolve-ChangedFiles -ChangedFileList $ChangedFilesPath -FastMode:$Fast)
 $changedTotal = $changedFiles.Count
 
 if ($changedTotal -eq 0) {
@@ -318,3 +318,4 @@ if ($warnings.Count -gt 0) {
 }
 
 exit 0
+
