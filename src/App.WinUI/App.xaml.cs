@@ -1,5 +1,6 @@
 using System.Text;
 using App.WinUI.Services.Apps;
+using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
 using App.WinUI.Views;
@@ -27,6 +28,12 @@ public partial class App : Application
     internal static AppModifierStateStore? AppModifierStore { get; private set; }
 
     internal static CityAutocompleteService? CityAutocomplete { get; private set; }
+
+    internal static SaveAppConfigUseCase? SaveAppConfig { get; private set; }
+
+    internal static AppConfigValidationUseCase? ValidateAppConfig { get; private set; }
+
+    internal static DeployAppUseCase? DeployApp { get; private set; }
 
     internal static PrecompiledFirmwareService? FirmwareService { get; private set; }
 
@@ -100,6 +107,9 @@ public partial class App : Application
         AppModifierStore = new AppModifierStateStore(appDataRoot);
         CityAutocomplete = new CityAutocompleteService();
         AppDeployment = new AppDeploymentService(DeviceOps);
+        SaveAppConfig = new SaveAppConfigUseCase(AppModifierStore);
+        ValidateAppConfig = new AppConfigValidationUseCase();
+        DeployApp = new DeployAppUseCase(AppDeployment, SaveAppConfig, ValidateAppConfig);
     }
 
     private static async Task StartDeviceIntegrationAsync()
@@ -139,6 +149,9 @@ public partial class App : Application
             AppCatalog = null;
             AppModifierStore = null;
             CityAutocomplete = null;
+            SaveAppConfig = null;
+            ValidateAppConfig = null;
+            DeployApp = null;
             FirmwareService = null;
 
             if (DeviceIntegration is not null)
@@ -275,7 +288,6 @@ public partial class App : Application
         };
     }
 }
-
 
 
 

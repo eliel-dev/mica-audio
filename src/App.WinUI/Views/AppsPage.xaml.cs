@@ -1,8 +1,8 @@
 ﻿
 using System.Globalization;
-using System.Text.Json;
 using App.WinUI.Models.Apps;
 using App.WinUI.Services.Apps;
+using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Gif;
 using App.WinUI.Views.Controls;
@@ -28,7 +28,6 @@ namespace App.WinUI.Views;
 public sealed partial class AppsPage : Page
 {
     private const string LocalDraftScope = "__local__";
-    private const string GifAppId = "gifhub75";
     private readonly List<AppCatalogItem> allItems = new();
     private readonly List<AppCatalogItem> filteredItems = new();
     private readonly List<AppCatalogCardControl> catalogCards = new();
@@ -41,13 +40,10 @@ public sealed partial class AppsPage : Page
     private AppCatalogItem? selectedItem;
     private DeviceOperationsState currentState = new();
     private ScrollViewer? catalogScrollViewer;
-    private string? gifSessionFilePath;
     private bool pendingGifAutostart;
-    private bool gifRuntimeBusy;
     private bool catalogReloadInProgress;
-    private CancellationTokenSource? gifRuntimeRequestCts;
+    private readonly StartLocalRuntimeUseCase localRuntimeUseCase;
     private RgbaColor[] gifPreviewFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
-    private string lastGifRuntimeStatus = "Selecione o app GIF para iniciar.";
 
     public AppsPage()
     {
@@ -60,6 +56,7 @@ public sealed partial class AppsPage : Page
             player: new Hub75GifPlayer(TimeSpan.FromMilliseconds(1000d / GifCatalogAppRuntimeService.TargetFps)));
         gifRuntimeService.StatusChanged += OnGifRuntimeStatusChanged;
         gifRuntimeService.FrameUpdated += OnGifRuntimeFrameUpdated;
+        localRuntimeUseCase = new StartLocalRuntimeUseCase(gifRuntimeService);
 
         InitializeComponent();
         Loaded += OnLoaded;
@@ -68,9 +65,10 @@ public sealed partial class AppsPage : Page
 
     private DeviceOperationsCoordinator? DeviceOps => App.DeviceOps;
     private AppCatalogService? CatalogService => App.AppCatalog;
-    private AppDeploymentService? DeploymentService => App.AppDeployment;
     private AppModifierStateStore? ModifierStore => App.AppModifierStore;
     private CityAutocompleteService? CityService => App.CityAutocomplete;
+    private SaveAppConfigUseCase? SaveAppConfig => App.SaveAppConfig;
+    private DeployAppUseCase? DeployApp => App.DeployApp;
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -115,8 +113,7 @@ public sealed partial class AppsPage : Page
         }
 
         activePreviewCards.Clear();
-        CancelGifRuntimeRequest();
-        gifRuntimeService.Stop();
+        localRuntimeUseCase.Stop();
     }
 
     // DOCS: docs/wiki/guides/add-app-catalog-item.md#passos
@@ -281,7 +278,7 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        pendingGifAutostart = string.Equals(card.Item.Id, GifAppId, StringComparison.OrdinalIgnoreCase);
+        pendingGifAutostart = IsGifApp(card.Item);
         if (ReferenceEquals(CatalogGrid.SelectedItem, card))
         {
             SetSelectedItem(card.Item);
@@ -483,35 +480,33 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        var deployment = DeploymentService;
-        if (deployment is null)
-        {
-            AppendLog("Serviço de deploy indisponível.");
-            return;
-        }
-
-        if (!TryBuildConfigFromEditor(item, out var values, out var rawValues, out var validationError))
+        if (!TryBuildConfigFromEditor(item, out _, out var rawValues, out var validationError))
         {
             AppendLog(validationError);
             return;
         }
 
-        var configJson = JsonSerializer.Serialize(values);
-        var store = ModifierStore;
-        if (store is not null)
+        var useCase = DeployApp;
+        if (useCase is null)
         {
-            await store.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
+            AppendLog("Serviço de deploy indisponível.");
+            return;
         }
 
-        var result = await deployment.InstallAsync(deviceId, item, configJson).ConfigureAwait(false);
+        var result = await useCase.ExecuteAsync(LocalDraftScope, deviceId, item, rawValues).ConfigureAwait(false);
         _ = DispatcherQueue.TryEnqueue(() =>
         {
-            ApplyPreviewDraftToCard(item.Id, rawValues);
-            AppendLog(RenderResult("instalar", item.Name, result));
+            if (!result.Success || result.CommandResult is null || result.RawValues is null)
+            {
+                AppendLog(result.Message);
+                return;
+            }
+
+            ApplyPreviewDraftToCard(item.Id, result.RawValues);
+            AppendLog(RenderResult("instalar", item.Name, result.CommandResult));
         });
     }
 
-    
     private async void OnSaveModifiersClicked(object sender, RoutedEventArgs e)
     {
         if (!TryGetSelectedItem(out var item, out var error))
@@ -526,28 +521,35 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        var store = ModifierStore;
-        if (store is null)
+        var useCase = SaveAppConfig;
+        if (useCase is null)
         {
             AppendLog("Repositório de modificadores indisponível.");
             return;
         }
 
-        await store.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
-        if (string.Equals(item.Id, GifAppId, StringComparison.OrdinalIgnoreCase) && IsGifAppSelected())
+        var saveResult = await useCase.ExecuteAsync(LocalDraftScope, item, rawValues).ConfigureAwait(false);
+        if (!saveResult.Success || saveResult.RawValues is null)
         {
-            await ApplyGifRuntimeFromValuesAsync(rawValues).ConfigureAwait(false);
+            AppendLog(saveResult.Message);
+            return;
+        }
+
+        if (StartLocalRuntimeUseCase.IsGifApp(item) && IsGifAppSelected())
+        {
+            await localRuntimeUseCase.StartAsync(item, saveResult.RawValues).ConfigureAwait(false);
         }
 
         _ = DispatcherQueue.TryEnqueue(() =>
         {
-            ApplyPreviewDraftToCard(item.Id, rawValues);
+            ApplyPreviewDraftToCard(item.Id, saveResult.RawValues);
             AppendLog($"Modificações salvas localmente para {item.Name}.");
+            UpdateGifRuntimePanel();
         });
     }
 
     private static bool IsGifApp(AppCatalogItem? item)
-        => item is not null && string.Equals(item.Id, GifAppId, StringComparison.OrdinalIgnoreCase);
+        => StartLocalRuntimeUseCase.IsGifApp(item);
 
     private bool IsGifAppSelected() => IsGifApp(selectedItem);
 
@@ -560,24 +562,19 @@ public sealed partial class AppsPage : Page
 
         var selectedGif = IsGifAppSelected();
         GifRuntimePanel.Visibility = selectedGif ? Visibility.Visible : Visibility.Collapsed;
-        GifOpenFileButton.IsEnabled = selectedGif && !gifRuntimeBusy;
-        GifRuntimeStatusText.Text = lastGifRuntimeStatus;
+        GifOpenFileButton.IsEnabled = selectedGif && !localRuntimeUseCase.IsBusy;
+        GifRuntimeStatusText.Text = localRuntimeUseCase.LastStatus;
         GifRuntimeCanvas.Invalidate();
     }
 
     private void SetGifRuntimeStatus(string status)
     {
-        if (string.IsNullOrWhiteSpace(status))
-        {
-            return;
-        }
-
-        lastGifRuntimeStatus = status;
+        localRuntimeUseCase.SetStatus(status);
         _ = DispatcherQueue.TryEnqueue(() =>
         {
             if (GifRuntimeStatusText is not null)
             {
-                GifRuntimeStatusText.Text = status;
+                GifRuntimeStatusText.Text = localRuntimeUseCase.LastStatus;
             }
         });
     }
@@ -590,15 +587,10 @@ public sealed partial class AppsPage : Page
         }
 
         UpdateGifRuntimePanel();
-        if (!pendingGifAutostart)
-        {
-            SetGifRuntimeStatus("App GIF selecionado. O runtime inicia apenas em clique manual no card.");
-            return;
-        }
-
-        pendingGifAutostart = false;
         var values = await ResolveModifierValuesForSelectedGifAsync().ConfigureAwait(false);
-        await ApplyGifRuntimeFromValuesAsync(values).ConfigureAwait(false);
+        await localRuntimeUseCase.EvaluateAutostartAsync(pendingGifAutostart, selectedItem, values).ConfigureAwait(false);
+        pendingGifAutostart = false;
+        _ = DispatcherQueue.TryEnqueue(UpdateGifRuntimePanel);
     }
 
     private async Task<IReadOnlyDictionary<string, string>> ResolveModifierValuesForSelectedGifAsync()
@@ -641,115 +633,11 @@ public sealed partial class AppsPage : Page
         return values;
     }
 
-    private async Task ApplyGifRuntimeFromValuesAsync(IReadOnlyDictionary<string, string> values)
-    {
-        if (!IsGifAppSelected())
-        {
-            return;
-        }
-
-        var item = selectedItem;
-        if (item is null)
-        {
-            return;
-        }
-
-        values.TryGetValue("sourceMode", out var sourceModeRaw);
-        values.TryGetValue("gifUrl", out var gifUrl);
-        values.TryGetValue("scaleMode", out var scaleModeRaw);
-
-        var sourceMode = string.Equals(sourceModeRaw, "file", StringComparison.OrdinalIgnoreCase)
-            ? "file"
-            : "url";
-
-        var scaleMode = ParseGifScaleMode(scaleModeRaw);
-
-        CancellationToken cancellationToken;
-        try
-        {
-            cancellationToken = BeginGifRuntimeRequest();
-        }
-        catch (ObjectDisposedException)
-        {
-            return;
-        }
-
-        gifRuntimeBusy = true;
-        _ = DispatcherQueue.TryEnqueue(UpdateGifRuntimePanel);
-
-        try
-        {
-            if (sourceMode == "file")
-            {
-                if (string.IsNullOrWhiteSpace(gifSessionFilePath))
-                {
-                    SetGifRuntimeStatus("Modo arquivo ativo. Clique em 'Abrir arquivo GIF' para iniciar.");
-                    return;
-                }
-
-                await gifRuntimeService.StartFromFileAsync(gifSessionFilePath, scaleMode, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (!Uri.TryCreate(gifUrl, UriKind.Absolute, out var uri)
-                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-            {
-                SetGifRuntimeStatus("Modo URL ativo. Informe uma URL direta http/https e clique em Salvar.");
-                return;
-            }
-
-            await gifRuntimeService.StartFromUrlAsync(uri.ToString(), scaleMode, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            SetGifRuntimeStatus($"Erro no runtime GIF: {ex.Message}");
-        }
-        finally
-        {
-            gifRuntimeBusy = false;
-            _ = DispatcherQueue.TryEnqueue(UpdateGifRuntimePanel);
-        }
-    }
-
     private void StopGifRuntime()
     {
-        CancelGifRuntimeRequest();
-        gifRuntimeBusy = false;
-        gifRuntimeService.Stop();
-        gifPreviewFrame = gifRuntimeService.GetLatestFrame();
+        localRuntimeUseCase.Stop();
+        gifPreviewFrame = localRuntimeUseCase.GetLatestFrame();
         _ = DispatcherQueue.TryEnqueue(UpdateGifRuntimePanel);
-    }
-
-    private CancellationToken BeginGifRuntimeRequest()
-    {
-        CancelGifRuntimeRequest();
-        gifRuntimeRequestCts = new CancellationTokenSource();
-        return gifRuntimeRequestCts.Token;
-    }
-
-    private void CancelGifRuntimeRequest()
-    {
-        if (gifRuntimeRequestCts is null)
-        {
-            return;
-        }
-
-        gifRuntimeRequestCts.Cancel();
-        gifRuntimeRequestCts.Dispose();
-        gifRuntimeRequestCts = null;
-    }
-
-    private static GifScaleMode ParseGifScaleMode(string? raw)
-    {
-        return raw?.Trim().ToLowerInvariant() switch
-        {
-            "fill" => GifScaleMode.Fill,
-            "stretch" => GifScaleMode.Stretch,
-            _ => GifScaleMode.Fit,
-        };
     }
 
     private async void OnGifOpenFileClicked(object sender, RoutedEventArgs e)
@@ -760,7 +648,7 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        gifSessionFilePath = file.Path;
+        localRuntimeUseCase.SetSessionFilePath(file.Path);
         SetGifRuntimeStatus($"Arquivo selecionado: {file.Name}");
         if (!IsGifAppSelected() || selectedItem is null)
         {
@@ -777,7 +665,8 @@ public sealed partial class AppsPage : Page
             values = await ResolveModifierValuesForSelectedGifAsync().ConfigureAwait(false);
         }
 
-        await ApplyGifRuntimeFromValuesAsync(values).ConfigureAwait(false);
+        await localRuntimeUseCase.StartAsync(selectedItem, values).ConfigureAwait(false);
+        _ = DispatcherQueue.TryEnqueue(UpdateGifRuntimePanel);
     }
 
     private static async Task<StorageFile?> PickGifFileAsync()
@@ -800,7 +689,7 @@ public sealed partial class AppsPage : Page
 
     private void OnGifRuntimeStatusChanged(object? sender, string status)
     {
-        if (string.Equals(status, lastGifRuntimeStatus, StringComparison.Ordinal))
+        if (string.Equals(status, localRuntimeUseCase.LastStatus, StringComparison.Ordinal))
         {
             return;
         }
@@ -1213,26 +1102,6 @@ public sealed partial class AppsPage : Page
         return true;
     }
 
-    private static bool TryBuildConfigJsonFromDraft(AppCatalogItem item, IReadOnlyDictionary<string, string> rawValues, out string configJson, out string error)
-    {
-        var data = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var modifier in item.Modifiers.Where(static m => m.IsValid()))
-        {
-            rawValues.TryGetValue(modifier.Key, out var rawValue);
-            if (!TryParseRawValue(modifier, rawValue, out var typedValue, out error))
-            {
-                configJson = string.Empty;
-                return false;
-            }
-
-            data[modifier.Key] = typedValue;
-        }
-
-        configJson = JsonSerializer.Serialize(data);
-        error = string.Empty;
-        return true;
-    }
-
     private static bool TryReadModifierValue(ModifierControlBinding binding, out object? typedValue, out string rawValue, out string error)
     {
         var definition = binding.Definition;
@@ -1306,47 +1175,6 @@ public sealed partial class AppsPage : Page
 
                 typedValue = text;
                 rawValue = text;
-                error = string.Empty;
-                return true;
-        }
-    }
-
-    private static bool TryParseRawValue(AppModifierDefinition modifier, string? rawValue, out object? typedValue, out string error)
-    {
-        var value = rawValue?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            typedValue = modifier.Type == AppModifierFieldType.Toggle ? false : string.Empty;
-            error = string.Empty;
-            return !modifier.Required;
-        }
-
-        switch (modifier.Type)
-        {
-            case AppModifierFieldType.Toggle:
-                if (!bool.TryParse(value, out var boolValue))
-                {
-                    typedValue = null;
-                    error = $"Valor inválido para '{modifier.Label}'.";
-                    return false;
-                }
-
-                typedValue = boolValue;
-                error = string.Empty;
-                return true;
-            case AppModifierFieldType.Number:
-                if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var numberValue))
-                {
-                    typedValue = null;
-                    error = $"Valor numérico inválido para '{modifier.Label}'.";
-                    return false;
-                }
-
-                typedValue = numberValue;
-                error = string.Empty;
-                return true;
-            default:
-                typedValue = value;
                 error = string.Empty;
                 return true;
         }
