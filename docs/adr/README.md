@@ -14,3 +14,4 @@ Esta pasta registra Decisoes de Arquitetura (ADR) para governanca tecnica e cont
 1. [0001 - Governanca de documentacao e CI](0001-governanca-documentacao-e-ci.md)
 2. [0002 - Politica PR docs estrutural](0002-politica-pr-docs-estrutural.md)
 3. [0003 - MCP viabilidade e estrategia solo IA](0003-mcp-viabilidade-e-estrategia-solo-ai.md)
+4. [0004 - Padrao App Module para apps de catalogo](0004-app-module-pattern.md)

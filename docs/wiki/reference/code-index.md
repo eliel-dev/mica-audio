@@ -66,6 +66,16 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [Directory.Build.props](../../../Directory.Build.props#L1)
 - [NuGet.config](../../../NuGet.config#L1)
 - [.editorconfig](../../../.editorconfig#L1)
+## App Module Pattern
+- [ADR 0004 - App Module Pattern](../../../docs/adr/0004-app-module-pattern.md#L1)
+- [Guia - App Module Pattern](../ai/app-module-pattern.md#L1)
+- [AppCatalogItem](../../../src/App.WinUI/Models/Apps/AppCatalogItem.cs#L1)
+- [AppPreviewDefinition](../../../src/App.WinUI/Models/Apps/AppPreviewDefinition.cs#L1)
+- [AppModifierDefinition](../../../src/App.WinUI/Models/Apps/AppModifierDefinition.cs#L1)
+- [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)
+- [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L1)
+- [AppPreviewRendererRegistry](../../../src/App.WinUI/Views/Controls/AppPreviewRendererRegistry.cs#L1)
+- [GifCatalogAppRuntimeService](../../../src/App.WinUI/Services/Apps/GifCatalogAppRuntimeService.cs#L1)
 ## Governanca IA
 - [AGENTS](../../../AGENTS.md#L1)
 - [AI index](../ai/README.md)
