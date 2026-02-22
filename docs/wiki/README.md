@@ -1,4 +1,4 @@
-# Wiki Tecnica do Mica Audio
+﻿# Wiki Tecnica do Mica Audio
 
 Documentacao tecnica versionada junto com o codigo para acelerar manutencao, onboarding e continuidade por humanos e IA.
 
@@ -78,6 +78,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Matriz de validacao](ai/validation-matrix.md)
 - [Playbooks de incidente](ai/incident-playbooks.md)
 - [Viabilidade MCP](ai/mcp-viability.md)
+- [Consistência com Codex](ai/consistencia-codex.md)
 
 ### Referencia
 - [Code index](reference/code-index.md)
