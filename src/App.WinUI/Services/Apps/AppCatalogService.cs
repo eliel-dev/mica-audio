@@ -5,7 +5,7 @@ using App.WinUI.Models.Apps;
 namespace App.WinUI.Services.Apps;
 
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
-internal sealed class AppCatalogService
+internal sealed class AppCatalogService : IAppCatalogService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
