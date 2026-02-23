@@ -36,7 +36,7 @@ internal sealed class DeployAppUseCase
         }
 
         var commandResult = await deploymentService.InstallAsync(deviceId, item, configJson, cancellationToken).ConfigureAwait(false);
-        return DeployAppResult.Success(commandResult, saveResult.RawValues ?? rawValues);
+        return DeployAppResult.FromSuccess(commandResult, saveResult.RawValues ?? rawValues);
     }
 }
 
@@ -44,5 +44,6 @@ internal sealed record DeployAppResult(bool Success, string Message, CommandDisp
 {
     public static DeployAppResult Failure(string message) => new(false, message, null, null);
 
-    public static DeployAppResult Success(CommandDispatchResult commandResult, IReadOnlyDictionary<string, string> rawValues) => new(true, string.Empty, commandResult, rawValues);
+    public static DeployAppResult FromSuccess(CommandDispatchResult commandResult, IReadOnlyDictionary<string, string> rawValues) => new(true, string.Empty, commandResult, rawValues);
 }
+

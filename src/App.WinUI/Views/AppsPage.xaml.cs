@@ -51,7 +51,7 @@ public sealed partial class AppsPage : Page
     private readonly AppRuntimeProviderRegistry runtimeProviderRegistry;
     private IAppRuntimeProvider? activeRuntimeProvider;
 
-    public AppsPage(
+    internal AppsPage(
         DeviceOperationsCoordinator deviceOps,
         IAppCatalogService catalogService,
         IAppDeploymentService deploymentService,
@@ -923,6 +923,48 @@ runtimeProviderRegistry.Dispose();
         });
     }
 
+    private void OnGifRuntimeCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
+    {
+        var drawWidth = (float)Math.Max(1d, sender.ActualWidth);
+        var drawHeight = (float)Math.Max(1d, sender.ActualHeight);
+
+        var ds = args.DrawingSession;
+        ds.Clear(Color.FromArgb(255, 5, 8, 12));
+
+        var frame = gifPreviewFrame;
+        if (frame.Length != LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
+        {
+            return;
+        }
+
+        var pitch = MathF.Min((drawWidth - 10f) / LedDefaults.MatrixWidth, (drawHeight - 10f) / LedDefaults.MatrixHeight);
+        pitch = MathF.Max(1f, pitch);
+        var ledSize = MathF.Max(1f, pitch * 0.82f);
+        var panelWidth = LedDefaults.MatrixWidth * pitch;
+        var panelHeight = LedDefaults.MatrixHeight * pitch;
+        var ox = (drawWidth - panelWidth) * 0.5f;
+        var oy = (drawHeight - panelHeight) * 0.5f;
+
+        ds.FillRoundedRectangle(ox - 2f, oy - 2f, panelWidth + 4f, panelHeight + 4f, 3f, 3f, Color.FromArgb(255, 8, 12, 18));
+        ds.DrawRoundedRectangle(ox - 1f, oy - 1f, panelWidth + 2f, panelHeight + 2f, 2f, 2f, Color.FromArgb(255, 35, 48, 62), 1f);
+
+        for (var y = 0; y < LedDefaults.MatrixHeight; y++)
+        {
+            for (var x = 0; x < LedDefaults.MatrixWidth; x++)
+            {
+                var px = frame[(y * LedDefaults.MatrixWidth) + x];
+                if (px.A == 0)
+                {
+                    continue;
+                }
+
+                var left = ox + (x * pitch) + ((pitch - ledSize) * 0.5f);
+                var top = oy + (y * pitch) + ((pitch - ledSize) * 0.5f);
+                var color = Color.FromArgb(px.A, px.R, px.G, px.B);
+                ds.FillRectangle(left, top, ledSize, ledSize, color);
+            }
+        }
+    }
     private bool TryGetSelection(out string deviceId, out AppCatalogItem item, out string error)
     {
         deviceId = string.Empty;
@@ -1186,6 +1228,8 @@ runtimeProviderRegistry.Dispose();
         public FrameworkElement Control { get; }
     }
 }
+
+
 
 
 

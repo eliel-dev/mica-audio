@@ -20,7 +20,7 @@ public sealed partial class ShellPage : Page
 
     private string currentTag = string.Empty;
 
-    public ShellPage(
+    internal ShellPage(
         DeviceOperationsCoordinator deviceOps,
         MainPage mainPage,
         DevicesPage devicesPage,
@@ -131,3 +131,4 @@ public sealed partial class ShellPage : Page
         ServerFooterText.Visibility = hideChrome ? Visibility.Collapsed : Visibility.Visible;
     }
 }
+

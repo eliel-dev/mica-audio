@@ -21,7 +21,7 @@ internal sealed class SaveAppConfigUseCase
         }
 
         await modifierStore.SetDraftAsync(scope, item.Id, new AppConfigDraft { Values = new Dictionary<string, string>(rawValues, StringComparer.OrdinalIgnoreCase) }).ConfigureAwait(false);
-        return SaveAppConfigResult.Success(rawValues);
+        return SaveAppConfigResult.FromSuccess(rawValues);
     }
 }
 
@@ -29,5 +29,6 @@ internal sealed record SaveAppConfigResult(bool Success, string Message, IReadOn
 {
     public static SaveAppConfigResult Failure(string message) => new(false, message, null);
 
-    public static SaveAppConfigResult Success(IReadOnlyDictionary<string, string> rawValues) => new(true, string.Empty, rawValues);
+    public static SaveAppConfigResult FromSuccess(IReadOnlyDictionary<string, string> rawValues) => new(true, string.Empty, rawValues);
 }
+

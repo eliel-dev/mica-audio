@@ -11,7 +11,7 @@ public sealed class WinUiBootstrapSmokeTests
     [Fact]
     public void BuildServiceProvider_ShouldResolveCoreAppServices()
     {
-        var provider = App.BuildServiceProvider();
+        var provider = App.WinUI.App.BuildServiceProvider();
 
         Assert.NotNull(provider.GetService<DeviceIntegrationService>());
         Assert.NotNull(provider.GetService<DeviceOperationsCoordinator>());
@@ -23,7 +23,7 @@ public sealed class WinUiBootstrapSmokeTests
     [Fact]
     public void BuildServiceProvider_ShouldRegisterShellAndPages()
     {
-        var provider = App.BuildServiceProvider();
+        var provider = App.WinUI.App.BuildServiceProvider();
         var isService = provider.GetRequiredService<IServiceProviderIsService>();
 
         Assert.True(isService.IsService(typeof(MainPage)));
@@ -33,3 +33,4 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.True(isService.IsService(typeof(ShellPage)));
     }
 }
+
