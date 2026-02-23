@@ -1,4 +1,4 @@
-﻿using System.Net.Http;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using App.WinUI.Services.Gif;
 using MicaAudio.Core.Led;
@@ -48,7 +48,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         this.decoder = decoder;
         this.formatter = formatter;
         this.player = player;
-        this.httpClient = httpClient ?? new HttpClient();
+        this.httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         this.downloadTimeoutSeconds = Math.Max(1, downloadTimeoutSeconds);
         this.maxDownloadBytes = Math.Max(1, maxDownloadBytes);
         latestFrame = blackFrame.ToArray();
@@ -348,6 +348,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
     }
 }
+
 
 
 

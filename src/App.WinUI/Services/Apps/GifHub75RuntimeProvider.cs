@@ -1,6 +1,5 @@
-﻿using App.WinUI.Models.Apps;
+using App.WinUI.Models.Apps;
 using App.WinUI.Services.Gif;
-using Microsoft.UI.Xaml;
 using MicaAudio.Core.Presets;
 using System.Runtime.InteropServices;
 
@@ -11,8 +10,6 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
     private AppRuntimeHost? host;
     private string? sessionFilePath;
     private CancellationTokenSource? requestCts;
-    private bool frameSubscriptionActive;
-    private bool isStoppingOrDeselected;
     private bool disposed;
 
     public IReadOnlyList<string> SupportedKinds => ["gifhub75"];
@@ -21,6 +18,7 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
     {
         host = runtimeHost;
         host.GifRuntimeService.StatusChanged += OnStatusChanged;
+        host.GifRuntimeService.FrameUpdated += OnFrameUpdated;
         host.OpenFileButton.Click += OnOpenFileClicked;
     }
 
@@ -31,11 +29,7 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
             return;
         }
 
-        isStoppingOrDeselected = false;
-        SetFrameSubscription(enabled: true);
-        host.RuntimePanel.Visibility = Visibility.Visible;
-        host.RuntimeStatusText.Text = "App GIF selecionado. O runtime inicia apenas em clique manual no card.";
-        SafeInvalidateRuntimeCanvas();
+        host.SetStatus("App GIF selecionado. Configure e salve para atualizar a miniatura.");
     }
 
     public async Task OnConfigSavedAsync(AppCatalogItem item, IReadOnlyDictionary<string, string> values, CancellationToken cancellationToken)
@@ -58,9 +52,6 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
             return;
         }
 
-        isStoppingOrDeselected = false;
-        SafeInvalidateRuntimeCanvas();
-
         try
         {
             var scale = host.ResolveScaleMode() ?? GifScaleMode.Fit;
@@ -68,7 +59,7 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
             {
                 if (string.IsNullOrWhiteSpace(sessionFilePath))
                 {
-                    host.SetStatus("Modo arquivo ativo. Clique em 'Abrir arquivo GIF' para iniciar.");
+                    host.SetStatus("Modo arquivo ativo. Clique em 'Selecionar GIF' para iniciar.");
                     return;
                 }
 
@@ -92,22 +83,31 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
         {
             host.SetStatus($"Erro no runtime GIF: {ex.Message}");
         }
-        finally
-        {
-            SafeInvalidateRuntimeCanvas();
-        }
     }
 
     public void OnDeselected(AppCatalogItem item)
     {
+        // Mantem runtime ativo mesmo sem selecao do app GIF enquanto a aba Apps estiver aberta.
+    }
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        CancelRequest();
+
         if (host is null)
         {
             return;
         }
 
-        isStoppingOrDeselected = true;
-        SetFrameSubscription(enabled: false);
-        CancelRequest();
+        host.OpenFileButton.Click -= OnOpenFileClicked;
+        host.GifRuntimeService.StatusChanged -= OnStatusChanged;
+        host.GifRuntimeService.FrameUpdated -= OnFrameUpdated;
 
         try
         {
@@ -122,44 +122,9 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
         catch (COMException)
         {
         }
-
-        host.UpdateFrame(host.GifRuntimeService.GetLatestFrame());
-        host.RuntimePanel.Visibility = Visibility.Collapsed;
-        SafeInvalidateRuntimeCanvas();
     }
 
-    public void Dispose()
-    {
-        if (disposed)
-        {
-            return;
-        }
-
-        disposed = true;
-        isStoppingOrDeselected = true;
-        CancelRequest();
-        if (host is not null)
-        {
-            SetFrameSubscription(enabled: false);
-            host.OpenFileButton.Click -= OnOpenFileClicked;
-            host.GifRuntimeService.StatusChanged -= OnStatusChanged;
-            try
-            {
-                host.GifRuntimeService.Stop();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (InvalidCastException)
-            {
-            }
-            catch (COMException)
-            {
-            }
-        }
-    }
-
-    private async void OnOpenFileClicked(object sender, RoutedEventArgs e)
+    private async void OnOpenFileClicked(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         if (host is null)
         {
@@ -185,13 +150,12 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
 
     private void OnFrameUpdated(object? sender, RgbaColor[] frame)
     {
-        if (host is null || disposed || isStoppingOrDeselected)
+        if (host is null || disposed)
         {
             return;
         }
 
         host.UpdateFrame(frame.ToArray());
-        SafeInvalidateRuntimeCanvas();
     }
 
     private CancellationToken BeginRequest(CancellationToken outer)
@@ -207,69 +171,4 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
         requestCts?.Dispose();
         requestCts = null;
     }
-
-    private void SetFrameSubscription(bool enabled)
-    {
-        if (host is null)
-        {
-            return;
-        }
-
-        if (enabled && !frameSubscriptionActive)
-        {
-            host.GifRuntimeService.FrameUpdated += OnFrameUpdated;
-            frameSubscriptionActive = true;
-            return;
-        }
-
-        if (!enabled && frameSubscriptionActive)
-        {
-            host.GifRuntimeService.FrameUpdated -= OnFrameUpdated;
-            frameSubscriptionActive = false;
-        }
-    }
-
-    private void SafeInvalidateRuntimeCanvas()
-    {
-        if (host is null)
-        {
-            return;
-        }
-
-        try
-        {
-            if (host.DispatcherQueue.HasThreadAccess)
-            {
-                host.RuntimeCanvas.Invalidate();
-                return;
-            }
-
-            _ = host.DispatcherQueue.TryEnqueue(() =>
-            {
-                try
-                {
-                    host.RuntimeCanvas.Invalidate();
-                }
-                catch (ObjectDisposedException)
-                {
-                }
-                catch (InvalidCastException)
-                {
-                }
-                catch (COMException)
-                {
-                }
-            });
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-        catch (InvalidCastException)
-        {
-        }
-        catch (COMException)
-        {
-        }
-    }
 }
-

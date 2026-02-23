@@ -1,4 +1,8 @@
-﻿namespace App.WinUI.Services.Firmware;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
+
+namespace App.WinUI.Services.Firmware;
 
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
 internal sealed class PrecompiledFirmwareService
@@ -21,6 +25,15 @@ internal sealed class PrecompiledFirmwareService
         },
     ];
 
+    private readonly MicaAudioOptions options;
+    private readonly ILogger<PrecompiledFirmwareService> logger;
+
+    public PrecompiledFirmwareService(IOptions<MicaAudioOptions> options, ILogger<PrecompiledFirmwareService> logger)
+    {
+        this.options = options.Value;
+        this.logger = logger;
+    }
+
     public event EventHandler<string>? LogMessage;
 
     public IReadOnlyList<PrecompiledFirmwareOption> GetOptions() => Options;
@@ -38,17 +51,24 @@ internal sealed class PrecompiledFirmwareService
             return false;
         }
 
-        var candidates = new[]
+        var configuredFirmwareDirectory = options.PrecompiledFirmwareDirectory;
+        var candidates = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(configuredFirmwareDirectory))
         {
+            candidates.Add(Path.Combine(configuredFirmwareDirectory, option.FileName));
+        }
+
+        candidates.AddRange(
+        [
             Path.Combine(AppContext.BaseDirectory, "AppData", "Firmware", option.FileName),
             Path.Combine(Environment.CurrentDirectory, "AppData", "Firmware", option.FileName),
             Path.Combine(Environment.CurrentDirectory, "src", "App.WinUI", "AppData", "Firmware", option.FileName),
-        }
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        ]);
 
-        foreach (var candidate in candidates)
+        foreach (var candidate in candidates
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (File.Exists(candidate))
             {
@@ -90,6 +110,7 @@ internal sealed class PrecompiledFirmwareService
 
     private void Log(string message)
     {
+        logger.LogInformation("{Message}", message);
         LogMessage?.Invoke(this, message);
     }
 }

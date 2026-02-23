@@ -1,5 +1,7 @@
 ﻿using System.Text.Json;
 using App.WinUI.Services.Apps;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
 
 namespace Output.Tests;
 
@@ -49,7 +51,7 @@ public sealed class AppCatalogServiceTests
 
             await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(document));
 
-            var service = new AppCatalogService(root);
+            var service = new AppCatalogService(CreateOptions(root));
             var items = await service.LoadCatalogAsync();
 
             Assert.Equal(3, items.Count);
@@ -90,7 +92,7 @@ public sealed class AppCatalogServiceTests
 
             await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(document));
 
-            var service = new AppCatalogService(root);
+            var service = new AppCatalogService(CreateOptions(root));
             var items = await service.LoadCatalogAsync();
 
             Assert.Equal(3, items.Count);
@@ -116,7 +118,7 @@ public sealed class AppCatalogServiceTests
             var catalogPath = Path.Combine(appsDir, "catalog.json");
             await File.WriteAllTextAsync(catalogPath, "{ invalid json }");
 
-            var service = new AppCatalogService(root);
+            var service = new AppCatalogService(CreateOptions(root));
             var items = await service.LoadCatalogAsync();
 
             Assert.Equal(3, items.Count);
@@ -135,5 +137,14 @@ public sealed class AppCatalogServiceTests
         var root = Path.Combine(Path.GetTempPath(), $"mica-audio-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private static IOptions<MicaAudioOptions> CreateOptions(string root)
+    {
+        return Options.Create(new MicaAudioOptions
+        {
+            AppDataRoot = root,
+            AppsCatalogPath = Path.Combine(root, "apps", "catalog.json"),
+        });
     }
 }

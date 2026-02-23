@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
@@ -50,7 +52,7 @@ public sealed class DeviceServerHostSecurityTests
     }
 
     [Fact]
-    public async Task HeaderToken_ShouldTakePriorityOverQueryFallback()
+    public async Task AuthToken_ShouldNotBeAcceptedViaQueryString_ForHttpEndpoints()
     {
         var port = GetFreeTcpPort();
 
@@ -68,29 +70,17 @@ public sealed class DeviceServerHostSecurityTests
 
         using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
 
-        var pairing = host.CreatePairingCode(TimeSpan.FromMinutes(5));
-        var pairedResponse = await client.PostAsJsonAsync("/api/v1/pair", new PairDeviceRequest
-        {
-            PairingCode = pairing.Code,
-            DeviceName = "header-priority",
-        });
+        var paired = await PairDeviceAsync(host, client, "http-query-auth");
 
-        pairedResponse.EnsureSuccessStatusCode();
-        var paired = await pairedResponse.Content.ReadFromJsonAsync<PairDeviceResponse>();
+        var viaQuery = await client.GetAsync($"/api/v1/device/config?deviceId={paired.DeviceId}&token={paired.Token}");
+        Assert.Equal(HttpStatusCode.Unauthorized, viaQuery.StatusCode);
 
-        Assert.NotNull(paired);
-        Assert.False(string.IsNullOrWhiteSpace(paired!.DeviceId));
-        Assert.False(string.IsNullOrWhiteSpace(paired.Token));
+        using var viaHeaderRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/device/config");
+        viaHeaderRequest.Headers.Add("X-Device-Id", paired.DeviceId);
+        viaHeaderRequest.Headers.Add("X-Device-Token", paired.Token);
 
-        var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/device/config?deviceId={paired.DeviceId}&token=invalid-query-token");
-        request.Headers.Add("X-Device-Id", paired.DeviceId);
-        request.Headers.Add("X-Device-Token", paired.Token);
-
-        var configViaHeader = await client.SendAsync(request);
-        Assert.Equal(HttpStatusCode.OK, configViaHeader.StatusCode);
-
-        var configViaQuery = await client.GetAsync($"/api/v1/device/config?deviceId={paired.DeviceId}&token={paired.Token}");
-        Assert.Equal(HttpStatusCode.OK, configViaQuery.StatusCode);
+        var viaHeader = await client.SendAsync(viaHeaderRequest);
+        Assert.Equal(HttpStatusCode.OK, viaHeader.StatusCode);
     }
 
     [Fact]
@@ -119,6 +109,207 @@ public sealed class DeviceServerHostSecurityTests
         Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
     }
 
+    [Fact]
+    public async Task LegacyWsQueryToken_ShouldBeAccepted_WhenEnabled()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+            AllowLegacyWebSocketQueryToken = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ws-legacy-enabled");
+
+        using var ws = new ClientWebSocket();
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream?deviceId={paired.DeviceId}&token={paired.Token}"), CancellationToken.None);
+
+        Assert.Equal(WebSocketState.Open, ws.State);
+        await CloseWebSocketQuietlyAsync(ws);
+    }
+
+    [Fact]
+    public async Task LegacyWsQueryToken_ShouldBeRejected_WhenDisabled()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+            AllowLegacyWebSocketQueryToken = false,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ws-legacy-disabled");
+
+        using var ws = new ClientWebSocket();
+
+        var ex = await Assert.ThrowsAsync<WebSocketException>(() =>
+            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream?deviceId={paired.DeviceId}&token={paired.Token}"), CancellationToken.None));
+
+        Assert.Contains("401", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LargeRequestBody_Pair_ShouldReturn413Or400()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+            MaxJsonBodyBytes = 256,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var oversizedName = new string('a', 4_096);
+        var body = JsonSerializer.Serialize(new PairDeviceRequest
+        {
+            PairingCode = "123456",
+            DeviceName = oversizedName,
+        });
+
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("/api/v1/pair", content);
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.RequestEntityTooLarge || response.StatusCode == HttpStatusCode.BadRequest,
+            $"Unexpected status code: {(int)response.StatusCode}");
+    }
+
+    [Fact]
+    public async Task LargeRequestBody_CommandAck_ShouldReturn413Or400()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+            MaxJsonBodyBytes = 256,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ack-oversized");
+
+        var body = JsonSerializer.Serialize(new DeviceCommandAckRequest
+        {
+            CommandId = "cmd-1",
+            Success = true,
+            Message = new string('x', 8_192),
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/device/command-ack");
+        request.Headers.Add("X-Device-Id", paired.DeviceId);
+        request.Headers.Add("X-Device-Token", paired.Token);
+        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        var response = await client.SendAsync(request);
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.RequestEntityTooLarge || response.StatusCode == HttpStatusCode.BadRequest,
+            $"Unexpected status code: {(int)response.StatusCode}");
+    }
+
+    [Fact]
+    public async Task ResponseHeaders_ShouldContainSecurityHeaders()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+
+        var response = await client.GetAsync("/api/v1/health");
+        response.EnsureSuccessStatusCode();
+
+        Assert.True(response.Headers.TryGetValues("X-Content-Type-Options", out var nosniffValues));
+        Assert.Equal("nosniff", Assert.Single(nosniffValues));
+
+        Assert.True(response.Headers.TryGetValues("X-Frame-Options", out var xFrameValues));
+        Assert.Equal("DENY", Assert.Single(xFrameValues));
+
+        Assert.True(response.Headers.TryGetValues("Referrer-Policy", out var referrerPolicyValues));
+        Assert.Equal("no-referrer", Assert.Single(referrerPolicyValues));
+
+        Assert.True(response.Headers.TryGetValues("Cache-Control", out var cacheControlValues));
+        Assert.Equal("no-store", Assert.Single(cacheControlValues));
+    }
+
+    [Fact]
+    public async Task WebSocketMultiFrameText_ShouldNotTruncateMessage()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+            MaxWebSocketMessageBytes = 64 * 1024,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ws-fragmented");
+
+        using var ws = new ClientWebSocket();
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var longAppName = "weather-" + new string('z', 6_000);
+        var telemetryJson = JsonSerializer.Serialize(new
+        {
+            deviceId = paired.DeviceId,
+            rssi = -40,
+            firmwareVersion = "1.0.0",
+            ipAddress = "192.168.1.10",
+            activeAppId = "accuweather",
+            activeAppName = longAppName,
+        });
+
+        var payload = Encoding.UTF8.GetBytes(telemetryJson);
+        var firstChunk = Math.Min(3000, payload.Length - 1);
+
+        await ws.SendAsync(new ArraySegment<byte>(payload, 0, firstChunk), WebSocketMessageType.Text, false, CancellationToken.None);
+        await ws.SendAsync(new ArraySegment<byte>(payload, firstChunk, payload.Length - firstChunk), WebSocketMessageType.Text, true, CancellationToken.None);
+
+        var updated = await WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d => string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+            return snapshot is not null && string.Equals(snapshot.ActiveAppName, longAppName, StringComparison.Ordinal);
+        }, timeout: TimeSpan.FromSeconds(5));
+
+        Assert.True(updated, "Telemetry fragmentada nao foi processada integralmente no timeout esperado.");
+
+        await CloseWebSocketQuietlyAsync(ws);
+    }
 
     [Fact]
     public async Task StopAsync_ShouldCompletePendingTrackedCommandsWithoutRace()
@@ -139,20 +330,12 @@ public sealed class DeviceServerHostSecurityTests
 
         using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
 
-        var pairing = host.CreatePairingCode(TimeSpan.FromMinutes(5));
-        var pairedResponse = await client.PostAsJsonAsync("/api/v1/pair", new PairDeviceRequest
-        {
-            PairingCode = pairing.Code,
-            DeviceName = "pending-stop",
-        });
-
-        pairedResponse.EnsureSuccessStatusCode();
-        var paired = await pairedResponse.Content.ReadFromJsonAsync<PairDeviceResponse>();
-
-        Assert.NotNull(paired);
+        var paired = await PairDeviceAsync(host, client, "pending-stop");
 
         using var ws = new ClientWebSocket();
-        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream?deviceId={paired!.DeviceId}&token={paired.Token}"), CancellationToken.None);
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
 
         await Task.Delay(80);
 
@@ -185,6 +368,24 @@ public sealed class DeviceServerHostSecurityTests
         Assert.Equal("server_stopped", result.ErrorCode);
     }
 
+    private static async Task CloseWebSocketQuietlyAsync(ClientWebSocket ws)
+    {
+        if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
+        {
+            try
+            {
+                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", CancellationToken.None);
+                return;
+            }
+            catch (WebSocketException)
+            {
+                // Server can close without close handshake during shutdown/auth tests.
+            }
+        }
+
+        ws.Abort();
+    }
+
     private static int GetFreeTcpPort()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -199,4 +400,39 @@ public sealed class DeviceServerHostSecurityTests
             listener.Stop();
         }
     }
+
+    private static async Task<PairDeviceResponse> PairDeviceAsync(DeviceServerHost host, HttpClient client, string deviceName)
+    {
+        var pairing = host.CreatePairingCode(TimeSpan.FromMinutes(5));
+        var pairedResponse = await client.PostAsJsonAsync("/api/v1/pair", new PairDeviceRequest
+        {
+            PairingCode = pairing.Code,
+            DeviceName = deviceName,
+        });
+
+        pairedResponse.EnsureSuccessStatusCode();
+        var paired = await pairedResponse.Content.ReadFromJsonAsync<PairDeviceResponse>();
+
+        Assert.NotNull(paired);
+        Assert.False(string.IsNullOrWhiteSpace(paired!.DeviceId));
+        Assert.False(string.IsNullOrWhiteSpace(paired.Token));
+        return paired;
+    }
+
+    private static async Task<bool> WaitForConditionAsync(Func<bool> predicate, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (predicate())
+            {
+                return true;
+            }
+
+            await Task.Delay(50);
+        }
+
+        return predicate();
+    }
 }
+

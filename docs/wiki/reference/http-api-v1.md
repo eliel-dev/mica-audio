@@ -1,4 +1,4 @@
-﻿# HTTP API v1
+# HTTP API v1
 
 Referencia resumida do servidor local embutido em `DeviceServerHost`.
 
@@ -22,12 +22,15 @@ Referencia resumida do servidor local embutido em `DeviceServerHost`.
 - allowlist CIDR opcional via `AllowedCidrs`.
 
 3. Autenticacao de device:
-- prioridade para `X-Device-Token` e `Authorization: Bearer ...`.
-- fallback de query string (`token=`) apenas para compatibilidade legada.
+- HTTP aceita `X-Device-Token` ou `Authorization: Bearer ...`.
+- query string com token **nao** e aceita em endpoints HTTP.
 
 4. Pairing:
 - codigo com TTL e uso unico.
 - limite adicional de tentativas por IP/janela (anti-abuso).
+
+5. Limites de body:
+- `MaxJsonBodyBytes` (default 64KB) aplicado globalmente no servidor e validado nos endpoints criticos (`/pair`, `/device/command-ack`).
 
 ## Status e erros comuns
 
@@ -35,6 +38,7 @@ Referencia resumida do servidor local embutido em `DeviceServerHost`.
 - `403 Forbidden`: origem de rede fora da politica.
 - `429 Too Many Requests`: limite de taxa atingido.
 - `400 Bad Request`: payload invalido ou pairing code expirado.
+- `413 Payload Too Large`: body acima de `MaxJsonBodyBytes`.
 
 ## Referencias de codigo
 
@@ -43,3 +47,5 @@ Referencia resumida do servidor local embutido em `DeviceServerHost`.
 - [HandleDeviceConfig](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [HandleCommandAckAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [ServerConfig](../../../src/Device.Protocol/Contracts/ServerConfig.cs#L1)
+
+

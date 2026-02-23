@@ -1,4 +1,4 @@
-﻿# Modulo Device.Server + Device.Protocol
+# Modulo Device.Server + Device.Protocol
 
 ## Objetivo
 
@@ -18,6 +18,7 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 3. App envia comandos tracked (`SendCommandTrackedAsync`).
 4. Advanced host correlaciona ACK/progresso por `commandId`.
 5. `BroadcastFrame` distribui stream para sockets conectados.
+6. Headers de resposta defensivos (`nosniff`, `DENY`, `no-referrer`, `no-store`) sao aplicados globalmente.
 
 ## Politicas de seguranca
 
@@ -32,11 +33,16 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - allowlist CIDR opcional em `AllowedCidrs`.
 
 3. Autenticacao:
-- prioridade para token em header (`X-Device-Token`) e `Authorization`.
-- query string mantida como fallback de compatibilidade.
+- HTTP (`/api/v1/*`): aceita somente `X-Device-Token` ou `Authorization: Bearer`.;
+- WebSocket (`/ws/v1/stream`): aceita headers e, temporariamente, query token legado quando `AllowLegacyWebSocketQueryToken=true`.
 
 4. Anti-abuso de pareamento:
 - contador por IP/janela com resposta `429 pairing_rate_limited`.
+
+5. Limites de payload:
+- body JSON limitado por `MaxJsonBodyBytes` (default 64KB).
+- mensagem WS limitada por `MaxWebSocketMessageBytes` (default 64KB).
+- mensagens WS fragmentadas sao reagrupadas ate `EndOfMessage`.
 
 ## Pontos de alteracao frequente
 
@@ -78,3 +84,5 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
 - `src/Device.Protocol/Contracts/ServerConfig.cs`
+
+

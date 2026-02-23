@@ -4,9 +4,10 @@ Referencia do canal WebSocket entre servidor e firmware.
 
 ## Endpoint
 
-- `/ws/v1/stream?deviceId=...&token=...`
+- `/ws/v1/stream`
 
-Obs.: autenticacao via query e mantida por compatibilidade com firmware legado. O servidor prioriza headers quando disponiveis no canal HTTP.
+Obs.: autenticacao preferencial via headers (`X-Device-Id` + `X-Device-Token`, ou `Authorization: Bearer`).
+Compatibilidade: query token legado e aceito temporariamente apenas quando `AllowLegacyWebSocketQueryToken=true`.
 
 ## Tipos de mensagem
 
@@ -14,6 +15,7 @@ Obs.: autenticacao via query e mantida por compatibilidade com firmware legado. 
 2. Binaria server -> device: `StreamFrameV1` tipo `2` (`frame 64x32 RGB565 + brightness`).
 3. Texto device -> server: telemetria, progresso e ACK de comando.
 4. Comandos tracked server -> device (texto): `install_app`, `activate_app`, `set_app_config`.
+5. Mensagens de texto fragmentadas sao reagrupadas ate `EndOfMessage` com limite de tamanho (`MaxWebSocketMessageBytes`).
 
 ## Estrutura StreamFrameV1
 
@@ -66,3 +68,5 @@ Uso no app da loja:
 - [GifCatalogAppRuntimeService](../../../src/App.WinUI/Services/Apps/GifCatalogAppRuntimeService.cs#L1)
 - [AppsPage](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L1)
 - [Firmware onWsEvent](../../../firmware/matrixportal-s3/src/main.cpp#L1)
+
+

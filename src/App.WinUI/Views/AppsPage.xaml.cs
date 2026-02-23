@@ -8,8 +8,6 @@ using App.WinUI.Services.Gif;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Graphics.Canvas;
-using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -47,10 +45,10 @@ public sealed partial class AppsPage : Page
     private AppCatalogItem? selectedItem;
     private DeviceOperationsState currentState = new();
     private ScrollViewer? catalogScrollViewer;
+    private const string GifAppId = "gifhub75";
     private bool pendingRuntimeAutostart;
     private bool catalogReloadInProgress;
-    private RgbaColor[] gifPreviewFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
-    private string lastRuntimeStatus = "Selecione um app com runtime local para iniciar.";
+    private RgbaColor[]? latestGifRuntimeFrame;
     private readonly AppRuntimeProviderRegistry runtimeProviderRegistry;
     private IAppRuntimeProvider? activeRuntimeProvider;
     public AppsPage(IServiceProvider services)
@@ -108,8 +106,8 @@ public sealed partial class AppsPage : Page
 
         CatalogGrid.SizeChanged += OnCatalogViewportChanged;
         EnsureCatalogScrollViewer();
-        UpdateRuntimePanel();
         await ReloadCatalogFromDiskAsync().ConfigureAwait(false);
+        await EnsureGifRuntimeWhileAppsPageIsVisibleAsync().ConfigureAwait(false);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -178,6 +176,7 @@ public sealed partial class AppsPage : Page
         OperationProgressRing.Visibility = state.CommandInProgress ? Visibility.Visible : Visibility.Collapsed;
         OperationStatusText.Text = state.CommandStatus;
         OperationPercentText.Text = $"{Math.Clamp(state.CommandPercent, 0, 100)}%";
+        UpdateGifOpenFileButtonVisibility();
         UpdateActionButtonsEnabled();
     }
 
@@ -254,6 +253,7 @@ public sealed partial class AppsPage : Page
         }
 
         EnsureCatalogScrollViewer();
+        ApplyGifRuntimeFrameToCards(latestGifRuntimeFrame);
 
         if (selectedItem is not null)
         {
@@ -352,9 +352,9 @@ public sealed partial class AppsPage : Page
 
         _ = EvaluateRuntimeAutostartAsync();
 
-        UpdateRuntimePanel();
         UpdateSelectionVisuals();
         RefreshPreviewPlayback();
+        UpdateGifOpenFileButtonVisibility();
         UpdateActionButtonsEnabled();
     }
 
@@ -374,9 +374,9 @@ public sealed partial class AppsPage : Page
 
         previousProvider?.OnDeselected(previousItem ?? new AppCatalogItem());
 
-        UpdateRuntimePanel();
         UpdateSelectionVisuals();
         RefreshPreviewPlayback();
+        UpdateGifOpenFileButtonVisibility();
         UpdateActionButtonsEnabled();
     }
 
@@ -422,66 +422,22 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        var shouldRun = new HashSet<AppCatalogCardControl>();
-
-        if (catalogScrollViewer is not null)
-        {
-            var viewportTop = catalogScrollViewer.VerticalOffset;
-            var viewportBottom = viewportTop + catalogScrollViewer.ViewportHeight;
-            var contentElement = catalogScrollViewer.Content as UIElement;
-
-            foreach (var card in catalogCards)
-            {
-                if (contentElement is null || card.ActualWidth <= 0 || card.ActualHeight <= 0)
-                {
-                    continue;
-                }
-
-                var transform = card.TransformToVisual(contentElement);
-                var bounds = transform.TransformBounds(new Rect(0, 0, card.ActualWidth, card.ActualHeight));
-                if (bounds.Bottom >= viewportTop && bounds.Top <= viewportBottom)
-                {
-                    shouldRun.Add(card);
-                    if (shouldRun.Count >= 6)
-                    {
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (shouldRun.Count == 0)
-        {
-            foreach (var card in catalogCards.Take(6))
-            {
-                shouldRun.Add(card);
-            }
-        }
-
-        if (selectedItem is not null)
-        {
-            var selectedCard = catalogCards.FirstOrDefault(c => string.Equals(c.Item.Id, selectedItem.Id, StringComparison.OrdinalIgnoreCase));
-            if (selectedCard is not null)
-            {
-                shouldRun.Add(selectedCard);
-            }
-        }
-
         foreach (var card in catalogCards)
         {
-            if (shouldRun.Contains(card))
+            if (activePreviewCards.Add(card))
             {
-                if (activePreviewCards.Add(card))
-                {
-                    card.Preview.Start();
-                }
-            }
-            else if (activePreviewCards.Remove(card))
-            {
-                card.Preview.Stop();
+                card.Preview.Start();
             }
         }
+
+        var stale = activePreviewCards.Except(catalogCards).ToArray();
+        foreach (var removed in stale)
+        {
+            removed.Preview.Stop();
+            activePreviewCards.Remove(removed);
+        }
     }
+
     private async void OnInstallClicked(object sender, RoutedEventArgs e)
     {
         if (!TryGetSelection(out var deviceId, out var item, out var error))
@@ -548,13 +504,6 @@ public sealed partial class AppsPage : Page
             AppendLog($"Modificações salvas localmente para {item.Name}.");
         });
     }
-    private void UpdateRuntimePanel()
-    {
-        GifRuntimeStatusText.Text = lastRuntimeStatus;
-        GifRuntimePanel.Visibility = activeRuntimeProvider is null ? Visibility.Collapsed : Visibility.Visible;
-        GifRuntimeCanvas.Invalidate();
-    }
-
     private void SetRuntimeStatus(string status)
     {
         if (string.IsNullOrWhiteSpace(status))
@@ -562,8 +511,27 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        lastRuntimeStatus = status;
-        _ = DispatcherQueue.TryEnqueue(() => GifRuntimeStatusText.Text = status);
+        _ = DispatcherQueue.TryEnqueue(() => AppendLog(status));
+    }
+
+    private void OnGifRuntimeFrameUpdated(RgbaColor[] frame)
+    {
+        if (frame.Length == 0)
+        {
+            return;
+        }
+
+        var snapshot = frame.ToArray();
+        _ = DispatcherQueue.TryEnqueue(() => ApplyGifRuntimeFrameToCards(snapshot));
+    }
+
+    private void ApplyGifRuntimeFrameToCards(RgbaColor[]? frame)
+    {
+        latestGifRuntimeFrame = frame;
+        foreach (var card in catalogCards.Where(static card => string.Equals(card.Item.Id, GifAppId, StringComparison.OrdinalIgnoreCase)))
+        {
+            card.SetRuntimeFrame(frame);
+        }
     }
 
     private async Task EvaluateRuntimeAutostartAsync()
@@ -585,6 +553,29 @@ public sealed partial class AppsPage : Page
         await activeRuntimeProvider.OnConfigSavedAsync(selectedItem, values, CancellationToken.None).ConfigureAwait(false);
     }
 
+    private async Task EnsureGifRuntimeWhileAppsPageIsVisibleAsync()
+    {
+        var gifItem = allItems.FirstOrDefault(static item => string.Equals(item.Id, GifAppId, StringComparison.OrdinalIgnoreCase));
+        if (gifItem is null)
+        {
+            return;
+        }
+
+        var provider = runtimeProviderRegistry.Resolve(gifItem);
+        if (provider is null)
+        {
+            return;
+        }
+
+        var values = await ResolveStoredValuesAsync(gifItem).ConfigureAwait(false);
+        if (!ShouldAutoStartGifRuntime(values))
+        {
+            return;
+        }
+
+        await provider.OnConfigSavedAsync(gifItem, values, CancellationToken.None).ConfigureAwait(false);
+    }
+
     private async Task<IReadOnlyDictionary<string, string>> ResolveRuntimeValuesAsync()
     {
         var item = selectedItem;
@@ -598,6 +589,11 @@ public sealed partial class AppsPage : Page
             return rawValues;
         }
 
+        return await ResolveStoredValuesAsync(item).ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> ResolveStoredValuesAsync(AppCatalogItem item)
+    {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var modifier in item.Modifiers.Where(static modifier => modifier.IsValid()))
         {
@@ -618,22 +614,37 @@ public sealed partial class AppsPage : Page
         return values;
     }
 
+    private static bool ShouldAutoStartGifRuntime(IReadOnlyDictionary<string, string> values)
+    {
+        var sourceMode = values.TryGetValue("sourceMode", out var rawSource)
+            ? rawSource.Trim().ToLowerInvariant()
+            : "url";
+        if (sourceMode == "file")
+        {
+            return false;
+        }
+
+        if (!values.TryGetValue("gifUrl", out var rawUrl))
+        {
+            return false;
+        }
+
+        var url = rawUrl.Trim();
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    }
+
     private void AttachRuntimeProviders()
     {
         var host = new AppRuntimeHost
         {
-            RuntimePanel = GifRuntimePanel,
-            RuntimeStatusText = GifRuntimeStatusText,
             OpenFileButton = GifOpenFileButton,
-            FirmwareWarningText = GifFirmwareWarningText,
-            RuntimeCanvas = GifRuntimeCanvas,
             DispatcherQueue = DispatcherQueue,
             GifRuntimeService = gifRuntimeService,
             PickGifFileAsync = PickGifFileAsync,
             ResolveScaleMode = () => selectedItem is null || !TryBuildConfigFromEditor(selectedItem, out _, out var values, out _) ? GifScaleMode.Fit : ParseGifScaleMode(values.TryGetValue("scaleMode", out var mode) ? mode : null),
             ResolveCurrentValuesAsync = ResolveRuntimeValuesAsync,
-            PersistCurrentValuesAsync = () => Task.CompletedTask,
-            UpdateFrame = frame => gifPreviewFrame = frame,
+            UpdateFrame = OnGifRuntimeFrameUpdated,
             SetStatus = SetRuntimeStatus,
         };
 
@@ -673,7 +684,37 @@ public sealed partial class AppsPage : Page
 
     private void OnTargetDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        UpdateGifOpenFileButtonVisibility();
         UpdateActionButtonsEnabled();
+    }
+
+    private void OnGifSourceModeSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateGifOpenFileButtonVisibility();
+    }
+
+    private bool IsGifFileModeSelected()
+    {
+        if (!string.Equals(selectedItem?.Id, GifAppId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!modifierBindings.TryGetValue("sourceMode", out var binding)
+            || binding.Control is not ComboBox combo
+            || combo.SelectedItem is not ComboBoxItem selected
+            || selected.Tag is not string mode)
+        {
+            return false;
+        }
+
+        return string.Equals(mode, "file", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void UpdateGifOpenFileButtonVisibility()
+    {
+        var visible = IsGifFileModeSelected();
+        GifOpenFileButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async Task LoadModifierEditorAsync()
@@ -686,6 +727,8 @@ public sealed partial class AppsPage : Page
         if (item is null)
         {
             ModifiersHintText.Text = "Selecione um app para editar modificadores.";
+            UpdateGifOpenFileButtonVisibility();
+            UpdateActionButtonsEnabled();
             return;
         }
 
@@ -698,6 +741,7 @@ public sealed partial class AppsPage : Page
                 Text = "Sem parâmetros adicionais.",
                 Opacity = 0.8,
             });
+            UpdateGifOpenFileButtonVisibility();
             UpdateActionButtonsEnabled();
             return;
         }
@@ -735,6 +779,7 @@ public sealed partial class AppsPage : Page
             ModifiersPanel.Children.Add(control);
         }
 
+        UpdateGifOpenFileButtonVisibility();
         UpdateActionButtonsEnabled();
     }
 
@@ -760,6 +805,11 @@ public sealed partial class AppsPage : Page
                 var selected = combo.Items.OfType<ComboBoxItem>().FirstOrDefault(i => string.Equals(i.Tag as string, initialValue, StringComparison.OrdinalIgnoreCase))
                     ?? combo.Items.OfType<ComboBoxItem>().FirstOrDefault();
                 combo.SelectedItem = selected;
+                if (string.Equals(definition.Key, "sourceMode", StringComparison.OrdinalIgnoreCase))
+                {
+                    combo.SelectionChanged += OnGifSourceModeSelectionChanged;
+                }
+
                 return combo;
             case AppModifierFieldType.CityAutocomplete:
                 ParseCityConfig(initialValue, out var cityDisplay, out var citySuggestion);
@@ -955,48 +1005,6 @@ public sealed partial class AppsPage : Page
         });
     }
 
-    private void OnGifRuntimeCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
-    {
-        var drawWidth = (float)Math.Max(1d, sender.ActualWidth);
-        var drawHeight = (float)Math.Max(1d, sender.ActualHeight);
-
-        var ds = args.DrawingSession;
-        ds.Clear(Color.FromArgb(255, 5, 8, 12));
-
-        var frame = gifPreviewFrame;
-        if (frame.Length != LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
-        {
-            return;
-        }
-
-        var pitch = MathF.Min((drawWidth - 10f) / LedDefaults.MatrixWidth, (drawHeight - 10f) / LedDefaults.MatrixHeight);
-        pitch = MathF.Max(1f, pitch);
-        var ledSize = MathF.Max(1f, pitch * 0.82f);
-        var panelWidth = LedDefaults.MatrixWidth * pitch;
-        var panelHeight = LedDefaults.MatrixHeight * pitch;
-        var ox = (drawWidth - panelWidth) * 0.5f;
-        var oy = (drawHeight - panelHeight) * 0.5f;
-
-        ds.FillRoundedRectangle(ox - 2f, oy - 2f, panelWidth + 4f, panelHeight + 4f, 3f, 3f, Color.FromArgb(255, 8, 12, 18));
-        ds.DrawRoundedRectangle(ox - 1f, oy - 1f, panelWidth + 2f, panelHeight + 2f, 2f, 2f, Color.FromArgb(255, 35, 48, 62), 1f);
-
-        for (var y = 0; y < LedDefaults.MatrixHeight; y++)
-        {
-            for (var x = 0; x < LedDefaults.MatrixWidth; x++)
-            {
-                var px = frame[(y * LedDefaults.MatrixWidth) + x];
-                if (px.A == 0)
-                {
-                    continue;
-                }
-
-                var left = ox + (x * pitch) + ((pitch - ledSize) * 0.5f);
-                var top = oy + (y * pitch) + ((pitch - ledSize) * 0.5f);
-                var color = Color.FromArgb(px.A, px.R, px.G, px.B);
-                ds.FillRectangle(left, top, ledSize, ledSize, color);
-            }
-        }
-    }
     private bool TryGetSelection(out string deviceId, out AppCatalogItem item, out string error)
     {
         deviceId = string.Empty;
@@ -1205,6 +1213,7 @@ public sealed partial class AppsPage : Page
 
         InstallButton.IsEnabled = hasSelection && hasDevice && !busy;
         SaveModifiersButton.IsEnabled = hasSelection;
+        GifOpenFileButton.IsEnabled = hasSelection && !busy && IsGifFileModeSelected();
     }
     private static bool TryParseDouble(string? value, out double result) => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
 
@@ -1232,6 +1241,7 @@ public sealed partial class AppsPage : Page
     private async void OnReloadCatalogClicked(object sender, RoutedEventArgs e)
     {
         await ReloadCatalogFromDiskAsync().ConfigureAwait(false);
+        await EnsureGifRuntimeWhileAppsPageIsVisibleAsync().ConfigureAwait(false);
     }
 
     private void AppendLog(string message)

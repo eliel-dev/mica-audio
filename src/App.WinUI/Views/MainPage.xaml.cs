@@ -7,6 +7,7 @@ using App.WinUI.ViewModels;
 using Audio.Loopback.Capture;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Input;
@@ -50,19 +51,19 @@ public partial class MainPage : Page
     private const int GifMaxDownloadBytes = 25 * 1024 * 1024;
 
     private readonly VisualizerEngine visualizer = new();
-    private readonly ILoopbackCapture capture = new WasapiLoopbackCaptureService();
-    private readonly SimulatorLedOutput simulatorLedOutput = new();
-    private readonly NullLedOutput nullLedOutput = new();
+    private readonly ILoopbackCapture capture;
+    private readonly SimulatorLedOutput simulatorLedOutput;
+    private readonly NullLedOutput nullLedOutput;
     private readonly MatrixPortalLedOutput matrixPortalLedOutput;
-    private readonly HttpClient gifHttpClient = new();
+    private readonly HttpClient gifHttpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
     private readonly Hub75GifDecoder gifDecoder = new(Hub75GifDecoder.DefaultMaxGifFrames);
     private readonly Hub75FrameFormatter gifFrameFormatter = new();
     private readonly Hub75GifPlayer gifPlayer = new(TimeSpan.FromMilliseconds(1000d / GifTargetFps));
 
     private readonly PresetRepository presetRepository;
     private readonly SettingsRepository settingsRepository;
-    private readonly AppSettingsDomainService settingsDomainService = new();
-    private readonly MainPageViewModel viewModel = new();
+    private readonly AppSettingsDomainService settingsDomainService;
+    private readonly MainPageViewModel viewModel;
     private readonly AudioPipelineCoordinator pipelineCoordinator;
     private readonly Dictionary<string, PresetDefinition> presetsById = new(StringComparer.OrdinalIgnoreCase);
 
@@ -126,16 +127,41 @@ public partial class MainPage : Page
         6300f, 8000f, 10_000f, 12_000f, 16_000f, 20_000f,
     ];
 
-    public MainPage()
+    public MainPage(IServiceProvider services)
+        : this(
+            services.GetRequiredService<MainPageViewModel>(),
+            services.GetRequiredService<PresetRepository>(),
+            services.GetRequiredService<SettingsRepository>(),
+            services.GetRequiredService<AppSettingsDomainService>(),
+            services.GetRequiredService<ILoopbackCapture>(),
+            services.GetRequiredService<SimulatorLedOutput>(),
+            services.GetRequiredService<NullLedOutput>(),
+            services.GetRequiredService<MatrixPortalLedOutput>())
     {
+    }
+
+    internal MainPage(
+        MainPageViewModel viewModel,
+        PresetRepository presetRepository,
+        SettingsRepository settingsRepository,
+        AppSettingsDomainService settingsDomainService,
+        ILoopbackCapture capture,
+        SimulatorLedOutput simulatorLedOutput,
+        NullLedOutput nullLedOutput,
+        MatrixPortalLedOutput matrixPortalLedOutput)
+    {
+        this.viewModel = viewModel;
+        this.presetRepository = presetRepository;
+        this.settingsRepository = settingsRepository;
+        this.settingsDomainService = settingsDomainService;
+        this.capture = capture;
+        this.simulatorLedOutput = simulatorLedOutput;
+        this.nullLedOutput = nullLedOutput;
+        this.matrixPortalLedOutput = matrixPortalLedOutput;
+
         InitializeComponent();
         ConfigureSliderDefaults();
 
-        var appDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicaAudio");
-        presetRepository = new PresetRepository(appDataRoot);
-        settingsRepository = new SettingsRepository(appDataRoot);
-        var serverHost = App.DeviceIntegration?.Host ?? new DeviceServerHost();
-        matrixPortalLedOutput = new MatrixPortalLedOutput(serverHost);
         pipelineCoordinator = new AudioPipelineCoordinator(capture, simulatorLedOutput, matrixPortalLedOutput, nullLedOutput, () => Volatile.Read(ref analyzer));
         gifPlayer.FrameReady += OnGifFrameReady;
 
@@ -1929,3 +1955,7 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
+
+
+
+

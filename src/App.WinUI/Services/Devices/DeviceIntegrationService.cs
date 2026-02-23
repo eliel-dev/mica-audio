@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace App.WinUI.Services.Devices;
 
@@ -12,6 +13,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
 {
     private readonly IDeviceServerHost serverHost;
     private readonly IDeviceRegistryStore registryStore;
+    private readonly ILogger<DeviceIntegrationService> logger;
 
     private const int ServerPort = 5272;
     private static readonly TimeSpan RegistrySaveMinInterval = TimeSpan.FromSeconds(10);
@@ -22,13 +24,21 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
     private string publicHost = "127.0.0.1";
     private DateTimeOffset lastRegistrySaveUtc = DateTimeOffset.MinValue;
 
-    public DeviceIntegrationService(IDeviceServerHost serverHost, IDeviceRegistryStore registryStore)
+    public DeviceIntegrationService(
+        IDeviceServerHost serverHost,
+        IDeviceRegistryStore registryStore,
+        ILogger<DeviceIntegrationService> logger)
     {
         this.serverHost = serverHost;
         this.registryStore = registryStore;
+        this.logger = logger;
 
         serverHost.DevicesChanged += OnDevicesChanged;
-        serverHost.LogMessage += (_, msg) => LogMessage?.Invoke(this, msg);
+        serverHost.LogMessage += (_, msg) =>
+        {
+            this.logger.LogInformation("{Message}", msg);
+            LogMessage?.Invoke(this, msg);
+        };
     }
 
     public IDeviceServerHost Host => serverHost;
@@ -61,6 +71,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
             PublicHost = publicHost,
         }, cancellationToken).ConfigureAwait(false);
 
+        logger.LogInformation("Servidor HTTP publico: {BaseAddress}", GetServerBaseAddress());
         LogMessage?.Invoke(this, $"Servidor HTTP publico: {GetServerBaseAddress()}");
         started = true;
     }
@@ -126,6 +137,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "Falha ao salvar devices.json");
             LogMessage?.Invoke(this, $"Falha ao salvar devices.json: {ex.Message}");
         }
     }

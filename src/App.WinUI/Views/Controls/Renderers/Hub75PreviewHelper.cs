@@ -57,9 +57,11 @@ internal static class Hub75PreviewHelper
 
     public static void DrawPanel(in AppPreviewRenderContext context, out float ox, out float oy, out float pitch, out float ledSize)
     {
-        pitch = MathF.Min((context.Width - 10f) / PanelWidth, (context.Height - 10f) / PanelHeight);
-        pitch = MathF.Max(pitch, 1.2f);
-        ledSize = MathF.Max(1f, pitch * 0.76f);
+        const float padding = 6f;
+
+        pitch = MathF.Min((context.Width - (padding * 2f)) / PanelWidth, (context.Height - (padding * 2f)) / PanelHeight);
+        pitch = MathF.Max(pitch, 1.1f);
+        ledSize = MathF.Max(1f, pitch * 0.78f);
 
         var drawWidth = PanelWidth * pitch;
         var drawHeight = PanelHeight * pitch;
@@ -67,8 +69,9 @@ internal static class Hub75PreviewHelper
         oy = (context.Height - drawHeight) * 0.5f;
 
         var ds = context.DrawingSession;
-        ds.FillRoundedRectangle(ox - 2f, oy - 2f, drawWidth + 4f, drawHeight + 4f, 3f, 3f, Color.FromArgb(255, 3, 5, 8));
-        ds.DrawRoundedRectangle(ox - 1f, oy - 1f, drawWidth + 2f, drawHeight + 2f, 2f, 2f, Color.FromArgb(255, 24, 34, 44), 1f);
+        ds.FillRoundedRectangle(ox - 2f, oy - 2f, drawWidth + 4f, drawHeight + 4f, 6f, 6f, Color.FromArgb(255, 2, 3, 5));
+        ds.DrawRoundedRectangle(ox - 2f, oy - 2f, drawWidth + 4f, drawHeight + 4f, 6f, 6f, Color.FromArgb(255, 38, 50, 64), 1f);
+        ds.FillRectangle(ox, oy, drawWidth, drawHeight, Color.FromArgb(255, 0, 0, 0));
     }
 
     public static string NormalizeForMatrix(string? text)

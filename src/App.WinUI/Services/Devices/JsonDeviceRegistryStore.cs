@@ -1,7 +1,9 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Device.Protocol.Models;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
 
 namespace App.WinUI.Services.Devices;
 
@@ -19,9 +21,12 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
 
     private readonly string filePath;
 
-    public JsonDeviceRegistryStore(string appDataRoot)
+    public JsonDeviceRegistryStore(IOptions<MicaAudioOptions> options)
     {
-        filePath = Path.Combine(appDataRoot, "devices.json");
+        var configuredPath = options.Value.DevicesFilePath;
+        filePath = string.IsNullOrWhiteSpace(configuredPath)
+            ? Path.Combine(options.Value.AppDataRoot, "devices.json")
+            : configuredPath;
     }
 
     public async Task<IReadOnlyList<DeviceRecord>> LoadAsync(CancellationToken cancellationToken = default)
@@ -186,3 +191,4 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         public string? ActiveAppName { get; init; }
     }
 }
+

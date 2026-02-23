@@ -13,6 +13,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [Hub75FrameFormatter](../../../src/App.WinUI/Services/Gif/Hub75FrameFormatter.cs#L1)
 - [Hub75GifPlayer](../../../src/App.WinUI/Services/Gif/Hub75GifPlayer.cs#L1)
 - [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L1)
+- [MicaAudioOptions](../../../src/MicaAudio.Core/Config/MicaAudioOptions.cs#L1)
 - [DeviceIntegrationService](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L1)
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
@@ -22,6 +23,9 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [GifCatalogAppRuntimeService](../../../src/App.WinUI/Services/Apps/GifCatalogAppRuntimeService.cs#L1)
 - [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)
 - [CityAutocompleteService](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L1)
+- [SaveAppConfigUseCase](../../../src/App.WinUI/Services/Apps/UseCases/SaveAppConfigUseCase.cs#L1)
+- [AppConfigValidationUseCase](../../../src/App.WinUI/Services/Apps/UseCases/AppConfigValidationUseCase.cs#L1)
+- [DeployAppUseCase](../../../src/App.WinUI/Services/Apps/UseCases/DeployAppUseCase.cs#L1)
 - [AppPreviewRendererRegistry](../../../src/App.WinUI/Views/Controls/AppPreviewRendererRegistry.cs#L1)
 - [AppPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/AppPreviewThumbnailControl.cs#L1)
 - [AppCatalogCardControl](../../../src/App.WinUI/Views/Controls/AppCatalogCardControl.cs#L1)
@@ -87,3 +91,9 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [AppSettings](../../../src/MicaAudio.Core/Presets/AppSettings.cs#L1)
 - [SettingsRepository](../../../src/App.WinUI/Services/SettingsRepository.cs#L1)
 - [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L1)
+
+## Testes de bootstrap/aplicacao
+- [WinUiBootstrapSmokeTests](../../../tests/Integration.Smoke/WinUiBootstrapSmokeTests.cs#L1)
+- [AppConfigUseCasesTests](../../../tests/Output.Tests/AppConfigUseCasesTests.cs#L1)
+- [AppModifierStateStoreTests](../../../tests/Output.Tests/AppModifierStateStoreTests.cs#L1)
+

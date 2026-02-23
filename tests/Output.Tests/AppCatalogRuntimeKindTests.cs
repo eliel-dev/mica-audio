@@ -1,4 +1,6 @@
-using App.WinUI.Services.Apps;
+﻿using App.WinUI.Services.Apps;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
 
 namespace Output.Tests;
 
@@ -28,7 +30,7 @@ public sealed class AppCatalogRuntimeKindTests
 
             await File.WriteAllTextAsync(Path.Combine(appsDir, "catalog.json"), catalog);
 
-            var service = new AppCatalogService(root);
+            var service = new AppCatalogService(CreateOptions(root));
             var items = await service.LoadCatalogAsync();
 
             Assert.Equal("none", items.Single(x => x.Id == "accuweather").Runtime?.Kind);
@@ -39,5 +41,14 @@ public sealed class AppCatalogRuntimeKindTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    private static IOptions<MicaAudioOptions> CreateOptions(string root)
+    {
+        return Options.Create(new MicaAudioOptions
+        {
+            AppDataRoot = root,
+            AppsCatalogPath = Path.Combine(root, "apps", "catalog.json"),
+        });
     }
 }

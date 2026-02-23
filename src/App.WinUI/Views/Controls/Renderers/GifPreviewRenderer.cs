@@ -1,3 +1,4 @@
+using MicaAudio.Core.Presets;
 using Windows.UI;
 
 namespace App.WinUI.Views.Controls.Renderers;
@@ -10,6 +11,12 @@ internal sealed class GifPreviewRenderer : IAppPreviewRenderer
     {
         var ds = context.DrawingSession;
         Hub75PreviewHelper.DrawPanel(context, out var ox, out var oy, out var pitch, out var ledSize);
+
+        if (context.RuntimeFrame is { Count: Hub75PreviewHelper.PanelWidth * Hub75PreviewHelper.PanelHeight } runtimeFrame)
+        {
+            DrawRuntimeFrame(ds, runtimeFrame, ox, oy, pitch, ledSize);
+            return;
+        }
 
         for (var y = 0; y < Hub75PreviewHelper.PanelHeight; y++)
         {
@@ -31,5 +38,37 @@ internal sealed class GifPreviewRenderer : IAppPreviewRenderer
         }
 
         Hub75PreviewHelper.DrawText5x7(ds, ox, oy, pitch, ledSize, 3, 12, "GIF APP", Color.FromArgb(255, 255, 255, 255));
+    }
+
+    private static void DrawRuntimeFrame(
+        Microsoft.Graphics.Canvas.CanvasDrawingSession ds,
+        IReadOnlyList<RgbaColor> frame,
+        float ox,
+        float oy,
+        float pitch,
+        float ledSize)
+    {
+        for (var y = 0; y < Hub75PreviewHelper.PanelHeight; y++)
+        {
+            for (var x = 0; x < Hub75PreviewHelper.PanelWidth; x++)
+            {
+                var pixel = frame[(y * Hub75PreviewHelper.PanelWidth) + x];
+                if (pixel.A == 0)
+                {
+                    continue;
+                }
+
+                Hub75PreviewHelper.DrawPixel(
+                    ds,
+                    ox,
+                    oy,
+                    pitch,
+                    ledSize,
+                    x,
+                    y,
+                    Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B),
+                    glow: false);
+            }
+        }
     }
 }

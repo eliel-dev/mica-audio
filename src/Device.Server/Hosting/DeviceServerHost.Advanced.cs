@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Device.Protocol.Models;
 using Microsoft.AspNetCore.Http;
 
@@ -164,13 +164,26 @@ public sealed partial class DeviceServerHost
 
     private async Task<IResult> HandleCommandAckTrackedAsync(HttpContext ctx)
     {
-        if (!TryAuthenticate(ctx, out var state))
+        if (!TryAuthenticate(ctx, AuthContext.HttpApi, out var state))
         {
             return Results.Unauthorized();
         }
 
-        var ack = await JsonSerializer.DeserializeAsync<DeviceCommandAckRequest>(ctx.Request.Body, JsonOptions).ConfigureAwait(false)
-            ?? new DeviceCommandAckRequest();
+        if (IsRequestBodyTooLarge(ctx, config.MaxJsonBodyBytes))
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        DeviceCommandAckRequest ack;
+        try
+        {
+            ack = await JsonSerializer.DeserializeAsync<DeviceCommandAckRequest>(ctx.Request.Body, JsonOptions, ctx.RequestAborted).ConfigureAwait(false)
+                ?? new DeviceCommandAckRequest();
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid_json" });
+        }
 
         state.MarkSeen(ctx.Connection.RemoteIpAddress?.ToString(), state.Record.LastKnownRssi, state.Record.FirmwareVersion);
         var progress = Math.Clamp(ack.ProgressPercent ?? (ack.Success ? 100 : 0), 0, 100);
@@ -357,3 +370,4 @@ public sealed partial class DeviceServerHost
         public bool TrySetResult(CommandDispatchResult result) => tcs.TrySetResult(result);
     }
 }
+

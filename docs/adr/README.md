@@ -15,3 +15,6 @@ Esta pasta registra Decisoes de Arquitetura (ADR) para governanca tecnica e cont
 2. [0002 - Politica PR docs estrutural](0002-politica-pr-docs-estrutural.md)
 3. [0003 - MCP viabilidade e estrategia solo IA](0003-mcp-viabilidade-e-estrategia-solo-ai.md)
 4. [0004 - Padrao App Module para apps de catalogo](0004-app-module-pattern.md)
+5. [0005 - DI explicita, options centralizadas e logging estruturado no App.WinUI](0005-di-options-logging-canonical.md)
+6. [0006 - Hardening de autenticacao de device e limites de input](0006-device-auth-hardening-and-input-limits.md)
+

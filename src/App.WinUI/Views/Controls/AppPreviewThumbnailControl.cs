@@ -1,10 +1,11 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using App.WinUI.Models.Apps;
 using App.WinUI.Views;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using MicaAudio.Core.Presets;
 using Windows.UI;
 
 namespace App.WinUI.Views.Controls;
@@ -20,18 +21,19 @@ internal sealed class AppPreviewThumbnailControl : Grid
     private bool isSelected;
     private bool isRunning;
     private IReadOnlyDictionary<string, string> configValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    private RgbaColor[]? runtimeFrame;
 
     public AppPreviewThumbnailControl()
     {
-        Width = 210;
-        Height = 88;
+        Width = 232;
+        Height = 116;
 
         var border = new Border
         {
-            CornerRadius = new CornerRadius(8),
-            Background = UiResourceResolver.ResolveBrush("AppSurfaceBaseBrush", Color.FromArgb(255, 9, 12, 16)),
+            CornerRadius = new CornerRadius(10),
+            Background = UiResourceResolver.ResolveBrush("AppSurfaceBaseBrush", Color.FromArgb(255, 6, 9, 12)),
             BorderThickness = new Thickness(1),
-            BorderBrush = UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 47, 64, 85)),
+            BorderBrush = UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 52, 64, 80)),
             Padding = new Thickness(0),
         };
 
@@ -67,6 +69,11 @@ internal sealed class AppPreviewThumbnailControl : Grid
     {
         item = appItem;
         renderer = AppPreviewRendererRegistry.Resolve(appItem);
+        if (!string.Equals(renderer.Kind, "gif", StringComparison.OrdinalIgnoreCase))
+        {
+            runtimeFrame = null;
+        }
+
         canvas.Invalidate();
     }
 
@@ -82,6 +89,12 @@ internal sealed class AppPreviewThumbnailControl : Grid
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase);
 
+        canvas.Invalidate();
+    }
+
+    public void SetRuntimeFrame(RgbaColor[]? frame)
+    {
+        runtimeFrame = frame?.Length > 0 ? frame.ToArray() : null;
         canvas.Invalidate();
     }
 
@@ -122,7 +135,8 @@ internal sealed class AppPreviewThumbnailControl : Grid
             time,
             item,
             isSelected,
-            configValues);
+            configValues,
+            runtimeFrame);
 
         renderer.Draw(context);
     }

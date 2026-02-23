@@ -1,6 +1,5 @@
 ﻿using App.WinUI.Views.Controls;
 using Microsoft.UI.Xaml;
-using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -21,11 +20,7 @@ public sealed partial class AppsPage
     private TextBlock OperationPercentText = null!;
     private TextBlock ModifiersHintText = null!;
     private StackPanel ModifiersPanel = null!;
-    private Border GifRuntimePanel = null!;
     private Button GifOpenFileButton = null!;
-    private TextBlock GifRuntimeStatusText = null!;
-    private TextBlock GifFirmwareWarningText = null!;
-    private CanvasControl GifRuntimeCanvas = null!;
     private Button InstallButton = null!;
     private Button SaveModifiersButton = null!;
 
@@ -41,46 +36,59 @@ public sealed partial class AppsPage
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var topCommandBar = new CommandBar
+        var topHost = new StackPanel { Spacing = 10 };
+        topHost.Children.Add(new TextBlock
         {
-            Background = null,
-            DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
-        };
+            Text = "Apps do sistema",
+            Style = Application.Current.Resources["TitleTextBlockStyle"] as Style,
+        });
 
-        var reload = new AppBarButton { Label = "Recarregar", Icon = new SymbolIcon(Symbol.Refresh) };
-        reload.Click += OnReloadCatalogClicked;
-        topCommandBar.PrimaryCommands.Add(reload);
-        topCommandBar.PrimaryCommands.Add(new AppBarSeparator());
+        var searchGrid = new Grid { ColumnSpacing = 8 };
+        searchGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        searchGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         SearchBox = new TextBox
         {
-            PlaceholderText = "Buscar por nome ou categoria",
+            PlaceholderText = "Buscar apps por nome ou categoria",
             MinWidth = 320,
         };
         SearchBox.TextChanged += OnSearchTextChanged;
 
-        topCommandBar.PrimaryCommands.Add(new AppBarElementContainer { Content = SearchBox });
-        root.Children.Add(CreateCard(topCommandBar, elevated: true, padding: 4));
+        var reloadButton = new Button
+        {
+            Content = "Recarregar",
+            MinWidth = 110,
+        };
+        reloadButton.Click += OnReloadCatalogClicked;
 
-        var content = new Grid { ColumnSpacing = 12 };
+        Grid.SetColumn(reloadButton, 1);
+        searchGrid.Children.Add(SearchBox);
+        searchGrid.Children.Add(reloadButton);
+
+        topHost.Children.Add(searchGrid);
+        root.Children.Add(topHost);
+
+        var content = new Grid { ColumnSpacing = 14 };
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
         Grid.SetRow(content, 1);
 
-        var catalogHost = new Grid { RowSpacing = 10 };
+        var catalogHost = new Grid { RowSpacing = 8 };
         catalogHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         catalogHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         catalogHost.Children.Add(new TextBlock
         {
-            Text = "Catálogo de apps",
+            Text = "Grade de apps",
             Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
+            Opacity = 0.9,
         });
 
         CatalogGrid = new GridView
         {
             IsItemClickEnabled = true,
             SelectionMode = ListViewSelectionMode.Single,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         CatalogGrid.ItemClick += OnCatalogItemClick;
         CatalogGrid.SelectionChanged += OnCatalogSelectionChanged;
@@ -88,13 +96,12 @@ public sealed partial class AppsPage
         Grid.SetRow(CatalogGrid, 1);
         catalogHost.Children.Add(CatalogGrid);
 
-        content.Children.Add(CreateCard(catalogHost));
+        content.Children.Add(catalogHost);
 
         var right = new Grid { RowSpacing = 10 };
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetColumn(right, 1);
@@ -112,21 +119,14 @@ public sealed partial class AppsPage
         details.Children.Add(SelectedAppDescriptionText);
         right.Children.Add(CreateCard(details));
 
-        var deviceBar = new CommandBar
-        {
-            Background = null,
-            DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
-        };
-
         TargetDeviceCombo = new ComboBox
         {
             PlaceholderText = "Dispositivo online",
-            MinWidth = 240,
+            MinWidth = 220,
         };
         TargetDeviceCombo.SelectionChanged += OnTargetDeviceSelectionChanged;
 
-        deviceBar.PrimaryCommands.Add(new AppBarElementContainer { Content = TargetDeviceCombo });
-        var deviceCard = CreateCard(deviceBar, padding: 4);
+        var deviceCard = CreateCard(TargetDeviceCombo);
         Grid.SetRow(deviceCard, 1);
         right.Children.Add(deviceCard);
 
@@ -159,50 +159,8 @@ public sealed partial class AppsPage
         Grid.SetRow(modifiersCard, 2);
         right.Children.Add(modifiersCard);
 
-        var gifRuntimeHost = new StackPanel { Spacing = 8 };
-        gifRuntimeHost.Children.Add(new TextBlock
-        {
-            Text = "Runtime GIF HUB75",
-            Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
-        });
-
-        GifRuntimeStatusText = new TextBlock
-        {
-            Text = "Selecione o app GIF para iniciar.",
-            Opacity = 0.9,
-            TextWrapping = TextWrapping.Wrap,
-        };
-
-        GifOpenFileButton = new Button
-        {
-            Content = "Abrir arquivo GIF",
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
-
-        GifFirmwareWarningText = new TextBlock
-        {
-            Text = "Aviso: firmware antigo ignora frame RGB565 (tipo 2). O runtime local continua ativo.",
-            Opacity = 0.76,
-            TextWrapping = TextWrapping.Wrap,
-        };
-
-        GifRuntimeCanvas = new CanvasControl
-        {
-            Height = 110,
-        };
-        GifRuntimeCanvas.Draw += OnGifRuntimeCanvasDraw;
-
-        gifRuntimeHost.Children.Add(GifRuntimeStatusText);
-        gifRuntimeHost.Children.Add(GifOpenFileButton);
-        gifRuntimeHost.Children.Add(GifFirmwareWarningText);
-        gifRuntimeHost.Children.Add(GifRuntimeCanvas);
-
-        GifRuntimePanel = CreateCard(gifRuntimeHost);
-        GifRuntimePanel.Visibility = Visibility.Collapsed;
-        Grid.SetRow(GifRuntimePanel, 3);
-        right.Children.Add(GifRuntimePanel);
-
         var actionsGrid = new Grid { ColumnSpacing = 8 };
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
@@ -212,13 +170,21 @@ public sealed partial class AppsPage
         SaveModifiersButton = new Button { Content = "Salvar" };
         SaveModifiersButton.Click += OnSaveModifiersClicked;
 
+        GifOpenFileButton = new Button
+        {
+            Content = "Selecionar GIF",
+            Visibility = Visibility.Collapsed,
+        };
+
         Grid.SetColumn(SaveModifiersButton, 1);
+        Grid.SetColumn(GifOpenFileButton, 2);
 
         actionsGrid.Children.Add(InstallButton);
         actionsGrid.Children.Add(SaveModifiersButton);
+        actionsGrid.Children.Add(GifOpenFileButton);
 
         var actionsCard = CreateCard(actionsGrid);
-        Grid.SetRow(actionsCard, 4);
+        Grid.SetRow(actionsCard, 3);
         right.Children.Add(actionsCard);
 
         var statusGrid = new Grid { ColumnSpacing = 10 };
@@ -256,7 +222,7 @@ public sealed partial class AppsPage
         statusGrid.Children.Add(OperationPercentText);
 
         var statusCard = CreateCard(statusGrid);
-        Grid.SetRow(statusCard, 5);
+        Grid.SetRow(statusCard, 4);
         right.Children.Add(statusCard);
 
         content.Children.Add(right);
@@ -265,17 +231,15 @@ public sealed partial class AppsPage
         Content = root;
     }
 
-    private static Border CreateCard(UIElement content, bool elevated = false, double padding = 12)
+    private static Border CreateCard(UIElement content, double padding = 12)
     {
         return new Border
         {
             Padding = new Thickness(padding),
-            CornerRadius = new CornerRadius(12),
+            CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            Background = elevated
-                ? ResolveBrush("AppSurfaceElevatedBrush", Color.FromArgb(255, 24, 32, 42))
-                : ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32)),
+            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 55, 68, 86)),
+            Background = ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 16, 22, 30)),
             Child = content,
         };
     }

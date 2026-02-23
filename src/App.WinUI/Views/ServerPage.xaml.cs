@@ -1,5 +1,6 @@
 ﻿using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
@@ -13,20 +14,31 @@ namespace App.WinUI.Views;
 public sealed partial class ServerPage : Page
 {
     private readonly List<string> localLogs = new();
+    private readonly DeviceOperationsCoordinator deviceOps;
+    private readonly PrecompiledFirmwareService firmwareService;
     private DeviceOperationsState currentState = new();
     private int lastRenderedLogCount;
     private string lastRenderedLogTail = string.Empty;
 
-    public ServerPage()
+    public ServerPage(IServiceProvider services)
+        : this(
+            services.GetRequiredService<DeviceOperationsCoordinator>(),
+            services.GetRequiredService<PrecompiledFirmwareService>())
     {
+    }
+
+    internal ServerPage(DeviceOperationsCoordinator deviceOps, PrecompiledFirmwareService firmwareService)
+    {
+        this.deviceOps = deviceOps;
+        this.firmwareService = firmwareService;
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
-    private DeviceOperationsCoordinator? DeviceOps => App.DeviceOps;
+    private DeviceOperationsCoordinator? DeviceOps => deviceOps;
 
-    private PrecompiledFirmwareService? FirmwareService => App.FirmwareService;
+    private PrecompiledFirmwareService? FirmwareService => firmwareService;
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {

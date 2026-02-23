@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
@@ -26,6 +27,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private const string PairRatePolicy = "pairing";
     private const string CommandAckRatePolicy = "command-ack";
     private const string WebSocketHandshakeRatePolicy = "ws-handshake";
+
+    private enum AuthContext
+    {
+        HttpApi,
+        WebSocket,
+    }
 
     private readonly object gate = new();
     private readonly Dictionary<string, DeviceState> devices = new(StringComparer.OrdinalIgnoreCase);
@@ -56,8 +63,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         var runtimeConfig = this.config;
         var allowedCidrs = ParseAllowedCidrs(runtimeConfig.AllowedCidrs);
+        var maxJsonBodyBytes = NormalizeMaxJsonBodyBytes(runtimeConfig.MaxJsonBodyBytes);
 
         var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.ConfigureKestrel(kestrel =>
+        {
+            kestrel.Limits.MaxRequestBodySize = maxJsonBodyBytes;
+        });
         builder.WebHost.UseUrls($"http://{runtimeConfig.ListenHost}:{runtimeConfig.Port}");
         builder.Services.AddRateLimiter(options =>
         {
@@ -99,6 +111,14 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         var localApp = builder.Build();
         localApp.UseRateLimiter();
+        localApp.Use(async (ctx, next) =>
+        {
+            ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            ctx.Response.Headers["X-Frame-Options"] = "DENY";
+            ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
+            ctx.Response.Headers["Cache-Control"] = "no-store";
+            await next().ConfigureAwait(false);
+        });
         localApp.UseWebSockets();
 
         localApp.Use(async (ctx, next) =>
@@ -350,8 +370,21 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return Results.Json(new { error = "pairing_rate_limited", retryAfterSeconds }, statusCode: StatusCodes.Status429TooManyRequests);
         }
 
-        var req = await JsonSerializer.DeserializeAsync<PairDeviceRequest>(ctx.Request.Body, JsonOptions).ConfigureAwait(false)
-            ?? new PairDeviceRequest();
+        if (IsRequestBodyTooLarge(ctx, config.MaxJsonBodyBytes))
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        PairDeviceRequest req;
+        try
+        {
+            req = await JsonSerializer.DeserializeAsync<PairDeviceRequest>(ctx.Request.Body, JsonOptions, ctx.RequestAborted).ConfigureAwait(false)
+                ?? new PairDeviceRequest();
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid_json" });
+        }
 
         if (string.IsNullOrWhiteSpace(req.PairingCode) || !TryConsumePairingCode(req.PairingCode))
         {
@@ -400,7 +433,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     private IResult HandleDeviceConfig(HttpContext ctx)
     {
-        if (!TryAuthenticate(ctx, out var state))
+        if (!TryAuthenticate(ctx, AuthContext.HttpApi, out var state))
         {
             return Results.Unauthorized();
         }
@@ -429,7 +462,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return;
         }
 
-        if (!TryAuthenticate(ctx, out var state))
+        if (!TryAuthenticate(ctx, AuthContext.WebSocket, out var state))
         {
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
@@ -440,7 +473,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         NotifyDevicesChanged();
 
         var sendTask = Task.Run(() => SendLoopAsync(state));
-        await ReceiveLoopAsync(state, ws, ctx.RequestAborted).ConfigureAwait(false);
+        await ReceiveLoopAsync(state, ws, ctx.RequestAborted, config.MaxWebSocketMessageBytes).ConfigureAwait(false);
 
         state.DetachSocket();
         NotifyDevicesChanged();
@@ -478,41 +511,76 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    private async Task ReceiveLoopAsync(DeviceState state, WebSocket ws, CancellationToken cancellationToken)
+    private async Task ReceiveLoopAsync(DeviceState state, WebSocket ws, CancellationToken cancellationToken, int maxMessageSize)
     {
+        var effectiveMaxMessageSize = NormalizeMaxWebSocketMessageBytes(maxMessageSize);
         var buffer = new byte[4096];
         while (!cancellationToken.IsCancellationRequested && ws.State == WebSocketState.Open)
         {
-            WebSocketReceiveResult result;
-            try
-            {
-                result = await ws.ReceiveAsync(buffer, cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                break;
-            }
+            using var messageBuffer = new MemoryStream();
+            WebSocketReceiveResult? finalResult = null;
 
-            if (result.MessageType == WebSocketMessageType.Close)
+            do
             {
-                break;
-            }
-
-            if (result.MessageType == WebSocketMessageType.Text)
-            {
-                var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                var handled = await HandleIncomingWsTextAsync(state, json).ConfigureAwait(false);
-                if (!handled)
+                WebSocketReceiveResult result;
+                try
                 {
-                    Log($"Mensagem WS invalida recebida de {state.Record.DeviceId} (bytes={result.Count}).");
+                    result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    return;
                 }
 
-                NotifyDevicesChanged();
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    return;
+                }
+
+                if (result.Count > 0)
+                {
+                    messageBuffer.Write(buffer, 0, result.Count);
+                }
+
+                if (messageBuffer.Length > effectiveMaxMessageSize)
+                {
+                    Log($"Mensagem WS excedeu {effectiveMaxMessageSize} bytes de {state.Record.DeviceId}. Encerrando conexao.");
+                    try
+                    {
+                        if (ws.State == WebSocketState.Open)
+                        {
+                            await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "message_too_big", CancellationToken.None).ConfigureAwait(false);
+                        }
+                    }
+                    catch
+                    {
+                        // ignore close races
+                    }
+
+                    return;
+                }
+
+                finalResult = result;
             }
+            while (finalResult is not null && !finalResult.EndOfMessage);
+
+            if (finalResult is null || finalResult.MessageType != WebSocketMessageType.Text)
+            {
+                continue;
+            }
+
+            var json = Encoding.UTF8.GetString(messageBuffer.GetBuffer(), 0, (int)messageBuffer.Length);
+            var handled = await HandleIncomingWsTextAsync(state, json).ConfigureAwait(false);
+            if (!handled)
+            {
+                Log($"Mensagem WS invalida recebida de {state.Record.DeviceId} (bytes={messageBuffer.Length}).");
+            }
+
+            NotifyDevicesChanged();
         }
     }
 
-    private bool TryAuthenticate(HttpContext ctx, out DeviceState state)
+    private bool TryAuthenticate(HttpContext ctx, AuthContext authContext, out DeviceState state)
     {
         state = null!;
 
@@ -532,10 +600,16 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             }
         }
 
-        if (string.IsNullOrWhiteSpace(token))
+        if (authContext == AuthContext.WebSocket
+            && string.IsNullOrWhiteSpace(token)
+            && config.AllowLegacyWebSocketQueryToken)
         {
-            // Backward compatibility with legacy query-string auth.
-            token = ctx.Request.Query["token"].ToString();
+            var legacyQueryToken = ctx.Request.Query["token"].ToString();
+            if (!string.IsNullOrWhiteSpace(legacyQueryToken))
+            {
+                token = legacyQueryToken;
+                Log($"Autenticacao WS via query-string em uso por {deviceId}. Migre para header X-Device-Token.");
+            }
         }
 
         if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(token))
@@ -551,8 +625,40 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             }
 
             state = foundState;
-            return string.Equals(state.Record.Token, token, StringComparison.Ordinal);
+            return TokensMatchConstantTime(state.Record.Token, token);
         }
+    }
+
+    private static bool TokensMatchConstantTime(string expectedToken, string providedToken)
+    {
+        if (string.IsNullOrWhiteSpace(expectedToken) || string.IsNullOrWhiteSpace(providedToken))
+        {
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(expectedToken),
+            Encoding.UTF8.GetBytes(providedToken));
+    }
+
+    private static bool IsRequestBodyTooLarge(HttpContext ctx, long configuredMaxBodyBytes)
+    {
+        if (!ctx.Request.ContentLength.HasValue)
+        {
+            return false;
+        }
+
+        return ctx.Request.ContentLength.Value > NormalizeMaxJsonBodyBytes(configuredMaxBodyBytes);
+    }
+
+    private static long NormalizeMaxJsonBodyBytes(long configuredMaxBodyBytes)
+    {
+        return Math.Clamp(configuredMaxBodyBytes, 1024L, 1024L * 1024L);
+    }
+
+    private static int NormalizeMaxWebSocketMessageBytes(int configuredMaxMessageBytes)
+    {
+        return Math.Clamp(configuredMaxMessageBytes, 1024, 1024 * 1024);
     }
 
     private bool TryConsumePairingCode(string code)
@@ -923,3 +1029,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 }
+
+
+
+

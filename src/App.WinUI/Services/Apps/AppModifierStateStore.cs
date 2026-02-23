@@ -1,5 +1,7 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using App.WinUI.Models.Apps;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
 
 namespace App.WinUI.Services.Apps;
 
@@ -17,9 +19,12 @@ internal sealed class AppModifierStateStore : IAppModifierStateStore
     private readonly string path;
     private bool loaded;
 
-    public AppModifierStateStore(string appDataRoot)
+    public AppModifierStateStore(IOptions<MicaAudioOptions> options)
     {
-        path = Path.Combine(appDataRoot, "apps", "modifiers.json");
+        var configuredPath = options.Value.AppsModifierStatePath;
+        path = string.IsNullOrWhiteSpace(configuredPath)
+            ? Path.Combine(options.Value.AppDataRoot, "apps", "modifiers.json")
+            : configuredPath;
     }
 
     public async Task LoadAsync(CancellationToken cancellationToken = default)

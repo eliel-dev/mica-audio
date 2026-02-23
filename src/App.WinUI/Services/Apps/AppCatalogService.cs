@@ -1,6 +1,8 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using App.WinUI.Models.Apps;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
 
 namespace App.WinUI.Services.Apps;
 
@@ -16,14 +18,17 @@ internal sealed class AppCatalogService : IAppCatalogService
         Converters = { new JsonStringEnumConverter() },
     };
 
-    private readonly string appDataRoot;
+    private readonly MicaAudioOptions options;
 
-    public AppCatalogService(string appDataRoot)
+    public AppCatalogService(IOptions<MicaAudioOptions> options)
     {
-        this.appDataRoot = appDataRoot;
+        this.options = options.Value;
     }
 
-    public string CatalogPath => Path.Combine(appDataRoot, "apps", "catalog.json");
+    public string CatalogPath
+        => string.IsNullOrWhiteSpace(options.AppsCatalogPath)
+            ? Path.Combine(options.AppDataRoot, "apps", "catalog.json")
+            : options.AppsCatalogPath;
 
     // DOCS: docs/wiki/guides/add-app-catalog-item.md#passos
     public async Task<IReadOnlyList<AppCatalogItem>> LoadCatalogAsync(CancellationToken cancellationToken = default)
@@ -236,4 +241,3 @@ internal sealed class AppCatalogService : IAppCatalogService
         public IReadOnlyList<AppCatalogItem> Apps { get; init; } = Array.Empty<AppCatalogItem>();
     }
 }
-

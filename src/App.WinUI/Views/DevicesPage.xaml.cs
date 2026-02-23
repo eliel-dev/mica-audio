@@ -2,6 +2,7 @@
 using App.WinUI.Services.Devices;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
@@ -14,19 +15,26 @@ public sealed partial class DevicesPage : Page
     private readonly List<DeviceListItem> allItems = new();
     private readonly List<DeviceListItem> visibleItems = new();
     private readonly List<DeviceListVisualItem> renderedItems = new();
+    private readonly DeviceOperationsCoordinator deviceOps;
 
     private int lastRenderedLogCount;
     private string lastRenderedLogTail = string.Empty;
     private DeviceOperationsState currentState = new();
 
-    public DevicesPage()
+    public DevicesPage(IServiceProvider services)
+        : this(services.GetRequiredService<DeviceOperationsCoordinator>())
     {
+    }
+
+    internal DevicesPage(DeviceOperationsCoordinator deviceOps)
+    {
+        this.deviceOps = deviceOps;
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
-    private DeviceOperationsCoordinator? DeviceOps => App.DeviceOps;
+    private DeviceOperationsCoordinator? DeviceOps => deviceOps;
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -276,7 +284,8 @@ public sealed partial class DevicesPage : Page
 
     private void UpdateLogs(IReadOnlyList<string> entries)
     {
-        if (entries.Count == 0)
+        var count = entries.Count;
+        if (count == 0)
         {
             if (lastRenderedLogCount != 0)
             {
@@ -289,14 +298,29 @@ public sealed partial class DevicesPage : Page
         }
 
         var tail = entries[^1];
-        if (lastRenderedLogCount == entries.Count && string.Equals(lastRenderedLogTail, tail, StringComparison.Ordinal))
+        if (lastRenderedLogCount == count && string.Equals(lastRenderedLogTail, tail, StringComparison.Ordinal))
         {
             return;
         }
 
         LogsTextBox.Text = string.Join("\r\n", entries) + "\r\n";
-        lastRenderedLogCount = entries.Count;
+        lastRenderedLogCount = count;
         lastRenderedLogTail = tail;
+    }
+
+    private DeviceListItem? GetSelectedDeviceItem()
+    {
+        return DevicesList.SelectedItem switch
+        {
+            DeviceListVisualItem visual => visual.Source,
+            DeviceListItem item => item,
+            _ => null,
+        };
+    }
+
+    private string? GetSelectedDeviceId()
+    {
+        return GetSelectedDeviceItem()?.DeviceId;
     }
 
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -311,7 +335,7 @@ public sealed partial class DevicesPage : Page
         var selectedId = GetSelectedDeviceId();
         foreach (var item in renderedItems)
         {
-            item.SetSelected(string.Equals(item.DeviceId, selectedId, StringComparison.OrdinalIgnoreCase));
+            item.SetSelectedVisual(string.Equals(item.DeviceId, selectedId, StringComparison.OrdinalIgnoreCase));
         }
     }
 
@@ -327,28 +351,18 @@ public sealed partial class DevicesPage : Page
         }
 
         SelectedDeviceTitleText.Text = selected.Name;
-        SelectedDeviceSubtitleText.Text = $"{selected.DeviceId} | {selected.StatusLine}";
+        SelectedDeviceSubtitleText.Text = selected.StatusLine;
         SelectedDeviceAppText.Text = $"App ativo: {selected.AppName}";
     }
 
     private void ApplyButtonState()
     {
-        var selected = GetSelectedDeviceItem();
-        var commandEnabled = selected is not null && !currentState.CommandInProgress;
+        var hasSelection = GetSelectedDeviceItem() is not null;
+        var canRunCommand = hasSelection && !currentState.CommandInProgress;
 
-        EnterProvisioningButton.IsEnabled = commandEnabled;
-        RevokeButton.IsEnabled = commandEnabled;
-        TestLedButton.IsEnabled = commandEnabled;
-    }
-
-    private DeviceListItem? GetSelectedDeviceItem()
-    {
-        return (DevicesList.SelectedItem as DeviceListVisualItem)?.Item;
-    }
-
-    private string? GetSelectedDeviceId()
-    {
-        return (DevicesList.SelectedItem as DeviceListVisualItem)?.DeviceId;
+        EnterProvisioningButton.IsEnabled = canRunCommand;
+        RevokeButton.IsEnabled = canRunCommand;
+        TestLedButton.IsEnabled = canRunCommand;
     }
 
     private sealed class DeviceListItem
@@ -361,99 +375,45 @@ public sealed partial class DevicesPage : Page
 
         public string AppId { get; init; } = string.Empty;
 
-        public string AppName { get; init; } = "-";
+        public string AppName { get; init; } = string.Empty;
     }
 
-    private sealed class DeviceListVisualItem : Grid
+    private sealed class DeviceListVisualItem
     {
-        private readonly Border frame;
-
-        public DeviceListVisualItem(DeviceListItem item, AppCatalogItem previewModel)
+        public DeviceListVisualItem(DeviceListItem source, AppCatalogItem previewItem)
         {
-            Item = item;
-            DeviceId = item.DeviceId;
-            Margin = new Thickness(0, 0, 0, 6);
-
-            frame = new Border
-            {
-                CornerRadius = new CornerRadius(10),
-                BorderThickness = new Thickness(1),
-                BorderBrush = UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Windows.UI.Color.FromArgb(255, 49, 62, 81)),
-                Background = UiResourceResolver.ResolveBrush("AppSurfaceElevatedBrush", Windows.UI.Color.FromArgb(255, 20, 27, 37)),
-                Padding = new Thickness(8),
-            };
-
-            var layout = new Grid
-            {
-                ColumnSpacing = 8,
-            };
-            layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
+            Source = source;
             Preview = new AppPreviewThumbnailControl
             {
-                Width = 142,
-                Height = 72,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Center,
+                Width = 96,
+                Height = 48,
             };
-            Preview.Bind(previewModel);
+
+            Preview.Bind(previewItem);
+            Preview.SetSelected(false);
             Preview.Start();
-            layout.Children.Add(Preview);
-
-            var textStack = new StackPanel
-            {
-                Spacing = 2,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            Grid.SetColumn(textStack, 1);
-
-            textStack.Children.Add(new TextBlock
-            {
-                Text = item.Name,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            textStack.Children.Add(new TextBlock
-            {
-                Text = item.DeviceId,
-                Opacity = 0.78,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            textStack.Children.Add(new TextBlock
-            {
-                Text = $"App: {item.AppName}",
-                Opacity = 0.9,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            textStack.Children.Add(new TextBlock
-            {
-                Text = item.StatusLine,
-                Opacity = 0.72,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-
-            layout.Children.Add(textStack);
-            frame.Child = layout;
-            Children.Add(frame);
         }
 
-        public string DeviceId { get; }
+        public DeviceListItem Source { get; }
 
-        public DeviceListItem Item { get; }
+        public string DeviceId => Source.DeviceId;
+
+        public string Name => Source.Name;
+
+        public string StatusLine => Source.StatusLine;
+
+        public string AppName => Source.AppName;
 
         public AppPreviewThumbnailControl Preview { get; }
+
+        public void SetSelectedVisual(bool selected)
+        {
+            Preview.SetSelected(selected);
+        }
 
         public void StopPreview()
         {
             Preview.Stop();
-        }
-
-        public void SetSelected(bool selected)
-        {
-            frame.BorderBrush = selected
-                ? UiResourceResolver.ResolveBrush("AppAccentBrush", Windows.UI.Color.FromArgb(255, 40, 170, 125))
-                : UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Windows.UI.Color.FromArgb(255, 49, 62, 81));
         }
     }
 }

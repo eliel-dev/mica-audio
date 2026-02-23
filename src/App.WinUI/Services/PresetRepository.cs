@@ -1,18 +1,24 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 
 namespace App.WinUI.Services;
 
+// DOCS: docs/wiki/modules/settings-presets-persistence.md#pontos-de-alteracao-frequente
 internal sealed class PresetRepository
 {
     private readonly string appDataRoot;
     private readonly string presetsDir;
     private readonly JsonSerializerOptions jsonOptions;
 
-    public PresetRepository(string appDataRoot)
+    public PresetRepository(IOptions<MicaAudioOptions> options)
     {
-        this.appDataRoot = appDataRoot;
-        presetsDir = Path.Combine(appDataRoot, "presets");
+        appDataRoot = options.Value.AppDataRoot;
+        presetsDir = string.IsNullOrWhiteSpace(options.Value.PresetsDirectory)
+            ? Path.Combine(appDataRoot, "presets")
+            : options.Value.PresetsDirectory;
+
         jsonOptions = new JsonSerializerOptions
         {
             WriteIndented = true,
@@ -120,3 +126,4 @@ internal sealed class PresetRepository
         return new string(chars);
     }
 }
+
