@@ -1,14 +1,16 @@
-﻿
+using System.Net;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using System.Threading.RateLimiting;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace Device.Server.Hosting;
@@ -21,14 +23,18 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         PropertyNameCaseInsensitive = true,
     };
 
+    private const string PairRatePolicy = "pairing";
+    private const string CommandAckRatePolicy = "command-ack";
+    private const string WebSocketHandshakeRatePolicy = "ws-handshake";
+
     private readonly object gate = new();
     private readonly Dictionary<string, DeviceState> devices = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> pairingCodes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PairingAttemptWindow> pairingAttemptsByIp = new(StringComparer.OrdinalIgnoreCase);
 
     private ServerConfig config = new();
     private WebApplication? app;
     private CancellationTokenSource? appCts;
-
     public event EventHandler? DevicesChanged;
     public event EventHandler<string>? LogMessage;
 
@@ -48,10 +54,64 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             appCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         }
 
+        var runtimeConfig = this.config;
+        var allowedCidrs = ParseAllowedCidrs(runtimeConfig.AllowedCidrs);
+
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://{config.ListenHost}:{config.Port}");
+        builder.WebHost.UseUrls($"http://{runtimeConfig.ListenHost}:{runtimeConfig.Port}");
+        builder.Services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+            options.AddPolicy(PairRatePolicy, context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: BuildRateLimitPartitionKey(context.Connection.RemoteIpAddress),
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = Math.Max(1, runtimeConfig.PairRequestsPerMinute),
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true,
+                    }));
+
+            options.AddPolicy(CommandAckRatePolicy, context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: BuildRateLimitPartitionKey(context.Connection.RemoteIpAddress),
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = Math.Max(1, runtimeConfig.CommandAckRequestsPerSecond),
+                        Window = TimeSpan.FromSeconds(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true,
+                    }));
+
+            options.AddPolicy(WebSocketHandshakeRatePolicy, context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: BuildRateLimitPartitionKey(context.Connection.RemoteIpAddress),
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = Math.Max(1, runtimeConfig.WebSocketHandshakesPerMinute),
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true,
+                    }));
+        });
+
         var localApp = builder.Build();
+        localApp.UseRateLimiter();
         localApp.UseWebSockets();
+
+        localApp.Use(async (ctx, next) =>
+        {
+            if (!IsRequestAllowed(runtimeConfig, allowedCidrs, ctx.Connection.RemoteIpAddress))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await ctx.Response.WriteAsJsonAsync(new { error = "network_not_allowed" }).ConfigureAwait(false);
+                return;
+            }
+
+            await next().ConfigureAwait(false);
+        });
 
         localApp.MapGet("/api/v1/health", () => Results.Ok(new { status = "ok", utc = DateTimeOffset.UtcNow }));
 
@@ -67,10 +127,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             });
         });
 
-        localApp.MapPost("/api/v1/pair", (Delegate)HandlePairAsync);
+        localApp.MapPost("/api/v1/pair", (Delegate)HandlePairAsync)
+            .RequireRateLimiting(PairRatePolicy);
         localApp.MapGet("/api/v1/device/config", (Delegate)HandleDeviceConfig);
-        localApp.MapPost("/api/v1/device/command-ack", (Delegate)HandleCommandAckAsync);
-        localApp.Map("/ws/v1/stream", (RequestDelegate)HandleWebSocketAsync);
+        localApp.MapPost("/api/v1/device/command-ack", (Delegate)HandleCommandAckAsync)
+            .RequireRateLimiting(CommandAckRatePolicy);
+        localApp.Map("/ws/v1/stream", (RequestDelegate)HandleWebSocketAsync)
+            .RequireRateLimiting(WebSocketHandshakeRatePolicy);
 
         await localApp.StartAsync(appCts!.Token).ConfigureAwait(false);
         lock (gate)
@@ -79,20 +142,46 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         await Task.Delay(30, cancellationToken).ConfigureAwait(false);
-        Log($"Servidor de dispositivos ativo em http://{config.ListenHost}:{config.Port}");
+
+        if (runtimeConfig.AllowedCidrs.Length > 0 && allowedCidrs.Count == 0)
+        {
+            Log("Servidor iniciado sem CIDR valido em AllowedCidrs; aplicando regra padrao de rede privada.");
+        }
+
+        Log($"Servidor de dispositivos ativo em http://{runtimeConfig.ListenHost}:{runtimeConfig.Port}");
     }
 
     public async Task StopAsync()
     {
         WebApplication? localApp;
-                CancellationTokenSource? localCts;
+        CancellationTokenSource? localCts;
+        DeviceState[] statesToDispose;
+        PendingTrackedCommand[] pendingToCancel;
 
         lock (gate)
         {
             localApp = app;
-                        localCts = appCts;
+            localCts = appCts;
             app = null;
             appCts = null;
+            pendingToCancel = pendingTrackedCommands.Values.ToArray();
+            pendingTrackedCommands.Clear();
+        }
+
+        foreach (var pending in pendingToCancel)
+        {
+            pending.TrySetResult(new CommandDispatchResult
+            {
+                DeviceId = pending.DeviceId,
+                CommandId = pending.CommandId,
+                Accepted = true,
+                Completed = true,
+                Success = false,
+                ProgressPercent = pending.LastPercent,
+                Stage = "server-stopped",
+                Message = "Servidor interrompido durante execucao do comando.",
+                ErrorCode = "server_stopped",
+            });
         }
 
         if (localApp is null)
@@ -104,7 +193,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         {
             localCts?.Cancel();
             await localApp.StopAsync().ConfigureAwait(false);
-                    }
+        }
         catch
         {
             // ignore shutdown races
@@ -112,19 +201,24 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         finally
         {
             localCts?.Dispose();
-            foreach (var state in devices.Values)
+            lock (gate)
+            {
+                statesToDispose = devices.Values.ToArray();
+                devices.Clear();
+                pairingCodes.Clear();
+                pairingAttemptsByIp.Clear();
+            }
+
+            foreach (var state in statesToDispose)
             {
                 state.Dispose();
             }
 
-            devices.Clear();
-            pairingCodes.Clear();
             NotifyDevicesChanged();
         }
 
         Log("Servidor de dispositivos parado");
     }
-
     public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
     {
         var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
@@ -136,7 +230,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             pairingCodes[code] = expiresAt;
         }
 
-        Log($"Codigo de pareamento gerado: {code}");
+        Log($"Codigo de pareamento gerado (expira em {ttl.TotalSeconds:0}s).");
         return new PairingCodeInfo { Code = code, ExpiresAtUtc = expiresAt };
     }
 
@@ -180,7 +274,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         return result.Accepted;
     }
 
-        // DOCS: docs/wiki/guides/add-device-command.md#passos
+    // DOCS: docs/wiki/guides/add-device-command.md#passos
     public Task<CommandDispatchResult> SendCommandTrackedAsync(
         string deviceId,
         DeviceCommandType commandType,
@@ -228,6 +322,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         Log($"Device removido: {deviceId}");
         return true;
     }
+
     public void BroadcastFrame(byte[] framePayload)
     {
         DeviceState[] targets;
@@ -249,6 +344,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     private async Task<IResult> HandlePairAsync(HttpContext ctx)
     {
+        var remoteIpKey = BuildRateLimitPartitionKey(ctx.Connection.RemoteIpAddress);
+        if (!TryRegisterPairingAttempt(remoteIpKey, out var retryAfterSeconds))
+        {
+            return Results.Json(new { error = "pairing_rate_limited", retryAfterSeconds }, statusCode: StatusCodes.Status429TooManyRequests);
+        }
+
         var req = await JsonSerializer.DeserializeAsync<PairDeviceRequest>(ctx.Request.Body, JsonOptions).ConfigureAwait(false)
             ?? new PairDeviceRequest();
 
@@ -280,6 +381,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
             state = new DeviceState(record);
             devices[id] = state;
+            pairingAttemptsByIp.Remove(remoteIpKey);
         }
 
         NotifyDevicesChanged();
@@ -402,7 +504,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 var handled = await HandleIncomingWsTextAsync(state, json).ConfigureAwait(false);
                 if (!handled)
                 {
-                    Log($"Mensagem WS invalida: {json}");
+                    Log($"Mensagem WS invalida recebida de {state.Record.DeviceId} (bytes={result.Count}).");
                 }
 
                 NotifyDevicesChanged();
@@ -413,19 +515,14 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private bool TryAuthenticate(HttpContext ctx, out DeviceState state)
     {
         state = null!;
-        var deviceId = ctx.Request.Query["deviceId"].ToString();
-        var token = ctx.Request.Query["token"].ToString();
 
+        var deviceId = ctx.Request.Headers["X-Device-Id"].ToString();
         if (string.IsNullOrWhiteSpace(deviceId))
         {
-            deviceId = ctx.Request.Headers["X-Device-Id"].ToString();
+            deviceId = ctx.Request.Query["deviceId"].ToString();
         }
 
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            token = ctx.Request.Headers["X-Device-Token"].ToString();
-        }
-
+        var token = ctx.Request.Headers["X-Device-Token"].ToString();
         if (string.IsNullOrWhiteSpace(token))
         {
             var auth = ctx.Request.Headers.Authorization.ToString();
@@ -433,6 +530,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             {
                 token = auth[7..].Trim();
             }
+        }
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            // Backward compatibility with legacy query-string auth.
+            token = ctx.Request.Query["token"].ToString();
         }
 
         if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(token))
@@ -476,6 +579,185 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
+    private bool TryRegisterPairingAttempt(string remoteIpKey, out int retryAfterSeconds)
+    {
+        lock (gate)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var window = TimeSpan.FromSeconds(Math.Max(10, config.PairingAttemptWindowSeconds));
+            var maxAttempts = Math.Max(1, config.PairingAttemptsPerWindow);
+            CleanupPairingAttemptsLocked(now, window);
+
+            if (!pairingAttemptsByIp.TryGetValue(remoteIpKey, out var current)
+                || (now - current.WindowStartUtc) >= window)
+            {
+                current = new PairingAttemptWindow(now, 0);
+            }
+
+            if (current.Attempts >= maxAttempts)
+            {
+                var wait = (current.WindowStartUtc + window) - now;
+                retryAfterSeconds = Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds));
+                return false;
+            }
+
+            pairingAttemptsByIp[remoteIpKey] = current with { Attempts = current.Attempts + 1 };
+            retryAfterSeconds = 0;
+            return true;
+        }
+    }
+
+    private void CleanupPairingAttemptsLocked(DateTimeOffset now, TimeSpan window)
+    {
+        foreach (var stale in pairingAttemptsByIp.Where(kv => (now - kv.Value.WindowStartUtc) > window).ToArray())
+        {
+            pairingAttemptsByIp.Remove(stale.Key);
+        }
+    }
+
+    private static string BuildRateLimitPartitionKey(IPAddress? remoteIp)
+    {
+        if (remoteIp is null)
+        {
+            return "unknown";
+        }
+
+        if (remoteIp.IsIPv4MappedToIPv6)
+        {
+            remoteIp = remoteIp.MapToIPv4();
+        }
+
+        return remoteIp.ToString();
+    }
+
+    private static bool IsRequestAllowed(ServerConfig runtimeConfig, IReadOnlyList<CidrRange> allowedCidrs, IPAddress? remoteIp)
+    {
+        if (remoteIp is null)
+        {
+            return false;
+        }
+
+        if (IPAddress.IsLoopback(remoteIp))
+        {
+            return true;
+        }
+
+        if (allowedCidrs.Count > 0)
+        {
+            return allowedCidrs.Any(cidr => cidr.Contains(remoteIp));
+        }
+
+        if (!runtimeConfig.RestrictToPrivateNetworks)
+        {
+            return true;
+        }
+
+        return IsPrivateNetworkAddress(remoteIp);
+    }
+
+    private static bool IsPrivateNetworkAddress(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            var bytes = address.GetAddressBytes();
+            return bytes[0] == 10
+                || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+                || (bytes[0] == 192 && bytes[1] == 168);
+        }
+
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            var bytes = address.GetAddressBytes();
+            var first = bytes[0];
+            var second = bytes[1];
+
+            var isUniqueLocal = (first & 0xFE) == 0xFC;
+            var isLinkLocal = first == 0xFE && (second & 0xC0) == 0x80;
+            return isUniqueLocal || isLinkLocal;
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<CidrRange> ParseAllowedCidrs(IEnumerable<string>? cidrValues)
+    {
+        if (cidrValues is null)
+        {
+            return Array.Empty<CidrRange>();
+        }
+
+        var parsed = new List<CidrRange>();
+        foreach (var raw in cidrValues)
+        {
+            if (TryParseCidr(raw, out var cidr))
+            {
+                parsed.Add(cidr);
+            }
+        }
+
+        return parsed;
+    }
+
+    private static bool TryParseCidr(string? rawValue, out CidrRange cidr)
+    {
+        cidr = default;
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return false;
+        }
+
+        var parts = rawValue.Trim().Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0 || parts.Length > 2)
+        {
+            return false;
+        }
+
+        if (!IPAddress.TryParse(parts[0], out var address))
+        {
+            return false;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        var prefixLength = 32;
+        if (parts.Length == 2 && !int.TryParse(parts[1], out prefixLength))
+        {
+            return false;
+        }
+
+        if (prefixLength < 0 || prefixLength > 32)
+        {
+            return false;
+        }
+
+        var mask = prefixLength == 0 ? 0u : uint.MaxValue << (32 - prefixLength);
+        var network = ConvertIpv4ToUInt32(address) & mask;
+        cidr = new CidrRange(network, prefixLength);
+        return true;
+    }
+
+    private static uint ConvertIpv4ToUInt32(IPAddress ipv4)
+    {
+        var bytes = ipv4.GetAddressBytes();
+        return ((uint)bytes[0] << 24)
+            | ((uint)bytes[1] << 16)
+            | ((uint)bytes[2] << 8)
+            | bytes[3];
+    }
+
     private string ResolveHost(HttpContext ctx)
     {
         var requestHost = ctx.Request.Host.Host;
@@ -498,6 +780,37 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     private void Log(string message) => LogMessage?.Invoke(this, message);
 
+    private readonly record struct PairingAttemptWindow(DateTimeOffset WindowStartUtc, int Attempts);
+
+    private readonly struct CidrRange
+    {
+        public CidrRange(uint network, int prefixLength)
+        {
+            Network = network;
+            PrefixLength = prefixLength;
+        }
+
+        public uint Network { get; }
+
+        public int PrefixLength { get; }
+
+        public bool Contains(IPAddress address)
+        {
+            if (address.IsIPv4MappedToIPv6)
+            {
+                address = address.MapToIPv4();
+            }
+
+            if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            {
+                return false;
+            }
+
+            var value = ConvertIpv4ToUInt32(address);
+            var mask = PrefixLength == 0 ? 0u : uint.MaxValue << (32 - PrefixLength);
+            return (value & mask) == Network;
+        }
+    }
     private sealed class DeviceState : IDisposable
     {
         private CancellationTokenSource senderCts = new();
@@ -566,7 +879,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             Outgoing.Writer.TryWrite(frame);
         }
 
-                public DeviceSnapshot ToSnapshot()
+        public DeviceSnapshot ToSnapshot()
         {
             var staleTimeout = TimeSpan.FromSeconds(6);
             var online = Socket is { State: WebSocketState.Open } && (DateTimeOffset.UtcNow - LastActivityUtc) <= staleTimeout;
@@ -610,26 +923,3 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

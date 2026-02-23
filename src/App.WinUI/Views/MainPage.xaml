@@ -221,6 +221,7 @@
 
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition x:Name="HubPreviewRow" Height="0" />
                 </Grid.RowDefinitions>
@@ -263,6 +264,14 @@
                                     SelectionChanged="OnPresetSelectionChanged" />
                             </AppBarElementContainer>
                             <AppBarElementContainer>
+                                <ComboBox
+                                    x:Name="ContentModeCombo"
+                                    Width="150"
+                                    PlaceholderText="Modo"
+                                    Visibility="Collapsed"
+                                    SelectionChanged="OnContentModeSelectionChanged" />
+                            </AppBarElementContainer>
+                            <AppBarElementContainer>
                                 <ToggleSwitch
                                     x:Name="Hub75Toggle"
                                     Header="Modo HUB75"
@@ -289,8 +298,104 @@
                 </Border>
 
                 <Border
-                    x:Name="MainCanvasBorder"
+                    x:Name="GifControlsPanel"
                     Grid.Row="1"
+                    Margin="0,0,0,10"
+                    Padding="10"
+                    Background="{ThemeResource AppSurfacePanelBrush}"
+                    BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Visibility="Collapsed">
+                    <StackPanel Spacing="10">
+                        <TextBlock
+                            Style="{StaticResource AppMutedTextStyle}"
+                            Text="MVP GIF HUB75: URL direta (http/https) ou arquivo local. FPS fixo: 12."
+                            TextWrapping="Wrap" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="GifUrlTextBox"
+                                Grid.Column="0"
+                                PlaceholderText="https://exemplo.com/animacao.gif"
+                                Text=""
+                                TextChanged="OnGifUrlTextChanged" />
+                            <Button
+                                x:Name="GifLoadUrlButton"
+                                Grid.Column="1"
+                                Margin="0,0,4,0"
+                                Style="{StaticResource AppChromeButtonStyle}"
+                                Click="OnGifLoadUrlClicked"
+                                Content="Carregar URL" />
+                            <Button
+                                x:Name="GifOpenFileButton"
+                                Grid.Column="2"
+                                Style="{StaticResource AppChromeButtonStyle}"
+                                Click="OnGifOpenFileClicked"
+                                Content="Abrir GIF" />
+                        </Grid>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox
+                                x:Name="GifScaleModeCombo"
+                                Grid.Column="0"
+                                Width="130"
+                                SelectionChanged="OnGifScaleModeSelectionChanged" />
+                            <Button
+                                x:Name="GifPlayButton"
+                                Grid.Column="1"
+                                Margin="6,0,0,0"
+                                Style="{StaticResource AppChromeButtonStyle}"
+                                Click="OnGifPlayClicked"
+                                Content="Play" />
+                            <Button
+                                x:Name="GifPauseButton"
+                                Grid.Column="2"
+                                Margin="6,0,0,0"
+                                Style="{StaticResource AppChromeButtonStyle}"
+                                Click="OnGifPauseClicked"
+                                Content="Pause" />
+                            <Button
+                                x:Name="GifStopButton"
+                                Grid.Column="3"
+                                Margin="6,0,0,0"
+                                Style="{StaticResource AppChromeButtonStyle}"
+                                Click="OnGifStopClicked"
+                                Content="Stop" />
+                            <ProgressRing
+                                x:Name="GifLoadingRing"
+                                Grid.Column="4"
+                                Width="20"
+                                Height="20"
+                                Margin="10,0,0,0"
+                                IsActive="False"
+                                Visibility="Collapsed" />
+                            <TextBlock
+                                x:Name="GifFirmwareCompatibilityText"
+                                Grid.Column="5"
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource AppMutedTextStyle}"
+                                Text="Aviso: firmware antigo ignora frame RGB565 (tipo 2). O preview local continua funcionando."
+                                TextWrapping="Wrap" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    x:Name="MainCanvasBorder"
+                    Grid.Row="2"
                     Margin="0,0,0,10"
                     Background="Black"
                     CornerRadius="12"
@@ -325,7 +430,7 @@
 
                 <Border
                     x:Name="HubPreviewPanel"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     Padding="10"
                     Background="{ThemeResource AppSurfacePanelBrush}"
                     BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"

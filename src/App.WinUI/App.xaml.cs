@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
@@ -23,6 +23,10 @@ public partial class App : Application
     internal static AppCatalogService? AppCatalog { get; private set; }
 
     internal static AppDeploymentService? AppDeployment { get; private set; }
+
+    internal static AppModifierStateStore? AppModifierStore { get; private set; }
+
+    internal static CityAutocompleteService? CityAutocomplete { get; private set; }
 
     internal static PrecompiledFirmwareService? FirmwareService { get; private set; }
 
@@ -93,6 +97,8 @@ public partial class App : Application
         FirmwareService = new PrecompiledFirmwareService();
         DeviceOps = new DeviceOperationsCoordinator(DeviceIntegration);
         AppCatalog = new AppCatalogService(appDataRoot);
+        AppModifierStore = new AppModifierStateStore(appDataRoot);
+        CityAutocomplete = new CityAutocompleteService();
         AppDeployment = new AppDeploymentService(DeviceOps);
     }
 
@@ -111,6 +117,11 @@ public partial class App : Application
             {
                 _ = await AppCatalog.LoadCatalogAsync().ConfigureAwait(false);
             }
+
+            if (AppModifierStore is not null)
+            {
+                await AppModifierStore.LoadAsync().ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
@@ -126,6 +137,8 @@ public partial class App : Application
             DeviceOps = null;
             AppDeployment = null;
             AppCatalog = null;
+            AppModifierStore = null;
+            CityAutocomplete = null;
             FirmwareService = null;
 
             if (DeviceIntegration is not null)
@@ -262,6 +275,7 @@ public partial class App : Application
         };
     }
 }
+
 
 
 

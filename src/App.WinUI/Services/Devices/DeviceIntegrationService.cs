@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using Device.Protocol.Contracts;
@@ -130,20 +130,31 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         }
     }
 
+    private static readonly string[] VirtualAdapterKeywords =
+    {
+        "virtual",
+        "vethernet",
+        "hyper-v",
+        "docker",
+        "wsl",
+        "vmware",
+        "virtualbox",
+        "loopback",
+        "tunnel",
+        "tap"
+    };
+
     private static string ResolvePublicHost()
     {
         try
         {
-            var candidates = NetworkInterface.GetAllNetworkInterfaces()
-                .Where(nic => nic.OperationalStatus == OperationalStatus.Up
-                    && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback
-                    && nic.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
-                .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
-                .Where(info => info.Address.AddressFamily == AddressFamily.InterNetwork
-                    && !IPAddress.IsLoopback(info.Address))
-                .Select(info => info.Address.ToString())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
+
+            var candidates = GetIpv4Candidates(interfaces.Where(IsPreferredPhysicalAdapter));
+            if (candidates.Length == 0)
+            {
+                candidates = GetIpv4Candidates(interfaces.Where(IsUsableAdapter).Where(nic => !IsLikelyVirtualAdapter(nic)));
+            }
 
             if (candidates.Length == 0)
             {
@@ -159,6 +170,43 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         }
     }
 
+    private static string[] GetIpv4Candidates(IEnumerable<NetworkInterface> interfaces)
+    {
+        return interfaces
+            .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
+            .Where(info => info.Address.AddressFamily == AddressFamily.InterNetwork
+                && !IPAddress.IsLoopback(info.Address))
+            .Select(info => info.Address.ToString())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool IsPreferredPhysicalAdapter(NetworkInterface nic)
+    {
+        if (!IsUsableAdapter(nic) || IsLikelyVirtualAdapter(nic))
+        {
+            return false;
+        }
+
+        return nic.NetworkInterfaceType is NetworkInterfaceType.Wireless80211
+            or NetworkInterfaceType.Ethernet
+            or NetworkInterfaceType.GigabitEthernet
+            or NetworkInterfaceType.FastEthernetFx
+            or NetworkInterfaceType.FastEthernetT;
+    }
+
+    private static bool IsUsableAdapter(NetworkInterface nic)
+    {
+        return nic.OperationalStatus == OperationalStatus.Up
+            && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback
+            && nic.NetworkInterfaceType != NetworkInterfaceType.Tunnel;
+    }
+
+    private static bool IsLikelyVirtualAdapter(NetworkInterface nic)
+    {
+        var descriptor = $"{nic.Name} {nic.Description}";
+        return VirtualAdapterKeywords.Any(keyword => descriptor.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
     private static bool IsPrivateIpv4(string ipString)
     {
         if (!IPAddress.TryParse(ipString, out var address))

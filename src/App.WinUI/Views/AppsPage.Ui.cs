@@ -1,10 +1,13 @@
-﻿using Microsoft.UI.Xaml;
+﻿using App.WinUI.Views.Controls;
+using Microsoft.UI.Xaml;
+using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
 public sealed partial class AppsPage
 {
     private TextBox SearchBox = null!;
@@ -16,7 +19,15 @@ public sealed partial class AppsPage
     private ProgressRing OperationProgressRing = null!;
     private TextBlock OperationStatusText = null!;
     private TextBlock OperationPercentText = null!;
-    private TextBox LogsTextBox = null!;
+    private TextBlock ModifiersHintText = null!;
+    private StackPanel ModifiersPanel = null!;
+    private Border GifRuntimePanel = null!;
+    private Button GifOpenFileButton = null!;
+    private TextBlock GifRuntimeStatusText = null!;
+    private TextBlock GifFirmwareWarningText = null!;
+    private CanvasControl GifRuntimeCanvas = null!;
+    private Button InstallButton = null!;
+    private Button SaveModifiersButton = null!;
 
     private void InitializeComponent()
     {
@@ -35,6 +46,7 @@ public sealed partial class AppsPage
             Background = null,
             DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
         };
+
         var reload = new AppBarButton { Label = "Recarregar", Icon = new SymbolIcon(Symbol.Refresh) };
         reload.Click += OnReloadCatalogClicked;
         topCommandBar.PrimaryCommands.Add(reload);
@@ -42,7 +54,7 @@ public sealed partial class AppsPage
 
         SearchBox = new TextBox
         {
-            PlaceholderText = "Buscar por nome, categoria ou autor",
+            PlaceholderText = "Buscar por nome ou categoria",
             MinWidth = 320,
         };
         SearchBox.TextChanged += OnSearchTextChanged;
@@ -61,7 +73,7 @@ public sealed partial class AppsPage
 
         catalogHost.Children.Add(new TextBlock
         {
-            Text = "Catalogo de apps",
+            Text = "Catálogo de apps",
             Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
         });
 
@@ -71,6 +83,8 @@ public sealed partial class AppsPage
             SelectionMode = ListViewSelectionMode.Single,
         };
         CatalogGrid.ItemClick += OnCatalogItemClick;
+        CatalogGrid.SelectionChanged += OnCatalogSelectionChanged;
+
         Grid.SetRow(CatalogGrid, 1);
         catalogHost.Children.Add(CatalogGrid);
 
@@ -79,8 +93,10 @@ public sealed partial class AppsPage
         var right = new Grid { RowSpacing = 10 };
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetColumn(right, 1);
 
         var details = new StackPanel { Spacing = 4 };
@@ -96,7 +112,7 @@ public sealed partial class AppsPage
         details.Children.Add(SelectedAppDescriptionText);
         right.Children.Add(CreateCard(details));
 
-        var deployBar = new CommandBar
+        var deviceBar = new CommandBar
         {
             Background = null,
             DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
@@ -105,20 +121,106 @@ public sealed partial class AppsPage
         TargetDeviceCombo = new ComboBox
         {
             PlaceholderText = "Dispositivo online",
-            MinWidth = 220,
+            MinWidth = 240,
         };
-        deployBar.PrimaryCommands.Add(new AppBarElementContainer { Content = TargetDeviceCombo });
+        TargetDeviceCombo.SelectionChanged += OnTargetDeviceSelectionChanged;
 
-        var install = new AppBarButton { Label = "Instalar", Icon = new SymbolIcon(Symbol.Download) };
-        install.Click += OnInstallClicked;
-        var activate = new AppBarButton { Label = "Ativar", Icon = new SymbolIcon(Symbol.Accept) };
-        activate.Click += OnActivateClicked;
-        deployBar.PrimaryCommands.Add(install);
-        deployBar.PrimaryCommands.Add(activate);
+        deviceBar.PrimaryCommands.Add(new AppBarElementContainer { Content = TargetDeviceCombo });
+        var deviceCard = CreateCard(deviceBar, padding: 4);
+        Grid.SetRow(deviceCard, 1);
+        right.Children.Add(deviceCard);
 
-        var deployCard = CreateCard(deployBar, padding: 4);
-        Grid.SetRow(deployCard, 1);
-        right.Children.Add(deployCard);
+        var modifiersHost = new StackPanel { Spacing = 8 };
+        ModifiersHintText = new TextBlock
+        {
+            Text = "Modificadores do app selecionado.",
+            Opacity = 0.82,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        ModifiersPanel = new StackPanel { Spacing = 10 };
+        var modifierScroll = new ScrollViewer
+        {
+            MinHeight = 170,
+            MaxHeight = 280,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = ModifiersPanel,
+        };
+
+        modifiersHost.Children.Add(new TextBlock
+        {
+            Text = "Modificadores",
+            Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
+        });
+        modifiersHost.Children.Add(ModifiersHintText);
+        modifiersHost.Children.Add(modifierScroll);
+
+        var modifiersCard = CreateCard(modifiersHost);
+        Grid.SetRow(modifiersCard, 2);
+        right.Children.Add(modifiersCard);
+
+        var gifRuntimeHost = new StackPanel { Spacing = 8 };
+        gifRuntimeHost.Children.Add(new TextBlock
+        {
+            Text = "Runtime GIF HUB75",
+            Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
+        });
+
+        GifRuntimeStatusText = new TextBlock
+        {
+            Text = "Selecione o app GIF para iniciar.",
+            Opacity = 0.9,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        GifOpenFileButton = new Button
+        {
+            Content = "Abrir arquivo GIF",
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        GifOpenFileButton.Click += OnGifOpenFileClicked;
+
+        GifFirmwareWarningText = new TextBlock
+        {
+            Text = "Aviso: firmware antigo ignora frame RGB565 (tipo 2). O runtime local continua ativo.",
+            Opacity = 0.76,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        GifRuntimeCanvas = new CanvasControl
+        {
+            Height = 110,
+        };
+        GifRuntimeCanvas.Draw += OnGifRuntimeCanvasDraw;
+
+        gifRuntimeHost.Children.Add(GifRuntimeStatusText);
+        gifRuntimeHost.Children.Add(GifOpenFileButton);
+        gifRuntimeHost.Children.Add(GifFirmwareWarningText);
+        gifRuntimeHost.Children.Add(GifRuntimeCanvas);
+
+        GifRuntimePanel = CreateCard(gifRuntimeHost);
+        GifRuntimePanel.Visibility = Visibility.Collapsed;
+        Grid.SetRow(GifRuntimePanel, 3);
+        right.Children.Add(GifRuntimePanel);
+
+        var actionsGrid = new Grid { ColumnSpacing = 8 };
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        InstallButton = new Button { Content = "Instalar" };
+        InstallButton.Click += OnInstallClicked;
+
+        SaveModifiersButton = new Button { Content = "Salvar" };
+        SaveModifiersButton.Click += OnSaveModifiersClicked;
+
+        Grid.SetColumn(SaveModifiersButton, 1);
+
+        actionsGrid.Children.Add(InstallButton);
+        actionsGrid.Children.Add(SaveModifiersButton);
+
+        var actionsCard = CreateCard(actionsGrid);
+        Grid.SetRow(actionsCard, 4);
+        right.Children.Add(actionsCard);
 
         var statusGrid = new Grid { ColumnSpacing = 10 };
         statusGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -136,7 +238,7 @@ public sealed partial class AppsPage
 
         OperationStatusText = new TextBlock
         {
-            Text = "Operacoes: pronto",
+            Text = "Operações: pronto",
             VerticalAlignment = VerticalAlignment.Center,
             TextWrapping = TextWrapping.Wrap,
         };
@@ -155,22 +257,8 @@ public sealed partial class AppsPage
         statusGrid.Children.Add(OperationPercentText);
 
         var statusCard = CreateCard(statusGrid);
-        Grid.SetRow(statusCard, 2);
+        Grid.SetRow(statusCard, 5);
         right.Children.Add(statusCard);
-
-        LogsTextBox = new TextBox
-        {
-            Header = "Historico",
-            AcceptsReturn = true,
-            IsReadOnly = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 170,
-        };
-        ScrollViewer.SetVerticalScrollBarVisibility(LogsTextBox, ScrollBarVisibility.Auto);
-
-        var logsCard = CreateCard(LogsTextBox);
-        Grid.SetRow(logsCard, 3);
-        right.Children.Add(logsCard);
 
         content.Children.Add(right);
         root.Children.Add(content);
@@ -198,5 +286,3 @@ public sealed partial class AppsPage
         return UiResourceResolver.ResolveBrush(key, fallback);
     }
 }
-
-

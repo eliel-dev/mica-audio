@@ -2,6 +2,7 @@ using Analyzer.Dsp.Analysis;
 using Audio.Loopback.Capture;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Led;
+using MicaAudio.Core.Presets;
 using Output.Led;
 
 namespace App.WinUI.Services;
@@ -80,6 +81,9 @@ internal sealed class AudioPipelineCoordinator
     {
         if (!running)
         {
+            simulatorLedOutput.Stop();
+            matrixPortalLedOutput.Stop();
+            nullLedOutput.Stop();
             return;
         }
 
@@ -113,6 +117,37 @@ internal sealed class AudioPipelineCoordinator
     public void SetHubPreview(bool enabled, float brightness)
     {
         ConfigureOutputs(enabled, brightness);
+    }
+
+    public void ConfigureHubOutputs(bool enableSimulator, float brightness)
+    {
+        ConfigureOutputs(enableSimulator, brightness);
+    }
+
+    public void SendHubFrame(RgbaColor[] frame64x32, bool forceSimulator = false, string presetId = "gif-hub75")
+    {
+        if (frame64x32.Length != (LedDefaults.MatrixWidth * LedDefaults.MatrixHeight))
+        {
+            return;
+        }
+
+        var payload = new LedPayload
+        {
+            Frame64x32 = frame64x32,
+            Level = 1f,
+            PresetId = presetId,
+        };
+
+        matrixPortalLedOutput.Send(payload);
+
+        if (forceSimulator || hubPreviewEnabled)
+        {
+            simulatorLedOutput.Send(payload);
+        }
+        else
+        {
+            nullLedOutput.Send(payload);
+        }
     }
 
     public void SetCurrentPreset(string presetId) => currentPresetId = presetId;

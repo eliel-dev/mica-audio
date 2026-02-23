@@ -1,14 +1,21 @@
-﻿using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
+// DOCS: docs/wiki/modules/settings-presets-persistence.md#tokens-de-dispositivo-em-repouso
 internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
 {
+    private const string TokenCipherPrefix = "dpapi:v1:";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
     };
+
+    private static readonly byte[] TokenEntropy = Encoding.UTF8.GetBytes("MicaAudio.DeviceRegistry.Token.v1");
 
     private readonly string filePath;
 
@@ -27,8 +34,13 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         try
         {
             await using var fs = File.OpenRead(filePath);
-            var data = await JsonSerializer.DeserializeAsync<List<DeviceRecord>>(fs, JsonOptions, cancellationToken).ConfigureAwait(false);
-            return data is null ? Array.Empty<DeviceRecord>() : data;
+            var data = await JsonSerializer.DeserializeAsync<List<PersistedDeviceRecord>>(fs, JsonOptions, cancellationToken).ConfigureAwait(false);
+            if (data is null || data.Count == 0)
+            {
+                return Array.Empty<DeviceRecord>();
+            }
+
+            return data.Select(MapToRuntimeRecord).ToArray();
         }
         catch (JsonException)
         {
@@ -47,7 +59,130 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
     public async Task SaveAsync(IReadOnlyList<DeviceRecord> devices, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+
+        var persisted = devices
+            .Select(MapToPersistedRecord)
+            .ToArray();
+
         await using var fs = File.Create(filePath);
-        await JsonSerializer.SerializeAsync(fs, devices, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await JsonSerializer.SerializeAsync(fs, persisted, JsonOptions, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static DeviceRecord MapToRuntimeRecord(PersistedDeviceRecord record)
+    {
+        var decryptedToken = DecryptToken(record.TokenProtected);
+        if (string.IsNullOrWhiteSpace(decryptedToken))
+        {
+            decryptedToken = record.Token ?? string.Empty;
+        }
+
+        return new DeviceRecord
+        {
+            DeviceId = record.DeviceId ?? string.Empty,
+            Name = string.IsNullOrWhiteSpace(record.Name) ? "Matrix Portal" : record.Name,
+            Profile = string.IsNullOrWhiteSpace(record.Profile) ? "stable" : record.Profile,
+            Token = decryptedToken,
+            CreatedAtUtc = record.CreatedAtUtc,
+            LastSeenUtc = record.LastSeenUtc,
+            FirmwareVersion = record.FirmwareVersion,
+            LastKnownIp = record.LastKnownIp,
+            LastKnownRssi = record.LastKnownRssi,
+            ActiveAppId = record.ActiveAppId,
+            ActiveAppName = record.ActiveAppName,
+        };
+    }
+
+    private static PersistedDeviceRecord MapToPersistedRecord(DeviceRecord record)
+    {
+        return new PersistedDeviceRecord
+        {
+            DeviceId = record.DeviceId,
+            Name = record.Name,
+            Profile = record.Profile,
+            TokenProtected = EncryptToken(record.Token),
+            Token = null,
+            CreatedAtUtc = record.CreatedAtUtc,
+            LastSeenUtc = record.LastSeenUtc,
+            FirmwareVersion = record.FirmwareVersion,
+            LastKnownIp = record.LastKnownIp,
+            LastKnownRssi = record.LastKnownRssi,
+            ActiveAppId = record.ActiveAppId,
+            ActiveAppName = record.ActiveAppName,
+        };
+    }
+
+    // DOCS: docs/wiki/reference/troubleshooting-matrix.md#token-criptografado-no-devicesjson
+    private static string EncryptToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return string.Empty;
+        }
+
+        var clearBytes = Encoding.UTF8.GetBytes(token);
+        var encryptedBytes = ProtectedData.Protect(clearBytes, TokenEntropy, DataProtectionScope.CurrentUser);
+        return TokenCipherPrefix + Convert.ToBase64String(encryptedBytes);
+    }
+
+    private static string DecryptToken(string? tokenProtected)
+    {
+        if (string.IsNullOrWhiteSpace(tokenProtected))
+        {
+            return string.Empty;
+        }
+
+        if (!tokenProtected.StartsWith(TokenCipherPrefix, StringComparison.Ordinal))
+        {
+            // Backward-compatibility with legacy plaintext format.
+            return tokenProtected;
+        }
+
+        var cipherBase64 = tokenProtected[TokenCipherPrefix.Length..];
+        if (string.IsNullOrWhiteSpace(cipherBase64))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var encryptedBytes = Convert.FromBase64String(cipherBase64);
+            var clearBytes = ProtectedData.Unprotect(encryptedBytes, TokenEntropy, DataProtectionScope.CurrentUser);
+            return Encoding.UTF8.GetString(clearBytes);
+        }
+        catch (FormatException)
+        {
+            return string.Empty;
+        }
+        catch (CryptographicException)
+        {
+            return string.Empty;
+        }
+    }
+
+    private sealed class PersistedDeviceRecord
+    {
+        public string? DeviceId { get; init; }
+
+        public string? Name { get; init; }
+
+        public string? Profile { get; init; }
+
+        public string? Token { get; init; }
+
+        public string? TokenProtected { get; init; }
+
+        public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+        public DateTimeOffset LastSeenUtc { get; init; } = DateTimeOffset.MinValue;
+
+        public string? FirmwareVersion { get; init; }
+
+        public string? LastKnownIp { get; init; }
+
+        public int? LastKnownRssi { get; init; }
+
+        public string? ActiveAppId { get; init; }
+
+        public string? ActiveAppName { get; init; }
     }
 }

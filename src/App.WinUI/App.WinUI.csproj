@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -6,7 +6,9 @@
     <OutputType>WinExe</OutputType>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
-    <WindowsPackageType>None</WindowsPackageType>
+    <!-- Alterado para MSIX para permitir geração de recipe/appx durante build
+         (corrige erro DEP1700 quando o deploy espera o arquivo .build.appxrecipe) -->
+    <WindowsPackageType>MSIX</WindowsPackageType>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -19,6 +21,7 @@
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
+    <UseSystemDrawing>true</UseSystemDrawing>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />

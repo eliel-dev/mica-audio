@@ -7,6 +7,10 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   governance-structural-docs:
     runs-on: windows-latest
@@ -122,6 +126,11 @@ jobs:
         shell: pwsh
         run: |
           powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1 -ChangedFilesPath '.tmp-changed-files.txt'
+
+      - name: Run dependency vulnerability gate
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\dependency-vulnerability-gate.ps1 -ProjectOrSolution MicaAudio.sln
 
       - name: Build solution Debug
         shell: pwsh
