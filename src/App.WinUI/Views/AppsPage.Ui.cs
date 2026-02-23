@@ -178,7 +178,6 @@ public sealed partial class AppsPage
             Content = "Abrir arquivo GIF",
             HorizontalAlignment = HorizontalAlignment.Left,
         };
-        GifOpenFileButton.Click += OnGifOpenFileClicked;
 
         GifFirmwareWarningText = new TextBlock
         {

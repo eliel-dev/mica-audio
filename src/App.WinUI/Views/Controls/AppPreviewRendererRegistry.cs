@@ -5,48 +5,25 @@ namespace App.WinUI.Views.Controls;
 
 internal static class AppPreviewRendererRegistry
 {
-    private static readonly IReadOnlyDictionary<string, IAppPreviewRenderer> ByKind = new Dictionary<string, IAppPreviewRenderer>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["clock"] = new ClockPreviewRenderer(),
-        ["weather"] = new WeatherPreviewRenderer(),
-        ["scores"] = new ScoresPreviewRenderer(),
-        ["news"] = new NewsTickerPreviewRenderer(),
-        ["productivity"] = new ProductivityPreviewRenderer(),
-        ["finance"] = new FinancePreviewRenderer(),
-        ["decorative"] = new DecorativePreviewRenderer(),
-        ["gif"] = new GifPreviewRenderer(),
-        ["generic"] = new DecorativePreviewRenderer(),
-        ["relogio"] = new ClockPreviewRenderer(),
-        ["relógio"] = new ClockPreviewRenderer(),
-        ["clima"] = new WeatherPreviewRenderer(),
-        ["midia"] = new GifPreviewRenderer(),
-    };
+    private static readonly IAppPreviewRenderer GenericRenderer = new DecorativePreviewRenderer();
+
+    private static readonly IReadOnlyList<IAppPreviewProvider> Providers =
+    [
+        new AppPreviewProvider(new ClockPreviewRenderer(), "clock", "relogio", "relógio"),
+        new AppPreviewProvider(new WeatherPreviewRenderer(), "weather", "clima"),
+        new AppPreviewProvider(new ScoresPreviewRenderer(), "scores"),
+        new AppPreviewProvider(new NewsTickerPreviewRenderer(), "news"),
+        new AppPreviewProvider(new ProductivityPreviewRenderer(), "productivity"),
+        new AppPreviewProvider(new FinancePreviewRenderer(), "finance"),
+        new AppPreviewProvider(new GifPreviewRenderer(), "gif", "midia"),
+        new AppPreviewProvider(GenericRenderer, "decorative", "generic"),
+    ];
 
     public static IAppPreviewRenderer Resolve(AppCatalogItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        var previewKind = item.Preview?.Kind;
-        if (!string.IsNullOrWhiteSpace(previewKind) && ByKind.TryGetValue(previewKind, out var byKind))
-        {
-            return byKind;
-        }
-
-        if (ByKind.TryGetValue(item.Category, out var byCategory))
-        {
-            return byCategory;
-        }
-
-        if (string.Equals(item.Id, "analogclock", StringComparison.OrdinalIgnoreCase))
-        {
-            return ByKind["clock"];
-        }
-
-        if (string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase))
-        {
-            return ByKind["weather"];
-        }
-
-        return ByKind["generic"];
+        var provider = Providers.FirstOrDefault(candidate => candidate.CanHandle(item));
+        return provider?.Renderer ?? GenericRenderer;
     }
 }

@@ -32,11 +32,13 @@
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75GifPlayer.cs" Link="Shared\Hub75GifPlayer.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\GifCatalogAppRuntimeService.cs" Link="Shared\GifCatalogAppRuntimeService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppCatalogService.cs" Link="Shared\AppCatalogService.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Apps\AppRuntimeProviderRegistry.cs" Link="Shared\AppRuntimeProviderRegistry.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppCatalogItem.cs" Link="Shared\Models\AppCatalogItem.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppModifierDefinition.cs" Link="Shared\Models\AppModifierDefinition.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppModifierFieldType.cs" Link="Shared\Models\AppModifierFieldType.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppModifierOption.cs" Link="Shared\Models\AppModifierOption.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppPreviewDefinition.cs" Link="Shared\Models\AppPreviewDefinition.cs" />
+    <Compile Include="..\..\src\App.WinUI\Models\Apps\AppRuntimeDefinition.cs" Link="Shared\Models\AppRuntimeDefinition.cs" />
   </ItemGroup>
 
 </Project>
