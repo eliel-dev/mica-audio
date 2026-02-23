@@ -19,10 +19,11 @@ Documentar o fluxo de catalogo local, miniaturas animadas, modificadores dinamic
 1. `AppCatalogService.LoadCatalogAsync` carrega `catalog.json` e valida itens.
 2. `AppsPage` monta cards (`AppCatalogCardControl`) e anima previews visiveis/selecionado.
 3. Selecionar app + dispositivo carrega draft em `AppModifierStateStore`.
-4. Clique manual no card `gifhub75` tenta auto-start do runtime: `sourceMode=url` usa `gifUrl`; `sourceMode=file` usa arquivo da sessao.
-5. `Salvar` persiste modificadores localmente e, se `gifhub75` estiver selecionado, reaplica o runtime imediatamente.
-6. `Instalar` usa draft salvo para incluir `configJson` no payload quando houver.
-7. Troca para outro app (ou unload da pagina) executa `Stop()` do runtime GIF.
+4. `SaveAppConfigUseCase` salva o draft local sem acoplar a pagina ao repositório.
+5. `AppConfigValidationUseCase` valida/converte `rawValues` para `configJson` tipado.
+6. `DeployAppUseCase` orquestra validar + persistir draft + `AppDeploymentService.InstallAsync`.
+7. `StartLocalRuntimeUseCase` encapsula start/stop/autostart do `gifhub75` (URL/arquivo).
+8. `AppsPage` fica apenas em composição de controles, binding e delegação para use cases.
 
 ## Pontos de alteracao frequente
 
@@ -31,6 +32,7 @@ Documentar o fluxo de catalogo local, miniaturas animadas, modificadores dinamic
 - Renderizadores de preview por categoria.
 - Validacao/serializacao de `configJson`.
 - Regras de start/stop do runtime `gifhub75`.
+- Orquestracao de casos de uso em `Services/Apps/UseCases`.
 
 ## Riscos e efeitos colaterais
 
@@ -43,10 +45,10 @@ Documentar o fluxo de catalogo local, miniaturas animadas, modificadores dinamic
 
 - Recarregar catalogo sem erro.
 - Cards exibem preview animado no viewport.
-- `Salvar` persiste por `deviceId+appId`.
+- `Salvar` persiste por `deviceId+appId` via use case.
 - Selecionar manualmente `gifhub75` inicia runtime quando configuracao estiver valida.
 - Trocar para outro app interrompe runtime GIF.
-- `Instalar` inclui config salvo quando disponivel.
+- `Instalar` valida payload e inclui config salvo quando disponivel.
 
 ## Referencias de codigo
 
@@ -55,10 +57,10 @@ Documentar o fluxo de catalogo local, miniaturas animadas, modificadores dinamic
 - [CityAutocompleteService](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L7) - assinatura: `internal sealed class CityAutocompleteService`
 - [AppsPage](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L16) - assinatura: `public sealed partial class AppsPage`
 - [GifCatalogAppRuntimeService](../../../src/App.WinUI/Services/Apps/GifCatalogAppRuntimeService.cs#L1) - assinatura: `internal sealed class GifCatalogAppRuntimeService`
-- [AppPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/AppPreviewThumbnailControl.cs#L12) - assinatura: `internal sealed class AppPreviewThumbnailControl`
-- [AppPreviewRendererRegistry](../../../src/App.WinUI/Views/Controls/AppPreviewRendererRegistry.cs#L6) - assinatura: `internal static class AppPreviewRendererRegistry`
-- [GifPreviewRenderer](../../../src/App.WinUI/Views/Controls/Renderers/GifPreviewRenderer.cs#L1) - assinatura: `internal sealed class GifPreviewRenderer`
-- [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L8) - assinatura: `internal sealed class AppDeploymentService`
+- [SaveAppConfigUseCase](../../../src/App.WinUI/Services/Apps/UseCases/SaveAppConfigUseCase.cs#L1) - assinatura: `internal sealed class SaveAppConfigUseCase`
+- [AppConfigValidationUseCase](../../../src/App.WinUI/Services/Apps/UseCases/AppConfigValidationUseCase.cs#L1) - assinatura: `internal sealed class AppConfigValidationUseCase`
+- [DeployAppUseCase](../../../src/App.WinUI/Services/Apps/UseCases/DeployAppUseCase.cs#L1) - assinatura: `internal sealed class DeployAppUseCase`
+- [StartLocalRuntimeUseCase](../../../src/App.WinUI/Services/Apps/UseCases/StartLocalRuntimeUseCase.cs#L1) - assinatura: `internal sealed class StartLocalRuntimeUseCase`
 
 ## Backlinks no codigo
 
@@ -66,7 +68,9 @@ Documentar o fluxo de catalogo local, miniaturas animadas, modificadores dinamic
 - `src/App.WinUI/Services/Apps/GifCatalogAppRuntimeService.cs`
 - `src/App.WinUI/Services/Apps/AppModifierStateStore.cs`
 - `src/App.WinUI/Services/Apps/CityAutocompleteService.cs`
+- `src/App.WinUI/Services/Apps/UseCases/SaveAppConfigUseCase.cs`
+- `src/App.WinUI/Services/Apps/UseCases/AppConfigValidationUseCase.cs`
+- `src/App.WinUI/Services/Apps/UseCases/DeployAppUseCase.cs`
+- `src/App.WinUI/Services/Apps/UseCases/StartLocalRuntimeUseCase.cs`
 - `src/App.WinUI/Views/AppsPage.xaml.cs`
 - `src/App.WinUI/Views/AppsPage.Ui.cs`
-- `src/App.WinUI/Views/Controls/Renderers/GifPreviewRenderer.cs`
-- `src/App.WinUI/Services/Apps/AppDeploymentService.cs`
