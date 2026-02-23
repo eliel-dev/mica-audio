@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Drawing.Imaging;
 using System.Net;
 using System.Net.Http.Headers;
@@ -115,6 +115,26 @@ public sealed class GifCatalogAppRuntimeServiceTests
         }
     }
 
+
+    [Fact]
+    public async Task Stop_ShouldNotThrow_WhenFrameUpdatedSubscriberThrows()
+    {
+        using var service = CreateService();
+
+        var path = WriteTempGifFile(CreateSingleFrameGifBytes());
+        try
+        {
+            await service.StartFromFileAsync(path, GifScaleMode.Fit);
+            service.FrameUpdated += static (_, _) => throw new InvalidCastException("simulated callback failure");
+
+            var ex = Record.Exception(service.Stop);
+            Assert.Null(ex);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
     private static GifCatalogAppRuntimeService CreateService(
         HttpClient? httpClient = null,
         int downloadTimeoutSeconds = GifCatalogAppRuntimeService.DownloadTimeoutSeconds,
@@ -227,3 +247,4 @@ public sealed class GifCatalogAppRuntimeServiceTests
         }
     }
 }
+

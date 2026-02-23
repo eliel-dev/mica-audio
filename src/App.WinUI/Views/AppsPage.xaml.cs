@@ -1,12 +1,13 @@
-
 using System.Globalization;
 using System.Text.Json;
 using App.WinUI.Models.Apps;
 using App.WinUI.Services.Apps;
+using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Gif;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
@@ -37,9 +38,11 @@ public sealed partial class AppsPage : Page
     private readonly GifCatalogAppRuntimeService gifRuntimeService;
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly IAppCatalogService catalogService;
-    private readonly IAppDeploymentService deploymentService;
     private readonly IAppModifierStateStore modifierStore;
     private readonly CityAutocompleteService cityService;
+    private readonly SaveAppConfigUseCase saveAppConfigUseCase;
+    private readonly DeployAppUseCase deployAppUseCase;
+    private readonly AppConfigValidationUseCase appConfigValidationUseCase;
 
     private AppCatalogItem? selectedItem;
     private DeviceOperationsState currentState = new();
@@ -50,20 +53,36 @@ public sealed partial class AppsPage : Page
     private string lastRuntimeStatus = "Selecione um app com runtime local para iniciar.";
     private readonly AppRuntimeProviderRegistry runtimeProviderRegistry;
     private IAppRuntimeProvider? activeRuntimeProvider;
+    public AppsPage(IServiceProvider services)
+        : this(
+            services.GetRequiredService<DeviceOperationsCoordinator>(),
+            services.GetRequiredService<IAppCatalogService>(),
+            services.GetRequiredService<IAppModifierStateStore>(),
+            services.GetRequiredService<CityAutocompleteService>(),
+            services.GetRequiredService<SaveAppConfigUseCase>(),
+            services.GetRequiredService<DeployAppUseCase>(),
+            services.GetRequiredService<AppConfigValidationUseCase>(),
+            services.GetRequiredService<DeviceIntegrationService>())
+    {
+    }
 
     internal AppsPage(
         DeviceOperationsCoordinator deviceOps,
         IAppCatalogService catalogService,
-        IAppDeploymentService deploymentService,
         IAppModifierStateStore modifierStore,
         CityAutocompleteService cityService,
+        SaveAppConfigUseCase saveAppConfigUseCase,
+        DeployAppUseCase deployAppUseCase,
+        AppConfigValidationUseCase appConfigValidationUseCase,
         DeviceIntegrationService deviceIntegration)
     {
         this.deviceOps = deviceOps;
         this.catalogService = catalogService;
-        this.deploymentService = deploymentService;
         this.modifierStore = modifierStore;
         this.cityService = cityService;
+        this.saveAppConfigUseCase = saveAppConfigUseCase;
+        this.deployAppUseCase = deployAppUseCase;
+        this.appConfigValidationUseCase = appConfigValidationUseCase;
 
         var host = deviceIntegration.Host;
         gifRuntimeService = new GifCatalogAppRuntimeService(
@@ -89,7 +108,7 @@ public sealed partial class AppsPage : Page
 
         CatalogGrid.SizeChanged += OnCatalogViewportChanged;
         EnsureCatalogScrollViewer();
-UpdateRuntimePanel();
+        UpdateRuntimePanel();
         await ReloadCatalogFromDiskAsync().ConfigureAwait(false);
     }
 
@@ -117,7 +136,7 @@ UpdateRuntimePanel();
         }
 
         activePreviewCards.Clear();
-runtimeProviderRegistry.Dispose();
+        runtimeProviderRegistry.Dispose();
     }
 
     // DOCS: docs/wiki/guides/add-app-catalog-item.md#passos
@@ -133,12 +152,12 @@ runtimeProviderRegistry.Dispose();
                 allItems.Clear();
                 allItems.AddRange(catalog);
                 ApplyFilter();
-                AppendLog($"Cat·logo carregado: {allItems.Count} apps.");
+                AppendLog($"Cat√°logo carregado: {allItems.Count} apps.");
             });
         }
         catch (Exception ex)
         {
-            _ = DispatcherQueue.TryEnqueue(() => AppendLog($"Falha ao carregar cat·logo: {ex.Message}"));
+            _ = DispatcherQueue.TryEnqueue(() => AppendLog($"Falha ao carregar cat√°logo: {ex.Message}"));
         }
     }
 
@@ -315,6 +334,7 @@ runtimeProviderRegistry.Dispose();
 
     private void SetSelectedItem(AppCatalogItem item)
     {
+        var previousItem = selectedItem;
         var previousProvider = activeRuntimeProvider;
         selectedItem = item;
         activeRuntimeProvider = runtimeProviderRegistry.Resolve(item);
@@ -327,7 +347,7 @@ runtimeProviderRegistry.Dispose();
 
         if (previousProvider is not null && !ReferenceEquals(previousProvider, activeRuntimeProvider))
         {
-            previousProvider.OnDeselected(item);
+            previousProvider.OnDeselected(previousItem ?? new AppCatalogItem());
         }
 
         _ = EvaluateRuntimeAutostartAsync();
@@ -340,6 +360,7 @@ runtimeProviderRegistry.Dispose();
 
     private void ClearSelectedItem()
     {
+        var previousItem = selectedItem;
         var previousProvider = activeRuntimeProvider;
         selectedItem = null;
         activeRuntimeProvider = null;
@@ -351,7 +372,7 @@ runtimeProviderRegistry.Dispose();
         ModifiersPanel.Children.Clear();
         modifierBindings.Clear();
 
-        previousProvider?.OnDeselected(new AppCatalogItem());
+        previousProvider?.OnDeselected(previousItem ?? new AppCatalogItem());
 
         UpdateRuntimePanel();
         UpdateSelectionVisuals();
@@ -469,26 +490,26 @@ runtimeProviderRegistry.Dispose();
             return;
         }
 
-        var deployment = deploymentService;
-
-        if (!TryBuildConfigFromEditor(item, out var values, out var rawValues, out var validationError))
+        if (!TryBuildConfigFromEditor(item, out _, out var rawValues, out var validationError))
         {
             AppendLog(validationError);
             return;
         }
 
-        var configJson = JsonSerializer.Serialize(values);
-        await modifierStore.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
-
-        var result = await deployment.InstallAsync(deviceId, item, configJson).ConfigureAwait(false);
+        var result = await deployAppUseCase.ExecuteAsync(LocalDraftScope, deviceId, item, rawValues).ConfigureAwait(false);
         _ = DispatcherQueue.TryEnqueue(() =>
         {
-            ApplyPreviewDraftToCard(item.Id, rawValues);
-            AppendLog(RenderResult("instalar", item.Name, result));
+            ApplyPreviewDraftToCard(item.Id, result.RawValues ?? rawValues);
+            if (!result.Success || result.CommandResult is null)
+            {
+                AppendLog($"Falha ao instalar '{item.Name}': {result.Message}");
+                return;
+            }
+
+            AppendLog(RenderResult("instalar", item.Name, result.CommandResult));
         });
     }
 
-    
     private async void OnSaveModifiersClicked(object sender, RoutedEventArgs e)
     {
         if (!TryGetSelectedItem(out var item, out var error))
@@ -503,19 +524,30 @@ runtimeProviderRegistry.Dispose();
             return;
         }
 
-        await modifierStore.SetDraftAsync(LocalDraftScope, item.Id, new AppConfigDraft { Values = rawValues }).ConfigureAwait(false);
+        if (!appConfigValidationUseCase.TryBuildPayload(item, rawValues, out _, out validationError))
+        {
+            AppendLog(validationError);
+            return;
+        }
+
+        var saveResult = await saveAppConfigUseCase.ExecuteAsync(LocalDraftScope, item, rawValues).ConfigureAwait(false);
+        if (!saveResult.Success)
+        {
+            AppendLog(saveResult.Message);
+            return;
+        }
+
         if (activeRuntimeProvider is not null && selectedItem is not null)
         {
-            await activeRuntimeProvider.OnConfigSavedAsync(selectedItem, rawValues, CancellationToken.None).ConfigureAwait(false);
+            await activeRuntimeProvider.OnConfigSavedAsync(selectedItem, saveResult.RawValues ?? rawValues, CancellationToken.None).ConfigureAwait(false);
         }
 
         _ = DispatcherQueue.TryEnqueue(() =>
         {
-            ApplyPreviewDraftToCard(item.Id, rawValues);
-            AppendLog($"ModificaÁıes salvas localmente para {item.Name}.");
+            ApplyPreviewDraftToCard(item.Id, saveResult.RawValues ?? rawValues);
+            AppendLog($"Modifica√ß√µes salvas localmente para {item.Name}.");
         });
     }
-
     private void UpdateRuntimePanel()
     {
         GifRuntimeStatusText.Text = lastRuntimeStatus;
@@ -660,10 +692,10 @@ runtimeProviderRegistry.Dispose();
         var modifiers = item.Modifiers.Where(static modifier => modifier.IsValid()).ToArray();
         if (modifiers.Length == 0)
         {
-            ModifiersHintText.Text = "Este app n„o possui modificadores configur·veis.";
+            ModifiersHintText.Text = "Este app n√£o possui modificadores configur√°veis.";
             ModifiersPanel.Children.Add(new TextBlock
             {
-                Text = "Sem par‚metros adicionais.",
+                Text = "Sem par√¢metros adicionais.",
                 Opacity = 0.8,
             });
             UpdateActionButtonsEnabled();
@@ -677,7 +709,7 @@ runtimeProviderRegistry.Dispose();
             values = draft.Values;
         }
 
-        ModifiersHintText.Text = "Salvar atualiza o preview local. Instalar envia a configuraÁ„o atual para o dispositivo selecionado.";
+        ModifiersHintText.Text = "Salvar atualiza o preview local. Instalar envia a configura√ß√£o atual para o dispositivo selecionado.";
 
         foreach (var modifier in modifiers)
         {
@@ -1070,7 +1102,7 @@ runtimeProviderRegistry.Dispose();
                 {
                     typedValue = null;
                     rawValue = string.Empty;
-                    error = $"O campo '{definition.Label}' È obrigatÛrio.";
+                    error = $"O campo '{definition.Label}' √© obrigat√≥rio.";
                     return false;
                 }
 
@@ -1084,7 +1116,7 @@ runtimeProviderRegistry.Dispose();
                 {
                     typedValue = null;
                     rawValue = string.Empty;
-                    error = $"O campo '{definition.Label}' È obrigatÛrio.";
+                    error = $"O campo '{definition.Label}' √© obrigat√≥rio.";
                     return false;
                 }
 
@@ -1099,7 +1131,7 @@ runtimeProviderRegistry.Dispose();
                 {
                     typedValue = null;
                     rawValue = string.Empty;
-                    error = $"O campo '{definition.Label}' È obrigatÛrio.";
+                    error = $"O campo '{definition.Label}' √© obrigat√≥rio.";
                     return false;
                 }
 
@@ -1113,7 +1145,7 @@ runtimeProviderRegistry.Dispose();
                 {
                     typedValue = null;
                     rawValue = string.Empty;
-                    error = $"O campo '{definition.Label}' È obrigatÛrio.";
+                    error = $"O campo '{definition.Label}' √© obrigat√≥rio.";
                     return false;
                 }
 
@@ -1140,7 +1172,7 @@ runtimeProviderRegistry.Dispose();
                 if (!bool.TryParse(value, out var boolValue))
                 {
                     typedValue = null;
-                    error = $"Valor inv·lido para '{modifier.Label}'.";
+                    error = $"Valor inv√°lido para '{modifier.Label}'.";
                     return false;
                 }
 
@@ -1151,7 +1183,7 @@ runtimeProviderRegistry.Dispose();
                 if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var numberValue))
                 {
                     typedValue = null;
-                    error = $"Valor numÈrico inv·lido para '{modifier.Label}'.";
+                    error = $"Valor num√©rico inv√°lido para '{modifier.Label}'.";
                     return false;
                 }
 
@@ -1209,7 +1241,7 @@ runtimeProviderRegistry.Dispose();
             return;
         }
 
-        OperationStatusText.Text = $"OperaÁıes: {message}";
+        OperationStatusText.Text = $"Opera√ß√µes: {message}";
         if (!currentState.CommandInProgress)
         {
             OperationPercentText.Text = "0%";
@@ -1228,27 +1260,3 @@ runtimeProviderRegistry.Dispose();
         public FrameworkElement Control { get; }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

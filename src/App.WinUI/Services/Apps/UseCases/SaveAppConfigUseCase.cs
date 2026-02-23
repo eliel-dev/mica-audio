@@ -5,9 +5,9 @@ namespace App.WinUI.Services.Apps.UseCases;
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#fluxo-de-execucao
 internal sealed class SaveAppConfigUseCase
 {
-    private readonly AppModifierStateStore? modifierStore;
+    private readonly IAppModifierStateStore? modifierStore;
 
-    public SaveAppConfigUseCase(AppModifierStateStore? modifierStore)
+    public SaveAppConfigUseCase(IAppModifierStateStore? modifierStore)
     {
         this.modifierStore = modifierStore;
     }
@@ -17,7 +17,7 @@ internal sealed class SaveAppConfigUseCase
         cancellationToken.ThrowIfCancellationRequested();
         if (modifierStore is null)
         {
-            return SaveAppConfigResult.Failure("Repositório de modificadores indisponível.");
+            return SaveAppConfigResult.Failure("Repositorio de modificadores indisponivel.");
         }
 
         await modifierStore.SetDraftAsync(scope, item.Id, new AppConfigDraft { Values = new Dictionary<string, string>(rawValues, StringComparer.OrdinalIgnoreCase) }).ConfigureAwait(false);

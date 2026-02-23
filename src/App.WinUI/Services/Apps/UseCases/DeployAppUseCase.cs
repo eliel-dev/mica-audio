@@ -6,11 +6,11 @@ namespace App.WinUI.Services.Apps.UseCases;
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#fluxo-de-execucao
 internal sealed class DeployAppUseCase
 {
-    private readonly AppDeploymentService? deploymentService;
+    private readonly IAppDeploymentService? deploymentService;
     private readonly SaveAppConfigUseCase saveAppConfigUseCase;
     private readonly AppConfigValidationUseCase validationUseCase;
 
-    public DeployAppUseCase(AppDeploymentService? deploymentService, SaveAppConfigUseCase saveAppConfigUseCase, AppConfigValidationUseCase validationUseCase)
+    public DeployAppUseCase(IAppDeploymentService? deploymentService, SaveAppConfigUseCase saveAppConfigUseCase, AppConfigValidationUseCase validationUseCase)
     {
         this.deploymentService = deploymentService;
         this.saveAppConfigUseCase = saveAppConfigUseCase;
@@ -32,7 +32,7 @@ internal sealed class DeployAppUseCase
 
         if (deploymentService is null)
         {
-            return DeployAppResult.Failure("Serviço de deploy indisponível.");
+            return DeployAppResult.Failure("Servico de deploy indisponivel.");
         }
 
         var commandResult = await deploymentService.InstallAsync(deviceId, item, configJson, cancellationToken).ConfigureAwait(false);

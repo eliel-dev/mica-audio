@@ -1,4 +1,5 @@
-using System.Net.Http;
+﻿using System.Net.Http;
+using System.Runtime.InteropServices;
 using App.WinUI.Services.Gif;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
@@ -283,7 +284,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
 
         matrixOutput.Send(payload);
         simulatorOutput.Send(payload);
-        FrameUpdated?.Invoke(this, frame);
+        NotifyFrameUpdated(frame);
     }
 
     private void SendSimulatorFrame(RgbaColor[] frame)
@@ -296,9 +297,35 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         };
 
         simulatorOutput.Send(payload);
-        FrameUpdated?.Invoke(this, frame);
+        NotifyFrameUpdated(frame);
     }
 
+
+    private void NotifyFrameUpdated(RgbaColor[] frame)
+    {
+        var handlers = FrameUpdated;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<RgbaColor[]> callback in handlers.GetInvocationList())
+        {
+            try
+            {
+                callback(this, frame);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (InvalidCastException)
+            {
+            }
+            catch (COMException)
+            {
+            }
+        }
+    }
     private void SendLegacyBinsClear()
     {
         matrixOutput.Send(new LedPayload
@@ -321,3 +348,6 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
     }
 }
+
+
+

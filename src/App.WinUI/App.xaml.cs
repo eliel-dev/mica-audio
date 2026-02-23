@@ -1,5 +1,6 @@
-using System.Text;
+﻿using System.Text;
 using App.WinUI.Services.Apps;
+using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
 using App.WinUI.Views;
@@ -101,6 +102,10 @@ public partial class App : Application
         services.AddSingleton<IAppModifierStateStore>(new AppModifierStateStore(appDataRoot));
         services.AddSingleton<CityAutocompleteService>();
         services.AddSingleton<IAppDeploymentService, AppDeploymentService>();
+        services.AddSingleton<AppConfigValidationUseCase>();
+        services.AddSingleton<SaveAppConfigUseCase>();
+        services.AddSingleton<DeployAppUseCase>();
+        services.AddSingleton<StartLocalRuntimeUseCase>();
         services.AddSingleton<PrecompiledFirmwareService>();
 
         services.AddTransient<MainPage>();

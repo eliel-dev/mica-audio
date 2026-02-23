@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using App.WinUI.Services.Apps;
 
 namespace Output.Tests;
@@ -6,7 +6,7 @@ namespace Output.Tests;
 public sealed class AppCatalogServiceTests
 {
     [Fact]
-    public async Task LoadCatalogAsync_ShouldLoadNewAppWithoutServiceChanges()
+    public async Task LoadCatalogAsync_ShouldKeepOnlySeedSupportedApps()
     {
         var root = CreateTempRoot();
         try
@@ -52,8 +52,11 @@ public sealed class AppCatalogServiceTests
             var service = new AppCatalogService(root);
             var items = await service.LoadCatalogAsync();
 
-            Assert.Equal(2, items.Count);
-            Assert.Contains(items, item => string.Equals(item.Id, "newapp", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(3, items.Count);
+            Assert.DoesNotContain(items, item => string.Equals(item.Id, "newapp", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(items, item => string.Equals(item.Id, "analogclock", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(items, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
@@ -62,7 +65,7 @@ public sealed class AppCatalogServiceTests
     }
 
     [Fact]
-    public async Task LoadCatalogAsync_ShouldThrowWhenSchemaVersionIsUnsupported()
+    public async Task LoadCatalogAsync_ShouldFallbackToSeed_WhenSchemaVersionIsUnsupported()
     {
         var root = CreateTempRoot();
         try
@@ -88,8 +91,38 @@ public sealed class AppCatalogServiceTests
             await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(document));
 
             var service = new AppCatalogService(root);
+            var items = await service.LoadCatalogAsync();
 
-            await Assert.ThrowsAsync<InvalidDataException>(() => service.LoadCatalogAsync());
+            Assert.Equal(3, items.Count);
+            Assert.Contains(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(items, item => string.Equals(item.Id, "analogclock", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(items, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task LoadCatalogAsync_ShouldFallbackToSeed_WhenCatalogIsInvalidJson()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var appsDir = Path.Combine(root, "apps");
+            Directory.CreateDirectory(appsDir);
+
+            var catalogPath = Path.Combine(appsDir, "catalog.json");
+            await File.WriteAllTextAsync(catalogPath, "{ invalid json }");
+
+            var service = new AppCatalogService(root);
+            var items = await service.LoadCatalogAsync();
+
+            Assert.Equal(3, items.Count);
+            Assert.Contains(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(items, item => string.Equals(item.Id, "analogclock", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(items, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {

@@ -1,4 +1,5 @@
 using App.WinUI.Services.Devices;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -19,6 +20,15 @@ public sealed partial class ShellPage : Page
     private readonly ServerPage serverPage;
 
     private string currentTag = string.Empty;
+    public ShellPage(IServiceProvider services)
+        : this(
+            services.GetRequiredService<DeviceOperationsCoordinator>(),
+            services.GetRequiredService<MainPage>(),
+            services.GetRequiredService<DevicesPage>(),
+            services.GetRequiredService<AppsPage>(),
+            services.GetRequiredService<ServerPage>())
+    {
+    }
 
     internal ShellPage(
         DeviceOperationsCoordinator deviceOps,
