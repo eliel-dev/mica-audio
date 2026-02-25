@@ -199,7 +199,7 @@ public partial class MainPage : Page
             pipelineCoordinator.ConfigureHubOutputs(ShouldShowHubPreview(), appSettings.Brightness);
             EnsureRenderTimerStarted();
             MainCanvas.Invalidate();
-            HubCanvas.Invalidate();
+            InvalidateHubPreviews();
             return;
         }
 
@@ -341,7 +341,7 @@ public partial class MainPage : Page
             MainCanvas.Invalidate();
             if (ShouldShowHubPreview())
             {
-                HubCanvas.Invalidate();
+                InvalidateHubPreviews();
             }
         });
     }
@@ -357,7 +357,7 @@ public partial class MainPage : Page
                 MainCanvas.Invalidate();
                 if (ShouldShowHubPreview())
                 {
-                    HubCanvas.Invalidate();
+                    InvalidateHubPreviews();
                 }
             };
         }
@@ -464,7 +464,7 @@ public partial class MainPage : Page
                 return;
             }
 
-            DrawHubFrame(args.DrawingSession, (float)sender.ActualWidth, (float)sender.ActualHeight, gifFrame);
+            DrawHubFrame(args.DrawingSession, (float)sender.ActualWidth, (float)sender.ActualHeight, gifFrame, LedDefaults.MatrixWidth, LedDefaults.MatrixHeight);
             return;
         }
 
@@ -535,14 +535,48 @@ public partial class MainPage : Page
             return;
         }
 
-        DrawHubFrame(args.DrawingSession, (float)sender.ActualWidth, (float)sender.ActualHeight, snapshot);
+        DrawHubFrame(
+            args.DrawingSession,
+            (float)sender.ActualWidth,
+            (float)sender.ActualHeight,
+            snapshot,
+            LedDefaults.MatrixWidth,
+            LedDefaults.MatrixHeight);
     }
 
-    private static void DrawHubFrame(CanvasDrawingSession drawingSession, float width, float height, IReadOnlyList<RgbaColor> pixels)
+    private void OnHubCanvas128Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {
-        var matrixWidth = (float)LedDefaults.MatrixWidth;
-        var matrixHeight = (float)LedDefaults.MatrixHeight;
-        var matrixAspect = matrixWidth / matrixHeight;
+        if (!ShouldShowHubPreview())
+        {
+            args.DrawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
+            return;
+        }
+
+        var snapshot = simulatorLedOutput.GetFrameSnapshot();
+        if (snapshot.Length == 0)
+        {
+            args.DrawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
+            return;
+        }
+
+        DrawHubFrameUpscaled2x(
+            args.DrawingSession,
+            (float)sender.ActualWidth,
+            (float)sender.ActualHeight,
+            snapshot,
+            LedDefaults.MatrixWidth,
+            LedDefaults.MatrixHeight);
+    }
+
+    private static void DrawHubFrame(
+        CanvasDrawingSession drawingSession,
+        float width,
+        float height,
+        IReadOnlyList<RgbaColor> pixels,
+        int matrixWidth,
+        int matrixHeight)
+    {
+        var matrixAspect = (float)matrixWidth / matrixHeight;
         var canvasAspect = width <= 0f || height <= 0f ? matrixAspect : (width / height);
         var drawWidth = width;
         var drawHeight = height;
@@ -564,11 +598,19 @@ public partial class MainPage : Page
         var cellH = drawHeight / matrixHeight;
 
         drawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
-        for (var y = 0; y < LedDefaults.MatrixHeight; y++)
+
+        var requiredPixels = matrixWidth * matrixHeight;
+        if (pixels.Count < requiredPixels)
         {
-            for (var x = 0; x < LedDefaults.MatrixWidth; x++)
+            return;
+        }
+
+        for (var y = 0; y < matrixHeight; y++)
+        {
+            var rowStart = y * matrixWidth;
+            for (var x = 0; x < matrixWidth; x++)
             {
-                var pixel = pixels[(y * LedDefaults.MatrixWidth) + x];
+                var pixel = pixels[rowStart + x];
                 if (pixel.A == 0)
                 {
                     continue;
@@ -585,6 +627,74 @@ public partial class MainPage : Page
         }
     }
 
+    private static void DrawHubFrameUpscaled2x(
+        CanvasDrawingSession drawingSession,
+        float width,
+        float height,
+        IReadOnlyList<RgbaColor> sourcePixels,
+        int sourceMatrixWidth,
+        int sourceMatrixHeight)
+    {
+        var targetMatrixWidth = sourceMatrixWidth * 2;
+        var targetMatrixHeight = sourceMatrixHeight * 2;
+        var matrixAspect = (float)targetMatrixWidth / targetMatrixHeight;
+        var canvasAspect = width <= 0f || height <= 0f ? matrixAspect : (width / height);
+        var drawWidth = width;
+        var drawHeight = height;
+
+        if (canvasAspect > matrixAspect)
+        {
+            drawWidth = height * matrixAspect;
+            drawHeight = height;
+        }
+        else
+        {
+            drawWidth = width;
+            drawHeight = width / matrixAspect;
+        }
+
+        var offsetX = (width - drawWidth) * 0.5f;
+        var offsetY = (height - drawHeight) * 0.5f;
+        var cellW = drawWidth / targetMatrixWidth;
+        var cellH = drawHeight / targetMatrixHeight;
+
+        drawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
+
+        var requiredPixels = sourceMatrixWidth * sourceMatrixHeight;
+        if (sourcePixels.Count < requiredPixels)
+        {
+            return;
+        }
+
+        for (var y = 0; y < targetMatrixHeight; y++)
+        {
+            var sourceY = y >> 1;
+            var sourceRowStart = sourceY * sourceMatrixWidth;
+            for (var x = 0; x < targetMatrixWidth; x++)
+            {
+                var sourceX = x >> 1;
+                var pixel = sourcePixels[sourceRowStart + sourceX];
+                if (pixel.A == 0)
+                {
+                    continue;
+                }
+
+                var color = Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B);
+                drawingSession.FillRectangle(
+                    offsetX + (x * cellW),
+                    offsetY + (y * cellH),
+                    Math.Max(1f, cellW),
+                    Math.Max(1f, cellH),
+                    color);
+            }
+        }
+    }
+
+    private void InvalidateHubPreviews()
+    {
+        HubCanvas.Invalidate();
+        HubCanvas128.Invalidate();
+    }
     private void OnPresetSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (PresetCombo.SelectedItem is not ComboOption option || !presetsById.TryGetValue(option.Id, out var preset))
@@ -630,6 +740,11 @@ public partial class MainPage : Page
         if (contentSourceMode == GifContentSourceMode.Gif && lastGifFrame is { Length: > 0 } currentFrame)
         {
             pipelineCoordinator.SendHubFrame(currentFrame, forceSimulator: true);
+        }
+
+        if (ShouldShowHubPreview())
+        {
+            InvalidateHubPreviews();
         }
 
         appSettings = settingsDomainService.Copy(appSettings, b => b.SetHub75PreviewEnabled(hubPreviewEnabled));
@@ -747,7 +862,7 @@ public partial class MainPage : Page
             MainCanvas.Invalidate();
             if (ShouldShowHubPreview())
             {
-                HubCanvas.Invalidate();
+                InvalidateHubPreviews();
             }
         }
 
@@ -1406,7 +1521,7 @@ public partial class MainPage : Page
         MainCanvas.Invalidate();
         if (ShouldShowHubPreview())
         {
-            HubCanvas.Invalidate();
+            InvalidateHubPreviews();
         }
     }
 
@@ -1448,7 +1563,7 @@ public partial class MainPage : Page
         MainCanvas.Invalidate();
         if (ShouldShowHubPreview())
         {
-            HubCanvas.Invalidate();
+            InvalidateHubPreviews();
         }
     }
 
@@ -1526,7 +1641,7 @@ public partial class MainPage : Page
             MainCanvas.Invalidate();
             if (ShouldShowHubPreview())
             {
-                HubCanvas.Invalidate();
+                InvalidateHubPreviews();
             }
         }
         catch (OperationCanceledException)
@@ -1617,7 +1732,7 @@ public partial class MainPage : Page
             MainCanvas.Invalidate();
             if (ShouldShowHubPreview())
             {
-                HubCanvas.Invalidate();
+                InvalidateHubPreviews();
             }
 
             UpdateGifTransportState();

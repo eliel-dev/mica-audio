@@ -3,6 +3,7 @@
 | Sintoma | Diagnostico rapido | Causa comum | Acao recomendada |
 |---|---|---|---|
 | App abre sem visualizacao | Ver `MainPage` + estado de sessao | pipeline pausado apos navegacao | validar ativacao/pausa da sessao de visualizacao |
+| Preview HUB75 128x64 nao aparece no Visualizador | conferir se `Modo HUB75` esta ativo e se `HubPreviewPanel` esta visivel | preview 128x64 segue o mesmo toggle do 64x32 e nao tem controle proprio | ativar `Modo HUB75`; validar `OnHubCanvas128Draw` e `InvalidateHubPreviews()` em `MainPage` |
 | Startup falha com `Unable to resolve service for type ...` | conferir construtor da pagina/use case e registros no `App.BuildServiceProvider()` | dependencia nao registrada no DI | registrar servico faltante e manter construtor publico DI-friendly |
 | Build falha com `CS1503` em settings/presets | verificar assinatura dos construtores e registro no container | migracao parcial para `IOptions<MicaAudioOptions>` | registrar `services.Configure<MicaAudioOptions>(...)` e remover construtor por `string appDataRoot` |
 | git push falha com APPX3217 no pre-push local | verificar hook .githooks/pre-push e log do build local | maquina sem SDK/UAP para Integration.Smoke | usar gate local leve (scripts/local-prepush-gate.ps1) e manter build completo no CI |
@@ -21,6 +22,11 @@
 - Em leitura, formato legado em texto puro ainda e aceito para migracao.
 - Se a descriptografia falhar no usuario atual, o token e tratado como invalido e o device deve re-parear.
 
+## Preview HUB75 128x64 (simulado)
+
+- O preview 128x64 no Visualizador e apenas simulacao local.
+- A fonte de dados e o mesmo snapshot 64x32 do simulador (SimulatorLedOutput.GetFrameSnapshot()).
+- O desenho usa mapeamento 2x nearest-neighbor (x128/2, y128/2) para manter fidelidade de pixel HUB75.
 ## Referencias de codigo
 
 - [DeviceOperationsCoordinator logs](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)

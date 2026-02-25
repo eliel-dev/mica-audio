@@ -10,6 +10,7 @@ Camada de interface e composicao da aplicacao desktop (WinUI 3), incluindo boots
 - Configurar `MicaAudioOptions` e distribuir paths via `IOptions<MicaAudioOptions>`.
 - Resolver `ShellPage` e paginas principais por DI.
 - Gerenciar estado global de janela/chrome (`MainWindow`, fullscreen chrome hide/show).
+- Renderizar preview HUB75 local em dois formatos (64x32 nativo e 128x64 simulado 2x no Visualizador).
 - Encaminhar eventos de falha de startup para logging estruturado com fallback seguro.
 
 ## Fluxo de execucao
