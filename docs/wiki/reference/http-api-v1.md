@@ -10,6 +10,17 @@ Referencia resumida do servidor local embutido em `DeviceServerHost`.
 - `POST /api/v1/device/command-ack`
 - `GET /api/v1/health`
 
+## Pair request (v1 estendido)
+
+`POST /api/v1/pair` aceita, alem de `PairingCode` e `DeviceName`, os campos opcionais:
+
+- `BoardModel` (ex.: `matrixportal_s3`, `esp32s3_devkitc1`)
+- `PanelType` (ex.: `hub75_64x32`)
+
+Regra de compatibilidade:
+
+- payload legado sem esses campos continua valido.
+
 ## Regras de seguranca atuais
 
 1. Rate limiting ativo:
@@ -42,10 +53,9 @@ Referencia resumida do servidor local embutido em `DeviceServerHost`.
 
 ## Referencias de codigo
 
-- [DeviceServerHost.StartAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
-- [HandlePairAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
-- [HandleDeviceConfig](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
-- [HandleCommandAckAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [DeviceServerHost.StartAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L47)
+- [HandlePairAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L371)
+- [HandleDeviceConfig](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L471)
+- [HandleCommandAckAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L494)
+- [PairDeviceRequest](../../../src/Device.Protocol/Models/PairDeviceRequest.cs#L1)
 - [ServerConfig](../../../src/Device.Protocol/Contracts/ServerConfig.cs#L1)
-
-

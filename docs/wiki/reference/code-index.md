@@ -1,4 +1,4 @@
-# Code Index
+﻿# Code Index
 Indice expandido para localizar rapidamente pontos de alteracao por pagina, servico e protocolo.
 ## App pages (WinUI)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
@@ -6,7 +6,10 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)
 - [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
 - [AppsPage](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L1)
-- [ServerPage](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1)
+- [MainPageViewModel](../../../src/App.WinUI/ViewModels/MainPageViewModel.cs#L1)
+- [DevicesPageViewModel](../../../src/App.WinUI/ViewModels/DevicesPageViewModel.cs#L1)
+- [AppsPageViewModel](../../../src/App.WinUI/ViewModels/AppsPageViewModel.cs#L1)
+- [ShellPageViewModel](../../../src/App.WinUI/ViewModels/ShellPageViewModel.cs#L1)
 ## UI services
 - [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
 - [Hub75GifDecoder](../../../src/App.WinUI/Services/Gif/Hub75GifDecoder.cs#L1)
@@ -17,6 +20,8 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [DeviceIntegrationService](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L1)
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
+- [PrecompiledFirmwareOption](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareOption.cs#L1)
+- [DeviceCommandExecutionState](../../../src/App.WinUI/Services/Devices/DeviceCommandExecutionState.cs#L1)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
 - [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L1)
@@ -56,6 +61,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [docs-validate.ps1](../../../scripts/docs-validate.ps1#L1)
 - [docs-structural-gate.ps1](../../../scripts/docs-structural-gate.ps1#L1)
 - [ai-governance-check.ps1](../../../scripts/ai-governance-check.ps1#L1)
+- [mvvm-validate.ps1](../../../scripts/mvvm-validate.ps1#L1)
 - [dependency-vulnerability-gate.ps1](../../../scripts/dependency-vulnerability-gate.ps1#L1)
 - [git-hooks-bootstrap.ps1](../../../scripts/git-hooks-bootstrap.ps1#L1)
 - [release.yml](../../../.github/workflows/release.yml#L1)
@@ -68,6 +74,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [Bundle.wxs](../../../installer/MicaAudio.Bundle/Bundle.wxs#L1)
 - [dependabot.yml](../../../.github/dependabot.yml#L1)
 - [Directory.Build.props](../../../Directory.Build.props#L1)
+- [MicaAudio.Dev.slnf](../../../MicaAudio.Dev.slnf#L1)
 - [NuGet.config](../../../NuGet.config#L1)
 - [.editorconfig](../../../.editorconfig#L1)
 ## App Module Pattern
@@ -96,4 +103,5 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [WinUiBootstrapSmokeTests](../../../tests/Integration.Smoke/WinUiBootstrapSmokeTests.cs#L1)
 - [AppConfigUseCasesTests](../../../tests/Output.Tests/AppConfigUseCasesTests.cs#L1)
 - [AppModifierStateStoreTests](../../../tests/Output.Tests/AppModifierStateStoreTests.cs#L1)
+
 

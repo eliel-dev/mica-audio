@@ -1,5 +1,5 @@
 ﻿using App.WinUI.Services.Devices;
-using Microsoft.Extensions.DependencyInjection;
+using App.WinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -11,40 +11,30 @@ public sealed partial class ShellPage : Page
     private const string VisualizerTag = "visualizer";
     private const string DevicesTag = "devices";
     private const string AppsTag = "apps";
-    private const string ServerTag = "server";
 
+    private readonly ShellPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly MainPage mainPage;
     private readonly DevicesPage devicesPage;
     private readonly AppsPage appsPage;
-    private readonly ServerPage serverPage;
 
     private string currentTag = string.Empty;
 
-    public ShellPage(IServiceProvider services)
-        : this(
-            services.GetRequiredService<DeviceOperationsCoordinator>(),
-            services.GetRequiredService<MainPage>(),
-            services.GetRequiredService<DevicesPage>(),
-            services.GetRequiredService<AppsPage>(),
-            services.GetRequiredService<ServerPage>())
-    {
-    }
-
     internal ShellPage(
+        ShellPageViewModel viewModel,
         DeviceOperationsCoordinator deviceOps,
         MainPage mainPage,
         DevicesPage devicesPage,
-        AppsPage appsPage,
-        ServerPage serverPage)
+        AppsPage appsPage)
     {
+        this.viewModel = viewModel;
         this.deviceOps = deviceOps;
         this.mainPage = mainPage;
         this.devicesPage = devicesPage;
         this.appsPage = appsPage;
-        this.serverPage = serverPage;
 
         InitializeComponent();
+        DataContext = viewModel;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -99,11 +89,12 @@ public sealed partial class ShellPage : Page
         }
 
         currentTag = tag;
+        viewModel.CurrentTag = currentTag;
+
         ContentFrame.Content = tag.ToLowerInvariant() switch
         {
             DevicesTag => devicesPage,
             AppsTag => appsPage,
-            ServerTag => serverPage,
             _ => mainPage,
         };
 
@@ -121,7 +112,8 @@ public sealed partial class ShellPage : Page
     private void UpdateServerFooter()
     {
         var baseAddress = deviceOps.GetServerBaseAddress();
-        ServerFooterText.Text = $"Servidor: {baseAddress}";
+        viewModel.ServerFooterText = $"Servidor: {baseAddress}";
+        ServerFooterText.Text = viewModel.ServerFooterText;
     }
 
     private void OnShellChromeVisibilityChanged(bool hideChrome)
@@ -142,3 +134,4 @@ public sealed partial class ShellPage : Page
         ServerFooterText.Visibility = hideChrome ? Visibility.Collapsed : Visibility.Visible;
     }
 }
+

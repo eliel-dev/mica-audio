@@ -1,4 +1,4 @@
-using App.WinUI.Models.Apps;
+﻿using App.WinUI.Models.Apps;
 
 namespace App.WinUI.Services.Apps.UseCases;
 
@@ -31,4 +31,6 @@ internal sealed record SaveAppConfigResult(bool Success, string Message, IReadOn
 
     public static SaveAppConfigResult FromSuccess(IReadOnlyDictionary<string, string> rawValues) => new(true, string.Empty, rawValues);
 }
+
+
 

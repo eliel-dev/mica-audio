@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Net.Http;
 using Analyzer.Dsp.Analysis;
 using App.WinUI.Services;
@@ -7,7 +7,6 @@ using App.WinUI.ViewModels;
 using Audio.Loopback.Capture;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.UI.Xaml;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Input;
@@ -126,19 +125,6 @@ public partial class MainPage : Page
         250f, 315f, 400f, 500f, 630f, 800f, 1000f, 1250f, 1600f, 2000f, 2500f, 3150f, 4000f, 5000f,
         6300f, 8000f, 10_000f, 12_000f, 16_000f, 20_000f,
     ];
-
-    public MainPage(IServiceProvider services)
-        : this(
-            services.GetRequiredService<MainPageViewModel>(),
-            services.GetRequiredService<PresetRepository>(),
-            services.GetRequiredService<SettingsRepository>(),
-            services.GetRequiredService<AppSettingsDomainService>(),
-            services.GetRequiredService<ILoopbackCapture>(),
-            services.GetRequiredService<SimulatorLedOutput>(),
-            services.GetRequiredService<NullLedOutput>(),
-            services.GetRequiredService<MatrixPortalLedOutput>())
-    {
-    }
 
     internal MainPage(
         MainPageViewModel viewModel,
@@ -2070,6 +2056,8 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
+
+
 
 
 

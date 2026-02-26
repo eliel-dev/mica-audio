@@ -1,6 +1,5 @@
 ﻿using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
@@ -19,13 +18,6 @@ public sealed partial class ServerPage : Page
     private DeviceOperationsState currentState = new();
     private int lastRenderedLogCount;
     private string lastRenderedLogTail = string.Empty;
-
-    public ServerPage(IServiceProvider services)
-        : this(
-            services.GetRequiredService<DeviceOperationsCoordinator>(),
-            services.GetRequiredService<PrecompiledFirmwareService>())
-    {
-    }
 
     internal ServerPage(DeviceOperationsCoordinator deviceOps, PrecompiledFirmwareService firmwareService)
     {
@@ -265,3 +257,5 @@ public sealed partial class ServerPage : Page
         DeviceOps?.RequestRefresh();
     }
 }
+
+

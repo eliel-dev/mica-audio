@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Net;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
@@ -405,11 +405,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             {
                 DeviceId = id,
                 Token = token,
-                Name = string.IsNullOrWhiteSpace(req.DeviceName) ? "Matrix Portal S3" : req.DeviceName.Trim(),
+                Name = string.IsNullOrWhiteSpace(req.DeviceName) ? ResolveDefaultDeviceName(req.BoardModel) : req.DeviceName.Trim(),
                 Profile = string.IsNullOrWhiteSpace(req.Profile) ? "stable" : req.Profile.Trim(),
                 FirmwareVersion = req.FirmwareVersion,
                 LastKnownIp = ctx.Connection.RemoteIpAddress?.ToString(),
                 LastSeenUtc = DateTimeOffset.UtcNow,
+                BoardModel = NormalizeOptional(req.BoardModel),
+                PanelType = NormalizeOptional(req.PanelType),
             };
 
             state = new DeviceState(record);
@@ -659,6 +661,22 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private static int NormalizeMaxWebSocketMessageBytes(int configuredMaxMessageBytes)
     {
         return Math.Clamp(configuredMaxMessageBytes, 1024, 1024 * 1024);
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string ResolveDefaultDeviceName(string? boardModel)
+    {
+        var normalized = NormalizeOptional(boardModel);
+        if (string.Equals(normalized, "esp32s3_devkitc1", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ESP32-S3 DevKitC-1";
+        }
+
+        return "Matrix Portal S3";
     }
 
     private bool TryConsumePairingCode(string code)
@@ -941,7 +959,14 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         public DateTimeOffset LastActivityUtc { get; private set; }
 
         public CancellationToken SendToken => senderCts.Token;
-        public void MarkSeen(string? ip, int? rssi, string? firmwareVersion, string? activeAppId = null, string? activeAppName = null)
+        public void MarkSeen(
+            string? ip,
+            int? rssi,
+            string? firmwareVersion,
+            string? activeAppId = null,
+            string? activeAppName = null,
+            string? boardModel = null,
+            string? panelType = null)
         {
             LastActivityUtc = DateTimeOffset.UtcNow;
             Record = new DeviceRecord
@@ -957,6 +982,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 FirmwareVersion = string.IsNullOrWhiteSpace(firmwareVersion) ? Record.FirmwareVersion : firmwareVersion,
                 ActiveAppId = string.IsNullOrWhiteSpace(activeAppId) ? Record.ActiveAppId : activeAppId,
                 ActiveAppName = string.IsNullOrWhiteSpace(activeAppName) ? Record.ActiveAppName : activeAppName,
+                BoardModel = string.IsNullOrWhiteSpace(boardModel) ? Record.BoardModel : boardModel,
+                PanelType = string.IsNullOrWhiteSpace(panelType) ? Record.PanelType : panelType,
             };
         }
 
@@ -1002,6 +1029,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 FirmwareVersion = Record.FirmwareVersion,
                 ActiveAppId = Record.ActiveAppId,
                 ActiveAppName = Record.ActiveAppName,
+                BoardModel = Record.BoardModel,
+                PanelType = Record.PanelType,
             };
         }
 
@@ -1029,6 +1058,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 }
+
 
 
 

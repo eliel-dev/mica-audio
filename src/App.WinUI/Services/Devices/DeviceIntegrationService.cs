@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using Device.Protocol.Contracts;
@@ -237,3 +237,5 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
             || (bytes[0] == 192 && bytes[1] == 168);
     }
 }
+
+

@@ -24,12 +24,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
@@ -57,10 +57,10 @@ jobs:
       tag_name: ${{ steps.version.outputs.tag_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
@@ -105,10 +105,10 @@ jobs:
     needs: publish-app
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
@@ -190,7 +190,7 @@ jobs:
       - package-installer
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Download installer artifact
         uses: actions/download-artifact@v7
@@ -262,6 +262,3 @@ jobs:
           files: |
             artifacts/release/MicaAudio-Setup-x64-v${{ needs.publish-app.outputs.release_version }}.exe
             artifacts/release/MicaAudio-Setup-x64-v${{ needs.publish-app.outputs.release_version }}.sha256
-
-
-

@@ -1,4 +1,4 @@
-using App.WinUI.Models.Apps;
+﻿using App.WinUI.Models.Apps;
 using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Apps.UseCases;
@@ -46,4 +46,6 @@ internal sealed record DeployAppResult(bool Success, string Message, CommandDisp
 
     public static DeployAppResult FromSuccess(CommandDispatchResult commandResult, IReadOnlyDictionary<string, string> rawValues) => new(true, string.Empty, commandResult, rawValues);
 }
+
+
 

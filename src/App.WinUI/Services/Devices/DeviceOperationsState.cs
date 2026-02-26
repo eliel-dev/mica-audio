@@ -12,6 +12,9 @@ internal sealed class DeviceOperationsState
 
     public string? LastCommandDeviceId { get; init; }
 
+    public IReadOnlyDictionary<string, DeviceCommandExecutionState> CommandByDevice { get; init; }
+        = new Dictionary<string, DeviceCommandExecutionState>(StringComparer.OrdinalIgnoreCase);
+
     public IReadOnlyList<DeviceSnapshot> DeviceListSnapshot { get; init; } = Array.Empty<DeviceSnapshot>();
 
     public DateTimeOffset LastRefreshUtc { get; init; }

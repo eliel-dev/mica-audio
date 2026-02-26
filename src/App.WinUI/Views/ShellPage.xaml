@@ -32,11 +32,7 @@
                     <SymbolIcon Symbol="Shop" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Tag="server" Content="Servidor">
-                <NavigationViewItem.Icon>
-                    <SymbolIcon Symbol="Globe" />
-                </NavigationViewItem.Icon>
-            </NavigationViewItem>
+
         </NavigationView.MenuItems>
 
         <NavigationView.PaneFooter>
@@ -50,3 +46,4 @@
         <Frame x:Name="ContentFrame" />
     </NavigationView>
 </Page>
+

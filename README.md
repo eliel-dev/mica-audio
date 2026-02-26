@@ -1,4 +1,4 @@
-﻿# Mica Audio
+# Mica Audio
 
 Visualizador de audio para Windows (WinUI 3 + Win2D) com captura WASAPI loopback em tempo real, foco em visual "bonito na tela" e caminho pronto para output LED futuro sem refatoracao grande.
 
@@ -35,7 +35,8 @@ Fluxo recomendado antes de commit relevante:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
-dotnet build MicaAudio.sln -c Debug
+powershell -ExecutionPolicy Bypass -File .\scripts\mvvm-validate.ps1
+dotnet build src/App.WinUI/App.WinUI.csproj -c Debug
 ```
 ### Governanca de documentacao (Fase 3)
 
@@ -78,7 +79,8 @@ Validacao completa recomendada antes de push:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
-dotnet build MicaAudio.sln -c Debug
+powershell -ExecutionPolicy Bypass -File .\scripts\mvvm-validate.ps1
+dotnet build src/App.WinUI/App.WinUI.csproj -c Debug
 ```
 ### Seguranca e qualidade (security-first)
 
@@ -210,7 +212,12 @@ Para usuarios finais (sem scripts PowerShell), a distribuicao oficial do 1.0 e f
 4. Abra pelo Menu Iniciar (`Mica Audio`).
 
 Atualizacao no 1.0: manual (baixar e executar a versao mais recente do setup).
-## Como executar (quick start)
+### Visual Studio Community (fluxo local leve)
+
+- Abra `MicaAudio.Dev.slnf` para desenvolvimento diario.
+- O filtro remove `tests/Integration.Smoke` do build local para evitar APPX3217 em maquinas sem SDK UAP.
+- O CI continua validando `MicaAudio.sln` completo, sem relaxamento de gate.
+
 
 ### 1) Restore e build
 
@@ -400,10 +407,3 @@ Implementacao deste projeto segue arquitetura propria (sem port direto de codigo
 ## Licenca
 
 Ainda nao definida neste repositorio. Recomendado adicionar `LICENSE` antes da publicacao oficial no GitHub.
-
-
-
-
-
-
-

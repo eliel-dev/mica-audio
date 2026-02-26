@@ -1,4 +1,4 @@
-#include <Arduino.h>
+﻿#include <Arduino.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
@@ -30,12 +30,25 @@ constexpr uint8_t kMatrixHalfHeight = kMatrixHeight / 2;
 constexpr size_t kMatrixPixelCount = static_cast<size_t>(kMatrixWidth) * static_cast<size_t>(kMatrixHeight);
 static_assert((kMatrixHeight % 2) == 0, "MICA_MATRIX_HEIGHT must be even.");
 
+#if defined(MICA_BOARD_VARIANT_ESP32S3_DEVKITC1)
+constexpr const char* kBoardModel = "esp32s3_devkitc1";
+constexpr const char* kBoardDisplayName = "ESP32-S3 DevKitC-1";
+constexpr uint8_t kMatrixRgbPins[6] = {4, 5, 6, 7, 15, 16};
+constexpr uint8_t kMatrixAddrPins[5] = {18, 8, 3, 42, 41};
+constexpr uint8_t kMatrixClockPin = 41;
+constexpr uint8_t kMatrixLatchPin = 40;
+constexpr uint8_t kMatrixOePin = 2;
+#else
+constexpr const char* kBoardModel = "matrixportal_s3";
+constexpr const char* kBoardDisplayName = "Matrix Portal S3";
 constexpr uint8_t kMatrixRgbPins[6] = {42, 41, 40, 38, 39, 37};
 constexpr uint8_t kMatrixAddrPins[5] = {45, 36, 48, 35, 21};
 constexpr uint8_t kMatrixClockPin = 2;
 constexpr uint8_t kMatrixLatchPin = 47;
 constexpr uint8_t kMatrixOePin = 14;
+#endif
 
+constexpr const char* kPanelType = "hub75_64x32";
 #if defined(LED_BUILTIN)
 constexpr int kTestLedPin = LED_BUILTIN;
 #elif defined(PIN_LED)
@@ -348,6 +361,8 @@ void sendTelemetry(bool force) {
   telemetry["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -100;
   telemetry["firmwareVersion"] = kFirmwareVersion;
   telemetry["ipAddress"] = WiFi.localIP().toString();
+  telemetry["boardModel"] = kBoardModel;
+  telemetry["panelType"] = kPanelType;
   if (gActiveAppId.length() > 0) {
     telemetry["activeAppId"] = gActiveAppId;
   }
@@ -408,7 +423,7 @@ void startProvisioningPortal() {
   WiFiManagerParameter pHost("host", "Servidor host", gPrefs.getString("host", "micaaudio.local").c_str(), 63);
   WiFiManagerParameter pPort("port", "Servidor porta", gPrefs.getString("port", "5272").c_str(), 8);
   WiFiManagerParameter pPair("pair", "Codigo pareamento", "", 12);
-  WiFiManagerParameter pName("name", "Nome dispositivo", gPrefs.getString("name", "Matrix Portal S3").c_str(), 32);
+  WiFiManagerParameter pName("name", "Nome dispositivo", gPrefs.getString("name", kBoardDisplayName).c_str(), 32);
 
   wm.addParameter(&pHost);
   wm.addParameter(&pPort);
@@ -444,6 +459,8 @@ void startProvisioningPortal() {
   req["deviceName"] = pName.getValue();
   req["profile"] = kFirmwareProfile;
   req["firmwareVersion"] = kFirmwareVersion;
+  req["boardModel"] = kBoardModel;
+  req["panelType"] = kPanelType;
 
   String body;
   serializeJson(req, body);
@@ -707,7 +724,7 @@ void drawFrame64x32() {
 void setup() {
   Serial.begin(115200);
   if (strcmp(kSecurityProfile, "dev") == 0) {
-    Serial.printf("MicaAudio firmware profile=%s security=%s\\n", kFirmwareProfile, kSecurityProfile);
+    Serial.printf("MicaAudio firmware board=%s profile=%s security=%s\\n", kBoardModel, kFirmwareProfile, kSecurityProfile);
   }
   gPrefs.begin("micaaudio", false);
 
@@ -771,3 +788,4 @@ void loop() {
     drawBars();
   }
 }
+

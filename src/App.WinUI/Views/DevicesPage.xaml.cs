@@ -1,8 +1,8 @@
 ﻿using App.WinUI.Models.Apps;
 using App.WinUI.Services.Devices;
+using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
@@ -15,21 +15,23 @@ public sealed partial class DevicesPage : Page
     private readonly List<DeviceListItem> allItems = new();
     private readonly List<DeviceListItem> visibleItems = new();
     private readonly List<DeviceListVisualItem> renderedItems = new();
+    private readonly DevicesPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;
 
     private int lastRenderedLogCount;
     private string lastRenderedLogTail = string.Empty;
     private DeviceOperationsState currentState = new();
 
-    public DevicesPage(IServiceProvider services)
-        : this(services.GetRequiredService<DeviceOperationsCoordinator>())
+    internal DevicesPage(DevicesPageViewModel viewModel, DeviceOperationsCoordinator deviceOps)
     {
-    }
-
-    internal DevicesPage(DeviceOperationsCoordinator deviceOps)
-    {
+        this.viewModel = viewModel;
         this.deviceOps = deviceOps;
+        this.viewModel.ConfigureCommands(
+            refresh: () => DeviceOps?.RequestRefresh(),
+            generatePairing: GeneratePairingCodeCore);
+
         InitializeComponent();
+        DataContext = viewModel;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -90,10 +92,15 @@ public sealed partial class DevicesPage : Page
 
     private void OnRefreshClicked(object sender, RoutedEventArgs e)
     {
-        DeviceOps?.RequestRefresh();
+        viewModel.RefreshCommand.Execute(null);
     }
 
     private void OnGeneratePairingCodeClicked(object sender, RoutedEventArgs e)
+    {
+        viewModel.GeneratePairingCommand.Execute(null);
+    }
+
+    private void GeneratePairingCodeCore()
     {
         if (DeviceOps is null)
         {
@@ -102,8 +109,9 @@ public sealed partial class DevicesPage : Page
 
         var code = DeviceOps.CreatePairingCode(TimeSpan.FromMinutes(10));
         PairingCodeText.Message = $"Pareamento: {code.Code} (expira {code.ExpiresAtUtc:HH:mm:ss} UTC)";
+        AddLocalLog($"Código de pareamento gerado: {code.Code}.");
+        UpdateLogs(currentState.Logs);
     }
-
     private async void OnEnterProvisioningClicked(object sender, RoutedEventArgs e)
     {
         await RunSelectedCommandAsync(DeviceCommandType.EnterProvisioning).ConfigureAwait(false);
@@ -126,6 +134,11 @@ public sealed partial class DevicesPage : Page
         Clipboard.SetContent(data);
     }
 
+
+    private void OnNewDeviceSetupClicked(object sender, RoutedEventArgs e)
+    {
+        OnGeneratePairingCodeClicked(sender, e);
+    }
     private async Task RunSelectedCommandAsync(DeviceCommandType commandType)
     {
         var selected = GetSelectedDeviceItem();
@@ -282,6 +295,18 @@ public sealed partial class DevicesPage : Page
         return "decorative";
     }
 
+
+    private void AddLocalLog(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var entries = currentState.Logs.ToList();
+        entries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+        UpdateLogs(entries);
+    }
     private void UpdateLogs(IReadOnlyList<string> entries)
     {
         var count = entries.Count;
@@ -417,5 +442,14 @@ public sealed partial class DevicesPage : Page
         }
     }
 }
+
+
+
+
+
+
+
+
+
 
 

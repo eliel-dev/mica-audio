@@ -1,4 +1,4 @@
-﻿# Wiki Tecnica do Mica Audio
+# Wiki Tecnica do Mica Audio
 
 Documentacao tecnica versionada junto com o codigo para acelerar manutencao, onboarding e continuidade por humanos e IA.
 
@@ -19,7 +19,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 ## Navegacao rapida por tarefa
 
 - Quero mexer em captura/analise/render: [architecture/01-system-overview.md](architecture/01-system-overview.md)
-- Quero operar dispositivos e servidor: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
+- Quero operar dispositivos e setup de firmware: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
+- Quero configurar novo dispositivo: [guides/setup-new-device.md](guides/setup-new-device.md)
 - Quero baixar firmware pre-compilado: [guides/build-export-firmware.md](guides/build-export-firmware.md)
 - Quero debugar falha de download/salvamento de firmware: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
 - Quero adicionar app no catalogo: [guides/add-app-catalog-item.md](guides/add-app-catalog-item.md)
@@ -52,12 +53,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Settings + Presets + Persistencia](modules/settings-presets-persistence.md)
 - [DeviceOperationsCoordinator](modules/device-operations-coordinator.md)
 - [Apps catalog + deployment](modules/apps-catalog-deployment.md)
-- [Server build + artifacts](modules/server-build-and-artifacts.md)
+- [Server setup + firmware artifacts](modules/server-build-and-artifacts.md)
 
 ### Guias
 - [Mudar configuracao do visualizador](guides/change-visualizer-settings.md)
 - [Adicionar novo renderer](guides/add-new-renderer.md)
 - [Adicionar novo comando de dispositivo](guides/add-device-command.md)
+- [Setup de novo dispositivo](guides/setup-new-device.md)
 - [Download de firmware pre-compilado](guides/build-export-firmware.md)
 - [Debug: visualizacao nao aparece](guides/debug-no-visualization.md)
 - [Adicionar item no catalogo de apps](guides/add-app-catalog-item.md)
@@ -78,7 +80,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Matriz de validacao](ai/validation-matrix.md)
 - [Playbooks de incidente](ai/incident-playbooks.md)
 - [Viabilidade MCP](ai/mcp-viability.md)
-- [Consistência com Codex](ai/consistencia-codex.md)
+- [Consistencia com Codex](ai/consistencia-codex.md)
 
 ### Referencia
 - [Code index](reference/code-index.md)
@@ -119,5 +121,3 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Codigo -> wiki: sempre marcador `DOCS:` em comentario.
 - Cada mudanca tecnica relevante deve atualizar wiki e backlinks.
 - Politica canonica: `docs/wiki/reference/ai-contract.v1.yaml`.
-
-

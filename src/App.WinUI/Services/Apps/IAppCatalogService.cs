@@ -1,4 +1,4 @@
-using App.WinUI.Models.Apps;
+﻿using App.WinUI.Models.Apps;
 
 namespace App.WinUI.Services.Apps;
 
@@ -7,3 +7,5 @@ internal interface IAppCatalogService
 {
     Task<IReadOnlyList<AppCatalogItem>> LoadCatalogAsync(CancellationToken cancellationToken = default);
 }
+
+

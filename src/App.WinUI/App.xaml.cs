@@ -4,6 +4,7 @@ using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
+using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Audio.Loopback.Capture;
 using Device.Server.Hosting;
@@ -146,12 +147,41 @@ public partial class App : Application
         services.AddSingleton<NullLedOutput>();
         services.AddSingleton(sp => new MatrixPortalLedOutput(sp.GetRequiredService<DeviceServerHost>()));
 
-        services.AddTransient<ViewModels.MainPageViewModel>();
-        services.AddTransient<MainPage>();
-        services.AddTransient<DevicesPage>();
-        services.AddTransient<AppsPage>();
-        services.AddTransient<ServerPage>();
-        services.AddTransient<ShellPage>();
+        services.AddTransient<MainPageViewModel>();
+        services.AddTransient<DevicesPageViewModel>();
+        services.AddTransient<AppsPageViewModel>();
+        services.AddTransient<ShellPageViewModel>();
+        services.AddTransient<MainPage>(sp => new MainPage(
+            sp.GetRequiredService<MainPageViewModel>(),
+            sp.GetRequiredService<PresetRepository>(),
+            sp.GetRequiredService<SettingsRepository>(),
+            sp.GetRequiredService<AppSettingsDomainService>(),
+            sp.GetRequiredService<ILoopbackCapture>(),
+            sp.GetRequiredService<SimulatorLedOutput>(),
+            sp.GetRequiredService<NullLedOutput>(),
+            sp.GetRequiredService<MatrixPortalLedOutput>()));
+
+        services.AddTransient<DevicesPage>(sp => new DevicesPage(
+            sp.GetRequiredService<DevicesPageViewModel>(),
+            sp.GetRequiredService<DeviceOperationsCoordinator>()));
+
+        services.AddTransient<AppsPage>(sp => new AppsPage(
+            sp.GetRequiredService<AppsPageViewModel>(),
+            sp.GetRequiredService<DeviceOperationsCoordinator>(),
+            sp.GetRequiredService<IAppCatalogService>(),
+            sp.GetRequiredService<IAppModifierStateStore>(),
+            sp.GetRequiredService<CityAutocompleteService>(),
+            sp.GetRequiredService<SaveAppConfigUseCase>(),
+            sp.GetRequiredService<DeployAppUseCase>(),
+            sp.GetRequiredService<AppConfigValidationUseCase>(),
+            sp.GetRequiredService<DeviceIntegrationService>()));
+
+        services.AddTransient<ShellPage>(sp => new ShellPage(
+            sp.GetRequiredService<ShellPageViewModel>(),
+            sp.GetRequiredService<DeviceOperationsCoordinator>(),
+            sp.GetRequiredService<MainPage>(),
+            sp.GetRequiredService<DevicesPage>(),
+            sp.GetRequiredService<AppsPage>()));
 
         return services.BuildServiceProvider();
     }
@@ -363,3 +393,8 @@ public partial class App : Application
         };
     }
 }
+
+
+
+
+

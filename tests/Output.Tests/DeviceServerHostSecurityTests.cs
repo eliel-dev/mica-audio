@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -81,6 +81,110 @@ public sealed class DeviceServerHostSecurityTests
 
         var viaHeader = await client.SendAsync(viaHeaderRequest);
         Assert.Equal(HttpStatusCode.OK, viaHeader.StatusCode);
+    }
+
+    [Fact]
+    public async Task Pairing_WithBoardAndPanel_ShouldPersistMetadataInSnapshot()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(
+            host,
+            client,
+            "meta-pair",
+            boardModel: "esp32s3_devkitc1",
+            panelType: "hub75_64x32");
+
+        var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+            string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+        Assert.NotNull(snapshot);
+        Assert.Equal("esp32s3_devkitc1", snapshot!.BoardModel);
+        Assert.Equal("hub75_64x32", snapshot.PanelType);
+    }
+
+    [Fact]
+    public async Task Pairing_WithoutBoardAndPanel_ShouldRemainBackwardCompatible()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "legacy-pair");
+
+        var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+            string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+        Assert.NotNull(snapshot);
+        Assert.True(string.IsNullOrWhiteSpace(snapshot!.BoardModel));
+        Assert.True(string.IsNullOrWhiteSpace(snapshot.PanelType));
+    }
+
+    [Fact]
+    public async Task Telemetry_WithBoardAndPanel_ShouldUpdateSnapshotMetadata()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "telemetry-meta");
+
+        using var ws = new ClientWebSocket();
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var telemetryJson = JsonSerializer.Serialize(new
+        {
+            deviceId = paired.DeviceId,
+            rssi = -38,
+            firmwareVersion = "1.2.3",
+            ipAddress = "192.168.1.55",
+            boardModel = "esp32s3_devkitc1",
+            panelType = "hub75_64x32",
+        });
+
+        var payload = Encoding.UTF8.GetBytes(telemetryJson);
+        await ws.SendAsync(payload, WebSocketMessageType.Text, true, CancellationToken.None);
+
+        var updated = await WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            return snapshot is not null
+                && string.Equals(snapshot.BoardModel, "esp32s3_devkitc1", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(snapshot.PanelType, "hub75_64x32", StringComparison.OrdinalIgnoreCase);
+        }, timeout: TimeSpan.FromSeconds(5));
+
+        Assert.True(updated, "Snapshot nao refletiu board/panel enviados por telemetria.");
+        await CloseWebSocketQuietlyAsync(ws);
     }
 
     [Fact]
@@ -401,13 +505,20 @@ public sealed class DeviceServerHostSecurityTests
         }
     }
 
-    private static async Task<PairDeviceResponse> PairDeviceAsync(DeviceServerHost host, HttpClient client, string deviceName)
+    private static async Task<PairDeviceResponse> PairDeviceAsync(
+        DeviceServerHost host,
+        HttpClient client,
+        string deviceName,
+        string? boardModel = null,
+        string? panelType = null)
     {
         var pairing = host.CreatePairingCode(TimeSpan.FromMinutes(5));
         var pairedResponse = await client.PostAsJsonAsync("/api/v1/pair", new PairDeviceRequest
         {
             PairingCode = pairing.Code,
             DeviceName = deviceName,
+            BoardModel = boardModel,
+            PanelType = panelType,
         });
 
         pairedResponse.EnsureSuccessStatusCode();

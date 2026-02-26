@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -41,16 +41,16 @@ public sealed partial class DevicesPage
             DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
         };
 
+        var setupButton = new AppBarButton { Label = "Novo dispositivo", Icon = new SymbolIcon(Symbol.AddFriend) };
+        setupButton.Click += OnNewDeviceSetupClicked;
         var pairButton = new AppBarButton { Label = "Parear", Icon = new SymbolIcon(Symbol.Add) };
         pairButton.Click += OnGeneratePairingCodeClicked;
         var refreshButton = new AppBarButton { Label = "Atualizar", Icon = new SymbolIcon(Symbol.Refresh) };
         refreshButton.Click += OnRefreshClicked;
-        var copyHostButton = new AppBarButton { Label = "Copiar host", Icon = new SymbolIcon(Symbol.Copy) };
-        copyHostButton.Click += OnCopyHostClicked;
-
+        topCommandBar.PrimaryCommands.Add(setupButton);
         topCommandBar.PrimaryCommands.Add(pairButton);
         topCommandBar.PrimaryCommands.Add(refreshButton);
-        topCommandBar.PrimaryCommands.Add(copyHostButton);
+
 
         root.Children.Add(CreateCard(topCommandBar, elevated: true, padding: 4));
 
@@ -211,3 +211,6 @@ public sealed partial class DevicesPage
         return UiResourceResolver.ResolveBrush(key, fallback);
     }
 }
+
+
+

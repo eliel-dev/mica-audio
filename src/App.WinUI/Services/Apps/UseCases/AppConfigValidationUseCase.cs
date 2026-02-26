@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using App.WinUI.Models.Apps;
 
@@ -43,7 +43,7 @@ internal sealed class AppConfigValidationUseCase
                 if (!bool.TryParse(value, out var boolValue))
                 {
                     typedValue = null;
-                    error = $"Valor inválido para '{modifier.Label}'.";
+                    error = $"Valor invÃ¡lido para '{modifier.Label}'.";
                     return false;
                 }
 
@@ -54,7 +54,7 @@ internal sealed class AppConfigValidationUseCase
                 if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var numberValue))
                 {
                     typedValue = null;
-                    error = $"Valor numérico inválido para '{modifier.Label}'.";
+                    error = $"Valor numÃ©rico invÃ¡lido para '{modifier.Label}'.";
                     return false;
                 }
 
@@ -68,3 +68,5 @@ internal sealed class AppConfigValidationUseCase
         }
     }
 }
+
+

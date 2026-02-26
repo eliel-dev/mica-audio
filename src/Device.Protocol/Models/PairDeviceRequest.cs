@@ -1,4 +1,4 @@
-namespace Device.Protocol.Models;
+﻿namespace Device.Protocol.Models;
 
 public sealed class PairDeviceRequest
 {
@@ -11,4 +11,8 @@ public sealed class PairDeviceRequest
     public string? FirmwareVersion { get; init; }
 
     public string? DeviceMac { get; init; }
+
+    public string? BoardModel { get; init; }
+
+    public string? PanelType { get; init; }
 }

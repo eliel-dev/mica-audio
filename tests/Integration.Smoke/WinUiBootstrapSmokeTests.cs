@@ -1,8 +1,9 @@
-using System.Reflection;
+﻿using System.Reflection;
 using App.WinUI;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
+using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -25,6 +26,10 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<AppConfigValidationUseCase>());
         Assert.NotNull(provider.GetService<SaveAppConfigUseCase>());
         Assert.NotNull(provider.GetService<DeployAppUseCase>());
+        Assert.NotNull(provider.GetService<MainPageViewModel>());
+        Assert.NotNull(provider.GetService<DevicesPageViewModel>());
+        Assert.NotNull(provider.GetService<AppsPageViewModel>());
+        Assert.NotNull(provider.GetService<ShellPageViewModel>());
     }
 
     [Fact]
@@ -36,18 +41,27 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.True(isService.IsService(typeof(MainPage)));
         Assert.True(isService.IsService(typeof(DevicesPage)));
         Assert.True(isService.IsService(typeof(AppsPage)));
-        Assert.True(isService.IsService(typeof(ServerPage)));
         Assert.True(isService.IsService(typeof(ShellPage)));
     }
 
     [Fact]
-    public void StartupPages_ShouldExposePublicConstructorsForDi()
+    public void BuildServiceProvider_ShouldResolveStartupPages()
     {
-        AssertHasPublicConstructor(typeof(ShellPage));
-        AssertHasPublicConstructor(typeof(MainPage));
-        AssertHasPublicConstructor(typeof(DevicesPage));
-        AssertHasPublicConstructor(typeof(AppsPage));
-        AssertHasPublicConstructor(typeof(ServerPage));
+        var provider = App.WinUI.App.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService<MainPage>());
+        Assert.NotNull(provider.GetRequiredService<DevicesPage>());
+        Assert.NotNull(provider.GetRequiredService<AppsPage>());
+        Assert.NotNull(provider.GetRequiredService<ShellPage>());
+    }
+
+    [Fact]
+    public void StartupPages_ShouldNotExposeServiceLocatorConstructors()
+    {
+        AssertNoServiceProviderConstructor(typeof(ShellPage));
+        AssertNoServiceProviderConstructor(typeof(MainPage));
+        AssertNoServiceProviderConstructor(typeof(DevicesPage));
+        AssertNoServiceProviderConstructor(typeof(AppsPage));
     }
 
     [Fact]
@@ -65,12 +79,15 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.False(string.IsNullOrWhiteSpace(options.CrashLogPath));
     }
 
-    private static void AssertHasPublicConstructor(Type pageType)
+    private static void AssertNoServiceProviderConstructor(Type pageType)
     {
-        var constructors = pageType.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
-        Assert.True(
-            constructors.Length > 0,
-            $"Expected at least one public constructor for DI activation: {pageType.FullName}");
+        var constructors = pageType.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var hasServiceProviderCtor = constructors.Any(ctor =>
+        {
+            var parameters = ctor.GetParameters();
+            return parameters.Length == 1 && parameters[0].ParameterType == typeof(IServiceProvider);
+        });
+
+        Assert.False(hasServiceProviderCtor, $"Service locator constructor not allowed: {pageType.FullName}");
     }
 }
-

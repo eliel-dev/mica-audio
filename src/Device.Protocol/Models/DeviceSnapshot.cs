@@ -22,5 +22,9 @@ public sealed class DeviceSnapshot
 
     public string? ActiveAppName { get; init; }
 
+    public string? BoardModel { get; init; }
+
+    public string? PanelType { get; init; }
+
     public bool IsConnected => Status == DeviceStatus.Online;
 }

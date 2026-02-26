@@ -1,4 +1,4 @@
-using App.WinUI.Models.Apps;
+﻿using App.WinUI.Models.Apps;
 
 namespace App.WinUI.Services.Apps;
 
@@ -13,3 +13,5 @@ internal interface IAppModifierStateStore
 
     Task ClearDraftAsync(string deviceId, string appId, CancellationToken cancellationToken = default);
 }
+
+

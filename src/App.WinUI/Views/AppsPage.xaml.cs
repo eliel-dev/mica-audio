@@ -1,13 +1,13 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using App.WinUI.Models.Apps;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Gif;
+using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -33,6 +33,7 @@ public sealed partial class AppsPage : Page
     private readonly Dictionary<string, ModifierControlBinding> modifierBindings = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<AutoSuggestBox, CancellationTokenSource> citySuggestCts = new();
     private readonly Dictionary<AutoSuggestBox, Dictionary<string, CitySuggestion>> citySuggestionLookup = new();
+    private readonly AppsPageViewModel viewModel;
     private readonly GifCatalogAppRuntimeService gifRuntimeService;
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly IAppCatalogService catalogService;
@@ -51,20 +52,9 @@ public sealed partial class AppsPage : Page
     private RgbaColor[]? latestGifRuntimeFrame;
     private readonly AppRuntimeProviderRegistry runtimeProviderRegistry;
     private IAppRuntimeProvider? activeRuntimeProvider;
-    public AppsPage(IServiceProvider services)
-        : this(
-            services.GetRequiredService<DeviceOperationsCoordinator>(),
-            services.GetRequiredService<IAppCatalogService>(),
-            services.GetRequiredService<IAppModifierStateStore>(),
-            services.GetRequiredService<CityAutocompleteService>(),
-            services.GetRequiredService<SaveAppConfigUseCase>(),
-            services.GetRequiredService<DeployAppUseCase>(),
-            services.GetRequiredService<AppConfigValidationUseCase>(),
-            services.GetRequiredService<DeviceIntegrationService>())
-    {
-    }
 
     internal AppsPage(
+        AppsPageViewModel viewModel,
         DeviceOperationsCoordinator deviceOps,
         IAppCatalogService catalogService,
         IAppModifierStateStore modifierStore,
@@ -74,6 +64,7 @@ public sealed partial class AppsPage : Page
         AppConfigValidationUseCase appConfigValidationUseCase,
         DeviceIntegrationService deviceIntegration)
     {
+        this.viewModel = viewModel;
         this.deviceOps = deviceOps;
         this.catalogService = catalogService;
         this.modifierStore = modifierStore;
@@ -91,7 +82,10 @@ public sealed partial class AppsPage : Page
             player: new Hub75GifPlayer(TimeSpan.FromMilliseconds(1000d / GifCatalogAppRuntimeService.TargetFps)));
         runtimeProviderRegistry = new AppRuntimeProviderRegistry([new GifHub75RuntimeProvider()]);
 
+        this.viewModel.ConfigureCommands(ReloadCatalogFromDiskAsyncCommandAsync, SaveSelectedModifierDraftAsync, InstallSelectedAppAsync);
+
         InitializeComponent();
+        DataContext = viewModel;
         AttachRuntimeProviders();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -170,12 +164,16 @@ public sealed partial class AppsPage : Page
         });
     }
 
-    private void ApplyState(DeviceOperationsState state)
+        private void ApplyState(DeviceOperationsState state)
     {
-        OperationProgressRing.IsActive = state.CommandInProgress;
-        OperationProgressRing.Visibility = state.CommandInProgress ? Visibility.Visible : Visibility.Collapsed;
-        OperationStatusText.Text = state.CommandStatus;
-        OperationPercentText.Text = $"{Math.Clamp(state.CommandPercent, 0, 100)}%";
+        viewModel.OperationInProgress = state.CommandInProgress;
+        viewModel.OperationStatus = state.CommandStatus;
+        viewModel.OperationPercent = Math.Clamp(state.CommandPercent, 0, 100);
+
+        OperationProgressRing.IsActive = viewModel.OperationInProgress;
+        OperationProgressRing.Visibility = viewModel.OperationInProgress ? Visibility.Visible : Visibility.Collapsed;
+        OperationStatusText.Text = viewModel.OperationStatus;
+        OperationPercentText.Text = $"{viewModel.OperationPercent}%";
         UpdateGifOpenFileButtonVisibility();
         UpdateActionButtonsEnabled();
     }
@@ -211,8 +209,9 @@ public sealed partial class AppsPage : Page
         _ = RefreshPreviewDraftsAsync();
     }
 
-    private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
+        private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
     {
+        viewModel.SearchText = SearchBox.Text?.Trim() ?? string.Empty;
         ApplyFilter();
     }
 
@@ -339,9 +338,13 @@ public sealed partial class AppsPage : Page
         selectedItem = item;
         activeRuntimeProvider = runtimeProviderRegistry.Resolve(item);
 
-        SelectedAppNameText.Text = item.Name;
-        SelectedAppMetaText.Text = $"{item.Category} | Intervalo recomendado: {item.RecommendedIntervalMinutes} min";
-        SelectedAppDescriptionText.Text = item.Description;
+                viewModel.SelectedAppName = item.Name;
+        viewModel.SelectedAppMeta = $"{item.Category} | Intervalo recomendado: {item.RecommendedIntervalMinutes} min";
+        viewModel.SelectedAppDescription = item.Description;
+
+        SelectedAppNameText.Text = viewModel.SelectedAppName;
+        SelectedAppMetaText.Text = viewModel.SelectedAppMeta;
+        SelectedAppDescriptionText.Text = viewModel.SelectedAppDescription;
 
         _ = LoadModifierEditorAsync();
 
@@ -365,9 +368,13 @@ public sealed partial class AppsPage : Page
         selectedItem = null;
         activeRuntimeProvider = null;
 
-        SelectedAppNameText.Text = "Selecione um app";
-        SelectedAppMetaText.Text = "-";
-        SelectedAppDescriptionText.Text = "Nenhum app selecionado.";
+                viewModel.SelectedAppName = "Selecione um app";
+        viewModel.SelectedAppMeta = "-";
+        viewModel.SelectedAppDescription = "Nenhum app selecionado.";
+
+        SelectedAppNameText.Text = viewModel.SelectedAppName;
+        SelectedAppMetaText.Text = viewModel.SelectedAppMeta;
+        SelectedAppDescriptionText.Text = viewModel.SelectedAppDescription;
         ModifiersHintText.Text = "Selecione um app e um dispositivo para editar modificadores.";
         ModifiersPanel.Children.Clear();
         modifierBindings.Clear();
@@ -1238,12 +1245,29 @@ public sealed partial class AppsPage : Page
             : $"Falha ao {verb} '{appName}' em {result.DeviceId}: {result.Message ?? result.ErrorCode ?? "erro"}.";
     }
 
+
+    private Task InstallSelectedAppAsync()
+    {
+        OnInstallClicked(this, new RoutedEventArgs());
+        return Task.CompletedTask;
+    }
+
+    private Task SaveSelectedModifierDraftAsync()
+    {
+        OnSaveModifiersClicked(this, new RoutedEventArgs());
+        return Task.CompletedTask;
+    }
     private async void OnReloadCatalogClicked(object sender, RoutedEventArgs e)
+    {
+        await viewModel.ReloadCatalogCommand.ExecuteAsync(null);
+    }
+
+
+    private async Task ReloadCatalogFromDiskAsyncCommandAsync()
     {
         await ReloadCatalogFromDiskAsync().ConfigureAwait(false);
         await EnsureGifRuntimeWhileAppsPageIsVisibleAsync().ConfigureAwait(false);
     }
-
     private void AppendLog(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -1251,9 +1275,11 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        OperationStatusText.Text = $"Operações: {message}";
+        viewModel.OperationStatus = $"Operações: {message}";
+        OperationStatusText.Text = viewModel.OperationStatus;
         if (!currentState.CommandInProgress)
         {
+            viewModel.OperationPercent = 0;
             OperationPercentText.Text = "0%";
         }
     }
@@ -1270,3 +1296,14 @@ public sealed partial class AppsPage : Page
         public FrameworkElement Control { get; }
     }
 }
+
+
+
+
+
+
+
+
+
+
+

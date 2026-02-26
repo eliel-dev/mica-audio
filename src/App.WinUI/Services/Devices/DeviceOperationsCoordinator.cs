@@ -13,6 +13,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     private readonly object gate = new();
     private readonly List<string> logs = new();
     private readonly List<DeviceSnapshot> devicesSnapshot = new();
+    private readonly Dictionary<string, CommandExecutionContext> commandByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Timer refreshTimer;
 
     private int refreshInFlight;
@@ -21,7 +22,6 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     private int commandPercent;
     private string commandStatus = "Comandos: pronto";
     private string? lastCommandDeviceId;
-    private string? activeCommandId;
     private DateTimeOffset lastRefreshUtc;
     private bool disposed;
 
@@ -43,12 +43,19 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     {
         lock (gate)
         {
+            var commandSnapshot = new Dictionary<string, DeviceCommandExecutionState>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (deviceId, context) in commandByDevice)
+            {
+                commandSnapshot[deviceId] = context.ToSnapshot();
+            }
+
             return new DeviceOperationsState
             {
                 CommandInProgress = commandInProgress,
                 CommandPercent = commandPercent,
                 CommandStatus = commandStatus,
                 LastCommandDeviceId = lastCommandDeviceId,
+                CommandByDevice = commandSnapshot,
                 DeviceListSnapshot = devicesSnapshot.ToArray(),
                 LastRefreshUtc = lastRefreshUtc,
                 ServerBaseAddress = integration.GetServerBaseAddress(),
@@ -174,49 +181,59 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
             };
         }
 
+        var normalizedDeviceId = deviceId.Trim();
+        var operationLabel = DescribeCommand(commandType);
+
         lock (gate)
         {
-            if (commandInProgress)
+            if (commandByDevice.TryGetValue(normalizedDeviceId, out var runningCommand))
             {
                 return new CommandDispatchResult
                 {
-                    DeviceId = deviceId,
+                    DeviceId = normalizedDeviceId,
                     Accepted = false,
                     Completed = true,
                     Success = false,
-                    ProgressPercent = commandPercent,
+                    ProgressPercent = Math.Clamp(runningCommand.Percent, 0, 100),
                     Stage = "busy",
-                    Message = "Ja existe uma operacao em andamento.",
+                    Message = "Ja existe uma operacao em andamento para este dispositivo.",
                     ErrorCode = "busy",
                 };
             }
 
-            commandInProgress = true;
+            commandByDevice[normalizedDeviceId] = new CommandExecutionContext
+            {
+                DeviceId = normalizedDeviceId,
+                Percent = 0,
+                Status = $"Comandos: 0% ({operationLabel})",
+                Stage = "queued",
+            };
+
+            commandInProgress = commandByDevice.Count > 0;
             commandPercent = 0;
-            commandStatus = $"Comandos: 0% ({DescribeCommand(commandType)})";
-            lastCommandDeviceId = deviceId;
-            activeCommandId = null;
+            commandStatus = $"Comandos: 0% ({operationLabel})";
+            lastCommandDeviceId = normalizedDeviceId;
         }
 
         RaiseStateChanged();
-        AppendLog($"Comando iniciado ({DescribeCommand(commandType)}) para {deviceId}.");
+        AppendLog($"Comando iniciado ({operationLabel}) para {normalizedDeviceId}.");
 
         CommandDispatchResult result;
         try
         {
             result = await integration.Host
-                .SendCommandTrackedAsync(deviceId, commandType, parameters, CommandTimeout, cancellationToken)
+                .SendCommandTrackedAsync(normalizedDeviceId, commandType, parameters, CommandTimeout, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             result = new CommandDispatchResult
             {
-                DeviceId = deviceId,
+                DeviceId = normalizedDeviceId,
                 Accepted = true,
                 Completed = true,
                 Success = false,
-                ProgressPercent = commandPercent,
+                ProgressPercent = 0,
                 Stage = "cancelled",
                 Message = "Operacao cancelada.",
                 ErrorCode = "cancelled",
@@ -226,11 +243,11 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         {
             result = new CommandDispatchResult
             {
-                DeviceId = deviceId,
+                DeviceId = normalizedDeviceId,
                 Accepted = true,
                 Completed = true,
                 Success = false,
-                ProgressPercent = commandPercent,
+                ProgressPercent = 0,
                 Stage = "error",
                 Message = ex.Message,
                 ErrorCode = "exception",
@@ -239,13 +256,27 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
         lock (gate)
         {
-            commandInProgress = false;
-            commandPercent = Math.Clamp(Math.Max(commandPercent, result.ProgressPercent), 0, 100);
-            commandStatus = BuildFinalCommandStatus(result);
-            if (!string.IsNullOrWhiteSpace(result.CommandId))
+            var finalPercent = Math.Clamp(result.ProgressPercent, 0, 100);
+            if (commandByDevice.TryGetValue(normalizedDeviceId, out var context))
             {
-                activeCommandId = result.CommandId;
+                finalPercent = Math.Clamp(Math.Max(context.Percent, finalPercent), 0, 100);
+                context.Percent = finalPercent;
+                context.Status = BuildFinalCommandStatus(result);
+                context.Stage = result.Stage;
+                context.ErrorCode = result.ErrorCode;
+
+                if (!string.IsNullOrWhiteSpace(result.CommandId))
+                {
+                    context.CommandId = result.CommandId;
+                }
+
+                commandByDevice.Remove(normalizedDeviceId);
             }
+
+            commandInProgress = commandByDevice.Count > 0;
+            commandPercent = finalPercent;
+            commandStatus = BuildFinalCommandStatus(result);
+            lastCommandDeviceId = normalizedDeviceId;
         }
 
         RaiseStateChanged();
@@ -287,24 +318,33 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
         lock (gate)
         {
-            if (!commandInProgress || !string.Equals(lastCommandDeviceId, progress.DeviceId, StringComparison.OrdinalIgnoreCase))
+            if (!commandByDevice.TryGetValue(progress.DeviceId, out var context))
             {
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(activeCommandId))
+            if (string.IsNullOrWhiteSpace(context.CommandId))
             {
-                activeCommandId = progress.CommandId;
+                context.CommandId = progress.CommandId;
             }
 
-            if (!string.Equals(activeCommandId, progress.CommandId, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(context.CommandId, progress.CommandId, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            commandPercent = Math.Clamp(Math.Max(commandPercent, progress.ProgressPercent), 0, 100);
-            commandStatus = BuildLiveCommandStatus(progress);
+            context.Percent = Math.Clamp(Math.Max(context.Percent, progress.ProgressPercent), 0, 100);
+            context.Status = BuildLiveCommandStatus(progress);
+            context.Stage = progress.Stage;
             shouldRaise = true;
+
+            if (string.Equals(lastCommandDeviceId, progress.DeviceId, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(lastCommandDeviceId))
+            {
+                commandPercent = context.Percent;
+                commandStatus = context.Status;
+                lastCommandDeviceId = progress.DeviceId;
+            }
         }
 
         if (shouldRaise)
@@ -385,7 +425,9 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
                 || !string.Equals(a.LastKnownIp, b.LastKnownIp, StringComparison.OrdinalIgnoreCase)
                 || a.LastKnownRssi != b.LastKnownRssi
                 || !string.Equals(a.ActiveAppId, b.ActiveAppId, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal))
+                || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal)
+                || !string.Equals(a.BoardModel, b.BoardModel, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(a.PanelType, b.PanelType, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
@@ -485,4 +527,34 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         var removeCount = entries.Count - limit;
         entries.RemoveRange(0, removeCount);
     }
+
+    private sealed class CommandExecutionContext
+    {
+        public string DeviceId { get; init; } = string.Empty;
+
+        public int Percent { get; set; }
+
+        public string Status { get; set; } = "Comandos: pronto";
+
+        public string? Stage { get; set; }
+
+        public string? CommandId { get; set; }
+
+        public string? ErrorCode { get; set; }
+
+        public DeviceCommandExecutionState ToSnapshot()
+        {
+            return new DeviceCommandExecutionState
+            {
+                InProgress = true,
+                Percent = Math.Clamp(Percent, 0, 100),
+                Status = Status,
+                Stage = Stage,
+                CommandId = CommandId,
+                ErrorCode = ErrorCode,
+            };
+        }
+    }
 }
+
+

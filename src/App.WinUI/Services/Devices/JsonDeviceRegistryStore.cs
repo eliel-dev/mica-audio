@@ -94,6 +94,8 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             LastKnownRssi = record.LastKnownRssi,
             ActiveAppId = record.ActiveAppId,
             ActiveAppName = record.ActiveAppName,
+            BoardModel = record.BoardModel,
+            PanelType = record.PanelType,
         };
     }
 
@@ -113,6 +115,8 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             LastKnownRssi = record.LastKnownRssi,
             ActiveAppId = record.ActiveAppId,
             ActiveAppName = record.ActiveAppName,
+            BoardModel = record.BoardModel,
+            PanelType = record.PanelType,
         };
     }
 
@@ -189,6 +193,13 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         public string? ActiveAppId { get; init; }
 
         public string? ActiveAppName { get; init; }
+
+        public string? BoardModel { get; init; }
+
+        public string? PanelType { get; init; }
     }
 }
+
+
+
 

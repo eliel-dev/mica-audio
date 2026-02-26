@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
@@ -43,3 +43,5 @@ internal sealed class SettingsRepository
         await JsonSerializer.SerializeAsync(stream, settings, jsonOptions, cancellationToken).ConfigureAwait(false);
     }
 }
+
+

@@ -81,3 +81,5 @@ internal sealed class CityAutocompleteService
         public double? Longitude { get; init; }
     }
 }
+
+

@@ -10,15 +10,17 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - WebSocket `/ws/v1/stream` para comandos e telemetria/progresso.
 - Sessao de comandos rastreados com timeout.
 - Controle de acesso de rede e rate limiting por endpoint critico.
+- Persistencia de metadados de hardware (`BoardModel`, `PanelType`) por dispositivo.
 
 ## Fluxo de execucao
 
 1. `DeviceServerHost.StartAsync` sobe web app local.
 2. Dispositivo pareia via HTTP e recebe token.
-3. App envia comandos tracked (`SendCommandTrackedAsync`).
-4. Advanced host correlaciona ACK/progresso por `commandId`.
-5. `BroadcastFrame` distribui stream para sockets conectados.
-6. Headers de resposta defensivos (`nosniff`, `DENY`, `no-referrer`, `no-store`) sao aplicados globalmente.
+3. `PairDeviceRequest` pode informar `BoardModel` e `PanelType`.
+4. Telemetria WS atualiza `FirmwareVersion`, app ativo, RSSI e metadados de hardware.
+5. App envia comandos tracked (`SendCommandTrackedAsync`).
+6. `DeviceServerHost.Advanced` correlaciona ACK/progresso por `commandId`.
+7. `BroadcastFrame` distribui stream para sockets conectados.
 
 ## Politicas de seguranca
 
@@ -33,13 +35,10 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - allowlist CIDR opcional em `AllowedCidrs`.
 
 3. Autenticacao:
-- HTTP (`/api/v1/*`): aceita somente `X-Device-Token` ou `Authorization: Bearer`.;
+- HTTP (`/api/v1/*`): aceita somente `X-Device-Token` ou `Authorization: Bearer`.
 - WebSocket (`/ws/v1/stream`): aceita headers e, temporariamente, query token legado quando `AllowLegacyWebSocketQueryToken=true`.
 
-4. Anti-abuso de pareamento:
-- contador por IP/janela com resposta `429 pairing_rate_limited`.
-
-5. Limites de payload:
+4. Limites de payload:
 - body JSON limitado por `MaxJsonBodyBytes` (default 64KB).
 - mensagem WS limitada por `MaxWebSocketMessageBytes` (default 64KB).
 - mensagens WS fragmentadas sao reagrupadas ate `EndOfMessage`.
@@ -54,7 +53,7 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 
 ## Riscos e efeitos colaterais
 
-- Qualquer mudanca no wire protocol exige compatibilidade com firmware.
+- Mudanca no wire protocol exige compatibilidade com firmware.
 - Timeout curto demais gera falso offline.
 - Mudanca de token/session pode invalidar devices em campo.
 - Filtro de rede/CIDR mal configurado pode bloquear dispositivos legitimos.
@@ -62,27 +61,25 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 ## Checklist apos alteracao
 
 - Subir app e validar `/api/v1/health`.
-- Validar pareamento normal e tentativa em burst (429 esperado no abuso).
-- Parear device e enviar comando simples.
-- Validar logs de progresso e timeout.
+- Validar pareamento com e sem `BoardModel`/`PanelType`.
+- Validar telemetria atualizando metadados de hardware.
+- Validar pareamento em burst (429 esperado no abuso).
 - Confirmar que stream continua estavel.
 
 ## Referencias de codigo
 
 - [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1) - assinatura: `public interface IDeviceServerHost`
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
-- [DeviceServerHost.StartAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1) - assinatura: `Task StartAsync(ServerConfig, CancellationToken)`
-- [DeviceServerHost.SendCommandTrackedAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1) - assinatura: `Task<CommandDispatchResult> SendCommandTrackedAsync(...)`
-- [SendTrackedCommandCoreAsync](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1) - assinatura: `Task<CommandDispatchResult> SendTrackedCommandCoreAsync(...)`
+- [DeviceServerHost.Advanced](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [PairDeviceRequest](../../../src/Device.Protocol/Models/PairDeviceRequest.cs#L1) - assinatura: `public sealed class PairDeviceRequest`
+- [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1) - assinatura: `public sealed class DeviceTelemetryMessage`
+- [DeviceRecord](../../../src/Device.Protocol/Models/DeviceRecord.cs#L1) - assinatura: `public sealed class DeviceRecord`
+- [DeviceSnapshot](../../../src/Device.Protocol/Models/DeviceSnapshot.cs#L1) - assinatura: `public sealed class DeviceSnapshot`
 - [ServerConfig](../../../src/Device.Protocol/Contracts/ServerConfig.cs#L1) - assinatura: `public sealed class ServerConfig`
-- [DeviceCommandRequest](../../../src/Device.Protocol/Models/DeviceCommandRequest.cs#L1) - assinatura: `public sealed class DeviceCommandRequest`
-- [DeviceCommandProgressMessage](../../../src/Device.Protocol/Models/DeviceCommandProgressMessage.cs#L1) - assinatura: `public sealed class DeviceCommandProgressMessage`
-- [StreamFrameV1](../../../src/Device.Protocol/Stream/StreamFrameV1.cs#L1) - assinatura: `public static class StreamFrameV1`
 
 ## Backlinks no codigo
 
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
-- `src/Device.Protocol/Contracts/ServerConfig.cs`
-
-
+- `src/Device.Protocol/Models/PairDeviceRequest.cs`
+- `src/Device.Protocol/Models/DeviceTelemetryMessage.cs`

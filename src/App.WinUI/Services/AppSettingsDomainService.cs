@@ -1,4 +1,4 @@
-using MicaAudio.Core.Audio;
+﻿using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 
@@ -182,3 +182,5 @@ internal sealed class AppSettingsDomainService
         };
     }
 }
+
+

@@ -12,7 +12,7 @@ Documentar o ciclo de vida da app, trocas de secao e sessao do visualizador.
 
 ## Navegacao
 
-- `ShellPage` mantem instancias cacheadas de `MainPage`, `DevicesPage`, `AppsPage`, `ServerPage`.
+- `ShellPage` mantem instancias cacheadas de `MainPage`, `DevicesPage` e `AppsPage`.
 - `ShowPage(tag)` troca apenas o conteudo do frame interno.
 
 ## Sessao do visualizador

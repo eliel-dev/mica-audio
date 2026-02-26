@@ -1,4 +1,4 @@
-﻿# Modulo Firmware Matrix Portal S3
+﻿# Modulo Firmware HUB75 (Matrix Portal S3 + ESP32-S3 DevKitC-1)
 
 ## Objetivo
 
@@ -9,8 +9,8 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 - Provisionamento Wi-Fi e host do servidor.
 - Conexao WebSocket para stream/comandos.
 - ACK/progresso de comandos.
-- Telemetria periodica (RSSI, IP, versao, app ativo).
-- Render de barras espelhadas (tipo `1`) e render de frame completo RGB565 (tipo `2`) em painel HUB75 quando disponivel.
+- Telemetria periodica (RSSI, IP, versao, app ativo, board e painel).
+- Render de barras espelhadas (tipo `1`) e render de frame completo RGB565 (tipo `2`) em painel HUB75.
 
 ## Fluxo de execucao
 
@@ -18,15 +18,23 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 2. Conecta Wi-Fi e WebSocket.
 3. Recebe `StreamFrameV1`, valida cabecalho (`version` e `messageType`) e atualiza `gBins` (tipo `1`) ou `gFrameRgb565` (tipo `2`).
 4. Renderiza no HUB75: `drawBars` para tipo `1` e `drawFrame64x32` para tipo `2`.
-5. Envia telemetria periodica e ACK de comando.
+5. Envia telemetria periodica e ACK de comando, incluindo `boardModel` e `panelType`.
 6. Quando o app desktop para o runtime GIF, um frame legado tipo `1` zerado desativa `frame-mode` imediatamente.
+
+## Variantes de placa
+
+- `matrixportal_s3` (pinagem Matrix Portal S3)
+- `esp32s3_devkitc1` (pinagem equivalente DevKitC-1 v1.0 / WROOM-1)
+
+Selecao em build por macro `MICA_BOARD_VARIANT_*`.
 
 ## Perfis de build
 
-- `matrixportal_s3_stable` (dev)
-- `matrixportal_s3_dma_exp` (dev)
-- `matrixportal_s3_stable_release` (hardening minimo release)
-- `matrixportal_s3_dma_exp_release` (hardening minimo release)
+- `matrixportal_s3_stable`
+- `matrixportal_s3_dma_exp`
+- `esp32s3_devkitc1_stable`
+- `esp32s3_devkitc1_dma_exp`
+- variantes `_release` para hardening minimo de producao.
 
 ## Hardening minimo (dev vs release)
 
@@ -38,7 +46,7 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 
 - Parser de comando WS (`onWsEvent`).
 - Telemetria e ACK.
-- Render da matriz e limites de brilho (`initMatrixDisplay` e `drawBars`).
+- Pinmap por variante em `main.cpp`.
 - Perfis de build em `platformio.ini`.
 
 ## Riscos e efeitos colaterais
@@ -47,7 +55,6 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 - Perfil DMA pode impactar estabilidade de Wi-Fi dependendo do hardware.
 - Alterar provisionamento sem fallback pode prender device offline.
 - Firmware antigo ignora `messageType=2`; app deve manter preview local e aviso de compatibilidade.
-- Se o app nao enviar fallback tipo `1` ao stop do GIF, o ultimo frame pode parecer "preso" ate timeout.
 
 ## Checklist apos alteracao
 
@@ -59,14 +66,12 @@ Firmware do dispositivo para conectar ao servidor local, receber stream `bins64`
 
 ## Referencias de codigo
 
-- [main.cpp kStreamFrameSize](../../../firmware/matrixportal-s3/src/main.cpp#L1) - assinatura: `constexpr size_t kStreamFrameSize = 81;`
-- [initMatrixDisplay](../../../firmware/matrixportal-s3/src/main.cpp#L1) - assinatura: `bool initMatrixDisplay()`
-- [onWsEvent](../../../firmware/matrixportal-s3/src/main.cpp#L1) - assinatura: `void onWsEvent(WStype_t type, uint8_t *payload, size_t len)`
-- [drawBars](../../../firmware/matrixportal-s3/src/main.cpp#L1) - assinatura: `void drawBars()`
-- [platformio.ini stable](../../../firmware/matrixportal-s3/platformio.ini#L1) - assinatura: `[env:matrixportal_s3_stable]`
-- [platformio.ini stable_release](../../../firmware/matrixportal-s3/platformio.ini#L1) - assinatura: `[env:matrixportal_s3_stable_release]`
-- [platformio.ini dma_exp_release](../../../firmware/matrixportal-s3/platformio.ini#L1) - assinatura: `[env:matrixportal_s3_dma_exp_release]`
+- [main.cpp](../../../firmware/matrixportal-s3/src/main.cpp#L1) - assinatura: `void onWsEvent(...)`
+- [platformio.ini matrixportal stable](../../../firmware/matrixportal-s3/platformio.ini#L18) - assinatura: `[env:matrixportal_s3_stable]`
+- [platformio.ini devkit stable](../../../firmware/matrixportal-s3/platformio.ini#L39) - assinatura: `[env:esp32s3_devkitc1_stable]`
+- [platformio.ini devkit dma](../../../firmware/matrixportal-s3/platformio.ini#L49) - assinatura: `[env:esp32s3_devkitc1_dma_exp]`
 
 ## Backlinks no codigo
 
 - `firmware/matrixportal-s3/src/main.cpp`
+- `firmware/matrixportal-s3/platformio.ini`

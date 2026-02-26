@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Device.Protocol.Models;
 using Microsoft.AspNetCore.Http;
 
@@ -185,7 +185,7 @@ public sealed partial class DeviceServerHost
             return Results.BadRequest(new { error = "invalid_json" });
         }
 
-        state.MarkSeen(ctx.Connection.RemoteIpAddress?.ToString(), state.Record.LastKnownRssi, state.Record.FirmwareVersion);
+        state.MarkSeen(ctx.Connection.RemoteIpAddress?.ToString(), state.Record.LastKnownRssi, state.Record.FirmwareVersion, state.Record.ActiveAppId, state.Record.ActiveAppName, state.Record.BoardModel, state.Record.PanelType);
         var progress = Math.Clamp(ack.ProgressPercent ?? (ack.Success ? 100 : 0), 0, 100);
         var stage = string.IsNullOrWhiteSpace(ack.Stage) ? (ack.Success ? "ack" : "ack-failed") : ack.Stage;
 
@@ -299,7 +299,7 @@ public sealed partial class DeviceServerHost
                 return false;
             }
 
-            state.MarkSeen(telemetry.IpAddress, telemetry.Rssi, telemetry.FirmwareVersion, telemetry.ActiveAppId, telemetry.ActiveAppName);
+            state.MarkSeen(telemetry.IpAddress, telemetry.Rssi, telemetry.FirmwareVersion, telemetry.ActiveAppId, telemetry.ActiveAppName, telemetry.BoardModel, telemetry.PanelType);
             return true;
         }
         catch
@@ -370,4 +370,5 @@ public sealed partial class DeviceServerHost
         public bool TrySetResult(CommandDispatchResult result) => tcs.TrySetResult(result);
     }
 }
+
 

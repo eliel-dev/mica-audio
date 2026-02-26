@@ -1,0 +1,17 @@
+﻿{
+  "solution": {
+    "path": "MicaAudio.sln",
+    "projects": [
+      "src\\MicaAudio.Core\\MicaAudio.Core.csproj",
+      "src\\Audio.Loopback\\Audio.Loopback.csproj",
+      "src\\Analyzer.Dsp\\Analyzer.Dsp.csproj",
+      "src\\Visual.Win2D\\Visual.Win2D.csproj",
+      "src\\Output\\Output.csproj",
+      "src\\App.WinUI\\App.WinUI.csproj",
+      "src\\Device.Protocol\\Device.Protocol.csproj",
+      "src\\Device.Server\\Device.Server.csproj",
+      "tests\\Analyzer.Dsp.Tests\\Analyzer.Dsp.Tests.csproj",
+      "tests\\Output.Tests\\Output.Tests.csproj"
+    ]
+  }
+}

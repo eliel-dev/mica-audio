@@ -23,4 +23,8 @@ public sealed class DeviceRecord
     public string? ActiveAppId { get; init; }
 
     public string? ActiveAppName { get; init; }
+
+    public string? BoardModel { get; init; }
+
+    public string? PanelType { get; init; }
 }
