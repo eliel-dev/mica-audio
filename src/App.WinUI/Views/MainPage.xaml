@@ -259,6 +259,8 @@
                                 <ComboBox
                                     x:Name="PresetCombo"
                                     Width="260"
+                                    DisplayMemberPath="Label"
+                                    SelectedValuePath="Id"
                                     PlaceholderText="Predefinicao"
                                     IsEnabled="False"
                                     SelectionChanged="OnPresetSelectionChanged" />

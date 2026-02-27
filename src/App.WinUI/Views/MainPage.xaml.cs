@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net.Http;
 using Analyzer.Dsp.Analysis;
 using App.WinUI.Services;
@@ -683,7 +683,15 @@ public partial class MainPage : Page
     }
     private void OnPresetSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PresetCombo.SelectedItem is not ComboOption option || !presetsById.TryGetValue(option.Id, out var preset))
+        var selectedPresetId = PresetCombo.SelectedValue as string;
+        if (string.IsNullOrWhiteSpace(selectedPresetId)
+            && PresetCombo.SelectedItem is ComboOption selectedOption)
+        {
+            selectedPresetId = selectedOption.Id;
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedPresetId)
+            || !presetsById.TryGetValue(selectedPresetId, out var preset))
         {
             return;
         }
@@ -1392,6 +1400,12 @@ public partial class MainPage : Page
 
     private static void SelectComboOption(ComboBox comboBox, string id)
     {
+        if (!string.IsNullOrWhiteSpace(comboBox.SelectedValuePath))
+        {
+            comboBox.SelectedValue = id;
+            return;
+        }
+
         if (comboBox.ItemsSource is not IEnumerable<ComboOption> options)
         {
             return;

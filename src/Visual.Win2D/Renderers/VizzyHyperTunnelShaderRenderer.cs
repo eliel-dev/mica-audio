@@ -57,7 +57,8 @@ public sealed class VizzyHyperTunnelShaderRenderer : IRenderer
         var scaledHeight = Math.Max(2, (int)MathF.Round(context.Height * quality.Scale));
 
         var speed = Math.Clamp(context.Param("tunnelSpeed", 1.10f), 0.25f, 3.40f);
-        animationTime += context.DeltaSeconds * speed * (0.75f + (audio.Bass * 0.85f) + (audio.Level * 0.30f));
+        var bassSpeedDrive = 0.65f + (audio.Bass * 2.25f) + (audio.Level * 0.55f);
+        animationTime += context.DeltaSeconds * speed * bassSpeedDrive;
 
         try
         {

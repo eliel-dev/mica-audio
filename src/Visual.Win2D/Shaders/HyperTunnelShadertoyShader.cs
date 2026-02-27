@@ -49,7 +49,10 @@ internal readonly partial struct HyperTunnelShadertoyShader(
         uv *= Hlsl.Tan(Hlsl.Radians(Fov) * 0.5f) * 4f;
         uv.X *= safeResolution.X / safeResolution.Y;
 
-        float t = time * Hlsl.Max(0.1f, tunnelSpeed);
+        float t = time;
+        float bassDrive = Hlsl.Saturate((bass * 0.9f) + (level * 0.25f));
+        float midDrive = Hlsl.Saturate((mid * 0.95f) + (level * 0.20f));
+        float highDrive = Hlsl.Saturate((high * 0.90f) + (band128 * 0.35f));
 
         float3 vuv = Hlsl.Normalize(new float3(Hlsl.Cos(t), Hlsl.Sin(t * 0.11f), Hlsl.Sin(t * 0.41f)));
         float3 ro = new float3(0f, 30f + (t * 100f), -0.1f);
@@ -69,7 +72,6 @@ internal readonly partial struct HyperTunnelShadertoyShader(
         float3 scrCoord = vcv + (uv.X * u * (safeResolution.X / safeResolution.Y)) + (uv.Y * v);
         float3 rd = Hlsl.Normalize(scrCoord - ro);
 
-        float3 originalRo = ro;
 
         float2 traceData = Trace(ro, rd);
         float hitDistance = traceData.X;
@@ -89,9 +91,13 @@ internal readonly partial struct HyperTunnelShadertoyShader(
         float3 sceneColor = iterationFactor * col + (col * 0.03f);
         sceneColor *= 1f + (0.9f * (Hlsl.Abs(FBm((hit * 0.002f) + new float3(3f, 3f, 3f)) * 10f) * FBm(new float3(0f, 0f, t * 0.1f) * 2f)));
 
-        float audioGain = Hlsl.Lerp(0.6f, 1.35f, Hlsl.Saturate(audioActivityTime));
-        float spectrumDrive = Hlsl.Saturate((bass * 0.5f) + (mid * 0.3f) + (high * 0.2f) + (level * 0.2f));
-        sceneColor *= audioGain * Hlsl.Lerp(0.65f, 1.45f, spectrumDrive) * Hlsl.Lerp(0.40f, 1f, band128);
+        float audioGain = Hlsl.Lerp(0.70f, 1.45f, Hlsl.Saturate(audioActivityTime));
+        float spectrumDrive = Hlsl.Saturate((bassDrive * 0.45f) + (midDrive * 0.35f) + (highDrive * 0.20f) + (level * 0.20f));
+        float brightnessGain = Hlsl.Lerp(0.85f, 2.30f, highDrive);
+        sceneColor *= audioGain
+            * Hlsl.Lerp(0.80f, 1.65f, spectrumDrive)
+            * Hlsl.Lerp(0.70f, 1.35f, bassDrive)
+            * Hlsl.Lerp(0.45f, 1.15f, band128);
 
         float3 steamColor = Hlsl.Lerp(coolColor, warmColor, 0.20f) * Hlsl.Lerp(0.65f, 1.35f, band32);
 
@@ -117,7 +123,8 @@ internal readonly partial struct HyperTunnelShadertoyShader(
             }
         }
 
-        sceneColor += steamColor * Hlsl.Pow(Hlsl.Abs(steamFactor * 1.5f), 3f) * (2.8f + (tunnelFogAmount * 5f));
+        float fogGain = Hlsl.Lerp(0.85f, 1.45f, Hlsl.Saturate(bassDrive + (audioActivityTime * 0.35f)));
+        sceneColor += steamColor * Hlsl.Pow(Hlsl.Abs(steamFactor * 1.5f), 3f) * (2.8f + (tunnelFogAmount * 5f)) * fogGain;
 
         float vignette = Hlsl.Saturate(1f - (Hlsl.Length(uv) * 0.5f));
         sceneColor *= vignette;
@@ -126,7 +133,7 @@ internal readonly partial struct HyperTunnelShadertoyShader(
         sceneColor += sourceColor * 0.0001f;
 
         float distFactor = Hlsl.Max(hitDistance, 1f);
-        float3 finalColor = Hlsl.Pow(Hlsl.Abs((sceneColor / distFactor) * 130f), new float3(0.8f, 0.8f, 0.8f));
+        float3 finalColor = Hlsl.Pow(Hlsl.Abs((sceneColor / distFactor) * 130f), new float3(0.8f, 0.8f, 0.8f)) * brightnessGain;
 
         return new float4(Hlsl.Saturate(finalColor), 1f);
     }
@@ -192,17 +199,23 @@ internal readonly partial struct HyperTunnelShadertoyShader(
 
     private float Map(float3 p)
     {
-        p.X -= YC(p.Y * 0.1f) * 3f;
-        p.Z += YC(p.Y * 0.01f) * 4f;
+        float warpDrive = Hlsl.Saturate((mid * 0.95f) + (level * 0.20f));
+        float bassDrive = Hlsl.Saturate((bass * 0.90f) + (level * 0.25f));
+        float baseWarp = tunnelWarp * Hlsl.Lerp(0.85f, 1.15f, Hlsl.Saturate(tunnelSpeed / 3.4f));
+        float warpAmount = baseWarp * (1f + (warpDrive * 3.2f)) + (band32 * 0.12f);
 
-        float n = Hlsl.Pow(Hlsl.Abs(FBm(p * 0.06f)) * 12f, 1.3f);
-        float s = FBm((p * 0.01f) + new float3(0f, time * 0.14f, 0f)) * 128f;
+        p.X -= YC(p.Y * (0.1f + (warpAmount * 0.05f))) * (3f + (warpAmount * 6f));
+        p.Z += YC((p.Y * (0.01f + (warpAmount * 0.015f))) + (time * (0.05f + (warpDrive * 0.10f)))) * (4f + (warpAmount * 5f));
+
+        float n = Hlsl.Pow(Hlsl.Abs(FBm((p * (0.06f + (warpDrive * 0.04f))) + new float3(0f, time * (0.04f + (warpDrive * 0.08f)), 0f))) * 12f, 1.3f);
+        float s = FBm((p * 0.01f) + new float3(0f, time * (0.14f + (bassDrive * 0.10f)), 0f)) * 128f;
 
         float dist = Hlsl.Max(0f, -FCylinderInf(p, s + (18f * tunnelBaseRadius / 0.22f) - n));
 
-        p.X -= (Hlsl.Sin(p.Y * 0.02f) * (34f + (tunnelWarp * 80f))) + (Hlsl.Cos(p.Z * 0.01f) * 62f);
+        p.X -= (Hlsl.Sin((p.Y * (0.02f + (warpAmount * 0.02f))) + (time * (0.25f + (warpDrive * 0.45f)))) * (34f + (warpAmount * 120f)))
+            + (Hlsl.Cos((p.Z * 0.01f) + (time * (0.18f + (warpDrive * 0.20f)))) * (62f + (warpAmount * 42f)));
 
-        dist = Hlsl.Max(dist, -FCylinderInf(p, s + (28f * tunnelDepth) + (n * 2f)));
+        dist = Hlsl.Max(dist, -FCylinderInf(p, s + (28f * tunnelDepth) + (n * (2f + (warpDrive * 1.50f)))));
 
         return dist;
     }
