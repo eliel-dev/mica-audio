@@ -30,6 +30,9 @@ public sealed class VisualizerEngine
             [RendererIds.Waterfall] = new WaterfallRenderer(),
             [RendererIds.NeonGlow] = new NeonGlowBarsRenderer(),
             [RendererIds.AudioMotionClone] = new AudioMotionCloneRenderer(),
+            [RendererIds.VizzyBlobNeon] = new VizzyBlobNeonRenderer(),
+            [RendererIds.VizzyOrbitRings] = new VizzyOrbitRingsRenderer(),
+            [RendererIds.VizzyHyperTunnel] = new VizzyHyperTunnelRenderer(),
         };
     }
 
@@ -87,5 +90,3 @@ public sealed class VisualizerEngine
         return renderers[Engine.RendererIds.Bars];
     }
 }
-
-

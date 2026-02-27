@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
@@ -38,30 +38,30 @@ internal sealed class PresetRepository
             return defaults;
         }
 
-        var output = new List<PresetDefinition>();
+        var loaded = new List<PresetDefinition>();
         foreach (var file in files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
             await using var stream = File.OpenRead(file);
             var preset = await JsonSerializer.DeserializeAsync<PresetDefinition>(stream, jsonOptions, cancellationToken).ConfigureAwait(false);
-            if (preset is not null)
+            if (preset is not null && !string.IsNullOrWhiteSpace(preset.PresetId))
             {
-                output.Add(preset);
+                loaded.Add(preset);
             }
         }
 
-        if (output.Count == 0)
+        if (loaded.Count == 0)
         {
             await SaveAllAsync(defaults, cancellationToken).ConfigureAwait(false);
             return defaults;
         }
 
-        if (NeedsCatalogReset(output, defaults))
+        var (mergedPresets, catalogUpdated) = MergeWithDefaults(loaded, defaults);
+        if (catalogUpdated)
         {
-            await ReplaceAllAsync(defaults, cancellationToken).ConfigureAwait(false);
-            return defaults;
+            await SaveAllAsync(mergedPresets, cancellationToken).ConfigureAwait(false);
         }
 
-        return output;
+        return mergedPresets;
     }
 
     public async Task SaveAllAsync(IEnumerable<PresetDefinition> presets, CancellationToken cancellationToken = default)
@@ -77,46 +77,55 @@ internal sealed class PresetRepository
         }
     }
 
-    private async Task ReplaceAllAsync(IReadOnlyList<PresetDefinition> presets, CancellationToken cancellationToken)
+    private static (IReadOnlyList<PresetDefinition> Presets, bool Updated) MergeWithDefaults(
+        IReadOnlyList<PresetDefinition> loaded,
+        IReadOnlyList<PresetDefinition> defaults)
     {
-        foreach (var file in Directory.GetFiles(presetsDir, "*.json", SearchOption.TopDirectoryOnly))
+        var updated = false;
+        var loadedById = new Dictionary<string, PresetDefinition>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var preset in loaded)
         {
-            File.Delete(file);
+            if (loadedById.TryGetValue(preset.PresetId, out _))
+            {
+                updated = true;
+            }
+
+            loadedById[preset.PresetId] = preset;
         }
-
-        await SaveAllAsync(presets, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static bool NeedsCatalogReset(IReadOnlyList<PresetDefinition> loaded, IReadOnlyList<PresetDefinition> defaults)
-    {
-        if (loaded.Count != defaults.Count)
-        {
-            return true;
-        }
-
-        var loadedById = loaded
-            .Where(p => !string.IsNullOrWhiteSpace(p.PresetId))
-            .ToDictionary(p => p.PresetId, StringComparer.OrdinalIgnoreCase);
 
         foreach (var defaultPreset in defaults)
         {
-            if (!loadedById.TryGetValue(defaultPreset.PresetId, out var loadedPreset))
+            if (!loadedById.TryGetValue(defaultPreset.PresetId, out var existing))
             {
-                return true;
+                loadedById[defaultPreset.PresetId] = defaultPreset;
+                updated = true;
+                continue;
             }
 
-            if (loadedPreset.SchemaVersion < defaultPreset.SchemaVersion)
+            if (existing.SchemaVersion < defaultPreset.SchemaVersion)
             {
-                return true;
-            }
-
-            if (!string.Equals(loadedPreset.RendererId, defaultPreset.RendererId, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
+                loadedById[defaultPreset.PresetId] = defaultPreset;
+                updated = true;
             }
         }
 
-        return false;
+        var ordered = new List<PresetDefinition>(loadedById.Count);
+
+        foreach (var defaultPreset in defaults)
+        {
+            if (loadedById.Remove(defaultPreset.PresetId, out var mergedPreset))
+            {
+                ordered.Add(mergedPreset);
+            }
+        }
+
+        foreach (var customPreset in loadedById.Values.OrderBy(static p => p.PresetId, StringComparer.OrdinalIgnoreCase))
+        {
+            ordered.Add(customPreset);
+        }
+
+        return (ordered, updated);
     }
 
     private static string SanitizeFileName(string value)
@@ -126,6 +135,3 @@ internal sealed class PresetRepository
         return new string(chars);
     }
 }
-
-
-

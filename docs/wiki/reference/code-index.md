@@ -1,4 +1,4 @@
-﻿# Code Index
+# Code Index
 Indice expandido para localizar rapidamente pontos de alteracao por pagina, servico e protocolo.
 ## App pages (WinUI)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
@@ -42,6 +42,9 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [EnvelopeSmoother](../../../src/Analyzer.Dsp/Analysis/EnvelopeSmoother.cs#L1)
 - [VisualizerEngine](../../../src/Visual.Win2D/Engine/VisualizerEngine.cs#L1)
 - [AudioMotionCloneRenderer](../../../src/Visual.Win2D/Renderers/AudioMotionCloneRenderer.cs#L1)
+- [VizzyBlobNeonRenderer](../../../src/Visual.Win2D/Renderers/VizzyBlobNeonRenderer.cs#L1)
+- [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1)
+- [VizzyHyperTunnelRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs#L1)
 ## Output
 - [ILedOutput](../../../src/Output/Led/ILedOutput.cs#L1)
 - [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)
@@ -103,5 +106,6 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [WinUiBootstrapSmokeTests](../../../tests/Integration.Smoke/WinUiBootstrapSmokeTests.cs#L1)
 - [AppConfigUseCasesTests](../../../tests/Output.Tests/AppConfigUseCasesTests.cs#L1)
 - [AppModifierStateStoreTests](../../../tests/Output.Tests/AppModifierStateStoreTests.cs#L1)
+
 
 

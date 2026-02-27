@@ -1,4 +1,4 @@
-﻿# Troubleshooting Matrix
+# Troubleshooting Matrix
 
 | Sintoma | Diagnostico rapido | Causa comum | Acao recomendada |
 |---|---|---|---|
@@ -17,6 +17,8 @@
 | Download de firmware falha no wizard | ver logs na aba `Dispositivos` | BIN ausente no pacote para placa/perfil selecionado | validar assets em `AppData/Firmware` e repetir salvar |
 | Botao de salvar abre e cancela | ver status `Download: cancelado` | usuario cancelou `FileSavePicker` | comportamento esperado |
 | Texto ilegivel em tema | comparar tema sistema e brushes | style sem recurso semantico | revisar Fluent2 tokens e bindings |
+| Preset `Blob Neon`, `Orbit Rings` ou `Hyper Tunnel` nao aparece | validar pasta `%AppData%/MicaAudio/presets` e schema dos defaults | catalogo local antigo sem merge de defaults | abrir app novamente para migracao automatica; se persistir, remover somente presets default antigos e reiniciar |
+| FPS cai ao usar renderers Vizzy | comparar `blobPointCount/orbitPointCount/tunnelSliceCount` e `glowPasses` no preset ativo | complexidade alta de geometria + glow | reduzir `pointCount/sliceCount` e `glowPasses` para 1-2; no Hyper Tunnel a auto-qualidade ajusta complexidade em runtime |
 
 ## Token criptografado no devices.json
 
@@ -30,6 +32,12 @@
 - A fonte de dados e o mesmo snapshot 64x32 do simulador (`SimulatorLedOutput.GetFrameSnapshot()`).
 - O desenho usa mapeamento 2x nearest-neighbor (`x128/2`, `y128/2`) para manter fidelidade de pixel HUB75.
 
+## Renderers Vizzy (blob/orbit/tunnel)
+
+- `Blob Neon`, `Orbit Rings` e `Hyper Tunnel` sao renderers Win2D inspirados visualmente no estilo Vizzy.
+- O controle nesta fase e por presets (`RendererParameters`), sem painel dedicado na UI.
+- Mudancas extremas de parametros podem impactar frame time; use clamps recomendados.
+
 ## Referencias de codigo
 
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
@@ -37,10 +45,12 @@
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L8)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [VizzyBlobNeonRenderer](../../../src/Visual.Win2D/Renderers/VizzyBlobNeonRenderer.cs#L1)
+- [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1)
+- [VizzyHyperTunnelRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs#L1)
 
 ## Push local x CI (gate local leve)
 
 - O hook local pre-push roda validacoes de docs/governanca, build do App.WinUI e Output.Tests.
 - O build completo da solucao (`MicaAudio.sln`) continua obrigatorio no CI (`governance-ai-guardrails` e `governance-build-debug`).
 - Resultado: push local destravado em maquinas sem SDK UAP, sem reduzir rigor para merge na main.
-

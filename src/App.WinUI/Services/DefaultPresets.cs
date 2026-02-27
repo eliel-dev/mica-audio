@@ -1,4 +1,4 @@
-﻿using MicaAudio.Core.Audio;
+using MicaAudio.Core.Audio;
 using MicaAudio.Core.Presets;
 using Visual.Win2D.Engine;
 
@@ -6,7 +6,7 @@ namespace App.WinUI.Services;
 
 internal static class DefaultPresets
 {
-    private const int CurrentSchemaVersion = 6;
+    private const int CurrentSchemaVersion = 7;
 
     public static IReadOnlyList<PresetDefinition> Create()
     {
@@ -16,6 +16,64 @@ internal static class DefaultPresets
             CreateAudioMotionClonePreset("audiomotion-sunset", "AudioMotion Sunset", CreateSunsetStops()),
             CreateAudioMotionClonePreset("audiomotion-arctic", "AudioMotion Arctic", CreateArcticStops()),
             CreateAudioMotionClonePreset("audiomotion-neon", "AudioMotion Neon", CreateNeonStops()),
+
+            CreateRendererPreset(
+                id: "spectrum-vizzy-blob-neon",
+                name: "Blob Neon",
+                rendererId: RendererIds.VizzyBlobNeon,
+                paletteStops: CreateVizzyBlobStops(),
+                glow: true,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["blobBaseRadius"] = 0.28f,
+                    ["blobAudioDepth"] = 0.11f,
+                    ["blobLfoDepth"] = 0.03f,
+                    ["blobLfoSpeed"] = 1.20f,
+                    ["blobPointCount"] = 96f,
+                    ["blobGlowPasses"] = 3f,
+                    ["blobStrokeWidth"] = 2.0f,
+                    ["blobCoreAlpha"] = 0.92f,
+                    ["blobGlowAlpha"] = 0.24f,
+                    ["blobRotationSpeed"] = 0.18f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-vizzy-orbit-rings",
+                name: "Orbit Rings",
+                rendererId: RendererIds.VizzyOrbitRings,
+                paletteStops: CreateVizzyOrbitStops(),
+                glow: true,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["orbitRingCount"] = 4f,
+                    ["orbitBaseRadius"] = 0.24f,
+                    ["orbitRingSpacing"] = 0.03f,
+                    ["orbitAudioDepth"] = 0.07f,
+                    ["orbitLfoDepth"] = 0.02f,
+                    ["orbitRotationSpeed"] = 0.35f,
+                    ["orbitPointCount"] = 96f,
+                    ["orbitGlowPasses"] = 2f,
+                    ["orbitLineThickness"] = 2.2f,
+                    ["orbitCoreCircleAlpha"] = 0.90f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-vizzy-hyper-tunnel",
+                name: "Hyper Tunnel",
+                rendererId: RendererIds.VizzyHyperTunnel,
+                paletteStops: CreateVizzyHyperTunnelStops(),
+                glow: true,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["tunnelBaseRadius"] = 0.22f,
+                    ["tunnelDepth"] = 1.00f,
+                    ["tunnelSpeed"] = 1.10f,
+                    ["tunnelWarp"] = 0.14f,
+                    ["tunnelTwist"] = 0.35f,
+                    ["tunnelGlowPasses"] = 3f,
+                    ["tunnelLineThickness"] = 2.0f,
+                    ["tunnelFogAmount"] = 0.18f,
+                    ["tunnelSliceCount"] = 72f,
+                    ["tunnelSegmentCount"] = 84f,
+                }),
 
             CreateRendererPreset(
                 id: "spectrum-bars",
@@ -285,6 +343,37 @@ internal static class DefaultPresets
             new PaletteStop { Offset = 0.72f, Color = new RgbaColor(196, 80, 255) },
             new PaletteStop { Offset = 0.88f, Color = new RgbaColor(255, 46, 178) },
             new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 120, 64) },
+        ];
+    }
+
+    private static IReadOnlyList<PaletteStop> CreateVizzyBlobStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(220, 232, 255) },
+            new PaletteStop { Offset = 0.50f, Color = new RgbaColor(242, 246, 255) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 255, 255) },
+        ];
+    }
+
+    private static IReadOnlyList<PaletteStop> CreateVizzyOrbitStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 255, 255) },
+            new PaletteStop { Offset = 0.45f, Color = new RgbaColor(255, 188, 188) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 110, 110) },
+        ];
+    }
+
+    private static IReadOnlyList<PaletteStop> CreateVizzyHyperTunnelStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 120, 38) },
+            new PaletteStop { Offset = 0.30f, Color = new RgbaColor(255, 158, 72) },
+            new PaletteStop { Offset = 0.62f, Color = new RgbaColor(70, 216, 232) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(0, 176, 220) },
         ];
     }
 }
