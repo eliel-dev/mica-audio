@@ -18,6 +18,9 @@
 | Botao de salvar abre e cancela | ver status `Download: cancelado` | usuario cancelou `FileSavePicker` | comportamento esperado |
 | Texto ilegivel em tema | comparar tema sistema e brushes | style sem recurso semantico | revisar Fluent2 tokens e bindings |
 | Preset `Blob Neon`, `Orbit Rings` ou `Hyper Tunnel` nao aparece | validar pasta `%AppData%/MicaAudio/presets` e schema dos defaults | catalogo local antigo sem merge de defaults | abrir app novamente para migracao automatica; se persistir, remover somente presets default antigos e reiniciar |
+| Hyper Tunnel mostra aneis 2D sem profundidade | verificar renderer do preset selecionado | preset classico (`vizzy-hyper-tunnel`) ativo em vez do shader GPU | selecionar preset `Hyper Tunnel` (`spectrum-vizzy-hyper-tunnel-shader`); manter `Hyper Tunnel Classic` apenas como fallback |
+| Hyper Tunnel shader nao compila localmente | rodar `scripts/validate-shader-toolchain.ps1` | toolchain de shader incompleta (ComputeSharp/TFM/UAP) | alinhar TFM `net8.0-windows10.0.22621.0`, validar pacote ComputeSharp e usar script de preflight para diagnostico |
+| Hyper Tunnel cai para classic automaticamente | conferir log de warning de fallback | falha de shader/device no runtime | revisar erro no log, manter fallback para operacao e revalidar driver/toolchain |
 | FPS cai ao usar renderers Vizzy | comparar `blobPointCount/orbitPointCount/tunnelSliceCount` e `glowPasses` no preset ativo | complexidade alta de geometria + glow | reduzir `pointCount/sliceCount` e `glowPasses` para 1-2; no Hyper Tunnel a auto-qualidade ajusta complexidade em runtime |
 
 ## Token criptografado no devices.json
@@ -48,6 +51,9 @@
 - [VizzyBlobNeonRenderer](../../../src/Visual.Win2D/Renderers/VizzyBlobNeonRenderer.cs#L1)
 - [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1)
 - [VizzyHyperTunnelRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs#L1)
+- [VizzyHyperTunnelShaderRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelShaderRenderer.cs#L1)
+- [HyperTunnelShadertoyShader](../../../src/Visual.Win2D/Shaders/HyperTunnelShadertoyShader.cs#L1)
+- [validate-shader-toolchain](../../../scripts/validate-shader-toolchain.ps1#L1)
 
 ## Push local x CI (gate local leve)
 

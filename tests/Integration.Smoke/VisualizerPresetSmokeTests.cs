@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using App.WinUI;
@@ -22,6 +22,7 @@ public sealed class VisualizerPresetSmokeTests
         Assert.Contains(RendererIds.VizzyBlobNeon, rendererIds);
         Assert.Contains(RendererIds.VizzyOrbitRings, rendererIds);
         Assert.Contains(RendererIds.VizzyHyperTunnel, rendererIds);
+        Assert.Contains(RendererIds.VizzyHyperTunnelShader, rendererIds);
     }
 
     [Fact]
@@ -33,6 +34,7 @@ public sealed class VisualizerPresetSmokeTests
         Assert.Contains("spectrum-vizzy-blob-neon", presetIds);
         Assert.Contains("spectrum-vizzy-orbit-rings", presetIds);
         Assert.Contains("spectrum-vizzy-hyper-tunnel", presetIds);
+        Assert.Contains("spectrum-vizzy-hyper-tunnel-shader", presetIds);
     }
 
     [Fact]
@@ -69,6 +71,7 @@ public sealed class VisualizerPresetSmokeTests
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-blob-neon", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-orbit-rings", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-hyper-tunnel", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-hyper-tunnel-shader", StringComparison.OrdinalIgnoreCase));
 
             var custom = loaded.Single(static preset => string.Equals(preset.PresetId, "custom-user-preset", StringComparison.OrdinalIgnoreCase));
             Assert.Equal("Preset customizado", custom.Name);
@@ -133,7 +136,109 @@ public sealed class VisualizerPresetSmokeTests
         }
         catch (COMException)
         {
-            // Some runners don't provide a compatible Win2D context. In this case, other smoke tests still validate wiring.
+            return;
+        }
+        finally
+        {
+            drawingSession?.Dispose();
+            target?.Dispose();
+        }
+    }
+
+    [Fact]
+    public void VizzyHyperTunnelShaderRenderer_Render_ShouldNotThrow_ForValidAndEmptyFrames()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        CanvasRenderTarget? target = null;
+        CanvasDrawingSession? drawingSession = null;
+
+        try
+        {
+            var renderer = new VizzyHyperTunnelShaderRenderer();
+            var preset = CreateTestPreset(RendererIds.VizzyHyperTunnelShader);
+            var peaks = new float[64];
+            var bands = CreateBands(64);
+
+            target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 320, 180, 96);
+            drawingSession = target.CreateDrawingSession();
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = peaks,
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = Array.Empty<float>(),
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(Array.Empty<float>(), Array.Empty<float>(), 0f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+        }
+        catch (COMException)
+        {
+            return;
+        }
+        finally
+        {
+            drawingSession?.Dispose();
+            target?.Dispose();
+        }
+    }
+
+
+    [Fact]
+    public void VizzyHyperTunnelShaderRenderer_ShouldFallback_WhenShaderUnavailable()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        CanvasRenderTarget? target = null;
+        CanvasDrawingSession? drawingSession = null;
+
+        try
+        {
+            var renderer = new VizzyHyperTunnelShaderRenderer();
+            var unavailableField = typeof(VizzyHyperTunnelShaderRenderer).GetField("shaderUnavailable", BindingFlags.Instance | BindingFlags.NonPublic);
+            unavailableField?.SetValue(renderer, true);
+
+            var preset = CreateTestPreset(RendererIds.VizzyHyperTunnelShader);
+            var bands = CreateBands(64);
+
+            target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 320, 180, 96);
+            drawingSession = target.CreateDrawingSession();
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = new float[64],
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+        }
+        catch (COMException)
+        {
             return;
         }
         finally

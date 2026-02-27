@@ -6,7 +6,7 @@ namespace App.WinUI.Services;
 
 internal static class DefaultPresets
 {
-    private const int CurrentSchemaVersion = 7;
+    private const int CurrentSchemaVersion = 8;
 
     public static IReadOnlyList<PresetDefinition> Create()
     {
@@ -56,8 +56,27 @@ internal static class DefaultPresets
                     ["orbitCoreCircleAlpha"] = 0.90f,
                 }),
             CreateRendererPreset(
-                id: "spectrum-vizzy-hyper-tunnel",
+                id: "spectrum-vizzy-hyper-tunnel-shader",
                 name: "Hyper Tunnel",
+                rendererId: RendererIds.VizzyHyperTunnelShader,
+                paletteStops: CreateVizzyHyperTunnelStops(),
+                glow: true,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["tunnelBaseRadius"] = 0.22f,
+                    ["tunnelDepth"] = 1.00f,
+                    ["tunnelSpeed"] = 1.10f,
+                    ["tunnelWarp"] = 0.14f,
+                    ["tunnelTwist"] = 0.35f,
+                    ["tunnelGlowPasses"] = 3f,
+                    ["tunnelLineThickness"] = 2.0f,
+                    ["tunnelFogAmount"] = 0.18f,
+                    ["tunnelSliceCount"] = 72f,
+                    ["tunnelSegmentCount"] = 84f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-vizzy-hyper-tunnel",
+                name: "Hyper Tunnel Classic",
                 rendererId: RendererIds.VizzyHyperTunnel,
                 paletteStops: CreateVizzyHyperTunnelStops(),
                 glow: true,
@@ -74,7 +93,6 @@ internal static class DefaultPresets
                     ["tunnelSliceCount"] = 72f,
                     ["tunnelSegmentCount"] = 84f,
                 }),
-
             CreateRendererPreset(
                 id: "spectrum-bars",
                 name: "Bars Arco-iris",

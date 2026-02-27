@@ -1,4 +1,4 @@
-﻿namespace Visual.Win2D.Engine;
+namespace Visual.Win2D.Engine;
 
 public static class RendererIds
 {
@@ -19,4 +19,5 @@ public static class RendererIds
     public const string VizzyBlobNeon = "vizzy-blob-neon";
     public const string VizzyOrbitRings = "vizzy-orbit-rings";
     public const string VizzyHyperTunnel = "vizzy-hyper-tunnel";
+    public const string VizzyHyperTunnelShader = "vizzy-hyper-tunnel-shader";
 }

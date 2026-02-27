@@ -32,6 +32,7 @@ public sealed class VisualizerEngine
             [RendererIds.AudioMotionClone] = new AudioMotionCloneRenderer(),
             [RendererIds.VizzyBlobNeon] = new VizzyBlobNeonRenderer(),
             [RendererIds.VizzyOrbitRings] = new VizzyOrbitRingsRenderer(),
+            [RendererIds.VizzyHyperTunnelShader] = new VizzyHyperTunnelShaderRenderer(),
             [RendererIds.VizzyHyperTunnel] = new VizzyHyperTunnelRenderer(),
         };
     }
