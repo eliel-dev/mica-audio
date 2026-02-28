@@ -1253,10 +1253,6 @@ public partial class MainPage : Page
         var barSpace = preset.RendererParameters.TryGetValue("barSpace", out var configuredBarSpace)
             ? configuredBarSpace
             : 0.10f;
-        var usesFftDrivenEnvelope = cloneMode && fftSmoothing > 0.30f;
-        var displaySmoothingRise = usesFftDrivenEnvelope ? 1.00f : 0.82f;
-        var displaySmoothingFall = usesFftDrivenEnvelope ? 0.18f : 0.06f;
-        var displayMotionDamping = usesFftDrivenEnvelope ? 1.00f : 0.30f;
 
         return new SpectrumAnalyzer(new AnalyzerConfig
         {
@@ -1280,12 +1276,12 @@ public partial class MainPage : Page
             MaxDecibels = sensitivityMaxDb,
             DbFloor = sensitivityMinDb,
             DbCeiling = sensitivityMaxDb,
-            DisplaySmoothingRise = displaySmoothingRise,
-            DisplaySmoothingFall = displaySmoothingFall,
-            DisplayMotionDamping = displayMotionDamping,
-            OutputSmoothingRise = displaySmoothingRise,
-            OutputSmoothingFall = displaySmoothingFall,
-            OutputMotionDamping = displayMotionDamping,
+            DisplaySmoothingRise = 0.82f,
+            DisplaySmoothingFall = 0.06f,
+            DisplayMotionDamping = 0.30f,
+            OutputSmoothingRise = 0.82f,
+            OutputSmoothingFall = 0.06f,
+            OutputMotionDamping = 0.30f,
             InputGain = 1f,
         });
     }
@@ -2114,13 +2110,3 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
-
-
-
-
-
-
-
-
-
-

@@ -1,8 +1,8 @@
-﻿# Handoff Estrutural — 2026-02-28 — audiomotion-reactivity-tuning
+# Handoff Estrutural — 2026-02-28 — audiomotion-reactivity-tuning
 
 ## Objetivo
 
-Restaurar a reatividade visual do `AudioMotion Clone` para um comportamento mais proximo do audioMotion, evitando empilhamento excessivo de smoothing.
+Restaurar a reatividade visual do `AudioMotion Clone` alinhando o comportamento ao branch `main`, onde o preset ainda estava no ponto esperado.
 
 ## Escopo classificado
 
@@ -20,31 +20,31 @@ Restaurar a reatividade visual do `AudioMotion Clone` para um comportamento mais
 
 1. O `AudioMotionCloneRenderer` voltou a consumir `BandsDisplay` diretamente, sem passar por `ReactiveBandSampler`.
 2. O contrato `IRendererCapabilitiesProvider` foi mantido no renderer.
-3. Quando o preset ativo e `AudioMotion Clone` e `FftSmoothing > 0.30`, o analyzer usa envelope leve:
-   - `DisplaySmoothingRise = 1.00`
-   - `DisplaySmoothingFall = 0.18`
-   - `DisplayMotionDamping = 1.00`
-4. O mesmo envelope leve e propagado para `OutputSmoothing*` para manter consistencia com HUB75.
-5. A documentacao do modulo foi atualizada para registrar que o clone usa bandas cruas e envelope leve quando o smoothing FFT esta alto.
+3. O `AnalyzerConfig` do clone foi alinhado ao `main`, mantendo o envelope padrao:
+   - `DisplaySmoothingRise = 0.82`
+   - `DisplaySmoothingFall = 0.06`
+   - `DisplayMotionDamping = 0.30`
+4. Os mesmos valores padrao foram mantidos em `OutputSmoothing*` para preservar o comportamento do preview HUB75.
+5. A documentacao do modulo foi atualizada para registrar que o clone usa bandas cruas e envelope padrao do analyzer, alinhado ao `main`.
 
 ## Validacoes executadas
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
-(dotnet build/test executados apos este handoff)
+dotnet build src/App.WinUI/App.WinUI.csproj -c Debug
+dotnet test tests/Integration.Smoke/Integration.Smoke.csproj -c Debug --filter "FullyQualifiedName~Visualizer"
 ```
 
 ## Riscos e rollback
 
-- Risco: o `AudioMotion Clone` pode ficar mais agressivo do que alguns presets abstratos.
-- Risco: o envelope leve foi aplicado apenas ao clone; outros renderers continuam usando a estrategia anterior.
+- Risco: a reatividade continuar abaixo do esperado por outro fator fora do clone (preset salvo, configuracao local ou analyzer global).
 - Rollback:
-  1. restaurar `AudioMotionCloneRenderer` para a versao com `ReactiveBandSampler`
-  2. remover o branch `usesFftDrivenEnvelope` em `MainPage.CreateAnalyzer(...)`
+  1. restaurar o envelope especial introduzido neste branch
+  2. reavaliar o preset builtin salvo em disco antes de qualquer novo smoothing no renderer
 
 ## Proximos passos
 
-1. Validar visualmente se o ataque voltou ao nivel esperado com o preset `AudioMotion Clone`.
-2. Se ainda estiver “mole”, reduzir o default de `FftSmoothing` em uma entrega separada, com migracao explicita de defaults.
-3. Se ficar bom, aplicar a mesma logica de envelope leve para outros renderers que precisem de resposta mais seca.
+1. Validar visualmente se o `AudioMotion Clone` voltou ao comportamento do `main`.
+2. Se ainda estiver “mole”, comparar o preset salvo em `%AppData%\MicaAudio` com o seed do `main`.
+3. So depois disso decidir se `FftSmoothing` default precisa mudar.

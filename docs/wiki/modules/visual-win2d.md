@@ -31,7 +31,7 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - Renderer 2D de referencia para reatividade forte.
 - Base canonica para presets legiveis em HUB75.
 - Consome BandsDisplay diretamente, sem smoothing visual extra no renderer.
-- Quando FftSmoothing esta alto, o envelope do analyzer fica leve para manter ataque proximo do audioMotion.
+- Usa o envelope padrao do analyzer, alinhado ao branch main.
 
 ### `vizzy-blob-neon`
 
@@ -133,4 +133,3 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - [RendererCapabilities](../../../src/Visual.Win2D/Engine/RendererCapabilities.cs#L1)
 - [ReactiveBandSampler](../../../src/Visual.Win2D/Engine/ReactiveBandSampler.cs#L1)
 - [ReactiveEnvelopeState](../../../src/Visual.Win2D/Engine/ReactiveEnvelopeState.cs#L1)
-
