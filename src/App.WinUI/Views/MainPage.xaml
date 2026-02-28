@@ -274,7 +274,7 @@
                             ScrollViewer.VerticalScrollMode="Disabled">
                             <GridView.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <ItemsWrapGrid MaximumRowsOrColumns="2" Orientation="Horizontal" />
+                                    <ItemsWrapGrid ItemWidth="192" ItemHeight="152" MaximumRowsOrColumns="2" Orientation="Horizontal" />
                                 </ItemsPanelTemplate>
                             </GridView.ItemsPanel>
                         </GridView>
@@ -477,6 +477,7 @@
         </SplitView.Content>
     </SplitView>
 </Page>
+
 
 
 

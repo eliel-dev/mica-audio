@@ -68,3 +68,11 @@ O primeiro port da galeria para o pipeline real ainda concentrava energia sintet
 ## Ajuste posterior
 
 O primeiro port da galeria para o pipeline real ainda concentrava energia sintetica em graves/medios, o que fazia o `AudioMotion Clone` parecer cortado e acender so no lado esquerdo. O sinal demo foi ajustado para distribuir componentes ao longo de toda a faixa `FrequencyMinHz..FrequencyMaxHz`, preservando determinismo por preset e tornando a miniatura mais fiel a largura espectral real.
+
+## Tuning de velocidade
+
+A taxa do preview em hover foi ajustada para 36 FPS e a modulacao do sinal demo foi acelerada para deixar as miniaturas mais vivas e reativas, sem alterar o pipeline principal do visualizador.
+
+## Ajuste de densidade da galeria
+
+Os presets extras ja estavam sendo carregados, mas o `GridView` usava `ItemsWrapGrid` sem `ItemWidth` e `ItemHeight`, o que fazia o layout parecer limitado a poucos cards. A galeria passou a usar celulas fixas para expor mais presets visiveis no mesmo painel.

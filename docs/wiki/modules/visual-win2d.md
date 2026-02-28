@@ -31,7 +31,7 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - `MainPage` agora exibe uma galeria em grid com todos os presets carregados pelo `PresetRepository`.
 - Cada card usa `PresetPreviewThumbnailControl` para renderizar uma miniatura com o mesmo `VisualizerEngine`.
 - O preview do card usa `PcmFrame` sintetico gerado por `PresetPreviewSignalFactory`, distribuido pela faixa de frequencia ativa, processado pelo `SpectrumAnalyzer` real e renderizado pelo `VisualizerEngine`.
-- Apenas o card em hover/foco anima; o canvas principal nao troca durante hover.
+- Apenas o card em hover/foco anima; o canvas principal nao troca durante hover.`r`n- A galeria usa celulas fixas no `GridView` para manter mais presets visiveis por vez.
 - O clique no card continua sendo a selecao real do preset e persiste `ActivePresetId`.
 
 ## Renderers 2D ativos
@@ -153,6 +153,7 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - [RendererCapabilities](../../../src/Visual.Win2D/Engine/RendererCapabilities.cs#L1)
 - [ReactiveBandSampler](../../../src/Visual.Win2D/Engine/ReactiveBandSampler.cs#L1)
 - [ReactiveEnvelopeState](../../../src/Visual.Win2D/Engine/ReactiveEnvelopeState.cs#L1)
+
 
 
 

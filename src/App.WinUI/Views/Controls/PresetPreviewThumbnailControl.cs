@@ -16,8 +16,8 @@ namespace App.WinUI.Views.Controls;
 // DOCS: docs/wiki/modules/visual-win2d.md#galeria-de-presets
 internal sealed class PresetPreviewThumbnailControl : Grid
 {
-    private const int BasePreviewFps = 24;
-    private const int MaxHopsPerDraw = 12;
+    private const int BasePreviewFps = 36;
+    private const int MaxHopsPerDraw = 18;
 
     private readonly Border frame;
     private readonly CanvasControl canvas;
@@ -275,4 +275,5 @@ internal sealed class PresetPreviewThumbnailControl : Grid
         };
     }
 }
+
 
