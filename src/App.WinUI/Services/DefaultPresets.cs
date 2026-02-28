@@ -7,7 +7,7 @@ namespace App.WinUI.Services;
 // DOCS: docs/wiki/modules/visual-win2d.md#polar-arcs
 internal static class DefaultPresets
 {
-    private const int CurrentSchemaVersion = 12;
+    private const int CurrentSchemaVersion = 13;
 
     public static IReadOnlyList<PresetDefinition> Create()
     {
@@ -370,18 +370,8 @@ internal static class DefaultPresets
             new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 110, 110) },
         ];
     }
-
-    private static IReadOnlyList<PaletteStop> CreateVizzyHyperTunnelStops()
-    {
-        return
-        [
-            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 120, 38) },
-            new PaletteStop { Offset = 0.30f, Color = new RgbaColor(255, 158, 72) },
-            new PaletteStop { Offset = 0.62f, Color = new RgbaColor(70, 216, 232) },
-            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(0, 176, 220) },
-        ];
-    }
 }
+
 
 
 

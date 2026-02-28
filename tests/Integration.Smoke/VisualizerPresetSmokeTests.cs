@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using App.WinUI;
@@ -14,20 +14,20 @@ namespace Integration.Smoke;
 public sealed class VisualizerPresetSmokeTests
 {
     [Fact]
-    public void VisualizerEngine_ShouldExposeVizzyRenderers()
+    public void VisualizerEngine_ShouldExposeOnlySupported2dRenderers()
     {
         var engine = new VisualizerEngine();
         var rendererIds = engine.Renderers.Select(static renderer => renderer.RendererId).ToArray();
 
         Assert.Contains(RendererIds.VizzyBlobNeon, rendererIds);
         Assert.Contains(RendererIds.VizzyOrbitRings, rendererIds);
-        Assert.Contains(RendererIds.VizzyHyperTunnel, rendererIds);
-        Assert.Contains(RendererIds.VizzyHyperTunnelShader, rendererIds);
         Assert.Contains(RendererIds.PolarArcs, rendererIds);
+        Assert.DoesNotContain("vizzy-hyper-tunnel", rendererIds);
+        Assert.DoesNotContain("vizzy-hyper-tunnel-shader", rendererIds);
     }
 
     [Fact]
-    public void DefaultPresets_ShouldContainEnabledVizzyPresets()
+    public void DefaultPresets_ShouldContainEnabled2dPresets_AndNoHyperTunnel()
     {
         var presets = GetDefaultPresets();
         var presetIds = presets.Select(static preset => preset.PresetId).ToArray();
@@ -63,28 +63,28 @@ public sealed class VisualizerPresetSmokeTests
             DisplayBandCount = 42,
         };
 
-        var disabledClassic = new PresetDefinition
+        var retiredClassic = new PresetDefinition
         {
             SchemaVersion = 1,
             PresetId = "spectrum-vizzy-hyper-tunnel",
             Name = "Hyper Tunnel Classic",
-            RendererId = RendererIds.VizzyHyperTunnel,
+            RendererId = "vizzy-hyper-tunnel",
         };
 
-        var disabledShader = new PresetDefinition
+        var retiredShader = new PresetDefinition
         {
             SchemaVersion = 1,
             PresetId = "spectrum-vizzy-hyper-tunnel-shader",
             Name = "Hyper Tunnel",
-            RendererId = RendererIds.VizzyHyperTunnelShader,
+            RendererId = "vizzy-hyper-tunnel-shader",
         };
 
         try
         {
             await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-bars.json"), JsonSerializer.Serialize(outdatedDefault)).ConfigureAwait(false);
             await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-user-preset.json"), JsonSerializer.Serialize(customUserPreset)).ConfigureAwait(false);
-            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel.json"), JsonSerializer.Serialize(disabledClassic)).ConfigureAwait(false);
-            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel-shader.json"), JsonSerializer.Serialize(disabledShader)).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel.json"), JsonSerializer.Serialize(retiredClassic)).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel-shader.json"), JsonSerializer.Serialize(retiredShader)).ConfigureAwait(false);
 
             var loaded = await LoadPresetsThroughRepositoryAsync(appDataRoot).ConfigureAwait(false);
 
@@ -114,114 +114,63 @@ public sealed class VisualizerPresetSmokeTests
     }
 
     [Fact]
-    public void VizzyHyperTunnelRenderer_Render_ShouldNotThrow_ForValidAndEmptyFrames()
+    public async Task PresetRepository_LoadOrSeedAsync_ShouldMigrateRetiredHyperTunnelRenderers_ToAudioMotionClone()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        var appDataRoot = Path.Combine(Path.GetTempPath(), "mica-audio-smoke", Guid.NewGuid().ToString("N"));
+        var presetsDir = Path.Combine(appDataRoot, "presets");
+        Directory.CreateDirectory(presetsDir);
 
-        CanvasRenderTarget? target = null;
-        CanvasDrawingSession? drawingSession = null;
+        var classicCustom = new PresetDefinition
+        {
+            SchemaVersion = 4,
+            PresetId = "custom-hyper-classic",
+            Name = "Meu tunnel classico",
+            RendererId = "vizzy-hyper-tunnel",
+            RendererParameters = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["tunnelSpeed"] = 1.4f,
+                ["tunnelWarp"] = 0.2f,
+                ["lineThickness"] = 5f,
+            },
+        };
+
+        var shaderCustom = new PresetDefinition
+        {
+            SchemaVersion = 5,
+            PresetId = "custom-hyper-shader",
+            Name = "Meu tunnel shader",
+            RendererId = "vizzy-hyper-tunnel-shader",
+            RendererParameters = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["tunnelSliceCount"] = 72f,
+                ["tunnelFogAmount"] = 0.3f,
+                ["heightScale"] = 0.91f,
+            },
+        };
 
         try
         {
-            var renderer = new VizzyHyperTunnelRenderer();
-            var preset = CreateTestPreset(RendererIds.VizzyHyperTunnel);
-            var peaks = new float[64];
-            var bands = CreateBands(64);
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-hyper-classic.json"), JsonSerializer.Serialize(classicCustom)).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-hyper-shader.json"), JsonSerializer.Serialize(shaderCustom)).ConfigureAwait(false);
 
-            target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 320, 180, 96);
-            drawingSession = target.CreateDrawingSession();
+            var loaded = await LoadPresetsThroughRepositoryAsync(appDataRoot).ConfigureAwait(false);
 
-            renderer.Render(new RenderContext
-            {
-                DrawingSession = drawingSession,
-                Preset = preset,
-                Palette = new PaletteSampler(preset.Palette),
-                Peaks = peaks,
-                Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
-                Width = 320,
-                Height = 180,
-                DeltaSeconds = 1f / 60f,
-            });
+            var migratedClassic = loaded.Single(static preset => string.Equals(preset.PresetId, "custom-hyper-classic", StringComparison.OrdinalIgnoreCase));
+            var migratedShader = loaded.Single(static preset => string.Equals(preset.PresetId, "custom-hyper-shader", StringComparison.OrdinalIgnoreCase));
 
-            renderer.Render(new RenderContext
-            {
-                DrawingSession = drawingSession,
-                Preset = preset,
-                Palette = new PaletteSampler(preset.Palette),
-                Peaks = Array.Empty<float>(),
-                Frame = new MicaAudio.Core.Audio.SpectrumFrame(Array.Empty<float>(), Array.Empty<float>(), 0f, 0),
-                Width = 320,
-                Height = 180,
-                DeltaSeconds = 1f / 60f,
-            });
-        }
-        catch (COMException)
-        {
-            return;
+            Assert.Equal(RendererIds.AudioMotionClone, migratedClassic.RendererId);
+            Assert.Equal(RendererIds.AudioMotionClone, migratedShader.RendererId);
+            Assert.DoesNotContain("tunnelSpeed", migratedClassic.RendererParameters.Keys, StringComparer.OrdinalIgnoreCase);
+            Assert.DoesNotContain("tunnelSliceCount", migratedShader.RendererParameters.Keys, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("lineThickness", migratedClassic.RendererParameters.Keys, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("heightScale", migratedShader.RendererParameters.Keys, StringComparer.OrdinalIgnoreCase);
         }
         finally
         {
-            drawingSession?.Dispose();
-            target?.Dispose();
-        }
-    }
-
-    [Fact]
-    public void VizzyHyperTunnelShaderRenderer_Render_ShouldNotThrow_ForValidAndEmptyFrames()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        CanvasRenderTarget? target = null;
-        CanvasDrawingSession? drawingSession = null;
-
-        try
-        {
-            var renderer = new VizzyHyperTunnelShaderRenderer();
-            var preset = CreateTestPreset(RendererIds.VizzyHyperTunnelShader);
-            var peaks = new float[64];
-            var bands = CreateBands(64);
-
-            target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 320, 180, 96);
-            drawingSession = target.CreateDrawingSession();
-
-            renderer.Render(new RenderContext
+            if (Directory.Exists(appDataRoot))
             {
-                DrawingSession = drawingSession,
-                Preset = preset,
-                Palette = new PaletteSampler(preset.Palette),
-                Peaks = peaks,
-                Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
-                Width = 320,
-                Height = 180,
-                DeltaSeconds = 1f / 60f,
-            });
-
-            renderer.Render(new RenderContext
-            {
-                DrawingSession = drawingSession,
-                Preset = preset,
-                Palette = new PaletteSampler(preset.Palette),
-                Peaks = Array.Empty<float>(),
-                Frame = new MicaAudio.Core.Audio.SpectrumFrame(Array.Empty<float>(), Array.Empty<float>(), 0f, 0),
-                Width = 320,
-                Height = 180,
-                DeltaSeconds = 1f / 60f,
-            });
-        }
-        catch (COMException)
-        {
-            return;
-        }
-        finally
-        {
-            drawingSession?.Dispose();
-            target?.Dispose();
+                Directory.Delete(appDataRoot, recursive: true);
+            }
         }
     }
 
@@ -265,52 +214,6 @@ public sealed class VisualizerPresetSmokeTests
                 Palette = new PaletteSampler(preset.Palette),
                 Peaks = Array.Empty<float>(),
                 Frame = new MicaAudio.Core.Audio.SpectrumFrame(Array.Empty<float>(), Array.Empty<float>(), 0f, 0),
-                Width = 320,
-                Height = 180,
-                DeltaSeconds = 1f / 60f,
-            });
-        }
-        catch (COMException)
-        {
-            return;
-        }
-        finally
-        {
-            drawingSession?.Dispose();
-            target?.Dispose();
-        }
-    }
-
-    [Fact]
-    public void VizzyHyperTunnelShaderRenderer_ShouldFallback_WhenShaderUnavailable()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        CanvasRenderTarget? target = null;
-        CanvasDrawingSession? drawingSession = null;
-
-        try
-        {
-            var renderer = new VizzyHyperTunnelShaderRenderer();
-            var unavailableField = typeof(VizzyHyperTunnelShaderRenderer).GetField("shaderUnavailable", BindingFlags.Instance | BindingFlags.NonPublic);
-            unavailableField?.SetValue(renderer, true);
-
-            var preset = CreateTestPreset(RendererIds.VizzyHyperTunnelShader);
-            var bands = CreateBands(64);
-
-            target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 320, 180, 96);
-            drawingSession = target.CreateDrawingSession();
-
-            renderer.Render(new RenderContext
-            {
-                DrawingSession = drawingSession,
-                Preset = preset,
-                Palette = new PaletteSampler(preset.Palette),
-                Peaks = new float[64],
-                Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
                 Width = 320,
                 Height = 180,
                 DeltaSeconds = 1f / 60f,

@@ -1,4 +1,4 @@
-# Code Index
+﻿# Code Index
 Indice expandido para localizar rapidamente pontos de alteracao por pagina, servico e protocolo.
 ## App pages (WinUI)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
@@ -44,12 +44,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [AudioMotionCloneRenderer](../../../src/Visual.Win2D/Renderers/AudioMotionCloneRenderer.cs#L1)
 - [VizzyBlobNeonRenderer](../../../src/Visual.Win2D/Renderers/VizzyBlobNeonRenderer.cs#L1)
 - [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1)
-- [VizzyHyperTunnelRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs#L1)
-- [VizzyHyperTunnelShaderRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelShaderRenderer.cs#L1)
 - [PolarArcsRenderer](../../../src/Visual.Win2D/Renderers/PolarArcsRenderer.cs#L1)
-- [HyperTunnelShadertoyShader](../../../src/Visual.Win2D/Shaders/HyperTunnelShadertoyShader.cs#L1)
-- [HyperTunnelAudioMapper](../../../src/Visual.Win2D/Shaders/HyperTunnelAudioMapper.cs#L1)
-- [HyperTunnelShaderUniforms](../../../src/Visual.Win2D/Shaders/HyperTunnelShaderUniforms.cs#L1)
 ## Output
 - [ILedOutput](../../../src/Output/Led/ILedOutput.cs#L1)
 - [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)
@@ -70,7 +65,6 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [docs-structural-gate.ps1](../../../scripts/docs-structural-gate.ps1#L1)
 - [ai-governance-check.ps1](../../../scripts/ai-governance-check.ps1#L1)
 - [mvvm-validate.ps1](../../../scripts/mvvm-validate.ps1#L1)
-- [validate-shader-toolchain.ps1](../../../scripts/validate-shader-toolchain.ps1#L1)
 - [dependency-vulnerability-gate.ps1](../../../scripts/dependency-vulnerability-gate.ps1#L1)
 - [git-hooks-bootstrap.ps1](../../../scripts/git-hooks-bootstrap.ps1#L1)
 - [release.yml](../../../.github/workflows/release.yml#L1)
@@ -128,3 +122,4 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [ReactiveBandSampler](../../../src/Visual.Win2D/Engine/ReactiveBandSampler.cs#L1)
 - [RendererIntegrationContractSmokeTests](../../../tests/Integration.Smoke/RendererIntegrationContractSmokeTests.cs#L1)
 - [ReactiveBandSamplerTests](../../../tests/Output.Tests/ReactiveBandSamplerTests.cs#L1)
+

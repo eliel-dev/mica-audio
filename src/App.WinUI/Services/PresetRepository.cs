@@ -1,17 +1,38 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
+using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services;
 
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#pontos-de-alteracao-frequente
 internal sealed class PresetRepository
 {
-    private static readonly HashSet<string> DisabledBuiltInPresetIds = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> RetiredBuiltInPresetIds = new(StringComparer.OrdinalIgnoreCase)
     {
         "spectrum-vizzy-hyper-tunnel",
         "spectrum-vizzy-hyper-tunnel-shader",
+    };
+
+    private static readonly HashSet<string> RetiredRendererIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "vizzy-hyper-tunnel",
+        "vizzy-hyper-tunnel-shader",
+    };
+
+    private static readonly HashSet<string> RetiredRendererParameterKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "tunnelBaseRadius",
+        "tunnelDepth",
+        "tunnelSpeed",
+        "tunnelWarp",
+        "tunnelTwist",
+        "tunnelGlowPasses",
+        "tunnelLineThickness",
+        "tunnelFogAmount",
+        "tunnelSliceCount",
+        "tunnelSegmentCount",
     };
 
     private readonly string appDataRoot;
@@ -36,6 +57,8 @@ internal sealed class PresetRepository
     {
         Directory.CreateDirectory(presetsDir);
         var defaults = DefaultPresets.Create();
+        var audioMotionFallback = defaults.First(static preset =>
+            string.Equals(preset.PresetId, "audiomotion-clone", StringComparison.OrdinalIgnoreCase));
 
         var files = Directory.GetFiles(presetsDir, "*.json", SearchOption.TopDirectoryOnly);
         if (files.Length == 0)
@@ -45,7 +68,8 @@ internal sealed class PresetRepository
         }
 
         var loaded = new List<PresetDefinition>();
-        var removedDisabledPresets = false;
+        var removedRetiredBuiltInPresets = false;
+        var migratedRetiredRenderers = false;
 
         foreach (var file in files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
@@ -60,11 +84,17 @@ internal sealed class PresetRepository
                 continue;
             }
 
-            if (DisabledBuiltInPresetIds.Contains(preset.PresetId))
+            if (RetiredBuiltInPresetIds.Contains(preset.PresetId))
             {
                 File.Delete(file);
-                removedDisabledPresets = true;
+                removedRetiredBuiltInPresets = true;
                 continue;
+            }
+
+            if (RetiredRendererIds.Contains(preset.RendererId))
+            {
+                preset = MigrateRetiredRendererPreset(preset, audioMotionFallback);
+                migratedRetiredRenderers = true;
             }
 
             loaded.Add(preset);
@@ -77,7 +107,7 @@ internal sealed class PresetRepository
         }
 
         var (mergedPresets, catalogUpdated) = MergeWithDefaults(loaded, defaults);
-        if (catalogUpdated || removedDisabledPresets)
+        if (catalogUpdated || removedRetiredBuiltInPresets || migratedRetiredRenderers)
         {
             await SaveAllAsync(mergedPresets, cancellationToken).ConfigureAwait(false);
         }
@@ -154,5 +184,41 @@ internal sealed class PresetRepository
         var invalid = Path.GetInvalidFileNameChars();
         var chars = value.Select(c => invalid.Contains(c) ? '-' : c).ToArray();
         return new string(chars);
+    }
+
+    private static PresetDefinition MigrateRetiredRendererPreset(PresetDefinition preset, PresetDefinition fallback)
+    {
+        var migratedParameters = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in preset.RendererParameters)
+        {
+            if (!RetiredRendererParameterKeys.Contains(pair.Key))
+            {
+                migratedParameters[pair.Key] = pair.Value;
+            }
+        }
+
+        foreach (var pair in fallback.RendererParameters)
+        {
+            if (!migratedParameters.ContainsKey(pair.Key))
+            {
+                migratedParameters[pair.Key] = pair.Value;
+            }
+        }
+
+        return new PresetDefinition
+        {
+            SchemaVersion = preset.SchemaVersion,
+            PresetId = preset.PresetId,
+            Name = preset.Name,
+            RendererId = RendererIds.AudioMotionClone,
+            DisplayBandCount = preset.DisplayBandCount,
+            ScaleMode = preset.ScaleMode,
+            FpsTarget = preset.FpsTarget,
+            Layout = preset.Layout,
+            EnableGlow = preset.EnableGlow,
+            RendererParameters = migratedParameters,
+            Palette = preset.Palette,
+        };
     }
 }

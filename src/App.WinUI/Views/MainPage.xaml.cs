@@ -213,6 +213,7 @@ public partial class MainPage : Page
         appSettings = await settingsRepository.LoadAsync().ConfigureAwait(false);
         appSettings = settingsDomainService.Migrate(appSettings);
         var presets = await presetRepository.LoadOrSeedAsync().ConfigureAwait(false);
+        var shouldPersistNormalizedRendererId = false;
 
         presetsById.Clear();
         foreach (var preset in presets)
@@ -238,6 +239,7 @@ public partial class MainPage : Page
             activePreset = ResolveActivePreset(appSettings.ActivePresetId);
             currentPresetId = activePreset.PresetId;
             selectedRendererId = ResolveSelectedRendererId(appSettings.SelectedRendererId, activePreset.RendererId);
+            shouldPersistNormalizedRendererId = !string.Equals(appSettings.SelectedRendererId, selectedRendererId, StringComparison.OrdinalIgnoreCase);
             sensitivityMinDb = CoerceSensitivityMinDb(appSettings.SensitivityMinDb);
             sensitivityMaxDb = CoerceSensitivityMaxDb(appSettings.SensitivityMaxDb);
             linearBoost = CoerceLinearBoost(appSettings.LinearBoost);
@@ -313,6 +315,11 @@ public partial class MainPage : Page
             appSettings = settingsDomainService.Copy(appSettings, b => { b.SetActivePresetId(currentPresetId); b.SetSelectedRendererId(selectedRendererId); b.SetSensitivity(sensitivityMinDb, sensitivityMaxDb); b.SetLinearBoost(linearBoost); b.SetFftSize(fftSize); b.SetFftSmoothing(fftSmoothing); b.SetWeightingFilter(weightingFilter); b.SetFrequencyScale(frequencyScale); b.SetFrequencyRange(frequencyMinHz, frequencyMaxHz); b.SetBarCount(displayBandCount); });
             StatusText.Text = "Pronto";
         });
+
+        if (shouldPersistNormalizedRendererId)
+        {
+            await settingsRepository.SaveAsync(appSettings).ConfigureAwait(false);
+        }
 
         await ActivateVisualizerSessionAsync().ConfigureAwait(false);
     }
@@ -1246,6 +1253,10 @@ public partial class MainPage : Page
         var barSpace = preset.RendererParameters.TryGetValue("barSpace", out var configuredBarSpace)
             ? configuredBarSpace
             : 0.10f;
+        var usesFftDrivenEnvelope = cloneMode && fftSmoothing > 0.30f;
+        var displaySmoothingRise = usesFftDrivenEnvelope ? 1.00f : 0.82f;
+        var displaySmoothingFall = usesFftDrivenEnvelope ? 0.18f : 0.06f;
+        var displayMotionDamping = usesFftDrivenEnvelope ? 1.00f : 0.30f;
 
         return new SpectrumAnalyzer(new AnalyzerConfig
         {
@@ -1269,12 +1280,12 @@ public partial class MainPage : Page
             MaxDecibels = sensitivityMaxDb,
             DbFloor = sensitivityMinDb,
             DbCeiling = sensitivityMaxDb,
-            DisplaySmoothingRise = 0.82f,
-            DisplaySmoothingFall = 0.06f,
-            DisplayMotionDamping = 0.30f,
-            OutputSmoothingRise = 0.82f,
-            OutputSmoothingFall = 0.06f,
-            OutputMotionDamping = 0.30f,
+            DisplaySmoothingRise = displaySmoothingRise,
+            DisplaySmoothingFall = displaySmoothingFall,
+            DisplayMotionDamping = displayMotionDamping,
+            OutputSmoothingRise = displaySmoothingRise,
+            OutputSmoothingFall = displaySmoothingFall,
+            OutputMotionDamping = displayMotionDamping,
             InputGain = 1f,
         });
     }
@@ -2103,6 +2114,7 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
+
 
 
 

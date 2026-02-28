@@ -1,4 +1,4 @@
-# Troubleshooting Matrix
+﻿# Troubleshooting Matrix
 
 | Sintoma | Diagnostico rapido | Causa comum | Acao recomendada |
 |---|---|---|---|
@@ -18,10 +18,9 @@
 | Botao de salvar abre e cancela | ver status `Download: cancelado` | usuario cancelou `FileSavePicker` | comportamento esperado |
 | Texto ilegivel em tema | comparar tema sistema e brushes | style sem recurso semantico | revisar Fluent2 tokens e bindings |
 | Preset `Blob Neon`, `Orbit Rings` ou `Polar Arcs` nao aparece | validar pasta `%AppData%/MicaAudio/presets` e schema dos defaults | catalogo local antigo sem merge de defaults | abrir app novamente para migracao automatica; se persistir, remover somente presets default antigos e reiniciar |
-| Hyper Tunnel nao aparece no combo de presets | comportamento esperado nesta fase de teste | presets builtin de Hyper Tunnel foram desativados para evitar travamento em VM sem GPU dedicada | manter o renderer apenas para fallback tecnico/testes manuais; use outros presets no fluxo normal |
-| Hyper Tunnel shader nao compila localmente | rodar `scripts/validate-shader-toolchain.ps1` | toolchain de shader incompleta (ComputeSharp/TFM/UAP) | alinhar TFM `net8.0-windows10.0.22621.0`, validar pacote ComputeSharp e usar script de preflight para diagnostico |
-| Polar Arcs parece estatico ou sem as cores do visualizador | conferir se o preset local foi migrado e se a paleta foi atualizada | `spectrum-polar-arcs.json` antigo ainda carregado com defaults defasados | reiniciar o app para migracao; se persistir, remover apenas `spectrum-polar-arcs.json` e reabrir o app |
-| FPS cai ao usar renderers Vizzy | comparar `blobPointCount/orbitPointCount/tunnelSliceCount` e `glowPasses` no preset ativo | complexidade alta de geometria + glow | reduzir `pointCount/sliceCount` e `glowPasses` para 1-2; no Hyper Tunnel a auto-qualidade ajusta complexidade em runtime |
+| Preset legado de Hyper Tunnel nao abre mais | comportamento esperado na politica 2D-only | renderer antigo foi aposentado e migrado para 2D | reabrir o app para migracao automatica; presets antigos passam a usar `AudioMotion Clone` |
+| Polar Arcs parece estatico | conferir `Quantidade de barras`, sensibilidade e o preset local | preset local defasado ou nivel de entrada muito baixo | reiniciar o app para reaplicar defaults; se persistir, remover apenas `spectrum-polar-arcs.json` e reabrir o app |
+| FPS cai ao usar renderers Vizzy | comparar `blobPointCount/orbitPointCount` e `glowPasses` no preset ativo | complexidade alta de geometria + glow | reduzir `pointCount` e `glowPasses` para 1-2 |
 
 ## Token criptografado no devices.json
 
@@ -35,12 +34,13 @@
 - A fonte de dados e o mesmo snapshot 64x32 do simulador (`SimulatorLedOutput.GetFrameSnapshot()`).
 - O desenho usa mapeamento 2x nearest-neighbor (`x128/2`, `y128/2`) para manter fidelidade de pixel HUB75.
 
-## Renderers Vizzy (blob/orbit/tunnel)
+## Renderers 2D do Visualizador
 
-- `Blob Neon` e `Orbit Rings` sao renderers Win2D inspirados visualmente no estilo Vizzy.
-- `Polar Arcs` e um renderer 2D classico com composicao inspirada em vinil, mas usando a paleta do preset e 12 pares de arcos espelhados mapeados do espectro.
+- `Blob Neon`, `Orbit Rings` e `Polar Arcs` sao renderers Win2D 2D.
+- `Polar Arcs` opera no modo apenas-barras e depende do `ReactiveBandSampler` para resposta ao audio.
 - O controle nesta fase e por presets (`RendererParameters`), sem painel dedicado na UI.
-- Presets builtin de Hyper Tunnel estao temporariamente ocultos no catalogo em funcao de estabilidade em ambientes sem GPU dedicada.`r`n- Mudancas extremas de parametros podem impactar frame time; use clamps recomendados.
+- Mudancas extremas de parametros podem impactar frame time; use clamps recomendados.
+- O modulo visual e oficialmente 2D-only; o caminho antigo de shader/GPU foi aposentado para manter consistencia com HUB75.
 
 ## Referencias de codigo
 
@@ -51,21 +51,14 @@
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [VizzyBlobNeonRenderer](../../../src/Visual.Win2D/Renderers/VizzyBlobNeonRenderer.cs#L1)
 - [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1)
-- [VizzyHyperTunnelRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs#L1)
-- [VizzyHyperTunnelShaderRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelShaderRenderer.cs#L1)
 - [PolarArcsRenderer](../../../src/Visual.Win2D/Renderers/PolarArcsRenderer.cs#L1)
-- [HyperTunnelShadertoyShader](../../../src/Visual.Win2D/Shaders/HyperTunnelShadertoyShader.cs#L1)
-- [validate-shader-toolchain](../../../scripts/validate-shader-toolchain.ps1#L1)
+- [AudioMotionCloneRenderer](../../../src/Visual.Win2D/Renderers/AudioMotionCloneRenderer.cs#L1)
 
 ## Push local x CI (gate local leve)
 
 - O hook local pre-push roda validacoes de docs/governanca, build do App.WinUI e Output.Tests.
 - O build completo da solucao (`MicaAudio.sln`) continua obrigatorio no CI (`governance-ai-guardrails` e `governance-build-debug`).
 - Resultado: push local destravado em maquinas sem SDK UAP, sem reduzir rigor para merge na main.
-
-
-
-
 
 ## Renderers reativos (bridge incremental)
 

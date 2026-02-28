@@ -1,4 +1,4 @@
-using Microsoft.Graphics.Canvas;
+﻿using Microsoft.Graphics.Canvas;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Presets;
 using Visual.Win2D.Renderers;
@@ -32,8 +32,6 @@ public sealed class VisualizerEngine
             [RendererIds.AudioMotionClone] = new AudioMotionCloneRenderer(),
             [RendererIds.VizzyBlobNeon] = new VizzyBlobNeonRenderer(),
             [RendererIds.VizzyOrbitRings] = new VizzyOrbitRingsRenderer(),
-            [RendererIds.VizzyHyperTunnelShader] = new VizzyHyperTunnelShaderRenderer(),
-            [RendererIds.VizzyHyperTunnel] = new VizzyHyperTunnelRenderer(),
             [RendererIds.PolarArcs] = new PolarArcsRenderer(),
         };
     }

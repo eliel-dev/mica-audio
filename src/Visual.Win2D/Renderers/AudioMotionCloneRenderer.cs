@@ -24,8 +24,6 @@ public sealed class AudioMotionCloneRenderer : IRenderer, IRendererCapabilitiesP
         UnsupportedControlsHint = "No modo AudioMotion Clone, a quantidade de barras e automatica pela largura da tela.",
     };
 
-    private float[] smoothedBands = Array.Empty<float>();
-
     public string RendererId => RendererIds.AudioMotionClone;
 
     public string DisplayName => "AudioMotion Clone";
@@ -34,22 +32,13 @@ public sealed class AudioMotionCloneRenderer : IRenderer, IRendererCapabilitiesP
 
     public void Render(RenderContext context)
     {
-        var targetCount = context.Frame.BandsDisplay.Length;
-        var snapshot = ReactiveBandSampler.Sample(
-            context.Frame.BandsDisplay,
-            context.Frame.Level,
-            context.DeltaSeconds,
-            targetCount,
-            RendererBarCountMode.Native,
-            ref smoothedBands);
-
-        var bands = snapshot.Bands;
+        var ds = context.DrawingSession;
+        var bands = context.Frame.BandsDisplay;
         if (bands.Length == 0)
         {
             return;
         }
 
-        var ds = context.DrawingSession;
         var midY = context.Height * 0.5f;
         var heightScale = Math.Clamp(context.Param("heightScale", 0.78f), 0.1f, 1f);
         var minHalfHeight = Math.Clamp(context.Param("minHalfHeight", 0f), 0f, midY);
