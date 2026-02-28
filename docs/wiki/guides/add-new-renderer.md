@@ -12,8 +12,9 @@ Adicionar renderer novo no Win2D e disponibilizar no app sem quebrar presets exi
 4. Criar preset builtin em `DefaultPresets`.
 5. Validar migracao de presets em `PresetRepository` para nao apagar customizacoes.
 6. Testar troca em runtime e fullscreen.
-7. Se o renderer for pesado, implementar clamp de complexidade e modo de degradacao.
-8. Se for renderer shader, validar toolchain antes com `scripts/validate-shader-toolchain.ps1`.
+7. Para renderer 2D classico, preferir geometria vetorial simples (`CanvasPathBuilder`/`CanvasGeometry`) antes de partir para shader.
+8. Se o renderer for pesado, implementar clamp de complexidade e modo de degradacao.
+9. Se for renderer shader, validar toolchain antes com `scripts/validate-shader-toolchain.ps1`.
 
 ## Referencias de codigo
 
@@ -24,6 +25,7 @@ Adicionar renderer novo no Win2D e disponibilizar no app sem quebrar presets exi
 - [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L1) - assinatura: `internal sealed class PresetRepository`
 - [VizzyBlobNeonRenderer](../../../src/Visual.Win2D/Renderers/VizzyBlobNeonRenderer.cs#L1) - assinatura: exemplo de renderer novo
 - [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1) - assinatura: exemplo de renderer novo
+- [PolarArcsRenderer](../../../src/Visual.Win2D/Renderers/PolarArcsRenderer.cs#L1) - assinatura: exemplo de renderer 2D classico
 - [VizzyHyperTunnelRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs#L1) - assinatura: fallback/classic
 - [VizzyHyperTunnelShaderRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelShaderRenderer.cs#L1) - assinatura: renderer shader GPU
 - [HyperTunnelShadertoyShader](../../../src/Visual.Win2D/Shaders/HyperTunnelShadertoyShader.cs#L1) - assinatura: shader ComputeSharp D2D1
@@ -37,3 +39,14 @@ Adicionar renderer novo no Win2D e disponibilizar no app sem quebrar presets exi
 - Nao quebra HUB75 preview.
 - Em hardware mais fraco, renderer reduz custo sem stutter severo.
 - Em falha de shader, fallback classico assume sem encerrar o app.
+
+
+
+## Requisitos obrigatorios para renderers reativos novos
+
+1. Implementar `IRendererCapabilitiesProvider`.
+2. Declarar `RendererCapabilities` explicitas, incluindo `BarCountMode`.
+3. Usar `ReactiveBandSampler` em vez de smoothing local ad-hoc.
+4. Adicionar teste de contrato do renderer.
+5. Adicionar teste de reatividade deterministica do sampler.
+6. Validar a integracao com o estado da lateral de configuracao em `MainPage`.

@@ -285,7 +285,7 @@ public partial class MainPage : Page
             UpdateFrequencyRangeCombos();
             UpdateSensitivityDbTexts();
             UpdateLinearBoostText();
-            UpdateCloneModeUi();
+            ApplyRendererControlState();
             UpdateGifControlsVisibility();
             UpdateGifTransportState();
             UpdateGifLoadingState(false);
@@ -406,7 +406,7 @@ public partial class MainPage : Page
     }
     private void ScheduleCloneViewportAnalyzerRebuild()
     {
-        if (!initialized || !IsClonePresetActive())
+        if (!initialized || !IsCloneDisplayModeActive())
         {
             return;
         }
@@ -430,7 +430,7 @@ public partial class MainPage : Page
         cloneViewportDebounceTimer.Tick += (_, _) =>
         {
             cloneViewportDebounceTimer?.Stop();
-            if (!IsClonePresetActive())
+            if (!IsCloneDisplayModeActive())
             {
                 return;
             }
@@ -473,7 +473,7 @@ public partial class MainPage : Page
 
     private void OnMainCanvasSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (!initialized || !IsClonePresetActive())
+        if (!initialized || !IsCloneDisplayModeActive())
         {
             return;
         }
@@ -702,7 +702,7 @@ public partial class MainPage : Page
         selectedRendererId = preset.RendererId;
 
         SelectComboOption(RendererCombo, selectedRendererId);
-        UpdateCloneModeUi();
+        ApplyRendererControlState();
         lastCloneViewportWidth = GetAnalyzerViewportWidth();
         Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
 
@@ -711,9 +711,10 @@ public partial class MainPage : Page
 
     private void OnRendererSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (IsClonePresetActive())
+        if (IsBuiltInClonePresetActive())
         {
             selectedRendererId = RendererIds.AudioMotionClone;
+            ApplyRendererControlState();
             return;
         }
 
@@ -723,6 +724,9 @@ public partial class MainPage : Page
         }
 
         selectedRendererId = option.Id;
+        ApplyRendererControlState();
+        lastCloneViewportWidth = GetAnalyzerViewportWidth();
+        Volatile.Write(ref analyzer, CreateAnalyzer(BuildRuntimePreset()));
         appSettings = settingsDomainService.Copy(appSettings, b => b.SetSelectedRendererId(selectedRendererId));
     }
 
@@ -1020,7 +1024,10 @@ public partial class MainPage : Page
 
     private void OnBarCountChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
-        if (suppressBarCountChanged || IsClonePresetActive())
+        var capabilities = GetActiveRendererCapabilities();
+        if (suppressBarCountChanged
+            || !capabilities.Controls.SupportsBarCount
+            || capabilities.BarCountMode == RendererBarCountMode.Fixed)
         {
             return;
         }
@@ -1214,7 +1221,7 @@ public partial class MainPage : Page
 
     private PresetDefinition BuildRuntimePreset()
     {
-        var rendererId = IsClonePreset(activePreset) ? RendererIds.AudioMotionClone : selectedRendererId;
+        var rendererId = ResolveCurrentRendererId();
         return new PresetDefinition
         {
             SchemaVersion = activePreset.SchemaVersion,
@@ -1234,7 +1241,7 @@ public partial class MainPage : Page
     private IAnalyzer CreateAnalyzer(PresetDefinition preset)
     {
         // DOCS: docs/wiki/guides/change-visualizer-settings.md#passos
-        var cloneMode = IsClonePreset(preset);
+        var cloneMode = string.Equals(preset.RendererId, RendererIds.AudioMotionClone, StringComparison.OrdinalIgnoreCase);
         var viewportWidth = GetAnalyzerViewportWidth();
         var barSpace = preset.RendererParameters.TryGetValue("barSpace", out var configuredBarSpace)
             ? configuredBarSpace
@@ -1741,26 +1748,48 @@ public partial class MainPage : Page
 
     private void ApplyBandCountBounds()
     {
-        var cloneMode = IsClonePresetActive();
+        var capabilities = GetActiveRendererCapabilities();
         var minBands = Math.Max(8, activePreset.DisplayBandCount);
-        var maxBands = cloneMode ? minBands : 128;
-        displayBandCount = Math.Clamp(displayBandCount <= 0 ? minBands : displayBandCount, minBands, maxBands);
+        var maxBands = 128;
+        var barCountLocked = !capabilities.Controls.SupportsBarCount || capabilities.BarCountMode == RendererBarCountMode.Fixed;
+        var sliderValue = displayBandCount <= 0 ? minBands : displayBandCount;
+
+        if (barCountLocked)
+        {
+            var fixedCount = Math.Max(1, capabilities.FixedVisualElementCount ?? minBands);
+            minBands = fixedCount;
+            maxBands = fixedCount;
+            sliderValue = fixedCount;
+        }
+        else
+        {
+            displayBandCount = Math.Clamp(sliderValue, minBands, maxBands);
+            sliderValue = displayBandCount;
+        }
 
         suppressBarCountChanged = true;
         BarCountSlider.Minimum = minBands;
         BarCountSlider.Maximum = maxBands;
-        BarCountSlider.IsEnabled = !cloneMode;
-        BarCountSlider.Value = displayBandCount;
-        BarCountValueText.Text = displayBandCount.ToString();
+        BarCountSlider.IsEnabled = !barCountLocked;
+        BarCountSlider.Value = sliderValue;
+        BarCountValueText.Text = sliderValue.ToString();
         suppressBarCountChanged = false;
     }
 
-    private void UpdateCloneModeUi()
+    private void ApplyRendererControlState()
     {
-        var cloneMode = IsClonePresetActive();
-        selectedRendererId = cloneMode ? RendererIds.AudioMotionClone : selectedRendererId;
-        BarCountPanel.Visibility = cloneMode ? Visibility.Collapsed : Visibility.Visible;
-        CloneBarsHintText.Visibility = cloneMode ? Visibility.Visible : Visibility.Collapsed;
+        var capabilities = GetActiveRendererCapabilities();
+        var barCountLocked = !capabilities.Controls.SupportsBarCount || capabilities.BarCountMode == RendererBarCountMode.Fixed;
+
+        BarCountPanel.Visibility = barCountLocked ? Visibility.Collapsed : Visibility.Visible;
+        CloneBarsHintText.Visibility = barCountLocked ? Visibility.Visible : Visibility.Collapsed;
+        if (barCountLocked)
+        {
+            CloneBarsHintText.Text = !string.IsNullOrWhiteSpace(capabilities.UnsupportedControlsHint)
+                ? capabilities.UnsupportedControlsHint
+                : "A quantidade de barras e controlada pela propria visualizacao.";
+        }
+
         ApplyBandCountBounds();
     }
 
@@ -1798,13 +1827,17 @@ public partial class MainPage : Page
         }
     }
 
-    private static bool IsClonePreset(PresetDefinition preset)
-    {
-        return string.Equals(preset.PresetId, AudioMotionClonePresetId, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(preset.RendererId, RendererIds.AudioMotionClone, StringComparison.OrdinalIgnoreCase);
-    }
+    private bool IsBuiltInClonePresetActive()
+        => string.Equals(activePreset.PresetId, AudioMotionClonePresetId, StringComparison.OrdinalIgnoreCase);
 
-    private bool IsClonePresetActive() => IsClonePreset(activePreset);
+    private string ResolveCurrentRendererId()
+        => IsBuiltInClonePresetActive() ? RendererIds.AudioMotionClone : selectedRendererId;
+
+    private bool IsCloneDisplayModeActive()
+        => string.Equals(ResolveCurrentRendererId(), RendererIds.AudioMotionClone, StringComparison.OrdinalIgnoreCase);
+
+    private RendererCapabilities GetActiveRendererCapabilities()
+        => visualizer.GetCapabilities(ResolveCurrentRendererId());
 
     private string ResolveSelectedRendererId(string configuredRendererId, string fallbackRendererId)
     {
@@ -2070,6 +2103,9 @@ public partial class MainPage : Page
         public override string ToString() => Label;
     }
 }
+
+
+
 
 
 

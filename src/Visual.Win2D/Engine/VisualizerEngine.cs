@@ -34,6 +34,7 @@ public sealed class VisualizerEngine
             [RendererIds.VizzyOrbitRings] = new VizzyOrbitRingsRenderer(),
             [RendererIds.VizzyHyperTunnelShader] = new VizzyHyperTunnelShaderRenderer(),
             [RendererIds.VizzyHyperTunnel] = new VizzyHyperTunnelRenderer(),
+            [RendererIds.PolarArcs] = new PolarArcsRenderer(),
         };
     }
 
@@ -67,6 +68,17 @@ public sealed class VisualizerEngine
             Height = height,
             DeltaSeconds = deltaSeconds,
         });
+    }
+
+    public RendererCapabilities GetCapabilities(string rendererId)
+    {
+        var renderer = ResolveRenderer(rendererId);
+        if (renderer is IRendererCapabilitiesProvider provider)
+        {
+            return provider.Capabilities;
+        }
+
+        return RendererCapabilities.CreateLegacyAssumed();
     }
 
     public bool TrySetRenderer(string rendererId, out string normalizedRendererId)

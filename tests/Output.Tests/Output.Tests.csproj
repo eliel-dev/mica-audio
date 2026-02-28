@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -47,6 +47,10 @@
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppModifierOption.cs" Link="Shared\Models\AppModifierOption.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppPreviewDefinition.cs" Link="Shared\Models\AppPreviewDefinition.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppRuntimeDefinition.cs" Link="Shared\Models\AppRuntimeDefinition.cs" />
+    <Compile Include="..\..\src\Visual.Win2D\Engine\RendererBarCountMode.cs" Link="Shared\Visual\RendererBarCountMode.cs" />
+    <Compile Include="..\..\src\Visual.Win2D\Engine\ReactiveEnvelopeState.cs" Link="Shared\Visual\ReactiveEnvelopeState.cs" />
+    <Compile Include="..\..\src\Visual.Win2D\Engine\ReactiveBandSnapshot.cs" Link="Shared\Visual\ReactiveBandSnapshot.cs" />
+    <Compile Include="..\..\src\Visual.Win2D\Engine\ReactiveBandSampler.cs" Link="Shared\Visual\ReactiveBandSampler.cs" />
   </ItemGroup>
 
   <ItemGroup>

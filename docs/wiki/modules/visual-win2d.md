@@ -55,12 +55,28 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
   - Alto: `iterations=100`, `steamSteps=24`, `scale=1.0`
   - Medio: `iterations=72`, `steamSteps=16`, `scale=0.75`
   - Baixo: `iterations=56`, `steamSteps=10`, `scale=0.5`
-- Fallback automatico para `vizzy-hyper-tunnel` em falha de shader/device.
+- Fallback automatico para `vizzy-hyper-tunnel` em falha de shader/device.`r`n- Presets builtin de Hyper Tunnel estao temporariamente desativados no catalogo para evitar travamento em VMs sem GPU dedicada.
 
 ### `vizzy-hyper-tunnel`
 
 - Renderer classico CPU com anelado procedural 2D.
 - Mantido para fallback operacional quando shader GPU estiver indisponivel.
+
+### `polar-arcs`
+
+- Renderer 2D classico em Win2D, sem shader GPU.
+- Composicao estilo "vinyl": disco escuro, rotulo central branco, ponto central preto e pares de arcos espelhados nos lados esquerdo/direito.
+- Reatividade por 12 bandas low->high derivadas de `SpectrumFrame.BandsDisplay`, com anel interno respondendo a graves e anel externo respondendo a agudos.
+- Abertura dos arcos combina viés radial (look de vinil) + audio; jitter temporal e minimo para manter simetria estavel.
+- Parametros principais:
+  - `polarArcsOuterRadius`
+  - `polarArcsInnerHoleRadius`
+  - `polarArcsCenterDotRadius`
+  - `polarArcsBarsStart`
+  - `polarArcsBarsEnd`
+  - `polarArcsMaxSweepDegrees`
+  - `polarArcsJitter`
+  - `polarArcsBandThicknessFactor`
 
 ## Pontos de alteracao frequente
 
@@ -91,6 +107,7 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1) - assinatura: `public sealed class VizzyOrbitRingsRenderer`
 - [VizzyHyperTunnelShaderRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelShaderRenderer.cs#L1) - assinatura: `public sealed class VizzyHyperTunnelShaderRenderer`
 - [VizzyHyperTunnelRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs#L1) - assinatura: `public sealed class VizzyHyperTunnelRenderer`
+- [PolarArcsRenderer](../../../src/Visual.Win2D/Renderers/PolarArcsRenderer.cs#L1) - assinatura: `public sealed class PolarArcsRenderer`
 - [HyperTunnelShadertoyShader](../../../src/Visual.Win2D/Shaders/HyperTunnelShadertoyShader.cs#L1) - assinatura: `internal readonly partial struct HyperTunnelShadertoyShader`
 - [HyperTunnelAudioMapper](../../../src/Visual.Win2D/Shaders/HyperTunnelAudioMapper.cs#L1) - assinatura: `internal static class HyperTunnelAudioMapper`
 - [DefaultPresets](../../../src/App.WinUI/Services/DefaultPresets.cs#L1) - assinatura: `internal static class DefaultPresets`
@@ -102,4 +119,31 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - `src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs`
 - `src/Visual.Win2D/Renderers/VizzyHyperTunnelShaderRenderer.cs`
 - `src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs`
+- `src/Visual.Win2D/Renderers/PolarArcsRenderer.cs`
 - `src/Visual.Win2D/Shaders/HyperTunnelShadertoyShader.cs`
+
+
+
+
+
+
+## Contrato de capacidades e reatividade compartilhada (iteracao 1)
+
+- A bridge desta iteracao entra por `IRendererCapabilitiesProvider`, sem quebrar `IRenderer`.
+- `VisualizerEngine.GetCapabilities(...)` expõe capacidades explicitas para renderers migrados e fallback `LegacyAssumed` para renderers legados.
+- `ReactiveBandSampler` e `ReactiveEnvelopeState` concentram o baseline de reatividade (normalizacao, smoothing e metricas `Low/Mid/High/GlobalLevel`).
+- `AudioMotionCloneRenderer` e `PolarArcsRenderer` sao os dois renderers de referencia migrados nesta fase.
+- `AudioMotion Clone` marca `Quantidade de barras` como indisponivel no contrato atual, porque a geometria continua dependente da largura do layout.
+
+## Referencias adicionais da bridge
+
+- [IRendererCapabilitiesProvider](../../../src/Visual.Win2D/Engine/IRendererCapabilitiesProvider.cs#L1)
+- [RendererCapabilities](../../../src/Visual.Win2D/Engine/RendererCapabilities.cs#L1)
+- [ReactiveBandSampler](../../../src/Visual.Win2D/Engine/ReactiveBandSampler.cs#L1)
+- [ReactiveEnvelopeState](../../../src/Visual.Win2D/Engine/ReactiveEnvelopeState.cs#L1)
+
+### Polar Arcs (visual refinement)
+- `Polar Arcs` agora usa contorno RGB fixo e ponto central verde como identidade visual.
+- As barras em arco nao mantem mais abertura minima artificial: em silencio tendem a zero visual e sobem com o audio.
+- O preset builtin foi atualizado via schema bump para reaplicar os parametros novos em instalacoes existentes.
+- Refinamento: `Polar Arcs` pode operar no modo apenas-barras, sem contorno de disco, mantendo a mesma base reativa do sampler compartilhado.

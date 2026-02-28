@@ -18,3 +18,4 @@ Esta pasta registra Decisoes de Arquitetura (ADR) para governanca tecnica e cont
 5. [0005 - DI explicita, options centralizadas e logging estruturado no App.WinUI](0005-di-options-logging-canonical.md)
 6. [0006 - Hardening de autenticacao de device e limites de input](0006-device-auth-hardening-and-input-limits.md)
 
+7. [0007 - Bridge de reatividade e capacidades de UI para renderers](0007-renderer-reactivity-and-ui-capability-bridge.md)

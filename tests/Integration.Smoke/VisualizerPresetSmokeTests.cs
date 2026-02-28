@@ -23,18 +23,20 @@ public sealed class VisualizerPresetSmokeTests
         Assert.Contains(RendererIds.VizzyOrbitRings, rendererIds);
         Assert.Contains(RendererIds.VizzyHyperTunnel, rendererIds);
         Assert.Contains(RendererIds.VizzyHyperTunnelShader, rendererIds);
+        Assert.Contains(RendererIds.PolarArcs, rendererIds);
     }
 
     [Fact]
-    public void DefaultPresets_ShouldContainVizzyPresets()
+    public void DefaultPresets_ShouldContainEnabledVizzyPresets()
     {
         var presets = GetDefaultPresets();
         var presetIds = presets.Select(static preset => preset.PresetId).ToArray();
 
         Assert.Contains("spectrum-vizzy-blob-neon", presetIds);
         Assert.Contains("spectrum-vizzy-orbit-rings", presetIds);
-        Assert.Contains("spectrum-vizzy-hyper-tunnel", presetIds);
-        Assert.Contains("spectrum-vizzy-hyper-tunnel-shader", presetIds);
+        Assert.Contains("spectrum-polar-arcs", presetIds);
+        Assert.DoesNotContain("spectrum-vizzy-hyper-tunnel", presetIds);
+        Assert.DoesNotContain("spectrum-vizzy-hyper-tunnel-shader", presetIds);
     }
 
     [Fact]
@@ -61,17 +63,36 @@ public sealed class VisualizerPresetSmokeTests
             DisplayBandCount = 42,
         };
 
+        var disabledClassic = new PresetDefinition
+        {
+            SchemaVersion = 1,
+            PresetId = "spectrum-vizzy-hyper-tunnel",
+            Name = "Hyper Tunnel Classic",
+            RendererId = RendererIds.VizzyHyperTunnel,
+        };
+
+        var disabledShader = new PresetDefinition
+        {
+            SchemaVersion = 1,
+            PresetId = "spectrum-vizzy-hyper-tunnel-shader",
+            Name = "Hyper Tunnel",
+            RendererId = RendererIds.VizzyHyperTunnelShader,
+        };
+
         try
         {
             await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-bars.json"), JsonSerializer.Serialize(outdatedDefault)).ConfigureAwait(false);
             await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-user-preset.json"), JsonSerializer.Serialize(customUserPreset)).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel.json"), JsonSerializer.Serialize(disabledClassic)).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel-shader.json"), JsonSerializer.Serialize(disabledShader)).ConfigureAwait(false);
 
             var loaded = await LoadPresetsThroughRepositoryAsync(appDataRoot).ConfigureAwait(false);
 
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-blob-neon", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-orbit-rings", StringComparison.OrdinalIgnoreCase));
-            Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-hyper-tunnel", StringComparison.OrdinalIgnoreCase));
-            Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-hyper-tunnel-shader", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-polar-arcs", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-hyper-tunnel", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-hyper-tunnel-shader", StringComparison.OrdinalIgnoreCase));
 
             var custom = loaded.Single(static preset => string.Equals(preset.PresetId, "custom-user-preset", StringComparison.OrdinalIgnoreCase));
             Assert.Equal("Preset customizado", custom.Name);
@@ -79,6 +100,9 @@ public sealed class VisualizerPresetSmokeTests
 
             var bars = loaded.Single(static preset => string.Equals(preset.PresetId, "spectrum-bars", StringComparison.OrdinalIgnoreCase));
             Assert.True(bars.SchemaVersion > outdatedDefault.SchemaVersion);
+
+            Assert.False(File.Exists(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel.json")));
+            Assert.False(File.Exists(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel-shader.json")));
         }
         finally
         {
@@ -201,6 +225,61 @@ public sealed class VisualizerPresetSmokeTests
         }
     }
 
+    [Fact]
+    public void PolarArcsRenderer_Render_ShouldNotThrow_ForValidAndEmptyFrames()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        CanvasRenderTarget? target = null;
+        CanvasDrawingSession? drawingSession = null;
+
+        try
+        {
+            var renderer = new PolarArcsRenderer();
+            var preset = CreateTestPreset(RendererIds.PolarArcs);
+            var peaks = new float[64];
+            var bands = CreateBands(64);
+
+            target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 320, 180, 96);
+            drawingSession = target.CreateDrawingSession();
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = peaks,
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = Array.Empty<float>(),
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(Array.Empty<float>(), Array.Empty<float>(), 0f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+        }
+        catch (COMException)
+        {
+            return;
+        }
+        finally
+        {
+            drawingSession?.Dispose();
+            target?.Dispose();
+        }
+    }
 
     [Fact]
     public void VizzyHyperTunnelShaderRenderer_ShouldFallback_WhenShaderUnavailable()
@@ -232,6 +311,62 @@ public sealed class VisualizerPresetSmokeTests
                 Palette = new PaletteSampler(preset.Palette),
                 Peaks = new float[64],
                 Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+        }
+        catch (COMException)
+        {
+            return;
+        }
+        finally
+        {
+            drawingSession?.Dispose();
+            target?.Dispose();
+        }
+    }
+
+    [Fact]
+    public void AudioMotionCloneRenderer_Render_ShouldNotThrow_ForValidAndEmptyFrames()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        CanvasRenderTarget? target = null;
+        CanvasDrawingSession? drawingSession = null;
+
+        try
+        {
+            var renderer = new AudioMotionCloneRenderer();
+            var preset = CreateTestPreset(RendererIds.AudioMotionClone);
+            var peaks = new float[64];
+            var bands = CreateBands(64);
+
+            target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 320, 180, 96);
+            drawingSession = target.CreateDrawingSession();
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = peaks,
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = Array.Empty<float>(),
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(Array.Empty<float>(), Array.Empty<float>(), 0f, 0),
                 Width = 320,
                 Height = 180,
                 DeltaSeconds = 1f / 60f,
@@ -292,8 +427,8 @@ public sealed class VisualizerPresetSmokeTests
                 Name = "Smoke",
                 Stops =
                 [
-                    new PaletteStop { Offset = 0f, Color = new RgbaColor(255, 120, 38) },
-                    new PaletteStop { Offset = 1f, Color = new RgbaColor(0, 176, 220) },
+                    new PaletteStop { Offset = 0f, Color = new RgbaColor(255, 255, 255) },
+                    new PaletteStop { Offset = 1f, Color = new RgbaColor(255, 255, 255) },
                 ],
             },
         };

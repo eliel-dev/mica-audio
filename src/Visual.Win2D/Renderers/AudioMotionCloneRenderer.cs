@@ -2,21 +2,54 @@ using Visual.Win2D.Engine;
 
 namespace Visual.Win2D.Renderers;
 
-public sealed class AudioMotionCloneRenderer : IRenderer
+// DOCS: docs/wiki/modules/visual-win2d.md#audiomotion-clone
+public sealed class AudioMotionCloneRenderer : IRenderer, IRendererCapabilitiesProvider
 {
+    private static readonly RendererCapabilities ExplicitCapabilities = new()
+    {
+        UsesAnalyzerPipeline = true,
+        Controls = new RendererControlSupport
+        {
+            SupportsSensitivity = true,
+            SupportsLinearBoost = true,
+            SupportsBarCount = false,
+            SupportsFftSize = true,
+            SupportsFftSmoothing = true,
+            SupportsWeightingFilter = true,
+            SupportsFrequencyScale = true,
+            SupportsFrequencyRange = true,
+        },
+        BarCountMode = RendererBarCountMode.Native,
+        IntegrationMode = RendererIntegrationMode.Explicit,
+        UnsupportedControlsHint = "No modo AudioMotion Clone, a quantidade de barras e automatica pela largura da tela.",
+    };
+
+    private float[] smoothedBands = Array.Empty<float>();
+
     public string RendererId => RendererIds.AudioMotionClone;
 
     public string DisplayName => "AudioMotion Clone";
 
+    public RendererCapabilities Capabilities => ExplicitCapabilities;
+
     public void Render(RenderContext context)
     {
-        var ds = context.DrawingSession;
-        var bands = context.Frame.BandsDisplay;
+        var targetCount = context.Frame.BandsDisplay.Length;
+        var snapshot = ReactiveBandSampler.Sample(
+            context.Frame.BandsDisplay,
+            context.Frame.Level,
+            context.DeltaSeconds,
+            targetCount,
+            RendererBarCountMode.Native,
+            ref smoothedBands);
+
+        var bands = snapshot.Bands;
         if (bands.Length == 0)
         {
             return;
         }
 
+        var ds = context.DrawingSession;
         var midY = context.Height * 0.5f;
         var heightScale = Math.Clamp(context.Param("heightScale", 0.78f), 0.1f, 1f);
         var minHalfHeight = Math.Clamp(context.Param("minHalfHeight", 0f), 0f, midY);

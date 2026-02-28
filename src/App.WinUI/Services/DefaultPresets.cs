@@ -1,12 +1,13 @@
-using MicaAudio.Core.Audio;
+﻿using MicaAudio.Core.Audio;
 using MicaAudio.Core.Presets;
 using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services;
 
+// DOCS: docs/wiki/modules/visual-win2d.md#polar-arcs
 internal static class DefaultPresets
 {
-    private const int CurrentSchemaVersion = 8;
+    private const int CurrentSchemaVersion = 12;
 
     public static IReadOnlyList<PresetDefinition> Create()
     {
@@ -56,42 +57,20 @@ internal static class DefaultPresets
                     ["orbitCoreCircleAlpha"] = 0.90f,
                 }),
             CreateRendererPreset(
-                id: "spectrum-vizzy-hyper-tunnel-shader",
-                name: "Hyper Tunnel",
-                rendererId: RendererIds.VizzyHyperTunnelShader,
-                paletteStops: CreateVizzyHyperTunnelStops(),
-                glow: true,
+                id: "spectrum-polar-arcs",
+                name: "Polar Arcs",
+                rendererId: RendererIds.PolarArcs,
+                paletteStops: CreateRainbowStops(),
                 paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["tunnelBaseRadius"] = 0.22f,
-                    ["tunnelDepth"] = 1.00f,
-                    ["tunnelSpeed"] = 1.10f,
-                    ["tunnelWarp"] = 0.14f,
-                    ["tunnelTwist"] = 0.35f,
-                    ["tunnelGlowPasses"] = 3f,
-                    ["tunnelLineThickness"] = 2.0f,
-                    ["tunnelFogAmount"] = 0.18f,
-                    ["tunnelSliceCount"] = 72f,
-                    ["tunnelSegmentCount"] = 84f,
-                }),
-            CreateRendererPreset(
-                id: "spectrum-vizzy-hyper-tunnel",
-                name: "Hyper Tunnel Classic",
-                rendererId: RendererIds.VizzyHyperTunnel,
-                paletteStops: CreateVizzyHyperTunnelStops(),
-                glow: true,
-                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["tunnelBaseRadius"] = 0.22f,
-                    ["tunnelDepth"] = 1.00f,
-                    ["tunnelSpeed"] = 1.10f,
-                    ["tunnelWarp"] = 0.14f,
-                    ["tunnelTwist"] = 0.35f,
-                    ["tunnelGlowPasses"] = 3f,
-                    ["tunnelLineThickness"] = 2.0f,
-                    ["tunnelFogAmount"] = 0.18f,
-                    ["tunnelSliceCount"] = 72f,
-                    ["tunnelSegmentCount"] = 84f,
+                    ["polarArcsOuterRadius"] = 1.00f,
+                    ["polarArcsInnerHoleRadius"] = 0.18f,
+                    ["polarArcsCenterDotRadius"] = 0.018f,
+                    ["polarArcsBarsStart"] = 0.28f,
+                    ["polarArcsBarsEnd"] = 0.92f,
+                    ["polarArcsMaxSweepDegrees"] = 34f,
+                    ["polarArcsJitter"] = 0.01f,
+                    ["polarArcsBandThicknessFactor"] = 0.14f,
                 }),
             CreateRendererPreset(
                 id: "spectrum-bars",
@@ -364,6 +343,14 @@ internal static class DefaultPresets
         ];
     }
 
+    private static IReadOnlyList<PaletteStop> CreateMonochromeStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 255, 255) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 255, 255) },
+        ];
+    }
     private static IReadOnlyList<PaletteStop> CreateVizzyBlobStops()
     {
         return
@@ -395,3 +382,10 @@ internal static class DefaultPresets
         ];
     }
 }
+
+
+
+
+
+
+

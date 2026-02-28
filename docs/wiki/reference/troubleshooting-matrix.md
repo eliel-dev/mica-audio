@@ -17,10 +17,10 @@
 | Download de firmware falha no wizard | ver logs na aba `Dispositivos` | BIN ausente no pacote para placa/perfil selecionado | validar assets em `AppData/Firmware` e repetir salvar |
 | Botao de salvar abre e cancela | ver status `Download: cancelado` | usuario cancelou `FileSavePicker` | comportamento esperado |
 | Texto ilegivel em tema | comparar tema sistema e brushes | style sem recurso semantico | revisar Fluent2 tokens e bindings |
-| Preset `Blob Neon`, `Orbit Rings` ou `Hyper Tunnel` nao aparece | validar pasta `%AppData%/MicaAudio/presets` e schema dos defaults | catalogo local antigo sem merge de defaults | abrir app novamente para migracao automatica; se persistir, remover somente presets default antigos e reiniciar |
-| Hyper Tunnel mostra aneis 2D sem profundidade | verificar renderer do preset selecionado | preset classico (`vizzy-hyper-tunnel`) ativo em vez do shader GPU | selecionar preset `Hyper Tunnel` (`spectrum-vizzy-hyper-tunnel-shader`); manter `Hyper Tunnel Classic` apenas como fallback |
+| Preset `Blob Neon`, `Orbit Rings` ou `Polar Arcs` nao aparece | validar pasta `%AppData%/MicaAudio/presets` e schema dos defaults | catalogo local antigo sem merge de defaults | abrir app novamente para migracao automatica; se persistir, remover somente presets default antigos e reiniciar |
+| Hyper Tunnel nao aparece no combo de presets | comportamento esperado nesta fase de teste | presets builtin de Hyper Tunnel foram desativados para evitar travamento em VM sem GPU dedicada | manter o renderer apenas para fallback tecnico/testes manuais; use outros presets no fluxo normal |
 | Hyper Tunnel shader nao compila localmente | rodar `scripts/validate-shader-toolchain.ps1` | toolchain de shader incompleta (ComputeSharp/TFM/UAP) | alinhar TFM `net8.0-windows10.0.22621.0`, validar pacote ComputeSharp e usar script de preflight para diagnostico |
-| Hyper Tunnel cai para classic automaticamente | conferir log de warning de fallback | falha de shader/device no runtime | revisar erro no log, manter fallback para operacao e revalidar driver/toolchain |
+| Polar Arcs parece estatico ou sem as cores do visualizador | conferir se o preset local foi migrado e se a paleta foi atualizada | `spectrum-polar-arcs.json` antigo ainda carregado com defaults defasados | reiniciar o app para migracao; se persistir, remover apenas `spectrum-polar-arcs.json` e reabrir o app |
 | FPS cai ao usar renderers Vizzy | comparar `blobPointCount/orbitPointCount/tunnelSliceCount` e `glowPasses` no preset ativo | complexidade alta de geometria + glow | reduzir `pointCount/sliceCount` e `glowPasses` para 1-2; no Hyper Tunnel a auto-qualidade ajusta complexidade em runtime |
 
 ## Token criptografado no devices.json
@@ -37,9 +37,10 @@
 
 ## Renderers Vizzy (blob/orbit/tunnel)
 
-- `Blob Neon`, `Orbit Rings` e `Hyper Tunnel` sao renderers Win2D inspirados visualmente no estilo Vizzy.
+- `Blob Neon` e `Orbit Rings` sao renderers Win2D inspirados visualmente no estilo Vizzy.
+- `Polar Arcs` e um renderer 2D classico com composicao inspirada em vinil, mas usando a paleta do preset e 12 pares de arcos espelhados mapeados do espectro.
 - O controle nesta fase e por presets (`RendererParameters`), sem painel dedicado na UI.
-- Mudancas extremas de parametros podem impactar frame time; use clamps recomendados.
+- Presets builtin de Hyper Tunnel estao temporariamente ocultos no catalogo em funcao de estabilidade em ambientes sem GPU dedicada.`r`n- Mudancas extremas de parametros podem impactar frame time; use clamps recomendados.
 
 ## Referencias de codigo
 
@@ -52,6 +53,7 @@
 - [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1)
 - [VizzyHyperTunnelRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs#L1)
 - [VizzyHyperTunnelShaderRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelShaderRenderer.cs#L1)
+- [PolarArcsRenderer](../../../src/Visual.Win2D/Renderers/PolarArcsRenderer.cs#L1)
 - [HyperTunnelShadertoyShader](../../../src/Visual.Win2D/Shaders/HyperTunnelShadertoyShader.cs#L1)
 - [validate-shader-toolchain](../../../scripts/validate-shader-toolchain.ps1#L1)
 
@@ -60,3 +62,13 @@
 - O hook local pre-push roda validacoes de docs/governanca, build do App.WinUI e Output.Tests.
 - O build completo da solucao (`MicaAudio.sln`) continua obrigatorio no CI (`governance-ai-guardrails` e `governance-build-debug`).
 - Resultado: push local destravado em maquinas sem SDK UAP, sem reduzir rigor para merge na main.
+
+
+
+
+
+## Renderers reativos (bridge incremental)
+
+- Se um renderer novo parecer pouco reativo, valide primeiro a saida do `ReactiveBandSampler` antes de inspecionar pixels.
+- Se a lateral de configuracao parecer ignorada, confira `VisualizerEngine.GetCapabilities(...)` e `MainPage.ApplyRendererControlState()`.
+- No contrato atual, `AudioMotion Clone` esconde `Quantidade de barras` por design, porque a geometria continua dependente da largura do layout.

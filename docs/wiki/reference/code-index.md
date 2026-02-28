@@ -46,6 +46,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1)
 - [VizzyHyperTunnelRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelRenderer.cs#L1)
 - [VizzyHyperTunnelShaderRenderer](../../../src/Visual.Win2D/Renderers/VizzyHyperTunnelShaderRenderer.cs#L1)
+- [PolarArcsRenderer](../../../src/Visual.Win2D/Renderers/PolarArcsRenderer.cs#L1)
 - [HyperTunnelShadertoyShader](../../../src/Visual.Win2D/Shaders/HyperTunnelShadertoyShader.cs#L1)
 - [HyperTunnelAudioMapper](../../../src/Visual.Win2D/Shaders/HyperTunnelAudioMapper.cs#L1)
 - [HyperTunnelShaderUniforms](../../../src/Visual.Win2D/Shaders/HyperTunnelShaderUniforms.cs#L1)
@@ -114,3 +115,16 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 
 
 
+
+
+## Renderer reactivity bridge (iteracao 1)
+- [IRendererCapabilitiesProvider](../../../src/Visual.Win2D/Engine/IRendererCapabilitiesProvider.cs#L1)
+- [RendererCapabilities](../../../src/Visual.Win2D/Engine/RendererCapabilities.cs#L1)
+- [RendererControlSupport](../../../src/Visual.Win2D/Engine/RendererControlSupport.cs#L1)
+- [RendererBarCountMode](../../../src/Visual.Win2D/Engine/RendererBarCountMode.cs#L1)
+- [RendererIntegrationMode](../../../src/Visual.Win2D/Engine/RendererIntegrationMode.cs#L1)
+- [ReactiveEnvelopeState](../../../src/Visual.Win2D/Engine/ReactiveEnvelopeState.cs#L1)
+- [ReactiveBandSnapshot](../../../src/Visual.Win2D/Engine/ReactiveBandSnapshot.cs#L1)
+- [ReactiveBandSampler](../../../src/Visual.Win2D/Engine/ReactiveBandSampler.cs#L1)
+- [RendererIntegrationContractSmokeTests](../../../tests/Integration.Smoke/RendererIntegrationContractSmokeTests.cs#L1)
+- [ReactiveBandSamplerTests](../../../tests/Output.Tests/ReactiveBandSamplerTests.cs#L1)

@@ -8,6 +8,12 @@ namespace App.WinUI.Services;
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#pontos-de-alteracao-frequente
 internal sealed class PresetRepository
 {
+    private static readonly HashSet<string> DisabledBuiltInPresetIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "spectrum-vizzy-hyper-tunnel",
+        "spectrum-vizzy-hyper-tunnel-shader",
+    };
+
     private readonly string appDataRoot;
     private readonly string presetsDir;
     private readonly JsonSerializerOptions jsonOptions;
@@ -39,14 +45,29 @@ internal sealed class PresetRepository
         }
 
         var loaded = new List<PresetDefinition>();
+        var removedDisabledPresets = false;
+
         foreach (var file in files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
-            await using var stream = File.OpenRead(file);
-            var preset = await JsonSerializer.DeserializeAsync<PresetDefinition>(stream, jsonOptions, cancellationToken).ConfigureAwait(false);
-            if (preset is not null && !string.IsNullOrWhiteSpace(preset.PresetId))
+            PresetDefinition? preset;
+            await using (var stream = File.OpenRead(file))
             {
-                loaded.Add(preset);
+                preset = await JsonSerializer.DeserializeAsync<PresetDefinition>(stream, jsonOptions, cancellationToken).ConfigureAwait(false);
             }
+
+            if (preset is null || string.IsNullOrWhiteSpace(preset.PresetId))
+            {
+                continue;
+            }
+
+            if (DisabledBuiltInPresetIds.Contains(preset.PresetId))
+            {
+                File.Delete(file);
+                removedDisabledPresets = true;
+                continue;
+            }
+
+            loaded.Add(preset);
         }
 
         if (loaded.Count == 0)
@@ -56,7 +77,7 @@ internal sealed class PresetRepository
         }
 
         var (mergedPresets, catalogUpdated) = MergeWithDefaults(loaded, defaults);
-        if (catalogUpdated)
+        if (catalogUpdated || removedDisabledPresets)
         {
             await SaveAllAsync(mergedPresets, cancellationToken).ConfigureAwait(false);
         }

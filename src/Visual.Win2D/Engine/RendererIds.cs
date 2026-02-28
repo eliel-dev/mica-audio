@@ -20,4 +20,6 @@ public static class RendererIds
     public const string VizzyOrbitRings = "vizzy-orbit-rings";
     public const string VizzyHyperTunnel = "vizzy-hyper-tunnel";
     public const string VizzyHyperTunnelShader = "vizzy-hyper-tunnel-shader";
+    public const string PolarArcs = "polar-arcs";
 }
+
