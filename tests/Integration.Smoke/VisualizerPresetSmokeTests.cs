@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using App.WinUI;
@@ -286,6 +286,17 @@ public sealed class VisualizerPresetSmokeTests
         }
     }
 
+    [Fact]
+    public void AppAssembly_ShouldExposePresetGalleryPreviewPipelineTypes()
+    {
+        var appAssembly = typeof(App.WinUI.App).Assembly;
+
+        Assert.NotNull(appAssembly.GetType("App.WinUI.Views.Controls.PresetPreviewThumbnailControl", throwOnError: false));
+        Assert.NotNull(appAssembly.GetType("App.WinUI.Views.Controls.PresetGalleryCardControl", throwOnError: false));
+        Assert.NotNull(appAssembly.GetType("App.WinUI.Services.Visualizer.PresetPreviewSignalFactory", throwOnError: false));
+        Assert.NotNull(appAssembly.GetType("App.WinUI.Services.Visualizer.PresetPreviewSettingsSnapshot", throwOnError: false));
+        Assert.NotNull(appAssembly.GetType("App.WinUI.Services.Visualizer.VisualizerAnalyzerConfigFactory", throwOnError: false));
+    }
     private static IReadOnlyList<PresetDefinition> GetDefaultPresets()
     {
         var appAssembly = typeof(App.WinUI.App).Assembly;
@@ -349,3 +360,6 @@ public sealed class VisualizerPresetSmokeTests
         return bands;
     }
 }
+
+
+

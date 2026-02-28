@@ -7,12 +7,6 @@ namespace App.WinUI.ViewModels;
 internal sealed partial class MainPageViewModel : ObservableObject
 {
     [ObservableProperty]
-    private float sensitivityMinDb = -85f;
-
-    [ObservableProperty]
-    private float sensitivityMaxDb = -25f;
-
-    [ObservableProperty]
     private float linearBoost = 1.6f;
 
     [ObservableProperty]
@@ -45,5 +39,3 @@ internal sealed partial class MainPageViewModel : ObservableObject
     [ObservableProperty]
     private string currentPresetId = "audiomotion-clone";
 }
-
-

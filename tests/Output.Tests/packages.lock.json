@@ -129,6 +129,12 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "analyzer.dsp": {
+        "type": "Project",
+        "dependencies": {
+          "MicaAudio.Core": "[1.0.0, )"
+        }
+      },
       "device.protocol": {
         "type": "Project"
       },

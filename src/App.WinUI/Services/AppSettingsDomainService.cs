@@ -16,28 +16,6 @@ internal sealed class AppSettingsDomainService
     // DOCS: docs/wiki/guides/change-visualizer-settings.md#passos
     public AppSettings Migrate(AppSettings settings)
     {
-        var minDb = CoerceSensitivityMinDb(settings.SensitivityMinDb);
-        var maxDb = CoerceSensitivityMaxDb(settings.SensitivityMaxDb);
-        var legacyMaxDb = CoerceSensitivityMaxDb(settings.Sensitivity);
-
-        var likelyLegacyOnlySensitivity = AreClose(settings.SensitivityMinDb, DefaultMinDecibels)
-            && AreClose(settings.SensitivityMaxDb, DefaultMaxDecibels)
-            && !AreClose(settings.Sensitivity, DefaultMaxDecibels);
-
-        if (likelyLegacyOnlySensitivity)
-        {
-            maxDb = legacyMaxDb;
-        }
-
-        if (maxDb <= minDb + 3f)
-        {
-            maxDb = Math.Clamp(minDb + 3f, -60f, 0f);
-            if (maxDb <= minDb)
-            {
-                minDb = Math.Clamp(maxDb - 3f, -120f, -30f);
-            }
-        }
-
         var activePresetId = string.IsNullOrWhiteSpace(settings.ActivePresetId) ? DefaultPresetId : settings.ActivePresetId;
         var selectedRendererId = string.IsNullOrWhiteSpace(settings.SelectedRendererId)
             ? DefaultRendererId
@@ -57,9 +35,9 @@ internal sealed class AppSettingsDomainService
             SelectedRendererId = selectedRendererId,
             Hub75PreviewEnabled = settings.Hub75PreviewEnabled,
             Brightness = settings.Brightness,
-            Sensitivity = maxDb,
-            SensitivityMinDb = minDb,
-            SensitivityMaxDb = maxDb,
+            Sensitivity = DefaultMaxDecibels,
+            SensitivityMinDb = DefaultMinDecibels,
+            SensitivityMaxDb = DefaultMaxDecibels,
             LinearBoost = CoerceLinearBoost(settings.LinearBoost),
             BarCount = settings.BarCount <= 0 ? 38 : settings.BarCount,
             FrequencyScale = Enum.IsDefined(typeof(FrequencyScale), settings.FrequencyScale) ? settings.FrequencyScale : FrequencyScale.Bark,
@@ -83,14 +61,6 @@ internal sealed class AppSettingsDomainService
     private static float CoerceLinearBoost(float value)
         => float.IsNaN(value) || float.IsInfinity(value) ? DefaultLinearBoost : Math.Clamp(value, 1f, 3f);
 
-    private static float CoerceSensitivityMinDb(float value)
-        => float.IsNaN(value) || float.IsInfinity(value) ? DefaultMinDecibels : Math.Clamp(value, -120f, -30f);
-
-    private static float CoerceSensitivityMaxDb(float value)
-        => float.IsNaN(value) || float.IsInfinity(value) ? DefaultMaxDecibels : Math.Clamp(value, -60f, 0f);
-
-    private static bool AreClose(float a, float b) => MathF.Abs(a - b) < 0.001f;
-
     internal sealed class AppSettingsBuilder
     {
         public AppSettingsBuilder(AppSettings source)
@@ -99,9 +69,9 @@ internal sealed class AppSettingsDomainService
             SelectedRendererId = source.SelectedRendererId;
             Hub75PreviewEnabled = source.Hub75PreviewEnabled;
             Brightness = source.Brightness;
-            Sensitivity = source.Sensitivity;
-            SensitivityMinDb = source.SensitivityMinDb;
-            SensitivityMaxDb = source.SensitivityMaxDb;
+            Sensitivity = DefaultMaxDecibels;
+            SensitivityMinDb = DefaultMinDecibels;
+            SensitivityMaxDb = DefaultMaxDecibels;
             LinearBoost = source.LinearBoost;
             BarCount = source.BarCount;
             FrequencyScale = source.FrequencyScale;
@@ -135,13 +105,6 @@ internal sealed class AppSettingsDomainService
         public void SetActivePresetId(string value) => ActivePresetId = value;
         public void SetSelectedRendererId(string value) => SelectedRendererId = value;
         public void SetHub75PreviewEnabled(bool value) => Hub75PreviewEnabled = value;
-        public void SetSensitivity(float minDb, float maxDb)
-        {
-            SensitivityMinDb = minDb;
-            SensitivityMaxDb = maxDb;
-            Sensitivity = maxDb;
-        }
-
         public void SetLinearBoost(float value) => LinearBoost = value;
         public void SetBarCount(int value) => BarCount = value;
         public void SetFftSize(int value) => FftSize = value;
@@ -182,5 +145,3 @@ internal sealed class AppSettingsDomainService
         };
     }
 }
-
-

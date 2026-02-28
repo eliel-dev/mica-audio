@@ -10,6 +10,7 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - O caminho oficial e CPU/Win2D.
 - Nao existe mais caminho suportado de shader GPU ou visualizacao 3D/pseudo-3D.
 - Novas visualizacoes devem priorizar boa leitura em HUB75.
+- Todas as visualizacoes usam faixa fixa de dB: -85 (fundo) e -25 (topo).
 
 ## Responsabilidades
 
@@ -23,6 +24,15 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 1. `MainPage.OnMainCanvasDraw` chama `VisualizerEngine.Render`.
 2. Engine resolve renderer ativo via `preset.RendererId`.
 3. Renderer desenha no `CanvasDrawingSession` com `RenderContext`.
+
+## Galeria de presets
+
+- O fluxo principal de selecao nao usa mais `PresetCombo`.
+- `MainPage` agora exibe uma galeria em grid com todos os presets carregados pelo `PresetRepository`.
+- Cada card usa `PresetPreviewThumbnailControl` para renderizar uma miniatura com o mesmo `VisualizerEngine`.
+- O preview do card usa `PcmFrame` sintetico gerado por `PresetPreviewSignalFactory`, distribuido pela faixa de frequencia ativa, processado pelo `SpectrumAnalyzer` real e renderizado pelo `VisualizerEngine`.
+- Apenas o card em hover/foco anima; o canvas principal nao troca durante hover.
+- O clique no card continua sendo a selecao real do preset e persiste `ActivePresetId`.
 
 ## Renderers 2D ativos
 
@@ -108,6 +118,11 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - [PolarArcsRenderer](../../../src/Visual.Win2D/Renderers/PolarArcsRenderer.cs#L1) - assinatura: `public sealed class PolarArcsRenderer`
 - [DefaultPresets](../../../src/App.WinUI/Services/DefaultPresets.cs#L1) - assinatura: `internal static class DefaultPresets`
 - [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L1) - assinatura: `internal sealed class PresetRepository`
+- [PresetPreviewSignalFactory](../../../src/App.WinUI/Services/Visualizer/PresetPreviewSignalFactory.cs#L1) - assinatura: `internal static class PresetPreviewSignalFactory`
+- [PresetPreviewSettingsSnapshot](../../../src/App.WinUI/Services/Visualizer/PresetPreviewSettingsSnapshot.cs#L1) - assinatura: `internal readonly record struct PresetPreviewSettingsSnapshot`
+- [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1) - assinatura: `internal static class VisualizerAnalyzerConfigFactory`
+- [PresetPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/PresetPreviewThumbnailControl.cs#L1) - assinatura: `internal sealed class PresetPreviewThumbnailControl`
+- [PresetGalleryCardControl](../../../src/App.WinUI/Views/Controls/PresetGalleryCardControl.cs#L1) - assinatura: `internal sealed class PresetGalleryCardControl`
 
 ## Backlinks no codigo
 
@@ -118,6 +133,11 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - `src/Visual.Win2D/Renderers/PolarArcsRenderer.cs`
 - `src/App.WinUI/Services/DefaultPresets.cs`
 - `src/App.WinUI/Services/PresetRepository.cs`
+- `src/App.WinUI/Services/Visualizer/PresetPreviewSignalFactory.cs`
+- `src/App.WinUI/Services/Visualizer/PresetPreviewSettingsSnapshot.cs`
+- `src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs`
+- `src/App.WinUI/Views/Controls/PresetPreviewThumbnailControl.cs`
+- `src/App.WinUI/Views/Controls/PresetGalleryCardControl.cs`
 
 ## Contrato de capacidades e reatividade compartilhada (iteracao 1)
 
@@ -133,3 +153,8 @@ Renderizar `SpectrumFrame` no canvas com renderer selecionado por preset.
 - [RendererCapabilities](../../../src/Visual.Win2D/Engine/RendererCapabilities.cs#L1)
 - [ReactiveBandSampler](../../../src/Visual.Win2D/Engine/ReactiveBandSampler.cs#L1)
 - [ReactiveEnvelopeState](../../../src/Visual.Win2D/Engine/ReactiveEnvelopeState.cs#L1)
+
+
+
+
+

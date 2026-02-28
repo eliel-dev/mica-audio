@@ -1,4 +1,4 @@
-﻿# Troubleshooting Matrix
+# Troubleshooting Matrix
 
 | Sintoma | Diagnostico rapido | Causa comum | Acao recomendada |
 |---|---|---|---|
@@ -19,6 +19,11 @@
 | Texto ilegivel em tema | comparar tema sistema e brushes | style sem recurso semantico | revisar Fluent2 tokens e bindings |
 | Preset `Blob Neon`, `Orbit Rings` ou `Polar Arcs` nao aparece | validar pasta `%AppData%/MicaAudio/presets` e schema dos defaults | catalogo local antigo sem merge de defaults | abrir app novamente para migracao automatica; se persistir, remover somente presets default antigos e reiniciar |
 | Preset legado de Hyper Tunnel nao abre mais | comportamento esperado na politica 2D-only | renderer antigo foi aposentado e migrado para 2D | reabrir o app para migracao automatica; presets antigos passam a usar `AudioMotion Clone` |
+| Grid de presets nao aparece | conferir `PresetGalleryPanel` e se a pagina concluiu `InitializeAsync()` | falha na carga de presets ou erro de XAML/visual tree | validar `PopulatePresetGallery()`, `PresetGalleryGridView` e se `PresetRepository.LoadOrSeedAsync()` retornou itens |
+| Hover no card nao anima | conferir foco/hover e se outro card ficou ativo | timer do preview nao iniciou ou card anterior nao foi parado corretamente | validar `StartPresetPreview()`, `StopPresetPreview()` e `PresetPreviewThumbnailControl.StartPreview()` |
+| Card anima, mas o preset principal nao muda | diferenciar hover de clique | hover so anima miniatura; selecao real depende de click/Enter/Space | clicar no card ou usar teclado; validar `OnPresetGalleryItemClick()` e `OnPresetGalleryKeyDown()` |
+| Miniatura parece diferente da visualizacao principal | comparar configuracao atual da UI e largura real da miniatura | preview nao reconstruido com o analyzer real ou snapshot desatualizado | validar `VisualizerAnalyzerConfigFactory.Build()`, `PresetPreviewSignalFactory.CreatePcmFrame()` e `PresetPreviewThumbnailControl.ApplyPreviewSettings()` |
+| Consumo alto de CPU ao passar o mouse | conferir se mais de um card esta animando ao mesmo tempo | preview simultaneo em multiplos cards ou timer nao foi parado | validar que apenas `activePreviewCard` fica ativo e que `StopPreview()` e chamado em `PointerExited/LostFocus` |
 | Polar Arcs parece estatico | conferir `Quantidade de barras`, sensibilidade e o preset local | preset local defasado ou nivel de entrada muito baixo | reiniciar o app para reaplicar defaults; se persistir, remover apenas `spectrum-polar-arcs.json` e reabrir o app |
 | FPS cai ao usar renderers Vizzy | comparar `blobPointCount/orbitPointCount` e `glowPasses` no preset ativo | complexidade alta de geometria + glow | reduzir `pointCount` e `glowPasses` para 1-2 |
 
@@ -41,6 +46,9 @@
 - O controle nesta fase e por presets (`RendererParameters`), sem painel dedicado na UI.
 - Mudancas extremas de parametros podem impactar frame time; use clamps recomendados.
 - O modulo visual e oficialmente 2D-only; o caminho antigo de shader/GPU foi aposentado para manter consistencia com HUB75.
+- A selecao de preset agora usa uma galeria visual; `PresetCombo` nao e mais o fluxo principal.
+- Os cards usam `PcmFrame` sintetico, mas o preview passa pelo `SpectrumAnalyzer` real; hover/foco nao alteram a visualizacao principal.
+- Se `AudioMotion Clone` parecer diferente no card, valide `DisplayViewportWidthPx` e a recriacao do analyzer ao mudar largura/configuracao.
 
 ## Referencias de codigo
 
@@ -53,6 +61,10 @@
 - [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1)
 - [PolarArcsRenderer](../../../src/Visual.Win2D/Renderers/PolarArcsRenderer.cs#L1)
 - [AudioMotionCloneRenderer](../../../src/Visual.Win2D/Renderers/AudioMotionCloneRenderer.cs#L1)
+- [PresetPreviewSignalFactory](../../../src/App.WinUI/Services/Visualizer/PresetPreviewSignalFactory.cs#L1)
+- [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1)
+- [PresetPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/PresetPreviewThumbnailControl.cs#L1)
+- [PresetGalleryCardControl](../../../src/App.WinUI/Views/Controls/PresetGalleryCardControl.cs#L1)
 
 ## Push local x CI (gate local leve)
 
@@ -65,3 +77,9 @@
 - Se um renderer novo parecer pouco reativo, valide primeiro a saida do `ReactiveBandSampler` antes de inspecionar pixels.
 - Se a lateral de configuracao parecer ignorada, confira `VisualizerEngine.GetCapabilities(...)` e `MainPage.ApplyRendererControlState()`.
 - No contrato atual, `AudioMotion Clone` esconde `Quantidade de barras` por design, porque a geometria continua dependente da largura do layout.
+- A sensibilidade (dB) nao e mais configuravel; a faixa fixa e `-85/-25` para todas as visualizacoes.
+- Se a visualizacao parecer mais fraca ou mais forte, ajuste `Linear Boost`, `FFT Smoothing`, `Weighting Filter` ou `Faixa de frequencia`, nao dB.
+
+
+
+

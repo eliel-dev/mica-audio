@@ -66,53 +66,6 @@
                                 Content="Restaurar padrao"
                                 ToolTipService.ToolTip="Restaura os parametros visuais e de analise para os valores recomendados." />
 
-                            <TextBlock Text="Sensibilidade (dB)" />
-                            <StackPanel x:Name="DbSensitivityPanel" Spacing="6">
-                                <TextBlock Style="{StaticResource AppMutedTextStyle}" Text="Min dB (fundo):" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Slider
-                                        x:Name="SensitivityMinDbSlider"
-                                        Grid.Column="0"
-                                        Maximum="-30"
-                                        Minimum="-120"
-                                        SmallChange="1"
-                                        StepFrequency="1"
-                                        ValueChanged="OnSensitivityMinDbChanged" />
-                                    <TextBlock
-                                        x:Name="SensitivityMinDbValueText"
-                                        Grid.Column="1"
-                                        Margin="10,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Text="-85 dB" />
-                                </Grid>
-
-                                <TextBlock Style="{StaticResource AppMutedTextStyle}" Text="Max dB (topo):" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Slider
-                                        x:Name="SensitivityMaxDbSlider"
-                                        Grid.Column="0"
-                                        Maximum="0"
-                                        Minimum="-60"
-                                        SmallChange="1"
-                                        StepFrequency="1"
-                                        ValueChanged="OnSensitivityMaxDbChanged" />
-                                    <TextBlock
-                                        x:Name="SensitivityMaxDbValueText"
-                                        Grid.Column="1"
-                                        Margin="10,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Text="-25 dB" />
-                                </Grid>
-                            </StackPanel>
-
                             <TextBlock Text="Linear Boost" />
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -222,6 +175,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition x:Name="HubPreviewRow" Height="0" />
                 </Grid.RowDefinitions>
@@ -255,16 +209,7 @@
                                     <SymbolIcon Symbol="GlobalNavigationButton" />
                                 </AppBarToggleButton.Icon>
                             </AppBarToggleButton>
-                            <AppBarElementContainer>
-                                <ComboBox
-                                    x:Name="PresetCombo"
-                                    Width="260"
-                                    DisplayMemberPath="Label"
-                                    SelectedValuePath="Id"
-                                    PlaceholderText="Predefinicao"
-                                    IsEnabled="False"
-                                    SelectionChanged="OnPresetSelectionChanged" />
-                            </AppBarElementContainer>
+
                             <AppBarElementContainer>
                                 <ComboBox
                                     x:Name="ContentModeCombo"
@@ -300,8 +245,45 @@
                 </Border>
 
                 <Border
-                    x:Name="GifControlsPanel"
+                    x:Name="PresetGalleryPanel"
                     Grid.Row="1"
+                    Margin="0,0,0,10"
+                    Padding="10"
+                    Background="{ThemeResource AppSurfaceElevatedBrush}"
+                    BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="10">
+                        <TextBlock
+                            Style="{StaticResource AppMutedTextStyle}"
+                            Text="Predefinicoes"
+                            TextWrapping="Wrap" />
+                        <GridView
+                            x:Name="PresetGalleryGridView"
+                            Height="308"
+                            CanDragItems="False"
+                            CanReorderItems="False"
+                            IsItemClickEnabled="True"
+                            IsSwipeEnabled="False"
+                            ItemClick="OnPresetGalleryItemClick"
+                            KeyDown="OnPresetGalleryKeyDown"
+                            SelectionMode="Single"
+                            ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                            ScrollViewer.HorizontalScrollMode="Enabled"
+                            ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                            ScrollViewer.VerticalScrollMode="Disabled">
+                            <GridView.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <ItemsWrapGrid MaximumRowsOrColumns="2" Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </GridView.ItemsPanel>
+                        </GridView>
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    x:Name="GifControlsPanel"
+                    Grid.Row="2"
                     Margin="0,0,0,10"
                     Padding="10"
                     Background="{ThemeResource AppSurfacePanelBrush}"
@@ -397,7 +379,7 @@
 
                 <Border
                     x:Name="MainCanvasBorder"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     Margin="0,0,0,10"
                     Background="Black"
                     CornerRadius="12"
@@ -432,7 +414,7 @@
 
                 <Border
                     x:Name="HubPreviewPanel"
-                    Grid.Row="3"
+                    Grid.Row="4"
                     Padding="10"
                     Background="{ThemeResource AppSurfacePanelBrush}"
                     BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
@@ -495,4 +477,7 @@
         </SplitView.Content>
     </SplitView>
 </Page>
+
+
+
 
