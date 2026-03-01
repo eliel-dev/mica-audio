@@ -6,40 +6,51 @@ using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services.Visualizer;
 
-// DOCS: docs/wiki/modules/visual-win2d.md#galeria-de-presets
+// DOCS: docs/wiki/modules/visual-win2d.md#navegacao-de-presets-por-teclado
 internal static class VisualizerAnalyzerConfigFactory
 {
     private const float DefaultMinDecibels = -85f;
     private const float DefaultMaxDecibels = -25f;
+    private const int DefaultSampleRate = 48_000;
+    private const int DefaultHopSize = 256;
 
-    public static AnalyzerConfig Build(PresetDefinition preset, PresetPreviewSettingsSnapshot settings, float viewportWidthPx)
+    public static AnalyzerConfig Build(
+        PresetDefinition preset,
+        int fftSize,
+        float fftSmoothing,
+        float linearBoost,
+        FrequencyScale frequencyScale,
+        WeightingFilter weightingFilter,
+        float frequencyMinHz,
+        float frequencyMaxHz,
+        float viewportWidthPx)
     {
         var cloneMode = string.Equals(preset.RendererId, RendererIds.AudioMotionClone, StringComparison.OrdinalIgnoreCase);
         var barSpace = preset.RendererParameters.TryGetValue("barSpace", out var configuredBarSpace)
             ? configuredBarSpace
             : 0.10f;
         var analyzerViewportWidth = cloneMode
-            ? MathF.Max(2f, settings.AnalyzerViewportWidthPx > 1f ? settings.AnalyzerViewportWidthPx : viewportWidthPx)
+            ? MathF.Max(2f, viewportWidthPx > 1f ? viewportWidthPx : 2f)
             : 0f;
 
         return new AnalyzerConfig
         {
-            SampleRate = PresetPreviewSignalFactory.SampleRate,
-            FftSize = settings.FftSize,
-            HopSize = PresetPreviewSignalFactory.HopSize,
+            SampleRate = DefaultSampleRate,
+            FftSize = fftSize,
+            HopSize = DefaultHopSize,
             DisplayBandCount = Math.Clamp(preset.DisplayBandCount, 8, 256),
             DisplayMode = cloneMode ? DisplayMode.AudioMotionMode0 : DisplayMode.FixedBands,
             DisplayViewportWidthPx = analyzerViewportWidth,
             BarSpace = Math.Clamp(barSpace, 0f, 0.95f),
             OutputBandCount = LedDefaults.MatrixWidth,
-            MinHz = settings.FrequencyMinHz,
-            MaxHz = settings.FrequencyMaxHz,
+            MinHz = frequencyMinHz,
+            MaxHz = frequencyMaxHz,
             ScaleMode = ScaleMode.Linear,
-            FrequencyScale = settings.FrequencyScale,
-            FftSmoothing = settings.FftSmoothing,
-            WeightingFilter = settings.WeightingFilter,
+            FrequencyScale = frequencyScale,
+            FftSmoothing = fftSmoothing,
+            WeightingFilter = weightingFilter,
             UseLinearAmplitude = true,
-            LinearBoost = settings.LinearBoost,
+            LinearBoost = linearBoost,
             MinDecibels = DefaultMinDecibels,
             MaxDecibels = DefaultMaxDecibels,
             DbFloor = DefaultMinDecibels,
@@ -54,3 +65,5 @@ internal static class VisualizerAnalyzerConfigFactory
         };
     }
 }
+
+

@@ -76,3 +76,7 @@ A taxa do preview em hover foi ajustada para 36 FPS e a modulacao do sinal demo 
 ## Ajuste de densidade da galeria
 
 Os presets extras ja estavam sendo carregados, mas o `GridView` usava `ItemsWrapGrid` sem `ItemWidth` e `ItemHeight`, o que fazia o layout parecer limitado a poucos cards. A galeria passou a usar celulas fixas para expor mais presets visiveis no mesmo painel.
+
+## Ajuste de scroll da galeria
+
+A galeria ainda parecia limitada a 4 cards porque o GridView continuava forçando 2 linhas com scroll horizontal. O layout passou a usar mais altura visivel, wrapping sem limite fixo de linhas e scroll vertical, o que permite navegar pelo restante dos presets sem manter a UI presa em duas linhas.

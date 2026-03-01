@@ -3,7 +3,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 ## App pages (WinUI)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
-- [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1) - visualizador principal; faixa de dB fixa em `-85/-25`; selecao por galeria de presets
+- [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1) - visualizador principal; faixa de dB fixa em `-85/-25`; troca de preset por teclado com HUD temporario
 - [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
 - [AppsPage](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L1)
 - [MainPageViewModel](../../../src/App.WinUI/ViewModels/MainPageViewModel.cs#L1)
@@ -34,11 +34,8 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [AppPreviewRendererRegistry](../../../src/App.WinUI/Views/Controls/AppPreviewRendererRegistry.cs#L1)
 - [AppPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/AppPreviewThumbnailControl.cs#L1)
 - [AppCatalogCardControl](../../../src/App.WinUI/Views/Controls/AppCatalogCardControl.cs#L1)
-- [PresetPreviewSignalFactory](../../../src/App.WinUI/Services/Visualizer/PresetPreviewSignalFactory.cs#L1) - gera `PcmFrame` sintetico deterministico para a galeria
-- [PresetPreviewSettingsSnapshot](../../../src/App.WinUI/Services/Visualizer/PresetPreviewSettingsSnapshot.cs#L1)
 - [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1)
-- [PresetPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/PresetPreviewThumbnailControl.cs#L1)
-- [PresetGalleryCardControl](../../../src/App.WinUI/Views/Controls/PresetGalleryCardControl.cs#L1)
+- [PresetNavigationHelper](../../../src/App.WinUI/Services/Visualizer/PresetNavigationHelper.cs#L1)
 - [GifPreviewRenderer](../../../src/App.WinUI/Views/Controls/Renderers/GifPreviewRenderer.cs#L1)
 ## Audio, DSP and visual
 - [WasapiLoopbackCaptureService](../../../src/Audio.Loopback/Capture/WasapiLoopbackCaptureService.cs#L1)
@@ -127,6 +124,7 @@ Indice expandido para localizar rapidamente pontos de alteracao por pagina, serv
 - [ReactiveBandSampler](../../../src/Visual.Win2D/Engine/ReactiveBandSampler.cs#L1)
 - [RendererIntegrationContractSmokeTests](../../../tests/Integration.Smoke/RendererIntegrationContractSmokeTests.cs#L1)
 - [ReactiveBandSamplerTests](../../../tests/Output.Tests/ReactiveBandSamplerTests.cs#L1)
+
 
 
 

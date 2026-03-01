@@ -34,9 +34,8 @@
     <Compile Include="..\..\src\App.WinUI\Services\Apps\GifCatalogAppRuntimeService.cs" Link="Shared\GifCatalogAppRuntimeService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppCatalogService.cs" Link="Shared\AppCatalogService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\AppSettingsDomainService.cs" Link="Shared\AppSettingsDomainService.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Visualizer\PresetPreviewSignalFactory.cs" Link="Shared\Visualizer\PresetPreviewSignalFactory.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Visualizer\PresetPreviewSettingsSnapshot.cs" Link="Shared\Visualizer\PresetPreviewSettingsSnapshot.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Visualizer\VisualizerAnalyzerConfigFactory.cs" Link="Shared\Visualizer\VisualizerAnalyzerConfigFactory.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Visualizer\PresetNavigationHelper.cs" Link="Shared\Visualizer\PresetNavigationHelper.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\IAppCatalogService.cs" Link="Shared\IAppCatalogService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppModifierStateDocument.cs" Link="Shared\AppModifierStateDocument.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppModifierStateStore.cs" Link="Shared\AppModifierStateStore.cs" />
@@ -64,3 +63,4 @@
   </ItemGroup>
 
 </Project>
+

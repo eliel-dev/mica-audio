@@ -11,6 +11,8 @@
     <Page.KeyboardAccelerators>
         <KeyboardAccelerator Key="F11" Invoked="OnFullscreenAcceleratorInvoked" />
         <KeyboardAccelerator Key="Escape" Invoked="OnFullscreenAcceleratorInvoked" />
+        <KeyboardAccelerator Key="Left" Invoked="OnPreviousPresetAcceleratorInvoked" />
+        <KeyboardAccelerator Key="Right" Invoked="OnNextPresetAcceleratorInvoked" />
     </Page.KeyboardAccelerators>
 
     <SplitView
@@ -175,7 +177,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition x:Name="HubPreviewRow" Height="0" />
                 </Grid.RowDefinitions>
@@ -245,45 +246,8 @@
                 </Border>
 
                 <Border
-                    x:Name="PresetGalleryPanel"
-                    Grid.Row="1"
-                    Margin="0,0,0,10"
-                    Padding="10"
-                    Background="{ThemeResource AppSurfaceElevatedBrush}"
-                    BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
-                    <StackPanel Spacing="10">
-                        <TextBlock
-                            Style="{StaticResource AppMutedTextStyle}"
-                            Text="Predefinicoes"
-                            TextWrapping="Wrap" />
-                        <GridView
-                            x:Name="PresetGalleryGridView"
-                            Height="308"
-                            CanDragItems="False"
-                            CanReorderItems="False"
-                            IsItemClickEnabled="True"
-                            IsSwipeEnabled="False"
-                            ItemClick="OnPresetGalleryItemClick"
-                            KeyDown="OnPresetGalleryKeyDown"
-                            SelectionMode="Single"
-                            ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                            ScrollViewer.HorizontalScrollMode="Enabled"
-                            ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                            ScrollViewer.VerticalScrollMode="Disabled">
-                            <GridView.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <ItemsWrapGrid ItemWidth="192" ItemHeight="152" MaximumRowsOrColumns="2" Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </GridView.ItemsPanel>
-                        </GridView>
-                    </StackPanel>
-                </Border>
-
-                <Border
                     x:Name="GifControlsPanel"
-                    Grid.Row="2"
+                    Grid.Row="1"
                     Margin="0,0,0,10"
                     Padding="10"
                     Background="{ThemeResource AppSurfacePanelBrush}"
@@ -379,7 +343,7 @@
 
                 <Border
                     x:Name="MainCanvasBorder"
-                    Grid.Row="3"
+                    Grid.Row="2"
                     Margin="0,0,0,10"
                     Background="Black"
                     CornerRadius="12"
@@ -392,6 +356,22 @@
                             Draw="OnMainCanvasDraw"
                             DoubleTapped="OnMainCanvasDoubleTapped"
                             SizeChanged="OnMainCanvasSizeChanged" />
+                        <Border
+                            x:Name="PresetQuickSwitchHud"
+                            Margin="0,14,0,0"
+                            Padding="10,6"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Top"
+                            Background="{ThemeResource AppSurfaceElevatedBrush}"
+                            BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Visibility="Collapsed">
+                            <TextBlock
+                                x:Name="PresetQuickSwitchText"
+                                Style="{StaticResource AppStatusTextStyle}"
+                                Text="01. Preset" />
+                        </Border>
                         <Button
                             x:Name="CanvasFullscreenButton"
                             Width="40"
@@ -414,7 +394,7 @@
 
                 <Border
                     x:Name="HubPreviewPanel"
-                    Grid.Row="4"
+                    Grid.Row="3"
                     Padding="10"
                     Background="{ThemeResource AppSurfacePanelBrush}"
                     BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
@@ -477,6 +457,9 @@
         </SplitView.Content>
     </SplitView>
 </Page>
+
+
+
 
 
 
