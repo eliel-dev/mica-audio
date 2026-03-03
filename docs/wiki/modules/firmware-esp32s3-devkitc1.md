@@ -18,7 +18,12 @@
 2. `main.cpp` para parsing do stream e desenho
 3. artefato BIN embarcado no app
 
+## Atualizacao 2026-03 - Buffer WS para frame 128x64
+
+- O build do firmware define `WEBSOCKETS_MAX_DATA_SIZE=32768` em `platformio.ini`.
+- O objetivo e suportar com margem payloads binarios grandes do stream `frame 128x64 RGB565` sem queda de conexao por limite de frame no cliente WS.
+
 ## Referencias de codigo
 
-- [main.cpp](../../../firmware/matrixportal-s3/src/main.cpp#L1)
-- [platformio.ini](../../../firmware/matrixportal-s3/platformio.ini#L1)
+- [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
+- [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)

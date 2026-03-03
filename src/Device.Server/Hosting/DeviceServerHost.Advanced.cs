@@ -314,7 +314,12 @@ public sealed partial class DeviceServerHost
                 telemetry.PsramAvailable,
                 telemetry.FreePsramBytes,
                 telemetry.LargestPsramBlockBytes,
-                telemetry.WifiConnected);
+                telemetry.WifiConnected,
+                telemetry.StreamLastSequence,
+                telemetry.StreamFramesReceived,
+                telemetry.StreamFramesApplied,
+                telemetry.StreamSequenceGapCount,
+                telemetry.StreamInvalidFrameCount);
             return true;
         }
         catch

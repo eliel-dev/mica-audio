@@ -19,7 +19,7 @@ Descreva o que foi alterado e o motivo.
 
 ## Impacto estrutural
 
-- [ ] Sim (altera src/, firmware/, matrixportal-s3/, scripts/, MicaAudio.sln, global.json, .github/workflows)
+- [ ] Sim (altera src/, firmware/, scripts/, MicaAudio.sln, global.json, .github/workflows)
 - [ ] Nao
 
 ## Handoff IA

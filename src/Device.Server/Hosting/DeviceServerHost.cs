@@ -27,6 +27,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private const string PairRatePolicy = "pairing";
     private const string CommandAckRatePolicy = "command-ack";
     private const string WebSocketHandshakeRatePolicy = "ws-handshake";
+    private static readonly TimeSpan SocketDetachGracePeriod = TimeSpan.FromMilliseconds(500);
 
 
     private enum AuthContext
@@ -478,37 +479,45 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         state.AttachSocket(ws, ctx.Connection.RemoteIpAddress?.ToString());
         NotifyDevicesChanged();
 
-        var sendTask = Task.Run(() => SendLoopAsync(state));
-        await ReceiveLoopAsync(state, ws, ctx.RequestAborted, config.MaxWebSocketMessageBytes).ConfigureAwait(false);
+        var sendToken = state.SendToken;
+        var sendTask = Task.Run(() => SendLoopAsync(state, ws, sendToken));
+        try
+        {
+            await ReceiveLoopAsync(state, ws, ctx.RequestAborted, config.MaxWebSocketMessageBytes).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (state.DetachSocket(ws))
+            {
+                NotifyDevicesChanged();
+            }
 
-        state.DetachSocket();
-        NotifyDevicesChanged();
-        await sendTask.ConfigureAwait(false);
+            await sendTask.ConfigureAwait(false);
+        }
     }
 
-    private static async Task SendLoopAsync(DeviceState state)
+    private static async Task SendLoopAsync(DeviceState state, WebSocket ws, CancellationToken sendToken)
     {
         while (true)
         {
             byte[] payload;
             try
             {
-                payload = await state.Outgoing.Reader.ReadAsync(state.SendToken).ConfigureAwait(false);
+                payload = await state.Outgoing.Reader.ReadAsync(sendToken).ConfigureAwait(false);
             }
             catch
             {
                 break;
             }
 
-            var ws = state.Socket;
-            if (ws is null || ws.State != WebSocketState.Open)
+            if (ws.State != WebSocketState.Open)
             {
                 continue;
             }
 
             try
             {
-                await ws.SendAsync(payload, WebSocketMessageType.Binary, true, state.SendToken).ConfigureAwait(false);
+                await ws.SendAsync(payload, WebSocketMessageType.Binary, true, sendToken).ConfigureAwait(false);
             }
             catch
             {
@@ -953,6 +962,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private sealed class DeviceState : IDisposable
     {
         private CancellationTokenSource senderCts = new();
+        private DateTimeOffset? socketDetachGraceUntilUtc;
 
         public DeviceState(DeviceRecord record)
         {
@@ -1007,6 +1017,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 FreePsramBytes = Record.FreePsramBytes,
                 LargestPsramBlockBytes = Record.LargestPsramBlockBytes,
                 WifiConnected = Record.WifiConnected,
+                StreamLastSequence = Record.StreamLastSequence,
+                StreamFramesReceived = Record.StreamFramesReceived,
+                StreamFramesApplied = Record.StreamFramesApplied,
+                StreamSequenceGapCount = Record.StreamSequenceGapCount,
+                StreamInvalidFrameCount = Record.StreamInvalidFrameCount,
                 ActiveAppId = string.IsNullOrWhiteSpace(activeAppId) ? Record.ActiveAppId : activeAppId,
                 ActiveAppName = string.IsNullOrWhiteSpace(activeAppName) ? Record.ActiveAppName : activeAppName,
                 BoardModel = string.IsNullOrWhiteSpace(boardModel) ? Record.BoardModel : boardModel,
@@ -1041,6 +1056,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 FreePsramBytes = Record.FreePsramBytes,
                 LargestPsramBlockBytes = Record.LargestPsramBlockBytes,
                 WifiConnected = Record.WifiConnected,
+                StreamLastSequence = Record.StreamLastSequence,
+                StreamFramesReceived = Record.StreamFramesReceived,
+                StreamFramesApplied = Record.StreamFramesApplied,
+                StreamSequenceGapCount = Record.StreamSequenceGapCount,
+                StreamInvalidFrameCount = Record.StreamInvalidFrameCount,
                 ActiveAppId = Record.ActiveAppId,
                 ActiveAppName = Record.ActiveAppName,
                 BoardModel = Record.BoardModel,
@@ -1068,7 +1088,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             bool? psramAvailable = null,
             long? freePsramBytes = null,
             long? largestPsramBlockBytes = null,
-            bool? wifiConnected = null)
+            bool? wifiConnected = null,
+            uint? streamLastSequence = null,
+            uint? streamFramesReceived = null,
+            uint? streamFramesApplied = null,
+            uint? streamSequenceGapCount = null,
+            uint? streamInvalidFrameCount = null)
         {
             var now = DateTimeOffset.UtcNow;
             LastActivityUtc = now;
@@ -1091,6 +1116,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 FreePsramBytes = freePsramBytes,
                 LargestPsramBlockBytes = largestPsramBlockBytes,
                 WifiConnected = wifiConnected,
+                StreamLastSequence = streamLastSequence,
+                StreamFramesReceived = streamFramesReceived,
+                StreamFramesApplied = streamFramesApplied,
+                StreamSequenceGapCount = streamSequenceGapCount,
+                StreamInvalidFrameCount = streamInvalidFrameCount,
                 ActiveAppId = string.IsNullOrWhiteSpace(activeAppId) ? Record.ActiveAppId : activeAppId,
                 ActiveAppName = string.IsNullOrWhiteSpace(activeAppName) ? Record.ActiveAppName : activeAppName,
                 BoardModel = string.IsNullOrWhiteSpace(boardModel) ? Record.BoardModel : boardModel,
@@ -1114,13 +1144,21 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             senderCts.Dispose();
             senderCts = new CancellationTokenSource();
             Socket = socket;
+            socketDetachGraceUntilUtc = null;
             MarkSeen(ip, Record.LastKnownRssi, Record.FirmwareVersion);
         }
 
-        public void DetachSocket()
+        public bool DetachSocket(WebSocket socket)
         {
+            if (!ReferenceEquals(Socket, socket))
+            {
+                return false;
+            }
+
             senderCts.Cancel();
             Socket = null;
+            socketDetachGraceUntilUtc = DateTimeOffset.UtcNow + SocketDetachGracePeriod;
+            return true;
         }
 
         public void QueueFrame(byte[] frame)
@@ -1130,7 +1168,23 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         public DeviceSnapshot ToSnapshot(TimeSpan offlineTimeout)
         {
-            var online = Socket is { State: WebSocketState.Open } && (DateTimeOffset.UtcNow - LastActivityUtc) <= offlineTimeout;
+            var now = DateTimeOffset.UtcNow;
+            var onlineBySocket = Socket is { State: WebSocketState.Open } && (now - LastActivityUtc) <= offlineTimeout;
+
+            var withinDetachGrace = false;
+            if (socketDetachGraceUntilUtc.HasValue)
+            {
+                if (now <= socketDetachGraceUntilUtc.Value)
+                {
+                    withinDetachGrace = true;
+                }
+                else
+                {
+                    socketDetachGraceUntilUtc = null;
+                }
+            }
+
+            var online = onlineBySocket || withinDetachGrace;
 
             return new DeviceSnapshot
             {
@@ -1149,6 +1203,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 FreePsramBytes = Record.FreePsramBytes,
                 LargestPsramBlockBytes = Record.LargestPsramBlockBytes,
                 WifiConnected = Record.WifiConnected,
+                StreamLastSequence = Record.StreamLastSequence,
+                StreamFramesReceived = Record.StreamFramesReceived,
+                StreamFramesApplied = Record.StreamFramesApplied,
+                StreamSequenceGapCount = Record.StreamSequenceGapCount,
+                StreamInvalidFrameCount = Record.StreamInvalidFrameCount,
                 FirmwareVersion = Record.FirmwareVersion,
                 ActiveAppId = Record.ActiveAppId,
                 ActiveAppName = Record.ActiveAppName,

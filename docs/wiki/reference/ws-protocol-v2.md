@@ -44,4 +44,4 @@ Tamanho total: `16400` bytes.
 ## Referencias
 
 - [StreamFrameV2](../../../src/Device.Protocol/Stream/StreamFrameV2.cs#L1)
-- [Firmware onWsEvent](../../../firmware/matrixportal-s3/src/main.cpp#L1)
+- [Firmware onWsEvent](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)

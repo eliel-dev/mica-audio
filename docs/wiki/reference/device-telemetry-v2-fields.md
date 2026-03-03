@@ -32,8 +32,9 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 ## Consumo na DevicesPage (Entrega 3)
 
 - A `DevicesPage` usa `DeviceMetricsFormatter` para converter snapshot bruto em apresentacao.
-- O card `Dashboard ESP` exibe status, carga do loop, uptime, heap, PSRAM e rede.
+- O card `Dashboard ESP` exibe status, carga do loop, uptime, heap, PSRAM e rede em visual de painel NOC (chips + blocos + tendencia curta).
 - Barras derivadas de fragmentacao sao exibidas apenas quando os dados sao coerentes.
+- `RSSI` deve aparecer apenas quando o `snapshot.Status` esta online; para offline a UI exibe estado de rede sem sinal numerico.
 - O card de logs usa `GetDeviceLogs(deviceId)` e exibe somente o device selecionado.
 - Sem selecao, dashboard e logs exibem placeholders dedicados.
 
@@ -46,7 +47,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 
 ## Referencias de codigo
 
-- [firmware telemetry sender](../../../firmware/matrixportal-s3/src/main.cpp#L1)
+- [firmware telemetry sender](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1)
 - [DeviceSnapshot](../../../src/Device.Protocol/Models/DeviceSnapshot.cs#L1)
 - [DeviceRecord](../../../src/Device.Protocol/Models/DeviceRecord.cs#L1)

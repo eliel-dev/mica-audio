@@ -111,3 +111,9 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - Sanitizacao de `largest*BlockBytes` permanece restrita ao firmware emissor.
 - Detalhes de contrato e semantica: [device-telemetry-v2-fields](../reference/device-telemetry-v2-fields.md#objetivo).
 
+## Atualizacao 2026-03 - Mitigacao de flapping de sessao WS
+
+- O detach de socket agora e seguro por identidade da conexao: somente o socket atualmente anexado pode transicionar a sessao para desconectada.
+- Foi adicionado grace period curto de 500ms apos detach para absorver reconexoes rapidas sem alternancia visual online/offline na UI.
+- O objetivo e reduzir falso flapping quando o firmware reconecta em janela curta.
+

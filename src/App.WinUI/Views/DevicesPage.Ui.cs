@@ -1,4 +1,4 @@
-using App.WinUI.Views.Controls;
+using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -16,10 +16,6 @@ public sealed partial class DevicesPage
     private TextBlock SelectedDeviceRegistrationText = null!;
     private TextBlock SelectedDeviceAppText = null!;
     private TextBlock ServerInfoText = null!;
-    private AppPreviewThumbnailControl SelectedDevicePreview = null!;
-    private TextBlock SelectedDevicePreviewPlaceholderText = null!;
-    private AppBarButton EnterProvisioningButton = null!;
-    private AppBarButton RevokeButton = null!;
     private AppBarButton TestLedButton = null!;
     private AppBarButton RemoveDeviceButton = null!;
     private ProgressRing CommandProgressRing = null!;
@@ -29,6 +25,22 @@ public sealed partial class DevicesPage
     private TextBlock DashboardStatusText = null!;
     private TextBlock DashboardPlaceholderText = null!;
     private Grid DashboardMetricsGrid = null!;
+    private Border DashboardConnectionChipBorder = null!;
+    private SymbolIcon DashboardConnectionChipIcon = null!;
+    private TextBlock DashboardConnectionChipText = null!;
+    private Border DashboardWifiChipBorder = null!;
+    private SymbolIcon DashboardWifiChipIcon = null!;
+    private TextBlock DashboardWifiChipText = null!;
+    private Border DashboardRssiChipBorder = null!;
+    private SymbolIcon DashboardRssiChipIcon = null!;
+    private TextBlock DashboardRssiChipText = null!;
+    private Border DashboardSnapshotChipBorder = null!;
+    private SymbolIcon DashboardSnapshotChipIcon = null!;
+    private TextBlock DashboardSnapshotChipText = null!;
+    private Border DashboardLoopTile = null!;
+    private Border DashboardHeapTile = null!;
+    private Border DashboardPsramTile = null!;
+    private Border DashboardNetworkTile = null!;
     private TextBlock DashboardLoopLoadText = null!;
     private ProgressBar DashboardLoopLoadBar = null!;
     private TextBlock DashboardUptimeText = null!;
@@ -39,6 +51,9 @@ public sealed partial class DevicesPage
     private TextBlock DashboardPsramFragmentationText = null!;
     private ProgressBar DashboardPsramFragmentationBar = null!;
     private TextBlock DashboardNetworkText = null!;
+    private TextBlock DashboardLoopTrendCaptionText = null!;
+    private Grid DashboardLoopTrendGrid = null!;
+    private readonly List<Border> DashboardLoopTrendBars = new();
     private TextBox DeviceLogsTextBox = null!;
     private InfoBar PairingCodeText = null!;
 
@@ -101,10 +116,12 @@ public sealed partial class DevicesPage
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         Grid.SetColumn(rightGrid, 1);
+
+        var summaryLayout = new Grid { ColumnSpacing = 12 };
+        summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var summary = new StackPanel { Spacing = 4 };
         SelectedDeviceTitleText = new TextBlock
@@ -122,69 +139,29 @@ public sealed partial class DevicesPage
         summary.Children.Add(SelectedDeviceRegistrationText);
         summary.Children.Add(SelectedDeviceAppText);
         summary.Children.Add(ServerInfoText);
-        rightGrid.Children.Add(CreateCard(summary));
 
-        var previewStack = new StackPanel { Spacing = 8 };
-        previewStack.Children.Add(new TextBlock
-        {
-            Text = "Preview do app",
-            Opacity = 0.82,
-        });
-
-        var previewHost = new Grid
-        {
-            MinHeight = 120,
-        };
-
-        SelectedDevicePreview = new AppPreviewThumbnailControl
-        {
-            Width = 232,
-            Height = 116,
-            Visibility = Visibility.Collapsed,
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
-
-        SelectedDevicePreviewPlaceholderText = new TextBlock
-        {
-            Text = "Selecione um dispositivo para ver o app ativo",
-            TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.72,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            MaxWidth = 260,
-        };
-
-        previewHost.Children.Add(SelectedDevicePreview);
-        previewHost.Children.Add(SelectedDevicePreviewPlaceholderText);
-        previewStack.Children.Add(previewHost);
-
-        var previewCard = CreateCard(previewStack);
-        Grid.SetRow(previewCard, 1);
-        rightGrid.Children.Add(previewCard);
-
-        var actionsCommandBar = new CommandBar
+        var summaryActionsBar = new CommandBar
         {
             Background = null,
             DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
         };
 
-        EnterProvisioningButton = new AppBarButton { Label = "Provisioning", Icon = new SymbolIcon(Symbol.Setting) };
-        EnterProvisioningButton.Click += OnEnterProvisioningClicked;
-        RevokeButton = new AppBarButton { Label = "Revogar", Icon = new SymbolIcon(Symbol.Undo) };
-        RevokeButton.Click += OnRevokeClicked;
         TestLedButton = new AppBarButton { Label = "Testar LED", Icon = new SymbolIcon(Symbol.TouchPointer) };
         TestLedButton.Click += OnTestLedClicked;
+
         RemoveDeviceButton = new AppBarButton { Label = "Remover", Icon = new SymbolIcon(Symbol.Delete) };
         RemoveDeviceButton.Click += OnRemoveDeviceClicked;
 
-        actionsCommandBar.PrimaryCommands.Add(EnterProvisioningButton);
-        actionsCommandBar.PrimaryCommands.Add(RevokeButton);
-        actionsCommandBar.PrimaryCommands.Add(TestLedButton);
-        actionsCommandBar.PrimaryCommands.Add(RemoveDeviceButton);
+        summaryActionsBar.PrimaryCommands.Add(TestLedButton);
+        summaryActionsBar.PrimaryCommands.Add(RemoveDeviceButton);
 
-        var actionsCard = CreateCard(actionsCommandBar, padding: 4);
-        Grid.SetRow(actionsCard, 2);
-        rightGrid.Children.Add(actionsCard);
+        summaryLayout.Children.Add(summary);
+        Grid.SetColumn(summaryActionsBar, 1);
+        summaryLayout.Children.Add(summaryActionsBar);
+
+        rightGrid.Children.Add(CreateCard(summaryLayout));
 
         var statusGrid = new Grid { ColumnSpacing = 10 };
         statusGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -222,63 +199,117 @@ public sealed partial class DevicesPage
         statusGrid.Children.Add(CommandPercentText);
 
         var statusCard = CreateCard(statusGrid);
-        Grid.SetRow(statusCard, 3);
+        Grid.SetRow(statusCard, 1);
         rightGrid.Children.Add(statusCard);
 
-        var dashboardStack = new StackPanel { Spacing = 8 };
+        var dashboardStack = new StackPanel { Spacing = 10 };
 
-        var dashboardHeader = new Grid();
+        var dashboardHeader = new Grid { ColumnSpacing = 8 };
         dashboardHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         dashboardHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var dashboardTitle = new TextBlock
-        {
-            Text = "Dashboard ESP",
-            Opacity = 0.84,
-        };
 
         DashboardStatusText = new TextBlock
         {
             Text = "Sem metricas",
-            Opacity = 0.72,
+            Opacity = 0.82,
             HorizontalAlignment = HorizontalAlignment.Right,
             TextAlignment = TextAlignment.Right,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
         };
 
         Grid.SetColumn(DashboardStatusText, 1);
-        dashboardHeader.Children.Add(dashboardTitle);
         dashboardHeader.Children.Add(DashboardStatusText);
         dashboardStack.Children.Add(dashboardHeader);
+
+        var dashboardChipsGrid = new Grid
+        {
+            ColumnSpacing = 6,
+            RowSpacing = 6,
+        };
+        dashboardChipsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        dashboardChipsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        dashboardChipsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        dashboardChipsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        DashboardConnectionChipBorder = CreateDashboardChip(
+            text: "Conexao indisponivel",
+            iconSymbol: Symbol.Help,
+            out var dashboardConnectionChipIcon,
+            out var dashboardConnectionChipText);
+        DashboardConnectionChipIcon = dashboardConnectionChipIcon;
+        DashboardConnectionChipText = dashboardConnectionChipText;
+
+        DashboardWifiChipBorder = CreateDashboardChip(
+            text: "Wi-Fi indisponivel",
+            iconSymbol: Symbol.Help,
+            out var dashboardWifiChipIcon,
+            out var dashboardWifiChipText);
+        DashboardWifiChipIcon = dashboardWifiChipIcon;
+        DashboardWifiChipText = dashboardWifiChipText;
+
+        DashboardRssiChipBorder = CreateDashboardChip(
+            text: "Sinal indisponivel",
+            iconSymbol: Symbol.Help,
+            out var dashboardRssiChipIcon,
+            out var dashboardRssiChipText);
+        DashboardRssiChipIcon = dashboardRssiChipIcon;
+        DashboardRssiChipText = dashboardRssiChipText;
+
+        DashboardSnapshotChipBorder = CreateDashboardChip(
+            text: "Snapshot indisponivel",
+            iconSymbol: Symbol.Help,
+            out var dashboardSnapshotChipIcon,
+            out var dashboardSnapshotChipText);
+        DashboardSnapshotChipIcon = dashboardSnapshotChipIcon;
+        DashboardSnapshotChipText = dashboardSnapshotChipText;
+
+        Grid.SetRow(DashboardConnectionChipBorder, 0);
+        Grid.SetColumn(DashboardConnectionChipBorder, 0);
+        Grid.SetRow(DashboardWifiChipBorder, 0);
+        Grid.SetColumn(DashboardWifiChipBorder, 1);
+        Grid.SetRow(DashboardRssiChipBorder, 1);
+        Grid.SetColumn(DashboardRssiChipBorder, 0);
+        Grid.SetRow(DashboardSnapshotChipBorder, 1);
+        Grid.SetColumn(DashboardSnapshotChipBorder, 1);
+
+        dashboardChipsGrid.Children.Add(DashboardConnectionChipBorder);
+        dashboardChipsGrid.Children.Add(DashboardWifiChipBorder);
+        dashboardChipsGrid.Children.Add(DashboardRssiChipBorder);
+        dashboardChipsGrid.Children.Add(DashboardSnapshotChipBorder);
+        dashboardStack.Children.Add(dashboardChipsGrid);
 
         DashboardPlaceholderText = new TextBlock
         {
             Text = "Selecione um dispositivo para ver metricas",
             TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.72,
+            Opacity = 0.74,
         };
         dashboardStack.Children.Add(DashboardPlaceholderText);
 
         DashboardMetricsGrid = new Grid
         {
-            RowSpacing = 6,
+            RowSpacing = 8,
+            ColumnSpacing = 8,
             Visibility = Visibility.Collapsed,
         };
 
         DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        DashboardMetricsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var loopTileStack = new StackPanel { Spacing = 4 };
+        loopTileStack.Children.Add(new TextBlock
+        {
+            Text = "Carga do loop",
+            Opacity = 0.74,
+        });
 
         DashboardLoopLoadText = new TextBlock
         {
-            Text = "Carga do loop: -",
-            Opacity = 0.84,
+            Text = "-",
+            FontSize = 25,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
         };
 
         DashboardLoopLoadBar = new ProgressBar
@@ -286,91 +317,162 @@ public sealed partial class DevicesPage
             Minimum = 0,
             Maximum = 1,
             Value = 0,
-            Height = 6,
+            Height = 8,
         };
-        Grid.SetRow(DashboardLoopLoadBar, 1);
 
-        DashboardUptimeText = new TextBlock
+        loopTileStack.Children.Add(DashboardLoopLoadText);
+        loopTileStack.Children.Add(DashboardLoopLoadBar);
+
+        DashboardLoopTile = CreateDashboardTile(loopTileStack);
+        Grid.SetRow(DashboardLoopTile, 0);
+        Grid.SetColumn(DashboardLoopTile, 0);
+
+        var heapTileStack = new StackPanel { Spacing = 4 };
+        heapTileStack.Children.Add(new TextBlock
         {
-            Text = "Uptime: -",
-            Opacity = 0.84,
-        };
-        Grid.SetRow(DashboardUptimeText, 2);
+            Text = "Heap",
+            Opacity = 0.74,
+        });
 
         DashboardHeapText = new TextBlock
         {
             Text = "Heap livre: - | Maior bloco: -",
-            Opacity = 0.84,
+            Opacity = 0.9,
             TextWrapping = TextWrapping.Wrap,
         };
-        Grid.SetRow(DashboardHeapText, 3);
 
         DashboardHeapFragmentationText = new TextBlock
         {
             Text = "Heap (maior bloco / livre): -",
-            Opacity = 0.78,
+            Opacity = 0.76,
             TextWrapping = TextWrapping.Wrap,
         };
-        Grid.SetRow(DashboardHeapFragmentationText, 4);
 
         DashboardHeapFragmentationBar = new ProgressBar
         {
             Minimum = 0,
             Maximum = 1,
             Value = 0,
-            Height = 6,
+            Height = 8,
             Visibility = Visibility.Collapsed,
         };
-        Grid.SetRow(DashboardHeapFragmentationBar, 5);
+
+        heapTileStack.Children.Add(DashboardHeapText);
+        heapTileStack.Children.Add(DashboardHeapFragmentationText);
+        heapTileStack.Children.Add(DashboardHeapFragmentationBar);
+
+        DashboardHeapTile = CreateDashboardTile(heapTileStack);
+        Grid.SetRow(DashboardHeapTile, 0);
+        Grid.SetColumn(DashboardHeapTile, 1);
+
+        var psramTileStack = new StackPanel { Spacing = 4 };
+        psramTileStack.Children.Add(new TextBlock
+        {
+            Text = "PSRAM",
+            Opacity = 0.74,
+        });
 
         DashboardPsramText = new TextBlock
         {
             Text = "PSRAM: desconhecida",
-            Opacity = 0.84,
+            Opacity = 0.9,
             TextWrapping = TextWrapping.Wrap,
         };
-        Grid.SetRow(DashboardPsramText, 6);
 
         DashboardPsramFragmentationText = new TextBlock
         {
             Text = "PSRAM (maior bloco / livre): -",
-            Opacity = 0.78,
+            Opacity = 0.76,
             TextWrapping = TextWrapping.Wrap,
         };
-        Grid.SetRow(DashboardPsramFragmentationText, 7);
 
         DashboardPsramFragmentationBar = new ProgressBar
         {
             Minimum = 0,
             Maximum = 1,
             Value = 0,
-            Height = 6,
+            Height = 8,
             Visibility = Visibility.Collapsed,
         };
-        Grid.SetRow(DashboardPsramFragmentationBar, 8);
+
+        psramTileStack.Children.Add(DashboardPsramText);
+        psramTileStack.Children.Add(DashboardPsramFragmentationText);
+        psramTileStack.Children.Add(DashboardPsramFragmentationBar);
+
+        DashboardPsramTile = CreateDashboardTile(psramTileStack);
+        Grid.SetRow(DashboardPsramTile, 1);
+        Grid.SetColumn(DashboardPsramTile, 0);
+
+        var networkTileStack = new StackPanel { Spacing = 4 };
+        networkTileStack.Children.Add(new TextBlock
+        {
+            Text = "Rede e uptime",
+            Opacity = 0.74,
+        });
 
         DashboardNetworkText = new TextBlock
         {
             Text = "Wi-Fi: -",
-            Opacity = 0.84,
+            Opacity = 0.9,
             TextWrapping = TextWrapping.Wrap,
         };
-        Grid.SetRow(DashboardNetworkText, 9);
 
-        DashboardMetricsGrid.Children.Add(DashboardLoopLoadText);
-        DashboardMetricsGrid.Children.Add(DashboardLoopLoadBar);
-        DashboardMetricsGrid.Children.Add(DashboardUptimeText);
-        DashboardMetricsGrid.Children.Add(DashboardHeapText);
-        DashboardMetricsGrid.Children.Add(DashboardHeapFragmentationText);
-        DashboardMetricsGrid.Children.Add(DashboardHeapFragmentationBar);
-        DashboardMetricsGrid.Children.Add(DashboardPsramText);
-        DashboardMetricsGrid.Children.Add(DashboardPsramFragmentationText);
-        DashboardMetricsGrid.Children.Add(DashboardPsramFragmentationBar);
-        DashboardMetricsGrid.Children.Add(DashboardNetworkText);
+        DashboardUptimeText = new TextBlock
+        {
+            Text = "Uptime: -",
+            Opacity = 0.76,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        networkTileStack.Children.Add(DashboardNetworkText);
+        networkTileStack.Children.Add(DashboardUptimeText);
+
+        DashboardNetworkTile = CreateDashboardTile(networkTileStack);
+        Grid.SetRow(DashboardNetworkTile, 1);
+        Grid.SetColumn(DashboardNetworkTile, 1);
+
+        DashboardMetricsGrid.Children.Add(DashboardLoopTile);
+        DashboardMetricsGrid.Children.Add(DashboardHeapTile);
+        DashboardMetricsGrid.Children.Add(DashboardPsramTile);
+        DashboardMetricsGrid.Children.Add(DashboardNetworkTile);
         dashboardStack.Children.Add(DashboardMetricsGrid);
 
+        var trendStack = new StackPanel { Spacing = 6 };
+        DashboardLoopTrendCaptionText = new TextBlock
+        {
+            Text = "Tendencia carga do loop: aguardando amostras",
+            Opacity = 0.76,
+        };
+        trendStack.Children.Add(DashboardLoopTrendCaptionText);
+
+        DashboardLoopTrendGrid = new Grid
+        {
+            Height = 72,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+
+        for (var index = 0; index < 24; index++)
+        {
+            DashboardLoopTrendGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var trendBar = new Border
+            {
+                Height = 4,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(1, 0, 1, 0),
+                CornerRadius = new CornerRadius(2),
+                Opacity = 0.28,
+                Background = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 65, 82, 104)),
+            };
+            Grid.SetColumn(trendBar, index);
+            DashboardLoopTrendGrid.Children.Add(trendBar);
+            DashboardLoopTrendBars.Add(trendBar);
+        }
+
+        trendStack.Children.Add(DashboardLoopTrendGrid);
+        dashboardStack.Children.Add(CreateDashboardTile(trendStack));
+
         var dashboardCard = CreateCard(dashboardStack);
-        Grid.SetRow(dashboardCard, 4);
+        Grid.SetRow(dashboardCard, 2);
         rightGrid.Children.Add(dashboardCard);
 
         DeviceLogsTextBox = new TextBox
@@ -378,14 +480,17 @@ public sealed partial class DevicesPage
             Header = "Logs do dispositivo",
             AcceptsReturn = true,
             IsReadOnly = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 200,
+            TextWrapping = TextWrapping.NoWrap,
+            FontFamily = new FontFamily("Cascadia Mono"),
+            FontSize = 12,
+            MinHeight = 220,
             Text = "Selecione um dispositivo para ver logs do dispositivo.",
         };
         ScrollViewer.SetVerticalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Auto);
+        ScrollViewer.SetHorizontalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Auto);
 
         var logsCard = CreateCard(DeviceLogsTextBox);
-        Grid.SetRow(logsCard, 5);
+        Grid.SetRow(logsCard, 3);
         rightGrid.Children.Add(logsCard);
 
         middle.Children.Add(rightGrid);
@@ -415,6 +520,54 @@ public sealed partial class DevicesPage
             Background = elevated
                 ? ResolveBrush("AppSurfaceElevatedBrush", Color.FromArgb(255, 24, 32, 42))
                 : ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32)),
+            Child = content,
+        };
+    }
+
+    private static Border CreateDashboardTile(UIElement content)
+    {
+        return new Border
+        {
+            Padding = new Thickness(10),
+            CornerRadius = new CornerRadius(10),
+            BorderThickness = new Thickness(1),
+            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
+            Background = ResolveBrush("AppSurfaceElevatedBrush", Color.FromArgb(255, 24, 32, 42)),
+            Child = content,
+        };
+    }
+
+    private static Border CreateDashboardChip(string text, Symbol iconSymbol, out SymbolIcon icon, out TextBlock label)
+    {
+        icon = new SymbolIcon(iconSymbol)
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        label = new TextBlock
+        {
+            Text = text,
+            FontSize = 11,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Opacity = 0.92,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var content = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+        };
+        content.Children.Add(icon);
+        content.Children.Add(label);
+
+        return new Border
+        {
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(0),
+            BorderThickness = new Thickness(0),
+            BorderBrush = null,
+            Background = null,
             Child = content,
         };
     }

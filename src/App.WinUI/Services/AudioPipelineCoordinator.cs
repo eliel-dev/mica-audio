@@ -13,7 +13,7 @@ internal sealed class AudioPipelineCoordinator
 {
     private readonly ILoopbackCapture capture;
     private readonly ILedOutput simulatorLedOutput;
-    private readonly ILedOutput matrixPortalLedOutput;
+    private readonly ILedOutput esp32s3LedOutput;
     private readonly ILedOutput nullLedOutput;
     private readonly Func<IAnalyzer> analyzerFactory;
 
@@ -27,13 +27,13 @@ internal sealed class AudioPipelineCoordinator
     public AudioPipelineCoordinator(
         ILoopbackCapture capture,
         ILedOutput simulatorLedOutput,
-        ILedOutput matrixPortalLedOutput,
+        ILedOutput esp32s3LedOutput,
         ILedOutput nullLedOutput,
         Func<IAnalyzer> analyzerFactory)
     {
         this.capture = capture;
         this.simulatorLedOutput = simulatorLedOutput;
-        this.matrixPortalLedOutput = matrixPortalLedOutput;
+        this.esp32s3LedOutput = esp32s3LedOutput;
         this.nullLedOutput = nullLedOutput;
         this.analyzerFactory = analyzerFactory;
     }
@@ -83,7 +83,7 @@ internal sealed class AudioPipelineCoordinator
         if (!running)
         {
             simulatorLedOutput.Stop();
-            matrixPortalLedOutput.Stop();
+            esp32s3LedOutput.Stop();
             nullLedOutput.Stop();
             return;
         }
@@ -108,7 +108,7 @@ internal sealed class AudioPipelineCoordinator
             loopTask = null;
             running = false;
             simulatorLedOutput.Stop();
-            matrixPortalLedOutput.Stop();
+            esp32s3LedOutput.Stop();
             nullLedOutput.Stop();
         }
 
@@ -139,7 +139,7 @@ internal sealed class AudioPipelineCoordinator
             PresetId = presetId,
         };
 
-        matrixPortalLedOutput.Send(payload);
+        esp32s3LedOutput.Send(payload);
 
         if (forceSimulator || hubPreviewEnabled)
         {
@@ -165,8 +165,8 @@ internal sealed class AudioPipelineCoordinator
             Brightness = this.brightness,
         };
 
-        matrixPortalLedOutput.Start(ledConfig);
-        matrixPortalLedOutput.SetBrightness(this.brightness);
+        esp32s3LedOutput.Start(ledConfig);
+        esp32s3LedOutput.SetBrightness(this.brightness);
 
         if (hubPreviewEnabled)
         {
@@ -207,7 +207,7 @@ internal sealed class AudioPipelineCoordinator
                     PresetId = currentPresetId,
                 };
 
-                matrixPortalLedOutput.Send(payload);
+                esp32s3LedOutput.Send(payload);
 
                 if (hubPreviewEnabled)
                 {

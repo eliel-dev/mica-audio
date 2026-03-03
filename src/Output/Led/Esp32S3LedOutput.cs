@@ -8,7 +8,7 @@ namespace Output.Led;
 
 // DOCS: docs/wiki/modules/output-led.md#modulo-output-led
 // DOCS: docs/wiki/reference/ws-protocol-v2.md#estrutura-streamframev2
-public sealed class MatrixPortalLedOutput : ILedOutput
+public sealed class Esp32S3LedOutput : ILedOutput
 {
     private readonly IDeviceServerHost deviceServerHost;
     private readonly object gate = new();
@@ -16,8 +16,11 @@ public sealed class MatrixPortalLedOutput : ILedOutput
     private float brightness = LedDefaults.Brightness;
     private bool started;
     private uint sequence;
+    private ushort[]? lastFrameRgb565;
+    private byte lastFrameBrightness;
+    private bool hasLastFrame;
 
-    public MatrixPortalLedOutput(IDeviceServerHost deviceServerHost)
+    public Esp32S3LedOutput(IDeviceServerHost deviceServerHost)
     {
         this.deviceServerHost = deviceServerHost;
     }
@@ -30,6 +33,7 @@ public sealed class MatrixPortalLedOutput : ILedOutput
         {
             started = true;
             brightness = Math.Clamp(config.Brightness, 0f, 1f);
+            hasLastFrame = false;
         }
     }
 
@@ -38,6 +42,7 @@ public sealed class MatrixPortalLedOutput : ILedOutput
         lock (gate)
         {
             started = false;
+            hasLastFrame = false;
         }
     }
 
@@ -48,6 +53,7 @@ public sealed class MatrixPortalLedOutput : ILedOutput
         float level;
         float localBrightness;
         uint localSequence;
+        byte localBrightnessByte;
 
         lock (gate)
         {
@@ -60,7 +66,21 @@ public sealed class MatrixPortalLedOutput : ILedOutput
             frame = payload.Frame128x64;
             level = payload.Level;
             localBrightness = brightness;
-            localSequence = ++sequence;
+            localBrightnessByte = ToByte01(localBrightness);
+
+            if (frame is { Length: StreamFrameV2.PixelCount128x64 })
+            {
+                if (ShouldSkipFrameLocked(frame, localBrightnessByte))
+                {
+                    return;
+                }
+
+                localSequence = ++sequence;
+            }
+            else
+            {
+                localSequence = ++sequence;
+            }
         }
 
         if (frame is { Length: StreamFrameV2.PixelCount128x64 })
@@ -75,7 +95,7 @@ public sealed class MatrixPortalLedOutput : ILedOutput
                 sequence: localSequence,
                 timestampQpc: Stopwatch.GetTimestamp(),
                 pixels128x64Rgb565: pixels,
-                brightness0To255: ToByte01(localBrightness));
+                brightness0To255: localBrightnessByte);
 
             deviceServerHost.BroadcastFrame(frameBytes);
             return;
@@ -97,9 +117,35 @@ public sealed class MatrixPortalLedOutput : ILedOutput
             timestampQpc: Stopwatch.GetTimestamp(),
             level0To255: ToByte01(level),
             bins128: binsBytes,
-            brightness0To255: ToByte01(localBrightness));
+            brightness0To255: localBrightnessByte);
 
         deviceServerHost.BroadcastFrame(bytes);
+    }
+
+    private bool ShouldSkipFrameLocked(IReadOnlyList<RgbaColor> frame, byte brightnessByte)
+    {
+        if (lastFrameRgb565 is null || lastFrameRgb565.Length != StreamFrameV2.PixelCount128x64)
+        {
+            lastFrameRgb565 = new ushort[StreamFrameV2.PixelCount128x64];
+            hasLastFrame = false;
+        }
+
+        var changed = !hasLastFrame || brightnessByte != lastFrameBrightness;
+
+        for (var i = 0; i < StreamFrameV2.PixelCount128x64; i++)
+        {
+            var rgb565 = ToRgb565(frame[i]);
+            if (!changed && lastFrameRgb565[i] != rgb565)
+            {
+                changed = true;
+            }
+
+            lastFrameRgb565[i] = rgb565;
+        }
+
+        lastFrameBrightness = brightnessByte;
+        hasLastFrame = true;
+        return !changed;
     }
 
     public void SetBrightness(float value)

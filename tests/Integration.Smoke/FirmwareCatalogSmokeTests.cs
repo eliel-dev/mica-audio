@@ -18,7 +18,7 @@ public sealed class FirmwareCatalogSmokeTests
         var dma = Assert.Single(options);
         Assert.Equal("dma_exp", dma.Profile);
         Assert.Equal("esp32s3-devkitc1-128x64-dma_exp_merged.bin", dma.FileName);
-        Assert.Empty(service.GetOptions(boardModel: "matrixportal_s3"));
+        Assert.Empty(service.GetOptions(boardModel: "unknown_board"));
     }
 
     [Fact]

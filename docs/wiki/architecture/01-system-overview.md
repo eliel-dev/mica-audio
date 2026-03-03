@@ -25,7 +25,7 @@ WASAPI loopback -> PcmFrame -> SpectrumAnalyzer -> SpectrumFrame -> VisualizerEn
 - [AudioPipelineCoordinator.PipelineLoopAsync](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L74) - assinatura esperada: `Task PipelineLoopAsync(...)`
 - [SpectrumAnalyzer.Process](../../../src/Analyzer.Dsp/Analysis/SpectrumAnalyzer.cs#L78) - assinatura esperada: `SpectrumFrame? Process(in PcmFrame frame)`
 - [VisualizerEngine.Render](../../../src/Visual.Win2D/Engine/VisualizerEngine.cs#L40) - assinatura esperada: `void Render(...)`
-- [MatrixPortalLedOutput.Send](../../../src/Output/Led/MatrixPortalLedOutput.cs#L42) - assinatura esperada: `void Send(LedPayload payload)`
+- [Esp32S3LedOutput.Send](../../../src/Output/Led/Esp32S3LedOutput.cs#L42) - assinatura esperada: `void Send(LedPayload payload)`
 
 ## Backlinks no codigo
 
@@ -33,4 +33,4 @@ Procure por `DOCS:` nestes arquivos:
 - `src/App.WinUI/Services/AudioPipelineCoordinator.cs`
 - `src/Analyzer.Dsp/Analysis/SpectrumAnalyzer.cs`
 - `src/Visual.Win2D/Engine/VisualizerEngine.cs`
-- `src/Output/Led/MatrixPortalLedOutput.cs`
+- `src/Output/Led/Esp32S3LedOutput.cs`

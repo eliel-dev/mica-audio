@@ -37,6 +37,10 @@ internal static class DeviceMetricsFormatter
         var heapLabel = $"Heap livre: {FormatBytes(snapshot.FreeHeapBytes)} | Maior bloco: {FormatBytes(snapshot.LargestHeapBlockBytes)}";
         var psramLabel = BuildPsramLabel(snapshot);
         var networkLabel = BuildNetworkLabel(snapshot);
+        var streamLabel = BuildStreamLabel(snapshot);
+        var networkAndStreamLabel = string.IsNullOrWhiteSpace(streamLabel)
+            ? networkLabel
+            : string.Concat(networkLabel, " | ", streamLabel);
         var heapFragmentationProgress = ComputeFragmentationProgress(snapshot.FreeHeapBytes, snapshot.LargestHeapBlockBytes);
         var psramFragmentationProgress = snapshot.PsramAvailable == true
             ? ComputeFragmentationProgress(snapshot.FreePsramBytes, snapshot.LargestPsramBlockBytes)
@@ -48,7 +52,7 @@ internal static class DeviceMetricsFormatter
             UptimeLabel: uptimeLabel,
             HeapLabel: heapLabel,
             PsramLabel: psramLabel,
-            NetworkLabel: networkLabel,
+            NetworkLabel: networkAndStreamLabel,
             LoopLoadPercent: loopLoadPercent,
             LoopLoadProgress: loopLoadProgress,
             HeapFragmentationProgress: heapFragmentationProgress,
@@ -79,7 +83,11 @@ internal static class DeviceMetricsFormatter
             || snapshot.FreePsramBytes.HasValue
             || snapshot.LargestPsramBlockBytes.HasValue
             || snapshot.WifiConnected.HasValue
-            || snapshot.LastKnownRssi.HasValue;
+            || snapshot.LastKnownRssi.HasValue
+            || snapshot.StreamFramesReceived.HasValue
+            || snapshot.StreamFramesApplied.HasValue
+            || snapshot.StreamSequenceGapCount.HasValue
+            || snapshot.StreamInvalidFrameCount.HasValue;
     }
 
     private static string BuildPsramLabel(DeviceSnapshot snapshot)
@@ -99,6 +107,13 @@ internal static class DeviceMetricsFormatter
 
     private static string BuildNetworkLabel(DeviceSnapshot snapshot)
     {
+        if (snapshot.Status != DeviceStatus.Online)
+        {
+            return snapshot.WifiConnected == false
+                ? "Wi-Fi: sem conexao"
+                : "Wi-Fi: indisponivel (offline)";
+        }
+
         if (snapshot.WifiConnected == true)
         {
             if (snapshot.LastKnownRssi.HasValue)
@@ -120,6 +135,24 @@ internal static class DeviceMetricsFormatter
         }
 
         return "Wi-Fi: -";
+    }
+
+    private static string BuildStreamLabel(DeviceSnapshot snapshot)
+    {
+        if (!snapshot.StreamFramesReceived.HasValue
+            && !snapshot.StreamFramesApplied.HasValue
+            && !snapshot.StreamSequenceGapCount.HasValue
+            && !snapshot.StreamInvalidFrameCount.HasValue)
+        {
+            return string.Empty;
+        }
+
+        var rx = snapshot.StreamFramesReceived?.ToString(CultureInfo.InvariantCulture) ?? "-";
+        var applied = snapshot.StreamFramesApplied?.ToString(CultureInfo.InvariantCulture) ?? "-";
+        var gaps = snapshot.StreamSequenceGapCount?.ToString(CultureInfo.InvariantCulture) ?? "-";
+        var invalid = snapshot.StreamInvalidFrameCount?.ToString(CultureInfo.InvariantCulture) ?? "-";
+
+        return $"Stream RX/APL {rx}/{applied} | GAP {gaps} | INV {invalid}";
     }
 
     private static string FormatUptime(int? uptimeSeconds)

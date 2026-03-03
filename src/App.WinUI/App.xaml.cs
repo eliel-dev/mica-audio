@@ -131,6 +131,7 @@ public partial class App : Application
             sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<ILogger<DeviceIntegrationService>>()));
         services.AddSingleton<DeviceOperationsCoordinator>();
+        services.AddSingleton<Hub75VisualizerSessionService>();
 
         services.AddSingleton<IAppCatalogService, AppCatalogService>();
         services.AddSingleton<IAppModifierStateStore, AppModifierStateStore>();
@@ -147,7 +148,7 @@ public partial class App : Application
         services.AddSingleton<ILoopbackCapture, WasapiLoopbackCaptureService>();
         services.AddSingleton<SimulatorLedOutput>();
         services.AddSingleton<NullLedOutput>();
-        services.AddSingleton(sp => new MatrixPortalLedOutput(sp.GetRequiredService<DeviceServerHost>()));
+        services.AddSingleton(sp => new Esp32S3LedOutput(sp.GetRequiredService<DeviceServerHost>()));
 
         services.AddTransient<MainPageViewModel>();
         services.AddTransient<DevicesPageViewModel>();
@@ -161,7 +162,7 @@ public partial class App : Application
             sp.GetRequiredService<ILoopbackCapture>(),
             sp.GetRequiredService<SimulatorLedOutput>(),
             sp.GetRequiredService<NullLedOutput>(),
-            sp.GetRequiredService<MatrixPortalLedOutput>()));
+            sp.GetRequiredService<Esp32S3LedOutput>()));
 
         services.AddTransient<DevicesPage>(sp => new DevicesPage(
             sp.GetRequiredService<DevicesPageViewModel>(),
@@ -169,7 +170,8 @@ public partial class App : Application
             sp.GetRequiredService<PrecompiledFirmwareService>(),
             sp.GetRequiredService<IAppCatalogService>(),
             sp.GetRequiredService<SettingsRepository>(),
-            sp.GetRequiredService<AppSettingsDomainService>()));
+            sp.GetRequiredService<AppSettingsDomainService>(),
+            sp.GetRequiredService<SimulatorLedOutput>()));
 
         services.AddTransient<AppsPage>(sp => new AppsPage(
             sp.GetRequiredService<AppsPageViewModel>(),

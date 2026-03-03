@@ -28,12 +28,16 @@ Substituir o card de logs gerais da `DevicesPage` por dashboard de metricas do E
 2. Logs passaram a ser exibidos por `deviceId` com `DeviceOperationsCoordinator.GetDeviceLogs(deviceId)`, removendo dependencia visual de logs globais.
 3. Para reduzir flicker, foram adicionadas assinaturas/caches especificas para dashboard e logs do device selecionado, alem do diff incremental ja existente na lista.
 4. Em offline, a UI exibe aviso explicito de ultimo snapshot conhecido sem apagar os dados persistidos.
+5. O dashboard foi refinado para visual de painel NOC (chips de estado, blocos operacionais e tendencia de carga do loop) sem fugir dos tokens de estilo WinUI/Fluent do projeto.
+6. A linha da lista removeu `IP` e `RSSI`; o valor de `RSSI` fica restrito ao dashboard em estado online, e o visual foi suavizado com icones discretos e superficies neutras.
+7. As acoes do device foram movidas para o card de resumo, mantendo `Testar LED` e consolidando `Remover` (online: revogar/reiniciar + remover local; offline: remover local).
+8. O preview maior do app no painel da direita foi removido; a pagina passou a usar apenas miniatura inline da lista de dispositivos.
 
 ## Validacoes executadas
 
 ```text
-dotnet test tests/Integration.Smoke/Integration.Smoke.csproj -c Debug --filter "FullyQualifiedName~DevicesPageSmokeTests|FullyQualifiedName~WinUiBootstrapSmokeTests" -v q -> OK (7 aprovados)
-dotnet test tests/Integration.Smoke/Integration.Smoke.csproj --no-build --filter "FullyQualifiedName~DevicesPageSmokeTests|FullyQualifiedName~WinUiBootstrapSmokeTests" -v q -> OK (7 aprovados)
+dotnet test tests/Integration.Smoke/Integration.Smoke.csproj -c Debug --filter "FullyQualifiedName~DevicesPageSmokeTests|FullyQualifiedName~WinUiBootstrapSmokeTests" -v q -> OK (9 aprovados)
+dotnet test tests/Integration.Smoke/Integration.Smoke.csproj --no-build --filter "FullyQualifiedName~DevicesPageSmokeTests|FullyQualifiedName~WinUiBootstrapSmokeTests" -v q -> OK (9 aprovados)
 powershell -ExecutionPolicy Bypass -File ./scripts/docs-validate.ps1 -> OK
 powershell -ExecutionPolicy Bypass -File ./scripts/ai-governance-check.ps1 -> OK
 powershell -ExecutionPolicy Bypass -File ./scripts/mvvm-validate.ps1 -> OK

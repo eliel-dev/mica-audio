@@ -12,7 +12,7 @@
 #endif
 
 namespace {
-// DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#fluxo-de-execucao
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 145;
 constexpr size_t kStreamFrame128x64Rgb565Size = 16400;
@@ -27,7 +27,6 @@ constexpr uint8_t kMatrixHalfHeight = kMatrixHeight / 2;
 constexpr size_t kMatrixPixelCount = static_cast<size_t>(kMatrixWidth) * static_cast<size_t>(kMatrixHeight);
 static_assert((kMatrixHeight % 2) == 0, "MICA_MATRIX_HEIGHT must be even.");
 
-#if defined(MICA_BOARD_VARIANT_ESP32S3_DEVKITC1)
 constexpr const char* kBoardModel = "esp32s3_devkitc1";
 constexpr const char* kBoardDisplayName = "ESP32-S3 DevKitC-1";
 constexpr uint8_t kMatrixRgbPins[6] = {4, 5, 6, 7, 15, 16};
@@ -35,15 +34,6 @@ constexpr uint8_t kMatrixAddrPins[5] = {18, 8, 3, 42, 41};
 constexpr uint8_t kMatrixClockPin = 41;
 constexpr uint8_t kMatrixLatchPin = 40;
 constexpr uint8_t kMatrixOePin = 2;
-#else
-constexpr const char* kBoardModel = "matrixportal_s3";
-constexpr const char* kBoardDisplayName = "Matrix Portal S3";
-constexpr uint8_t kMatrixRgbPins[6] = {42, 41, 40, 38, 39, 37};
-constexpr uint8_t kMatrixAddrPins[5] = {45, 36, 48, 35, 21};
-constexpr uint8_t kMatrixClockPin = 2;
-constexpr uint8_t kMatrixLatchPin = 47;
-constexpr uint8_t kMatrixOePin = 14;
-#endif
 
 constexpr const char* kPanelType = "hub75_p2_5_128x64_smd2121_scan32";
 #if defined(LED_BUILTIN)
@@ -91,6 +81,12 @@ bool gFrameModeActive = false;
 uint64_t gLoopBusyTimeUs = 0;
 unsigned long gLoopWindowStartMs = 0;
 uint8_t gLoopLoadPercent = 0;
+bool gHasStreamLastSequence = false;
+uint32_t gStreamLastSequence = 0;
+uint32_t gStreamFramesReceived = 0;
+uint32_t gStreamFramesApplied = 0;
+uint32_t gStreamSequenceGapCount = 0;
+uint32_t gStreamInvalidFrameCount = 0;
 
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
@@ -178,7 +174,7 @@ void drawMatrixPixel(uint8_t x, uint8_t y, const RgbColor& color) {
 void commitMatrixFrame() {
 }
 
-// DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#pontos-de-alteracao-frequente
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#pontos-de-alteracao-frequente
 bool initMatrixDisplay() {
 
 #if defined(MICA_PROFILE_DMA_EXP)
@@ -377,6 +373,13 @@ void sendTelemetry(bool force) {
   telemetry["uptimeSeconds"] = uptimeSeconds;
   telemetry["loopLoadPercent"] = gLoopLoadPercent;
   telemetry["freeHeapBytes"] = freeHeapBytes;
+  telemetry["streamFramesReceived"] = gStreamFramesReceived;
+  telemetry["streamFramesApplied"] = gStreamFramesApplied;
+  telemetry["streamSequenceGapCount"] = gStreamSequenceGapCount;
+  telemetry["streamInvalidFrameCount"] = gStreamInvalidFrameCount;
+  if (gHasStreamLastSequence) {
+    telemetry["streamLastSequence"] = gStreamLastSequence;
+  }
 
   uint32_t largestHeapBlockBytes = 0;
   if (trySanitizeLargestFreeBlock(freeHeapBytes, heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), largestHeapBlockBytes)) {
@@ -541,17 +544,39 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
   if (type == WStype_BIN) {
     if (payload == nullptr || len < 2) {
+      gStreamInvalidFrameCount++;
       return;
     }
 
     if (payload[0] != kStreamVersion) {
+      gStreamInvalidFrameCount++;
       return;
+    }
+
+    uint32_t frameSequence = 0;
+    const bool hasSequence = len >= 6;
+    if (hasSequence) {
+      frameSequence = static_cast<uint32_t>(payload[2]) |
+                      (static_cast<uint32_t>(payload[3]) << 8) |
+                      (static_cast<uint32_t>(payload[4]) << 16) |
+                      (static_cast<uint32_t>(payload[5]) << 24);
     }
 
     const uint8_t messageType = payload[1];
     if (messageType == kStreamBinsMessageType) {
       if (len < kStreamFrameSize) {
+        gStreamInvalidFrameCount++;
         return;
+      }
+
+      gStreamFramesReceived++;
+      if (hasSequence) {
+        if (gHasStreamLastSequence && frameSequence > gStreamLastSequence + 1u) {
+          gStreamSequenceGapCount += frameSequence - (gStreamLastSequence + 1u);
+        }
+
+        gStreamLastSequence = frameSequence;
+        gHasStreamLastSequence = true;
       }
 
       gLevel = payload[14];
@@ -559,12 +584,24 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
       gServerBrightness = payload[143];
       gFrameModeActive = false;
       gLastFrameMs = millis();
+      gStreamFramesApplied++;
       return;
     }
 
     if (messageType == kStreamFrame128x64Rgb565MessageType) {
       if (len < kStreamFrame128x64Rgb565Size) {
+        gStreamInvalidFrameCount++;
         return;
+      }
+
+      gStreamFramesReceived++;
+      if (hasSequence) {
+        if (gHasStreamLastSequence && frameSequence > gStreamLastSequence + 1u) {
+          gStreamSequenceGapCount += frameSequence - (gStreamLastSequence + 1u);
+        }
+
+        gStreamLastSequence = frameSequence;
+        gHasStreamLastSequence = true;
       }
 
       gServerBrightness = payload[14];
@@ -577,8 +614,11 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
       gFrameModeActive = true;
       gLastFrameMs = millis();
+      gStreamFramesApplied++;
       return;
     }
+
+    gStreamInvalidFrameCount++;
 
     return;
   }
@@ -704,7 +744,7 @@ void connectWebSocket() {
   gWs.setReconnectInterval(2000);
 }
 
-// DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#fluxo-de-execucao
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 void drawBars() {
   if (!gMatrixReady) {
     return;

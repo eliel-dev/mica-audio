@@ -1,4 +1,4 @@
-﻿namespace Device.Protocol.Models;
+namespace Device.Protocol.Models;
 
 public sealed class DeviceTelemetryMessage
 {
@@ -21,6 +21,16 @@ public sealed class DeviceTelemetryMessage
     public long? LargestPsramBlockBytes { get; init; }
 
     public bool? WifiConnected { get; init; }
+
+    public uint? StreamLastSequence { get; init; }
+
+    public uint? StreamFramesReceived { get; init; }
+
+    public uint? StreamFramesApplied { get; init; }
+
+    public uint? StreamSequenceGapCount { get; init; }
+
+    public uint? StreamInvalidFrameCount { get; init; }
 
     public string? FirmwareVersion { get; init; }
 

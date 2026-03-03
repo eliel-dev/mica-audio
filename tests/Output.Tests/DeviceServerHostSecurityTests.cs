@@ -591,6 +591,97 @@ public sealed class DeviceServerHostSecurityTests
     }
 
     [Fact]
+    public async Task WebSocketDetach_ShouldKeepDeviceOnlineDuringShortGracePeriod()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ws-detach-grace");
+
+        using var ws = new ClientWebSocket();
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var onlineBeforeDetach = await WaitForConditionAsync(() =>
+            GetDeviceStatus(host, paired.DeviceId) == DeviceStatus.Online,
+            timeout: TimeSpan.FromSeconds(5));
+
+        Assert.True(onlineBeforeDetach, "Device nao entrou em estado online antes do teste de grace period.");
+
+        ws.Abort();
+
+        await Task.Delay(200);
+        Assert.Equal(DeviceStatus.Online, GetDeviceStatus(host, paired.DeviceId));
+
+        var offlineAfterGrace = await WaitForConditionAsync(() =>
+            GetDeviceStatus(host, paired.DeviceId) == DeviceStatus.Offline,
+            timeout: TimeSpan.FromSeconds(5));
+
+        Assert.True(offlineAfterGrace, "Device nao transitou para offline apos o grace period de detach.");
+    }
+
+    [Fact]
+    public async Task ClosingOldSocket_ShouldNotDetachNewSocketConnection()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ws-identity-detach");
+
+        using var ws1 = new ClientWebSocket();
+        ws1.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws1.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws1.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var onlineWithFirstSocket = await WaitForConditionAsync(() =>
+            GetDeviceStatus(host, paired.DeviceId) == DeviceStatus.Online,
+            timeout: TimeSpan.FromSeconds(5));
+        Assert.True(onlineWithFirstSocket, "Device nao entrou em online com o primeiro socket.");
+
+        using var ws2 = new ClientWebSocket();
+        ws2.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws2.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws2.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var onlineWithSecondSocket = await WaitForConditionAsync(() =>
+            GetDeviceStatus(host, paired.DeviceId) == DeviceStatus.Online,
+            timeout: TimeSpan.FromSeconds(5));
+        Assert.True(onlineWithSecondSocket, "Device nao permaneceu online apos abrir o segundo socket.");
+
+        await CloseWebSocketQuietlyAsync(ws1);
+
+        await Task.Delay(900);
+        Assert.Equal(DeviceStatus.Online, GetDeviceStatus(host, paired.DeviceId));
+
+        await CloseWebSocketQuietlyAsync(ws2);
+
+        var offlineAfterBothClosed = await WaitForConditionAsync(() =>
+            GetDeviceStatus(host, paired.DeviceId) == DeviceStatus.Offline,
+            timeout: TimeSpan.FromSeconds(5));
+
+        Assert.True(offlineAfterBothClosed, "Device nao foi para offline apos fechar os dois sockets.");
+    }
+
+    [Fact]
     public async Task TelemetryProcessing_ShouldStampLastTelemetryUtc_WithoutOwningLastAuthUtc()
     {
         var port = GetFreeTcpPort();
@@ -724,6 +815,12 @@ public sealed class DeviceServerHostSecurityTests
         }
 
         return predicate();
+    }
+
+    private static DeviceStatus? GetDeviceStatus(DeviceServerHost host, string deviceId)
+    {
+        return host.GetDevicesSnapshot().FirstOrDefault(d =>
+            string.Equals(d.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))?.Status;
     }
 }
 

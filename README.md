@@ -48,7 +48,7 @@ dotnet build src/App.WinUI/App.WinUI.csproj -c Debug
 
 Politica resumida:
 
-1. Mudanca estrutural (`src/`, `firmware/`, `matrixportal-s3/`, `scripts/`, `installer/`, `MicaAudio.sln`, `global.json`) exige update de docs (`docs/wiki/`, `docs/adr/`, `docs/handoffs/` ou `README.md`).
+1. Mudanca estrutural (`src/`, `firmware/`, `scripts/`, `installer/`, `MicaAudio.sln`, `global.json`) exige update de docs (`docs/wiki/`, `docs/adr/`, `docs/handoffs/` ou `README.md`).
 2. Em PR, a label `docs-exempt` permite bypass controlado (com justificativa).
 3. Em push para `main`, o gate estrutural nao aceita bypass por label.
 

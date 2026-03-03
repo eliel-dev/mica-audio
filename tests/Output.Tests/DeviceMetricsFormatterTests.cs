@@ -72,6 +72,26 @@ public sealed class DeviceMetricsFormatterTests
     }
 
     [Fact]
+    public void Build_ShouldNotShowRssi_WhenSnapshotIsOffline()
+    {
+        var snapshot = new DeviceSnapshot
+        {
+            DeviceId = "device-offline-rssi",
+            Name = "Offline with RSSI",
+            Status = DeviceStatus.Offline,
+            IsRegistered = true,
+            LastSeenUtc = DateTimeOffset.UtcNow.AddMinutes(-2),
+            LastKnownRssi = -55,
+            WifiConnected = true,
+        };
+
+        var result = DeviceMetricsFormatter.Build(snapshot);
+
+        Assert.DoesNotContain("RSSI", result.NetworkLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Wi-Fi: indisponivel (offline)", result.NetworkLabel);
+    }
+
+    [Fact]
     public void Build_ShouldHandleMissingMetrics()
     {
         var snapshot = new DeviceSnapshot

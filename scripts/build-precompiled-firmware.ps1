@@ -6,7 +6,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$firmwareRoot = Join-Path $repoRoot 'firmware/matrixportal-s3'
+$firmwareRoot = Join-Path $repoRoot 'firmware/esp32s3-devkitc1'
 $outputRoot = Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
 $target = [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin' }
 

@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json;
 using App.WinUI.Models.Apps;
 using App.WinUI.Services.Apps;
@@ -75,7 +75,7 @@ public sealed partial class AppsPage : Page
 
         var host = deviceIntegration.Host;
         gifRuntimeService = new GifCatalogAppRuntimeService(
-            matrixOutput: new MatrixPortalLedOutput(host),
+            matrixOutput: new Esp32S3LedOutput(host),
             simulatorOutput: new SimulatorLedOutput(),
             decoder: new Hub75GifDecoder(Hub75GifDecoder.DefaultMaxGifFrames),
             formatter: new Hub75FrameFormatter(),
@@ -429,19 +429,17 @@ public sealed partial class AppsPage : Page
             return;
         }
 
-        foreach (var card in catalogCards)
-        {
-            if (activePreviewCards.Add(card))
-            {
-                card.Preview.Start();
-            }
-        }
-
         var stale = activePreviewCards.Except(catalogCards).ToArray();
         foreach (var removed in stale)
         {
             removed.Preview.Stop();
             activePreviewCards.Remove(removed);
+        }
+
+        activePreviewCards.Clear();
+        foreach (var card in catalogCards)
+        {
+            activePreviewCards.Add(card);
         }
     }
 

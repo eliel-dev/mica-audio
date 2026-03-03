@@ -153,6 +153,7 @@ internal sealed class DeviceListRowControl : Grid
             preview.Bind(previewItem!);
             lastPreviewAppId = nextPreviewAppId;
         }
+        preview.Start();
     }
     public void SetSelected(bool selected)
     {
@@ -163,9 +164,17 @@ internal sealed class DeviceListRowControl : Grid
         isSelected = selected;
         preview.SetSelected(selected);
     }
+    public void StartPreview()
+    {
+        preview.Start();
+    }
     public void StopPreview()
     {
         preview.Stop();
+    }
+    public void SetRuntimeFrame(MicaAudio.Core.Presets.RgbaColor[]? frame)
+    {
+        preview.SetRuntimeFrame(frame);
     }
     private void ApplyTone(DeviceLifecycleTone tone)
     {

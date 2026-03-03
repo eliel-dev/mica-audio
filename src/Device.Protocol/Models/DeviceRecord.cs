@@ -46,6 +46,16 @@ public sealed class DeviceRecord
 
     public bool? WifiConnected { get; init; }
 
+    public uint? StreamLastSequence { get; init; }
+
+    public uint? StreamFramesReceived { get; init; }
+
+    public uint? StreamFramesApplied { get; init; }
+
+    public uint? StreamSequenceGapCount { get; init; }
+
+    public uint? StreamInvalidFrameCount { get; init; }
+
     public string? ActiveAppId { get; init; }
 
     public string? ActiveAppName { get; init; }

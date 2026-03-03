@@ -32,15 +32,20 @@ Documentar o fluxo oficial de setup para o painel HUB75 `128x64`.
 ## Tela Dispositivos
 
 - Cada dispositivo online mostra uma miniatura pequena do app ativo na lista; dispositivos offline nao exibem preview visual.
-- O painel da direita mostra um preview maior apenas para dispositivos online; offline mostra placeholder e o ultimo app conhecido apenas como texto.
-- Sem selecao, o preview maior fica em placeholder ate escolher um device.
+- As miniaturas ficam sempre animadas (nao dependem de hover ou selecao).
+- Quando o app ativo do device e `visualizer-hub75`, a miniatura exibe frame real do `SimulatorLedOutput` via pump de 8 Hz.
+- O painel da direita nao mostra mais preview maior; a leitura visual do app fica na miniatura da lista.
 - O card `Dashboard ESP` mostra metrica do device selecionado: carga do loop, uptime, heap, PSRAM e rede.
+- O dashboard tem leitura estilo NOC com linguagem visual Fluent: chips de estado com icones discretos e barras de tendencia da carga do loop.
 - Em offline, o dashboard exibe o ultimo snapshot conhecido com aviso explicito de offline.
+- `RSSI` e exibido apenas quando o device esta online.
+- A linha da lista/selecionado nao exibe mais `IP` nem `RSSI`.
 - O card `Logs do dispositivo` mostra somente eventos do `deviceId` selecionado.
 - Sem selecao, dashboard e logs mostram placeholders dedicados e estaveis.
 
 
-- A acao Remover apaga apenas o registro local do app; para o ESP online, continue usando Revogar quando quiser alterar o dispositivo fisico.
+- Na tela, os botoes de acao do device ficam no card de resumo (`Testar LED` e `Remover`).
+- A acao `Remover` e consolidada: online tenta revogar/reiniciar e remove local; offline remove apenas o registro local.
 
 ## Referencias adicionais
 

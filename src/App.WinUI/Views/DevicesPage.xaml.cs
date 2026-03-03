@@ -6,12 +6,16 @@ using App.WinUI.Services.Firmware;
 using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Output.Led;
 using System.Globalization;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using Windows.UI;
 using WinRT.Interop;
 
 namespace App.WinUI.Views;
@@ -30,11 +34,17 @@ public sealed partial class DevicesPage : Page
     private readonly IAppCatalogService appCatalogService;
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
+    private readonly SimulatorLedOutput simulatorLedOutput;
+    private readonly Dictionary<string, Queue<int>> loopTrendByDeviceId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset?> lastLoopTrendStampByDeviceId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> lastLoopTrendValueByDeviceId = new(StringComparer.OrdinalIgnoreCase);
+    private const int DashboardTrendSampleCapacity = 24;
 
     private string? lastRenderedDashboardSignature;
     private string? lastRenderedDeviceLogsDeviceId;
     private int lastRenderedDeviceLogCount;
     private string lastRenderedDeviceLogTail = string.Empty;
+    private string? lastRenderedDeviceLogsHeader;
     private string? lastRenderedDeviceLogsPlaceholder;
     private DeviceOperationsState currentState = new();
     private bool appCatalogLoadAttempted;
@@ -42,10 +52,7 @@ public sealed partial class DevicesPage : Page
     private bool isApplyingDeviceList;
     private IReadOnlyList<DeviceSnapshot>? pendingDeviceListSnapshot;
     private string? lastAppliedDeviceListSignature;
-    private string? currentSelectedPreviewDeviceId;
-    private string? currentSelectedPreviewAppId;
-    private string? lastSelectedPreviewPlaceholderMessage;
-    private bool isSelectedPreviewRunning;
+    private DispatcherQueueTimer? previewPumpTimer;
 
     internal DevicesPage(
         DevicesPageViewModel viewModel,
@@ -53,7 +60,8 @@ public sealed partial class DevicesPage : Page
         PrecompiledFirmwareService firmwareService,
         IAppCatalogService appCatalogService,
         SettingsRepository settingsRepository,
-        AppSettingsDomainService settingsDomainService)
+        AppSettingsDomainService settingsDomainService,
+        SimulatorLedOutput simulatorLedOutput)
     {
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
@@ -61,6 +69,7 @@ public sealed partial class DevicesPage : Page
         this.appCatalogService = appCatalogService;
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
+        this.simulatorLedOutput = simulatorLedOutput;
         this.viewModel.ConfigureCommands(
             refresh: () => DeviceOps?.RequestRefresh(),
             generatePairing: GeneratePairingCodeCore);
@@ -81,7 +90,7 @@ public sealed partial class DevicesPage : Page
     {
         if (DeviceOps is null)
         {
-            ApplyDashboard(selectionDeviceId: null, hasSelection: false, DeviceMetricsFormatter.Build(null));
+            ApplyDashboard(selectionDeviceId: null, hasSelection: false, snapshot: null, DeviceMetricsFormatter.Build(null));
             UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Servico de dispositivos indisponivel.");
             return;
         }
@@ -97,10 +106,14 @@ public sealed partial class DevicesPage : Page
         var initialState = DeviceOps.GetStateSnapshot();
         ApplyDevices(initialState.DeviceListSnapshot);
         ApplyState(initialState);
+
+        StartPreviewPump();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        StopPreviewPump();
+
         if (DeviceOps is not null)
         {
             DeviceOps.StateChanged -= OnDeviceOpsStateChanged;
@@ -108,16 +121,15 @@ public sealed partial class DevicesPage : Page
             DeviceOps.SetDevicesPageVisible(false);
         }
 
-        SelectedDevicePreview.Stop();
-        isSelectedPreviewRunning = false;
-        currentSelectedPreviewDeviceId = null;
-        currentSelectedPreviewAppId = null;
-        lastSelectedPreviewPlaceholderMessage = null;
         lastRenderedDashboardSignature = null;
         lastRenderedDeviceLogsDeviceId = null;
         lastRenderedDeviceLogCount = 0;
         lastRenderedDeviceLogTail = string.Empty;
+        lastRenderedDeviceLogsHeader = null;
         lastRenderedDeviceLogsPlaceholder = null;
+        loopTrendByDeviceId.Clear();
+        lastLoopTrendStampByDeviceId.Clear();
+        lastLoopTrendValueByDeviceId.Clear();
         ClearRenderedItems();
     }
 
@@ -212,16 +224,6 @@ public sealed partial class DevicesPage : Page
         AddLocalLog($"Codigo de pareamento gerado: {code.Code}.");
     }
 
-    private async void OnEnterProvisioningClicked(object sender, RoutedEventArgs e)
-    {
-        await RunSelectedCommandAsync(DeviceCommandType.EnterProvisioning).ConfigureAwait(false);
-    }
-
-    private async void OnRevokeClicked(object sender, RoutedEventArgs e)
-    {
-        await RunSelectedCommandAsync(DeviceCommandType.RevokeAndRestart).ConfigureAwait(false);
-    }
-
     private async void OnTestLedClicked(object sender, RoutedEventArgs e)
     {
         await RunSelectedCommandAsync(DeviceCommandType.TestLed).ConfigureAwait(false);
@@ -236,6 +238,11 @@ public sealed partial class DevicesPage : Page
             return;
         }
 
+        var isOnline = selected.Status == DeviceStatus.Online;
+        var removePrompt = isOnline
+            ? "O dispositivo esta online: o app tentara revogar/reiniciar e depois remover o registro local."
+            : "O dispositivo esta offline: sera removido apenas do registro local.";
+
         var dialog = new ContentDialog
         {
             Title = "Remover dispositivo",
@@ -243,7 +250,7 @@ public sealed partial class DevicesPage : Page
             CloseButtonText = "Cancelar",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
-            Content = "Isso remove o dispositivo da lista e do registro local deste app. Nenhum comando sera enviado ao ESP. Se quiser alterar o dispositivo fisico, use Revogar quando ele estiver online.",
+            Content = removePrompt,
         };
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
@@ -251,12 +258,46 @@ public sealed partial class DevicesPage : Page
             return;
         }
 
+        var revokeSucceeded = false;
+        string? revokeFailureMessage = null;
+        if (isOnline)
+        {
+            var revokeResult = await ops.RunCommandAsync(selected.DeviceId, DeviceCommandType.RevokeAndRestart);
+            revokeSucceeded = revokeResult.Accepted && revokeResult.Completed && revokeResult.Success;
+            if (!revokeSucceeded)
+            {
+                revokeFailureMessage = string.IsNullOrWhiteSpace(revokeResult.Message)
+                    ? revokeResult.ErrorCode
+                    : revokeResult.Message;
+            }
+        }
+
         if (ops.RemoveDevice(selected.DeviceId))
         {
             DevicesList.SelectedItem = null;
-            PairingCodeText.Severity = InfoBarSeverity.Success;
-            PairingCodeText.Message = $"Dispositivo removido: {selected.DeviceId}";
-            AddLocalLog($"Dispositivo removido localmente: {selected.DeviceId}");
+
+            if (isOnline)
+            {
+                if (revokeSucceeded)
+                {
+                    PairingCodeText.Severity = InfoBarSeverity.Success;
+                    PairingCodeText.Message = $"Dispositivo revogado e removido: {selected.DeviceId}";
+                    AddLocalLog($"Dispositivo revogado e removido localmente: {selected.DeviceId}");
+                }
+                else
+                {
+                    PairingCodeText.Severity = InfoBarSeverity.Warning;
+                    PairingCodeText.Message = $"Dispositivo removido localmente; revogacao nao concluida: {selected.DeviceId}";
+                    AddLocalLog($"Dispositivo removido localmente, mas revogacao falhou: {selected.DeviceId} ({revokeFailureMessage ?? "erro desconhecido"})");
+                }
+            }
+            else
+            {
+                PairingCodeText.Severity = InfoBarSeverity.Success;
+                PairingCodeText.Message = $"Dispositivo removido: {selected.DeviceId}";
+                AddLocalLog($"Dispositivo removido localmente: {selected.DeviceId}");
+            }
+
             ApplySelectionDetails();
             ApplyButtonState();
             return;
@@ -410,15 +451,13 @@ public sealed partial class DevicesPage : Page
             {
                 var presence = DeviceLifecyclePolicy.Build(device, lifecycleThresholds, DateTimeOffset.UtcNow);
                 var profile = string.IsNullOrWhiteSpace(device.Profile) ? "-" : device.Profile;
-                var ip = string.IsNullOrWhiteSpace(device.LastKnownIp) ? "-" : device.LastKnownIp;
-                var rssi = device.LastKnownRssi?.ToString() ?? "-";
 
                 allItems.Add(new DeviceListItem
                 {
                     DeviceId = device.DeviceId,
                     Name = device.Name,
                     Status = device.Status,
-                    StatusLine = $"{presence.PrimaryStateLabel} | {presence.SecondaryStateLabel} | {presence.LastSeenLabel} | Perfil {profile} | IP {ip} | RSSI {rssi}",
+                    StatusLine = $"{presence.PrimaryStateLabel} | {presence.SecondaryStateLabel} | {presence.LastSeenLabel} | Perfil {profile}",
                     AppId = string.IsNullOrWhiteSpace(device.ActiveAppId) ? string.Empty : device.ActiveAppId!,
                     AppName = string.IsNullOrWhiteSpace(device.ActiveAppName) ? string.Empty : device.ActiveAppName!,
                     Presence = presence,
@@ -594,6 +633,53 @@ public sealed partial class DevicesPage : Page
         DevicesList.Items.Clear();
     }
 
+    private void StartPreviewPump()
+    {
+        if (previewPumpTimer is not null)
+        {
+            return;
+        }
+
+        previewPumpTimer = DispatcherQueue.CreateTimer();
+        previewPumpTimer.Interval = TimeSpan.FromMilliseconds(125);
+        previewPumpTimer.Tick += OnPreviewPumpTick;
+        previewPumpTimer.Start();
+    }
+
+    private void StopPreviewPump()
+    {
+        if (previewPumpTimer is null)
+        {
+            return;
+        }
+
+        previewPumpTimer.Stop();
+        previewPumpTimer.Tick -= OnPreviewPumpTick;
+        previewPumpTimer = null;
+    }
+
+    private void OnPreviewPumpTick(DispatcherQueueTimer sender, object args)
+    {
+        if (isApplyingDeviceList)
+        {
+            return;
+        }
+
+        var snapshot = renderedItemsByDeviceId.Values.ToArray();
+        MicaAudio.Core.Presets.RgbaColor[]? frameCache = null;
+
+        foreach (var visualItem in snapshot)
+        {
+            if (!string.Equals(visualItem.Source.AppId, Hub75VisualizerSessionService.VisualizerAppId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            frameCache ??= simulatorLedOutput.GetFrameSnapshot();
+            visualItem.SetRuntimeFrame(frameCache);
+        }
+    }
+
     private AppCatalogItem? ResolvePreviewApp(DeviceListItem item)
     {
         return DevicePreviewResolver.Resolve(item.AppId, item.AppName, appCatalogById);
@@ -611,6 +697,9 @@ public sealed partial class DevicesPage : Page
 
     private void UpdateDeviceLogs(string? deviceId, IReadOnlyList<string> entries, string placeholder)
     {
+        var header = string.IsNullOrWhiteSpace(deviceId)
+            ? "Logs do dispositivo"
+            : $"Logs do dispositivo · {deviceId}";
         var count = entries.Count;
         var normalizedPlaceholder = count == 0 ? placeholder : string.Empty;
         var tail = count > 0 ? entries[^1] : string.Empty;
@@ -619,11 +708,13 @@ public sealed partial class DevicesPage : Page
         if (deviceUnchanged
             && lastRenderedDeviceLogCount == count
             && string.Equals(lastRenderedDeviceLogTail, tail, StringComparison.Ordinal)
+            && string.Equals(lastRenderedDeviceLogsHeader, header, StringComparison.Ordinal)
             && string.Equals(lastRenderedDeviceLogsPlaceholder, normalizedPlaceholder, StringComparison.Ordinal))
         {
             return;
         }
 
+        DeviceLogsTextBox.Header = header;
         DeviceLogsTextBox.Text = count == 0
             ? normalizedPlaceholder
             : string.Join("\r\n", entries) + "\r\n";
@@ -631,23 +722,51 @@ public sealed partial class DevicesPage : Page
         lastRenderedDeviceLogsDeviceId = deviceId;
         lastRenderedDeviceLogCount = count;
         lastRenderedDeviceLogTail = tail;
+        lastRenderedDeviceLogsHeader = header;
         lastRenderedDeviceLogsPlaceholder = normalizedPlaceholder;
     }
 
     // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#consumo-na-devicespage-entrega-3
-    private void ApplyDashboard(string? selectionDeviceId, bool hasSelection, DeviceMetricsPresentation metrics)
+    private void ApplyDashboard(string? selectionDeviceId, bool hasSelection, DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
     {
         var placeholder = ResolveDashboardPlaceholder(hasSelection, metrics);
-        var signature = BuildDashboardSignature(selectionDeviceId, hasSelection, metrics, placeholder);
+        var loopTrendSamples = CaptureLoopTrendSamples(selectionDeviceId, snapshot, metrics);
+        var loopTrendSignature = BuildLoopTrendSignature(loopTrendSamples);
+        var connectionChipLabel = BuildConnectionChipLabel(hasSelection, metrics);
+        var wifiChipLabel = BuildWifiChipLabel(snapshot);
+        var rssiChipLabel = BuildRssiChipLabel(snapshot);
+        var snapshotChipLabel = BuildSnapshotChipLabel(snapshot, metrics);
+
+        var signature = BuildDashboardSignature(
+            selectionDeviceId,
+            hasSelection,
+            metrics,
+            placeholder,
+            connectionChipLabel,
+            wifiChipLabel,
+            rssiChipLabel,
+            snapshotChipLabel,
+            loopTrendSignature);
+
         if (string.Equals(lastRenderedDashboardSignature, signature, StringComparison.Ordinal))
         {
             return;
         }
 
         DashboardStatusText.Text = metrics.StatusLabel;
+        DashboardConnectionChipText.Text = connectionChipLabel;
+        DashboardWifiChipText.Text = wifiChipLabel;
+        DashboardRssiChipText.Text = rssiChipLabel;
+        DashboardSnapshotChipText.Text = snapshotChipLabel;
+
+        DashboardConnectionChipIcon.Symbol = ResolveConnectionSymbol(hasSelection, metrics);
+        DashboardWifiChipIcon.Symbol = ResolveWifiSymbol(snapshot);
+        DashboardRssiChipIcon.Symbol = ResolveRssiSymbol(snapshot);
+        DashboardSnapshotChipIcon.Symbol = ResolveSnapshotSymbol(snapshot, metrics);
+
         DashboardLoopLoadText.Text = metrics.LoopLoadPercent.HasValue
-            ? $"Carga do loop: {Math.Clamp(metrics.LoopLoadPercent.Value, 0, 100)}%"
-            : "Carga do loop: -";
+            ? $"{Math.Clamp(metrics.LoopLoadPercent.Value, 0, 100)}%"
+            : "-";
         DashboardLoopLoadBar.Value = Math.Clamp(metrics.LoopLoadProgress, 0d, 1d);
 
         DashboardUptimeText.Text = metrics.UptimeLabel;
@@ -674,10 +793,30 @@ public sealed partial class DevicesPage : Page
             DashboardPlaceholderText.Visibility = Visibility.Visible;
         }
 
+        ApplyChipTone(DashboardConnectionChipBorder, DashboardConnectionChipIcon, DashboardConnectionChipText, ResolveConnectionTone(hasSelection, metrics));
+        ApplyChipTone(DashboardWifiChipBorder, DashboardWifiChipIcon, DashboardWifiChipText, ResolveWifiTone(snapshot));
+        ApplyChipTone(DashboardRssiChipBorder, DashboardRssiChipIcon, DashboardRssiChipText, ResolveRssiTone(snapshot));
+        ApplyChipTone(DashboardSnapshotChipBorder, DashboardSnapshotChipIcon, DashboardSnapshotChipText, ResolveSnapshotTone(snapshot, metrics));
+
+        ApplyTileTone(DashboardLoopTile);
+        ApplyTileTone(DashboardHeapTile);
+        ApplyTileTone(DashboardPsramTile);
+        ApplyTileTone(DashboardNetworkTile);
+
+        ApplyLoopTrendBars(loopTrendSamples, hasSelection);
         lastRenderedDashboardSignature = signature;
     }
 
-    private static string BuildDashboardSignature(string? selectionDeviceId, bool hasSelection, DeviceMetricsPresentation metrics, string placeholder)
+    private static string BuildDashboardSignature(
+        string? selectionDeviceId,
+        bool hasSelection,
+        DeviceMetricsPresentation metrics,
+        string placeholder,
+        string connectionChipLabel,
+        string wifiChipLabel,
+        string rssiChipLabel,
+        string snapshotChipLabel,
+        string loopTrendSignature)
     {
         var loopProgressScaled = (int)Math.Round(Math.Clamp(metrics.LoopLoadProgress, 0d, 1d) * 1000d);
         var heapFragmentationScaled = metrics.HeapFragmentationProgress.HasValue
@@ -702,7 +841,115 @@ public sealed partial class DevicesPage : Page
             metrics.HasMetrics ? "1" : "0", "|",
             metrics.IsOfflineSnapshot ? "1" : "0", "|",
             metrics.IsPsramAvailable ? "1" : "0", "|",
+            connectionChipLabel, "|",
+            wifiChipLabel, "|",
+            rssiChipLabel, "|",
+            snapshotChipLabel, "|",
+            loopTrendSignature, "|",
             placeholder);
+    }
+
+    private IReadOnlyList<int> CaptureLoopTrendSamples(string? deviceId, DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return Array.Empty<int>();
+        }
+
+        if (!loopTrendByDeviceId.TryGetValue(deviceId, out var samples))
+        {
+            samples = new Queue<int>(DashboardTrendSampleCapacity);
+            loopTrendByDeviceId[deviceId] = samples;
+        }
+
+        if (metrics.LoopLoadPercent.HasValue)
+        {
+            var normalized = Math.Clamp(metrics.LoopLoadPercent.Value, 0, 100);
+            var stamp = snapshot?.LastTelemetryUtc;
+
+            var hasLastValue = lastLoopTrendValueByDeviceId.TryGetValue(deviceId, out var lastValue);
+            var hasLastStamp = lastLoopTrendStampByDeviceId.TryGetValue(deviceId, out var lastStamp);
+
+            var duplicate = stamp.HasValue
+                ? hasLastStamp && lastStamp.HasValue && lastStamp.Value == stamp.Value && hasLastValue && lastValue == normalized
+                : hasLastValue && lastValue == normalized;
+
+            if (!duplicate)
+            {
+                if (samples.Count >= DashboardTrendSampleCapacity)
+                {
+                    _ = samples.Dequeue();
+                }
+
+                samples.Enqueue(normalized);
+                lastLoopTrendValueByDeviceId[deviceId] = normalized;
+                lastLoopTrendStampByDeviceId[deviceId] = stamp;
+            }
+        }
+
+        return samples.ToArray();
+    }
+
+    private void ApplyLoopTrendBars(IReadOnlyList<int> samples, bool hasSelection)
+    {
+        var hasSamples = hasSelection && samples.Count > 0;
+        DashboardLoopTrendGrid.Opacity = hasSelection ? 1d : 0.45d;
+        DashboardLoopTrendCaptionText.Text = !hasSelection
+            ? "Tendencia carga do loop: selecione um dispositivo"
+            : hasSamples
+                ? $"Tendencia carga do loop: ultimas {samples.Count} amostras"
+                : "Tendencia carga do loop: aguardando amostras";
+
+        var visibleCount = Math.Min(samples.Count, DashboardLoopTrendBars.Count);
+        var sourceStart = samples.Count - visibleCount;
+        var targetStart = DashboardLoopTrendBars.Count - visibleCount;
+
+        const double minHeight = 4d;
+        const double maxHeight = 58d;
+
+        for (var index = 0; index < DashboardLoopTrendBars.Count; index++)
+        {
+            var bar = DashboardLoopTrendBars[index];
+            if (!hasSamples || index < targetStart)
+            {
+                bar.Height = minHeight;
+                bar.Opacity = 0.22;
+                bar.Background = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 65, 82, 104));
+                continue;
+            }
+
+            var sample = Math.Clamp(samples[sourceStart + (index - targetStart)], 0, 100);
+            var ratio = sample / 100d;
+            bar.Height = minHeight + ((maxHeight - minHeight) * ratio);
+            bar.Opacity = 0.35 + (ratio * 0.45);
+            bar.Background = BuildTrendBarBrush();
+        }
+    }
+
+    private static Brush BuildTrendBarBrush()
+    {
+        return ResolveBrush("AppAccentBrush", Color.FromArgb(255, 15, 108, 189));
+    }
+
+    private static string BuildLoopTrendSignature(IReadOnlyList<int> samples)
+    {
+        if (samples.Count == 0)
+        {
+            return "-";
+        }
+
+        var builder = new System.Text.StringBuilder(samples.Count * 4);
+        for (var index = 0; index < samples.Count; index++)
+        {
+            if (index > 0)
+            {
+                _ = builder.Append(',');
+            }
+
+            _ = builder.Append(samples[index].ToString(CultureInfo.InvariantCulture));
+        }
+
+        return builder.ToString();
     }
 
     private static string ResolveDashboardPlaceholder(bool hasSelection, DeviceMetricsPresentation metrics)
@@ -729,16 +976,258 @@ public sealed partial class DevicesPage : Page
     {
         if (!available)
         {
-            return $"{memoryKind} (maior bloco / livre): n/a";
+            return $"{memoryKind} integridade bloco: n/a";
         }
 
         if (!progress.HasValue)
         {
-            return $"{memoryKind} (maior bloco / livre): -";
+            return $"{memoryKind} integridade bloco: -";
         }
 
         var percent = Math.Clamp((int)Math.Round(progress.Value * 100d), 0, 100);
-        return $"{memoryKind} (maior bloco / livre): {percent}%";
+        return $"{memoryKind} integridade bloco: {percent}%";
+    }
+
+    private static string BuildConnectionChipLabel(bool hasSelection, DeviceMetricsPresentation metrics)
+    {
+        if (!hasSelection)
+        {
+            return "Sem selecao";
+        }
+
+        if (metrics.IsOfflineSnapshot)
+        {
+            return "Dispositivo offline";
+        }
+
+        return metrics.HasMetrics ? "Dispositivo online" : "Online sem metricas";
+    }
+
+    private static string BuildWifiChipLabel(DeviceSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.Status != DeviceStatus.Online)
+        {
+            return "Wi-Fi indisponivel";
+        }
+
+        return snapshot?.WifiConnected switch
+        {
+            true => "Wi-Fi conectado",
+            false => "Wi-Fi sem conexao",
+            _ => "Wi-Fi sem estado",
+        };
+    }
+
+    private static string BuildRssiChipLabel(DeviceSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.Status != DeviceStatus.Online)
+        {
+            return "Sinal indisponivel";
+        }
+
+        return snapshot.LastKnownRssi is int rssi
+            ? $"Sinal {rssi} dBm"
+            : "Sinal indisponivel";
+    }
+
+    private static string BuildSnapshotChipLabel(DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
+    {
+        if (snapshot is null || !snapshot.LastTelemetryUtc.HasValue)
+        {
+            return "Snapshot indisponivel";
+        }
+
+        var age = DateTimeOffset.UtcNow - snapshot.LastTelemetryUtc.Value;
+        return metrics.IsOfflineSnapshot
+            ? $"Ultimo snapshot ha {FormatAgeShort(age)}"
+            : $"Snapshot atualizado ha {FormatAgeShort(age)}";
+    }
+
+    private static string FormatAgeShort(TimeSpan age)
+    {
+        if (age < TimeSpan.Zero)
+        {
+            age = TimeSpan.Zero;
+        }
+
+        if (age.TotalHours >= 1)
+        {
+            return $"{(int)age.TotalHours}h";
+        }
+
+        if (age.TotalMinutes >= 1)
+        {
+            return $"{(int)age.TotalMinutes}m";
+        }
+
+        return $"{Math.Max(0, age.Seconds)}s";
+    }
+
+    private enum DashboardTone
+    {
+        Neutral,
+        Good,
+        Warning,
+        Critical,
+    }
+
+    private static Symbol ResolveConnectionSymbol(bool hasSelection, DeviceMetricsPresentation metrics)
+    {
+        if (!hasSelection)
+        {
+            return Symbol.Help;
+        }
+
+        if (metrics.IsOfflineSnapshot)
+        {
+            return Symbol.Pause;
+        }
+
+        return metrics.HasMetrics ? Symbol.Accept : Symbol.Clock;
+    }
+
+    private static Symbol ResolveWifiSymbol(DeviceSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.Status != DeviceStatus.Online)
+        {
+            return Symbol.Help;
+        }
+
+        return snapshot.WifiConnected switch
+        {
+            true => Symbol.Accept,
+            false => Symbol.Important,
+            _ => Symbol.Help,
+        };
+    }
+
+    private static Symbol ResolveRssiSymbol(DeviceSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.Status != DeviceStatus.Online || !snapshot.LastKnownRssi.HasValue)
+        {
+            return Symbol.Help;
+        }
+
+        if (snapshot.LastKnownRssi.Value >= -60)
+        {
+            return Symbol.Accept;
+        }
+
+        return snapshot.LastKnownRssi.Value >= -75
+            ? Symbol.Clock
+            : Symbol.Important;
+    }
+
+    private static Symbol ResolveSnapshotSymbol(DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
+    {
+        if (snapshot is null || !snapshot.LastTelemetryUtc.HasValue)
+        {
+            return Symbol.Help;
+        }
+
+        var age = DateTimeOffset.UtcNow - snapshot.LastTelemetryUtc.Value;
+        if (metrics.IsOfflineSnapshot && age > TimeSpan.FromMinutes(5))
+        {
+            return Symbol.Important;
+        }
+
+        if (age > TimeSpan.FromMinutes(1))
+        {
+            return Symbol.Clock;
+        }
+
+        return Symbol.Accept;
+    }
+
+    private static DashboardTone ResolveConnectionTone(bool hasSelection, DeviceMetricsPresentation metrics)
+    {
+        if (!hasSelection)
+        {
+            return DashboardTone.Neutral;
+        }
+
+        if (metrics.IsOfflineSnapshot)
+        {
+            return DashboardTone.Warning;
+        }
+
+        return metrics.HasMetrics ? DashboardTone.Good : DashboardTone.Warning;
+    }
+
+    private static DashboardTone ResolveWifiTone(DeviceSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.Status != DeviceStatus.Online)
+        {
+            return DashboardTone.Neutral;
+        }
+
+        return snapshot?.WifiConnected switch
+        {
+            true => DashboardTone.Good,
+            false => DashboardTone.Critical,
+            _ => DashboardTone.Neutral,
+        };
+    }
+
+    private static DashboardTone ResolveRssiTone(DeviceSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.Status != DeviceStatus.Online || !snapshot.LastKnownRssi.HasValue)
+        {
+            return DashboardTone.Neutral;
+        }
+
+        if (snapshot.LastKnownRssi.Value >= -60)
+        {
+            return DashboardTone.Good;
+        }
+
+        return snapshot.LastKnownRssi.Value >= -75
+            ? DashboardTone.Warning
+            : DashboardTone.Critical;
+    }
+
+    private static DashboardTone ResolveSnapshotTone(DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
+    {
+        if (snapshot is null || !snapshot.LastTelemetryUtc.HasValue)
+        {
+            return DashboardTone.Neutral;
+        }
+
+        var age = DateTimeOffset.UtcNow - snapshot.LastTelemetryUtc.Value;
+        if (metrics.IsOfflineSnapshot && age > TimeSpan.FromMinutes(5))
+        {
+            return DashboardTone.Critical;
+        }
+
+        if (age > TimeSpan.FromMinutes(1))
+        {
+            return DashboardTone.Warning;
+        }
+
+        return DashboardTone.Good;
+    }
+
+    private void ApplyChipTone(Border chipBorder, SymbolIcon icon, TextBlock text, DashboardTone tone)
+    {
+        chipBorder.BorderThickness = new Thickness(0);
+        chipBorder.BorderBrush = null;
+        chipBorder.Background = null;
+
+        var foreground = tone switch
+        {
+            DashboardTone.Neutral => ResolveBrush("AppTextSecondaryBrush", Color.FromArgb(255, 184, 192, 204)),
+            _ => ResolveBrush("AppTextPrimaryBrush", Color.FromArgb(255, 245, 247, 250)),
+        };
+
+        icon.Foreground = foreground;
+        icon.Opacity = 0.86;
+        text.Foreground = foreground;
+    }
+
+    private void ApplyTileTone(Border tileBorder)
+    {
+        tileBorder.BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81));
+        tileBorder.Background = ResolveBrush("AppSurfaceElevatedBrush", Color.FromArgb(255, 24, 32, 42));
     }
 
     private DeviceListVisualItem? GetSelectedVisualItem()
@@ -805,9 +1294,8 @@ public sealed partial class DevicesPage : Page
             SelectedDeviceSubtitleText.Text = "-";
             SelectedDeviceRegistrationText.Text = "-";
             SelectedDeviceAppText.Text = "App ativo: -";
-            ApplyDashboard(selectionDeviceId: null, hasSelection: false, DeviceMetricsFormatter.Build(null));
+            ApplyDashboard(selectionDeviceId: null, hasSelection: false, snapshot: null, DeviceMetricsFormatter.Build(null));
             UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Selecione um dispositivo para ver logs do dispositivo.");
-            ShowSelectedPreviewPlaceholder("Selecione um dispositivo para ver o app ativo");
             return;
         }
 
@@ -817,89 +1305,15 @@ public sealed partial class DevicesPage : Page
         SelectedDeviceRegistrationText.Text = BuildRegistrationLine(selected);
         SelectedDeviceAppText.Text = DevicePreviewVisibilityPolicy.BuildSelectedAppLabel(selected.Status, selected.AppName);
 
-        var metrics = DeviceMetricsFormatter.Build(FindDeviceSnapshot(selected.DeviceId));
-        ApplyDashboard(selectionDeviceId: selected.DeviceId, hasSelection: true, metrics);
+        var selectedSnapshot = FindDeviceSnapshot(selected.DeviceId);
+        var metrics = DeviceMetricsFormatter.Build(selectedSnapshot);
+        ApplyDashboard(selectionDeviceId: selected.DeviceId, hasSelection: true, snapshot: selectedSnapshot, metrics);
 
         var deviceLogs = DeviceOps?.GetDeviceLogs(selected.DeviceId) ?? Array.Empty<string>();
         var logsPlaceholder = deviceLogs.Count == 0
             ? "Sem eventos para este dispositivo ainda."
             : string.Empty;
         UpdateDeviceLogs(selected.DeviceId, deviceLogs, logsPlaceholder);
-
-        if (!DevicePreviewVisibilityPolicy.ShouldShowSelectedPreview(selected.Status, selectedVisual.PreviewItem))
-        {
-            if (selected.Status == DeviceStatus.Online)
-            {
-                ShowSelectedPreviewPlaceholder("Nenhum app ativo reportado pelo dispositivo");
-            }
-            else
-            {
-                ShowSelectedPreviewPlaceholder("Dispositivo offline");
-            }
-
-            return;
-        }
-
-        ShowSelectedPreview(selected.DeviceId, selectedVisual.PreviewItem!);
-    }
-
-    private void ShowSelectedPreview(string deviceId, AppCatalogItem previewItem)
-    {
-        var previewAppId = previewItem.Id;
-        if (isSelectedPreviewRunning
-            && string.Equals(currentSelectedPreviewDeviceId, deviceId, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(currentSelectedPreviewAppId, previewAppId, StringComparison.OrdinalIgnoreCase))
-        {
-            if (SelectedDevicePreview.Visibility != Visibility.Visible)
-            {
-                SelectedDevicePreview.Visibility = Visibility.Visible;
-            }
-
-            if (SelectedDevicePreviewPlaceholderText.Visibility != Visibility.Collapsed)
-            {
-                SelectedDevicePreviewPlaceholderText.Visibility = Visibility.Collapsed;
-            }
-
-            return;
-        }
-
-        SelectedDevicePreview.Stop();
-        SelectedDevicePreview.Bind(previewItem);
-        SelectedDevicePreview.SetSelected(true);
-        SelectedDevicePreview.Visibility = Visibility.Visible;
-        SelectedDevicePreviewPlaceholderText.Visibility = Visibility.Collapsed;
-        SelectedDevicePreview.Start();
-
-        isSelectedPreviewRunning = true;
-        currentSelectedPreviewDeviceId = deviceId;
-        currentSelectedPreviewAppId = previewAppId;
-        lastSelectedPreviewPlaceholderMessage = null;
-    }
-
-    private void ShowSelectedPreviewPlaceholder(string message)
-    {
-        var placeholderAlreadyApplied = !isSelectedPreviewRunning
-            && SelectedDevicePreview.Visibility == Visibility.Collapsed
-            && SelectedDevicePreviewPlaceholderText.Visibility == Visibility.Visible
-            && string.Equals(lastSelectedPreviewPlaceholderMessage, message, StringComparison.Ordinal);
-
-        if (!placeholderAlreadyApplied)
-        {
-            if (isSelectedPreviewRunning)
-            {
-                SelectedDevicePreview.Stop();
-            }
-
-            SelectedDevicePreview.SetSelected(false);
-            SelectedDevicePreview.Visibility = Visibility.Collapsed;
-            SelectedDevicePreviewPlaceholderText.Text = message;
-            SelectedDevicePreviewPlaceholderText.Visibility = Visibility.Visible;
-        }
-
-        isSelectedPreviewRunning = false;
-        currentSelectedPreviewDeviceId = null;
-        currentSelectedPreviewAppId = null;
-        lastSelectedPreviewPlaceholderMessage = message;
     }
 
     private void ApplyButtonState()
@@ -910,8 +1324,6 @@ public sealed partial class DevicesPage : Page
             && !currentState.CommandInProgress;
         var canRemove = selected is not null && !currentState.CommandInProgress;
 
-        EnterProvisioningButton.IsEnabled = canRunCommand;
-        RevokeButton.IsEnabled = canRunCommand;
         TestLedButton.IsEnabled = canRunCommand;
         RemoveDeviceButton.IsEnabled = canRemove;
     }
@@ -975,6 +1387,11 @@ public sealed partial class DevicesPage : Page
         public void StopPreview()
         {
             RowControl.StopPreview();
+        }
+
+        public void SetRuntimeFrame(MicaAudio.Core.Presets.RgbaColor[]? frame)
+        {
+            RowControl.SetRuntimeFrame(frame);
         }
     }
 

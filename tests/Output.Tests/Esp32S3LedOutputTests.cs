@@ -7,13 +7,13 @@ using Output.Led;
 
 namespace Output.Tests;
 
-public class MatrixPortalLedOutputTests
+public class Esp32S3LedOutputTests
 {
     [Fact]
     public void Send_ShouldBroadcastEncodedBins128Frame()
     {
         var host = new FakeDeviceServerHost();
-        var output = new MatrixPortalLedOutput(host);
+        var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
         {
@@ -47,7 +47,7 @@ public class MatrixPortalLedOutputTests
     public void SetBrightness_ShouldAffectBrightnessByteInPayload()
     {
         var host = new FakeDeviceServerHost();
-        var output = new MatrixPortalLedOutput(host);
+        var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig { Width = 128, Height = 64, Brightness = 1f });
         output.SetBrightness(0f);
@@ -66,7 +66,7 @@ public class MatrixPortalLedOutputTests
     public void Stop_ShouldPreventFurtherBroadcasts()
     {
         var host = new FakeDeviceServerHost();
-        var output = new MatrixPortalLedOutput(host);
+        var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig { Width = 128, Height = 64, Brightness = 1f });
         output.Stop();
@@ -84,7 +84,7 @@ public class MatrixPortalLedOutputTests
     public void Send_WithFrame128x64_ShouldBroadcastRgb565FramePayload()
     {
         var host = new FakeDeviceServerHost();
-        var output = new MatrixPortalLedOutput(host);
+        var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
         {
@@ -118,6 +118,51 @@ public class MatrixPortalLedOutputTests
         Assert.Equal((byte)0x1F, payload[19]);
         Assert.Equal((byte)0x00, payload[20]);
         Assert.Equal((byte)0, payload[^1]);
+    }
+
+    [Fact]
+    public void Send_WithUnchangedFrame_ShouldSkipConsecutiveBroadcast()
+    {
+        var host = new FakeDeviceServerHost();
+        var output = new Esp32S3LedOutput(host);
+
+        output.Start(new LedOutputConfig
+        {
+            Width = 128,
+            Height = 64,
+            Brightness = 1f,
+        });
+
+        var frame = new RgbaColor[128 * 64];
+        frame[0] = new RgbaColor(255, 0, 0, 255);
+
+        output.Send(new LedPayload { Frame128x64 = frame, Level = 1f });
+        output.Send(new LedPayload { Frame128x64 = frame, Level = 1f });
+
+        Assert.Single(host.BroadcastFrames);
+    }
+
+    [Fact]
+    public void Send_WithUnchangedPixelsAndDifferentBrightness_ShouldBroadcastAgain()
+    {
+        var host = new FakeDeviceServerHost();
+        var output = new Esp32S3LedOutput(host);
+
+        output.Start(new LedOutputConfig
+        {
+            Width = 128,
+            Height = 64,
+            Brightness = 1f,
+        });
+
+        var frame = new RgbaColor[128 * 64];
+        frame[0] = new RgbaColor(255, 0, 0, 255);
+
+        output.Send(new LedPayload { Frame128x64 = frame, Level = 1f });
+        output.SetBrightness(0.5f);
+        output.Send(new LedPayload { Frame128x64 = frame, Level = 1f });
+
+        Assert.Equal(2, host.BroadcastFrames.Count);
     }
 
     private sealed class FakeDeviceServerHost : IDeviceServerHost

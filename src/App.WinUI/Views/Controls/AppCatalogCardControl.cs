@@ -1,4 +1,4 @@
-﻿using App.WinUI.Models.Apps;
+using App.WinUI.Models.Apps;
 using App.WinUI.Views;
 using MicaAudio.Core.Presets;
 using Microsoft.UI.Xaml;
@@ -66,6 +66,9 @@ internal sealed class AppCatalogCardControl : UserControl
 
         frame.Child = stack;
         Content = frame;
+
+        PointerEntered += (_, _) => Preview.Start();
+        PointerExited += (_, _) => Preview.Stop();
     }
 
     public AppCatalogItem Item { get; }

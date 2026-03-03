@@ -31,6 +31,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Quero operar release 1.0 com setup assinado: [guides/release-1.0-installer.md](guides/release-1.0-installer.md)
 - Quero carregar GIF para HUB75 por URL/arquivo: [guides/load-gif-hub75.md](guides/load-gif-hub75.md)
 - Quero operar no modo solo + IA: [ai/README.md](ai/README.md)
+- Quero usar OpenCode + ECC neste repo: [ai/opencode-ecc-setup.md](ai/opencode-ecc-setup.md)
 
 ## Indice
 
@@ -49,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Visual.Win2D](modules/visual-win2d.md)
 - [Output (LED)](modules/output-led.md)
 - [Device.Server + Device.Protocol](modules/device-server-protocol.md)
-- [Firmware HUB75 128x64 (DevKitC-1)](modules/firmware-matrixportal-s3.md)
+- [Firmware HUB75 128x64 (DevKitC-1)](modules/firmware-esp32s3-devkitc1.md)
 - [Settings + Presets + Persistencia](modules/settings-presets-persistence.md)
 - [DeviceOperationsCoordinator](modules/device-operations-coordinator.md)
 - [Apps catalog + deployment](modules/apps-catalog-deployment.md)
@@ -81,6 +82,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Playbooks de incidente](ai/incident-playbooks.md)
 - [Viabilidade MCP](ai/mcp-viability.md)
 - [Consistencia com Codex](ai/consistencia-codex.md)
+- [Setup OpenCode + ECC (local)](ai/opencode-ecc-setup.md)
 
 ### Referencia
 - [Code index](reference/code-index.md)

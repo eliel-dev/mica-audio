@@ -3,7 +3,6 @@
     "structural_paths":  [
                              "src/",
                              "firmware/",
-                             "matrixportal-s3/",
                              "scripts/",
                              "MicaAudio.sln",
                              "global.json",
@@ -64,7 +63,7 @@
                                    "min_docs_markers":  2
                                },
                                {
-                                   "path":  "firmware/matrixportal-s3/src/main.cpp",
+                                   "path":  "firmware/esp32s3-devkitc1/src/main.cpp",
                                    "min_docs_markers":  2
                                }
                            ],
