@@ -26,6 +26,22 @@ public sealed class DeviceSnapshot
 
     public int? LastKnownRssi { get; init; }
 
+    public int? UptimeSeconds { get; init; }
+
+    public int? LoopLoadPercent { get; init; }
+
+    public long? FreeHeapBytes { get; init; }
+
+    public long? LargestHeapBlockBytes { get; init; }
+
+    public bool? PsramAvailable { get; init; }
+
+    public long? FreePsramBytes { get; init; }
+
+    public long? LargestPsramBlockBytes { get; init; }
+
+    public bool? WifiConnected { get; init; }
+
     public string? FirmwareVersion { get; init; }
 
     public string? ActiveAppId { get; init; }

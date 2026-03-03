@@ -5,6 +5,7 @@
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
+#include <esp_heap_caps.h>
 
 #if defined(MICA_PROFILE_DMA_EXP)
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
@@ -87,6 +88,9 @@ bool gTestLedState = false;
 bool gMatrixReady = false;
 uint8_t gAppliedBrightness = 255;
 bool gFrameModeActive = false;
+uint64_t gLoopBusyTimeUs = 0;
+unsigned long gLoopWindowStartMs = 0;
+uint8_t gLoopLoadPercent = 0;
 
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
@@ -300,6 +304,55 @@ void postCommandAck(
   postJsonWithAuth("/api/v1/device/command-ack", ack);
 }
 
+bool trySanitizeLargestFreeBlock(uint32_t freeBytes, size_t largestRawBytes, uint32_t& largestSanitizedBytes) {
+  if (freeBytes == 0 || largestRawBytes == 0) {
+    return false;
+  }
+
+  size_t normalizedLargest = largestRawBytes;
+  if (normalizedLargest > freeBytes) {
+    normalizedLargest = freeBytes;
+  }
+
+  if (normalizedLargest == 0) {
+    return false;
+  }
+
+  largestSanitizedBytes = static_cast<uint32_t>(normalizedLargest);
+  return true;
+}
+
+void updateLoopLoadPercent(uint32_t loopStartUs) {
+  const uint32_t nowUs = micros();
+  const uint32_t elapsedUs = nowUs - loopStartUs;
+  gLoopBusyTimeUs += static_cast<uint64_t>(elapsedUs);
+
+  const unsigned long nowMs = millis();
+  if (gLoopWindowStartMs == 0) {
+    gLoopWindowStartMs = nowMs;
+    return;
+  }
+
+  const unsigned long windowElapsedMs = nowMs - gLoopWindowStartMs;
+  if (windowElapsedMs < 1000) {
+    return;
+  }
+
+  const uint64_t windowElapsedUs = static_cast<uint64_t>(windowElapsedMs) * 1000ULL;
+  uint64_t loadPercent = 0;
+  if (windowElapsedUs > 0) {
+    loadPercent = (gLoopBusyTimeUs * 100ULL) / windowElapsedUs;
+  }
+
+  if (loadPercent > 100ULL) {
+    loadPercent = 100ULL;
+  }
+
+  gLoopLoadPercent = static_cast<uint8_t>(loadPercent);
+  gLoopBusyTimeUs = 0;
+  gLoopWindowStartMs = nowMs;
+}
+
 void sendTelemetry(bool force) {
   if (!gWs.isConnected() || gDeviceId.isEmpty()) {
     return;
@@ -313,9 +366,37 @@ void sendTelemetry(bool force) {
   gLastTelemetryMs = now;
 
   JsonDocument telemetry;
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  const uint32_t uptimeSeconds = millis() / 1000UL;
+  const uint32_t freeHeapBytes = ESP.getFreeHeap();
+
   telemetry["type"] = "telemetry";
   telemetry["deviceId"] = gDeviceId;
-  telemetry["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -100;
+  telemetry["wifiConnected"] = wifiConnected;
+  telemetry["rssi"] = wifiConnected ? WiFi.RSSI() : -100;
+  telemetry["uptimeSeconds"] = uptimeSeconds;
+  telemetry["loopLoadPercent"] = gLoopLoadPercent;
+  telemetry["freeHeapBytes"] = freeHeapBytes;
+
+  uint32_t largestHeapBlockBytes = 0;
+  if (trySanitizeLargestFreeBlock(freeHeapBytes, heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), largestHeapBlockBytes)) {
+    telemetry["largestHeapBlockBytes"] = largestHeapBlockBytes;
+  }
+
+  const bool psramAvailable = ESP.getPsramSize() > 0;
+  telemetry["psramAvailable"] = psramAvailable;
+  if (psramAvailable) {
+    const uint32_t freePsramBytes = ESP.getFreePsram();
+    telemetry["freePsramBytes"] = freePsramBytes;
+
+#if defined(MALLOC_CAP_SPIRAM)
+    uint32_t largestPsramBlockBytes = 0;
+    if (trySanitizeLargestFreeBlock(freePsramBytes, heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM), largestPsramBlockBytes)) {
+      telemetry["largestPsramBlockBytes"] = largestPsramBlockBytes;
+    }
+#endif
+  }
+
   telemetry["firmwareVersion"] = kFirmwareVersion;
   telemetry["ipAddress"] = WiFi.localIP().toString();
   telemetry["boardModel"] = kBoardModel;
@@ -709,8 +790,11 @@ void setup() {
 }
 
 void loop() {
+  const uint32_t loopStartUs = micros();
+
   if (WiFi.status() != WL_CONNECTED) {
     delay(1000);
+    updateLoopLoadPercent(loopStartUs);
     return;
   }
 
@@ -744,5 +828,6 @@ void loop() {
   } else {
     drawBars();
   }
-}
 
+  updateLoopLoadPercent(loopStartUs);
+}

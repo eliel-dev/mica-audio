@@ -14,6 +14,7 @@ Documentar o fluxo oficial de setup para o painel HUB75 `128x64`.
 6. Validar na telemetria:
    - `boardModel = esp32s3_devkitc1`
    - `panelType = hub75_p2_5_128x64_smd2121_scan32`
+   - campos v2 basicos chegando no server (`uptimeSeconds`, `loopLoadPercent`, `freeHeapBytes`, `wifiConnected`)
 
 ## Referencias de codigo
 
@@ -33,6 +34,14 @@ Documentar o fluxo oficial de setup para o painel HUB75 `128x64`.
 - Cada dispositivo online mostra uma miniatura pequena do app ativo na lista; dispositivos offline nao exibem preview visual.
 - O painel da direita mostra um preview maior apenas para dispositivos online; offline mostra placeholder e o ultimo app conhecido apenas como texto.
 - Sem selecao, o preview maior fica em placeholder ate escolher um device.
+- O card `Dashboard ESP` mostra metrica do device selecionado: carga do loop, uptime, heap, PSRAM e rede.
+- Em offline, o dashboard exibe o ultimo snapshot conhecido com aviso explicito de offline.
+- O card `Logs do dispositivo` mostra somente eventos do `deviceId` selecionado.
+- Sem selecao, dashboard e logs mostram placeholders dedicados e estaveis.
 
 
 - A acao Remover apaga apenas o registro local do app; para o ESP online, continue usando Revogar quando quiser alterar o dispositivo fisico.
+
+## Referencias adicionais
+
+- [Campos de telemetria v2](../reference/device-telemetry-v2-fields.md#objetivo)

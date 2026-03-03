@@ -25,7 +25,21 @@ public sealed partial class DevicesPage
     private ProgressRing CommandProgressRing = null!;
     private TextBlock CommandStatusText = null!;
     private TextBlock CommandPercentText = null!;
-    private TextBox LogsTextBox = null!;
+    // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#consumo-na-devicespage-entrega-3
+    private TextBlock DashboardStatusText = null!;
+    private TextBlock DashboardPlaceholderText = null!;
+    private Grid DashboardMetricsGrid = null!;
+    private TextBlock DashboardLoopLoadText = null!;
+    private ProgressBar DashboardLoopLoadBar = null!;
+    private TextBlock DashboardUptimeText = null!;
+    private TextBlock DashboardHeapText = null!;
+    private TextBlock DashboardHeapFragmentationText = null!;
+    private ProgressBar DashboardHeapFragmentationBar = null!;
+    private TextBlock DashboardPsramText = null!;
+    private TextBlock DashboardPsramFragmentationText = null!;
+    private ProgressBar DashboardPsramFragmentationBar = null!;
+    private TextBlock DashboardNetworkText = null!;
+    private TextBox DeviceLogsTextBox = null!;
     private InfoBar PairingCodeText = null!;
 
     private void InitializeComponent()
@@ -84,6 +98,7 @@ public sealed partial class DevicesPage
         middle.Children.Add(CreateCard(leftGrid));
 
         var rightGrid = new Grid { RowSpacing = 10 };
+        rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -210,18 +225,167 @@ public sealed partial class DevicesPage
         Grid.SetRow(statusCard, 3);
         rightGrid.Children.Add(statusCard);
 
-        LogsTextBox = new TextBox
+        var dashboardStack = new StackPanel { Spacing = 8 };
+
+        var dashboardHeader = new Grid();
+        dashboardHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        dashboardHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var dashboardTitle = new TextBlock
         {
-            Header = "Logs",
+            Text = "Dashboard ESP",
+            Opacity = 0.84,
+        };
+
+        DashboardStatusText = new TextBlock
+        {
+            Text = "Sem metricas",
+            Opacity = 0.72,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            TextAlignment = TextAlignment.Right,
+        };
+
+        Grid.SetColumn(DashboardStatusText, 1);
+        dashboardHeader.Children.Add(dashboardTitle);
+        dashboardHeader.Children.Add(DashboardStatusText);
+        dashboardStack.Children.Add(dashboardHeader);
+
+        DashboardPlaceholderText = new TextBlock
+        {
+            Text = "Selecione um dispositivo para ver metricas",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.72,
+        };
+        dashboardStack.Children.Add(DashboardPlaceholderText);
+
+        DashboardMetricsGrid = new Grid
+        {
+            RowSpacing = 6,
+            Visibility = Visibility.Collapsed,
+        };
+
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DashboardMetricsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        DashboardLoopLoadText = new TextBlock
+        {
+            Text = "Carga do loop: -",
+            Opacity = 0.84,
+        };
+
+        DashboardLoopLoadBar = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 1,
+            Value = 0,
+            Height = 6,
+        };
+        Grid.SetRow(DashboardLoopLoadBar, 1);
+
+        DashboardUptimeText = new TextBlock
+        {
+            Text = "Uptime: -",
+            Opacity = 0.84,
+        };
+        Grid.SetRow(DashboardUptimeText, 2);
+
+        DashboardHeapText = new TextBlock
+        {
+            Text = "Heap livre: - | Maior bloco: -",
+            Opacity = 0.84,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Grid.SetRow(DashboardHeapText, 3);
+
+        DashboardHeapFragmentationText = new TextBlock
+        {
+            Text = "Heap (maior bloco / livre): -",
+            Opacity = 0.78,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Grid.SetRow(DashboardHeapFragmentationText, 4);
+
+        DashboardHeapFragmentationBar = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 1,
+            Value = 0,
+            Height = 6,
+            Visibility = Visibility.Collapsed,
+        };
+        Grid.SetRow(DashboardHeapFragmentationBar, 5);
+
+        DashboardPsramText = new TextBlock
+        {
+            Text = "PSRAM: desconhecida",
+            Opacity = 0.84,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Grid.SetRow(DashboardPsramText, 6);
+
+        DashboardPsramFragmentationText = new TextBlock
+        {
+            Text = "PSRAM (maior bloco / livre): -",
+            Opacity = 0.78,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Grid.SetRow(DashboardPsramFragmentationText, 7);
+
+        DashboardPsramFragmentationBar = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 1,
+            Value = 0,
+            Height = 6,
+            Visibility = Visibility.Collapsed,
+        };
+        Grid.SetRow(DashboardPsramFragmentationBar, 8);
+
+        DashboardNetworkText = new TextBlock
+        {
+            Text = "Wi-Fi: -",
+            Opacity = 0.84,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Grid.SetRow(DashboardNetworkText, 9);
+
+        DashboardMetricsGrid.Children.Add(DashboardLoopLoadText);
+        DashboardMetricsGrid.Children.Add(DashboardLoopLoadBar);
+        DashboardMetricsGrid.Children.Add(DashboardUptimeText);
+        DashboardMetricsGrid.Children.Add(DashboardHeapText);
+        DashboardMetricsGrid.Children.Add(DashboardHeapFragmentationText);
+        DashboardMetricsGrid.Children.Add(DashboardHeapFragmentationBar);
+        DashboardMetricsGrid.Children.Add(DashboardPsramText);
+        DashboardMetricsGrid.Children.Add(DashboardPsramFragmentationText);
+        DashboardMetricsGrid.Children.Add(DashboardPsramFragmentationBar);
+        DashboardMetricsGrid.Children.Add(DashboardNetworkText);
+        dashboardStack.Children.Add(DashboardMetricsGrid);
+
+        var dashboardCard = CreateCard(dashboardStack);
+        Grid.SetRow(dashboardCard, 4);
+        rightGrid.Children.Add(dashboardCard);
+
+        DeviceLogsTextBox = new TextBox
+        {
+            Header = "Logs do dispositivo",
             AcceptsReturn = true,
             IsReadOnly = true,
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 200,
+            Text = "Selecione um dispositivo para ver logs do dispositivo.",
         };
-        ScrollViewer.SetVerticalScrollBarVisibility(LogsTextBox, ScrollBarVisibility.Auto);
+        ScrollViewer.SetVerticalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Auto);
 
-        var logsCard = CreateCard(LogsTextBox);
-        Grid.SetRow(logsCard, 4);
+        var logsCard = CreateCard(DeviceLogsTextBox);
+        Grid.SetRow(logsCard, 5);
         rightGrid.Children.Add(logsCard);
 
         middle.Children.Add(rightGrid);

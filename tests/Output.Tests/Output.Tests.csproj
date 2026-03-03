@@ -41,10 +41,18 @@
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppModifierStateStore.cs" Link="Shared\AppModifierStateStore.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\IAppModifierStateStore.cs" Link="Shared\IAppModifierStateStore.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\IAppDeploymentService.cs" Link="Shared\IAppDeploymentService.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\SettingsRepository.cs" Link="Shared\SettingsRepository.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\UseCases\AppConfigValidationUseCase.cs" Link="Shared\UseCases\AppConfigValidationUseCase.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\UseCases\SaveAppConfigUseCase.cs" Link="Shared\UseCases\SaveAppConfigUseCase.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\UseCases\DeployAppUseCase.cs" Link="Shared\UseCases\DeployAppUseCase.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppCatalogItem.cs" Link="Shared\Models\AppCatalogItem.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\IDeviceRegistryStore.cs" Link="Shared\Devices\IDeviceRegistryStore.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceIntegrationService.cs" Link="Shared\Devices\DeviceIntegrationService.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceCommandExecutionState.cs" Link="Shared\Devices\DeviceCommandExecutionState.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceOperationsState.cs" Link="Shared\Devices\DeviceOperationsState.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceOperationsCoordinator.cs" Link="Shared\Devices\DeviceOperationsCoordinator.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceMetricsPresentation.cs" Link="Shared\Devices\DeviceMetricsPresentation.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceMetricsFormatter.cs" Link="Shared\Devices\DeviceMetricsFormatter.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DevicePreviewResolver.cs" Link="Shared\Devices\DevicePreviewResolver.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceListVisibilityPolicy.cs" Link="Shared\Devices\DeviceListVisibilityPolicy.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceListRenderDiff.cs" Link="Shared\Devices\DeviceListRenderDiff.cs" />

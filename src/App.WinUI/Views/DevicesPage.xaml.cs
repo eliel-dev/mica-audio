@@ -8,6 +8,7 @@ using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System.Globalization;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -30,8 +31,11 @@ public sealed partial class DevicesPage : Page
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
 
-    private int lastRenderedLogCount;
-    private string lastRenderedLogTail = string.Empty;
+    private string? lastRenderedDashboardSignature;
+    private string? lastRenderedDeviceLogsDeviceId;
+    private int lastRenderedDeviceLogCount;
+    private string lastRenderedDeviceLogTail = string.Empty;
+    private string? lastRenderedDeviceLogsPlaceholder;
     private DeviceOperationsState currentState = new();
     private bool appCatalogLoadAttempted;
     private DeviceLifecycleThresholds lifecycleThresholds = DeviceLifecycleThresholds.Default;
@@ -77,7 +81,8 @@ public sealed partial class DevicesPage : Page
     {
         if (DeviceOps is null)
         {
-            LogsTextBox.Text = "Servico de dispositivos indisponivel.";
+            ApplyDashboard(selectionDeviceId: null, hasSelection: false, DeviceMetricsFormatter.Build(null));
+            UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Servico de dispositivos indisponivel.");
             return;
         }
 
@@ -108,6 +113,11 @@ public sealed partial class DevicesPage : Page
         currentSelectedPreviewDeviceId = null;
         currentSelectedPreviewAppId = null;
         lastSelectedPreviewPlaceholderMessage = null;
+        lastRenderedDashboardSignature = null;
+        lastRenderedDeviceLogsDeviceId = null;
+        lastRenderedDeviceLogCount = 0;
+        lastRenderedDeviceLogTail = string.Empty;
+        lastRenderedDeviceLogsPlaceholder = null;
         ClearRenderedItems();
     }
 
@@ -138,7 +148,6 @@ public sealed partial class DevicesPage : Page
         catch (Exception ex)
         {
             AddLocalLog($"Falha ao carregar catalogo de apps para preview: {ex.Message}");
-            UpdateLogs(currentState.Logs);
         }
     }
 
@@ -153,7 +162,6 @@ public sealed partial class DevicesPage : Page
         {
             lifecycleThresholds = DeviceLifecycleThresholds.Default;
             AddLocalLog($"Falha ao carregar thresholds de presence: {ex.Message}");
-            UpdateLogs(currentState.Logs);
         }
     }
 
@@ -202,7 +210,6 @@ public sealed partial class DevicesPage : Page
         PairingCodeText.Severity = InfoBarSeverity.Informational;
         PairingCodeText.Message = $"Pareamento: {code.Code} (expira {code.ExpiresAtUtc:HH:mm:ss} UTC)";
         AddLocalLog($"Codigo de pareamento gerado: {code.Code}.");
-        UpdateLogs(currentState.Logs);
     }
 
     private async void OnEnterProvisioningClicked(object sender, RoutedEventArgs e)
@@ -258,7 +265,6 @@ public sealed partial class DevicesPage : Page
         PairingCodeText.Severity = InfoBarSeverity.Error;
         PairingCodeText.Message = "Falha ao remover dispositivo.";
         AddLocalLog($"Falha ao remover dispositivo: {selected.DeviceId}");
-        UpdateLogs(currentState.Logs);
     }
 
     private void OnCopyHostClicked(object sender, RoutedEventArgs e)
@@ -281,7 +287,6 @@ public sealed partial class DevicesPage : Page
             PairingCodeText.Severity = InfoBarSeverity.Error;
             PairingCodeText.Message = "Firmware: servico indisponivel.";
             AddLocalLog("Servico de firmware indisponivel.");
-            UpdateLogs(currentState.Logs);
             return;
         }
 
@@ -291,7 +296,6 @@ public sealed partial class DevicesPage : Page
             PairingCodeText.Severity = InfoBarSeverity.Error;
             PairingCodeText.Message = "Firmware: opcao indisponivel.";
             AddLocalLog("Nenhuma opcao de firmware disponivel.");
-            UpdateLogs(currentState.Logs);
             return;
         }
 
@@ -300,7 +304,6 @@ public sealed partial class DevicesPage : Page
             PairingCodeText.Severity = InfoBarSeverity.Error;
             PairingCodeText.Message = "Firmware: arquivo ausente.";
             AddLocalLog(resolveError);
-            UpdateLogs(currentState.Logs);
             return;
         }
 
@@ -314,7 +317,6 @@ public sealed partial class DevicesPage : Page
             PairingCodeText.Severity = InfoBarSeverity.Error;
             PairingCodeText.Message = "Firmware: erro ao abrir seletor.";
             AddLocalLog($"Falha ao abrir seletor de arquivo: {ex.Message}");
-            UpdateLogs(currentState.Logs);
             return;
         }
 
@@ -323,7 +325,6 @@ public sealed partial class DevicesPage : Page
             PairingCodeText.Severity = InfoBarSeverity.Warning;
             PairingCodeText.Message = "Firmware: download cancelado.";
             AddLocalLog("Salvamento de firmware cancelado pelo usuario.");
-            UpdateLogs(currentState.Logs);
             return;
         }
 
@@ -333,14 +334,12 @@ public sealed partial class DevicesPage : Page
             PairingCodeText.Severity = InfoBarSeverity.Success;
             PairingCodeText.Message = $"Firmware: salvo em {targetFile.Name}.";
             AddLocalLog($"Firmware salvo em: {targetFile.Path}");
-            UpdateLogs(currentState.Logs);
         }
         catch (Exception ex)
         {
             PairingCodeText.Severity = InfoBarSeverity.Error;
             PairingCodeText.Message = "Firmware: erro ao salvar arquivo.";
             AddLocalLog($"Falha ao salvar firmware: {ex.Message}");
-            UpdateLogs(currentState.Logs);
         }
     }
 
@@ -378,8 +377,6 @@ public sealed partial class DevicesPage : Page
     private void ApplyState(DeviceOperationsState state)
     {
         currentState = state;
-
-        UpdateLogs(state.Logs);
 
         CommandProgressRing.IsActive = state.CommandInProgress;
         CommandProgressRing.Visibility = state.CommandInProgress ? Visibility.Visible : Visibility.Collapsed;
@@ -602,42 +599,146 @@ public sealed partial class DevicesPage : Page
         return DevicePreviewResolver.Resolve(item.AppId, item.AppName, appCatalogById);
     }
 
-    private void AddLocalLog(string message)
+    private static void AddLocalLog(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
         {
             return;
         }
 
-        var entries = currentState.Logs.ToList();
-        entries.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-        UpdateLogs(entries);
+        System.Diagnostics.Debug.WriteLine($"[DevicesPage] {message}");
     }
 
-    private void UpdateLogs(IReadOnlyList<string> entries)
+    private void UpdateDeviceLogs(string? deviceId, IReadOnlyList<string> entries, string placeholder)
     {
         var count = entries.Count;
-        if (count == 0)
-        {
-            if (lastRenderedLogCount != 0)
-            {
-                LogsTextBox.Text = string.Empty;
-                lastRenderedLogCount = 0;
-                lastRenderedLogTail = string.Empty;
-            }
+        var normalizedPlaceholder = count == 0 ? placeholder : string.Empty;
+        var tail = count > 0 ? entries[^1] : string.Empty;
+        var deviceUnchanged = string.Equals(lastRenderedDeviceLogsDeviceId, deviceId, StringComparison.OrdinalIgnoreCase);
 
-            return;
-        }
-
-        var tail = entries[^1];
-        if (lastRenderedLogCount == count && string.Equals(lastRenderedLogTail, tail, StringComparison.Ordinal))
+        if (deviceUnchanged
+            && lastRenderedDeviceLogCount == count
+            && string.Equals(lastRenderedDeviceLogTail, tail, StringComparison.Ordinal)
+            && string.Equals(lastRenderedDeviceLogsPlaceholder, normalizedPlaceholder, StringComparison.Ordinal))
         {
             return;
         }
 
-        LogsTextBox.Text = string.Join("\r\n", entries) + "\r\n";
-        lastRenderedLogCount = count;
-        lastRenderedLogTail = tail;
+        DeviceLogsTextBox.Text = count == 0
+            ? normalizedPlaceholder
+            : string.Join("\r\n", entries) + "\r\n";
+
+        lastRenderedDeviceLogsDeviceId = deviceId;
+        lastRenderedDeviceLogCount = count;
+        lastRenderedDeviceLogTail = tail;
+        lastRenderedDeviceLogsPlaceholder = normalizedPlaceholder;
+    }
+
+    // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#consumo-na-devicespage-entrega-3
+    private void ApplyDashboard(string? selectionDeviceId, bool hasSelection, DeviceMetricsPresentation metrics)
+    {
+        var placeholder = ResolveDashboardPlaceholder(hasSelection, metrics);
+        var signature = BuildDashboardSignature(selectionDeviceId, hasSelection, metrics, placeholder);
+        if (string.Equals(lastRenderedDashboardSignature, signature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        DashboardStatusText.Text = metrics.StatusLabel;
+        DashboardLoopLoadText.Text = metrics.LoopLoadPercent.HasValue
+            ? $"Carga do loop: {Math.Clamp(metrics.LoopLoadPercent.Value, 0, 100)}%"
+            : "Carga do loop: -";
+        DashboardLoopLoadBar.Value = Math.Clamp(metrics.LoopLoadProgress, 0d, 1d);
+
+        DashboardUptimeText.Text = metrics.UptimeLabel;
+        DashboardHeapText.Text = metrics.HeapLabel;
+        DashboardHeapFragmentationText.Text = BuildFragmentationLabel("Heap", metrics.HeapFragmentationProgress, available: true);
+        DashboardHeapFragmentationBar.Value = Math.Clamp(metrics.HeapFragmentationProgress ?? 0d, 0d, 1d);
+        DashboardHeapFragmentationBar.Visibility = metrics.HeapFragmentationProgress.HasValue ? Visibility.Visible : Visibility.Collapsed;
+
+        DashboardPsramText.Text = metrics.PsramLabel;
+        DashboardPsramFragmentationText.Text = BuildFragmentationLabel("PSRAM", metrics.PsramFragmentationProgress, metrics.IsPsramAvailable);
+        DashboardPsramFragmentationBar.Value = Math.Clamp(metrics.PsramFragmentationProgress ?? 0d, 0d, 1d);
+        DashboardPsramFragmentationBar.Visibility = metrics.PsramFragmentationProgress.HasValue ? Visibility.Visible : Visibility.Collapsed;
+
+        DashboardNetworkText.Text = metrics.NetworkLabel;
+
+        DashboardMetricsGrid.Visibility = hasSelection ? Visibility.Visible : Visibility.Collapsed;
+        if (string.IsNullOrWhiteSpace(placeholder))
+        {
+            DashboardPlaceholderText.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            DashboardPlaceholderText.Text = placeholder;
+            DashboardPlaceholderText.Visibility = Visibility.Visible;
+        }
+
+        lastRenderedDashboardSignature = signature;
+    }
+
+    private static string BuildDashboardSignature(string? selectionDeviceId, bool hasSelection, DeviceMetricsPresentation metrics, string placeholder)
+    {
+        var loopProgressScaled = (int)Math.Round(Math.Clamp(metrics.LoopLoadProgress, 0d, 1d) * 1000d);
+        var heapFragmentationScaled = metrics.HeapFragmentationProgress.HasValue
+            ? (int)Math.Round(Math.Clamp(metrics.HeapFragmentationProgress.Value, 0d, 1d) * 1000d)
+            : -1;
+        var psramFragmentationScaled = metrics.PsramFragmentationProgress.HasValue
+            ? (int)Math.Round(Math.Clamp(metrics.PsramFragmentationProgress.Value, 0d, 1d) * 1000d)
+            : -1;
+
+        return string.Concat(
+            hasSelection ? "1" : "0", "|",
+            selectionDeviceId ?? "-", "|",
+            metrics.StatusLabel, "|",
+            metrics.UptimeLabel, "|",
+            metrics.HeapLabel, "|",
+            metrics.PsramLabel, "|",
+            metrics.NetworkLabel, "|",
+            metrics.LoopLoadPercent?.ToString(CultureInfo.InvariantCulture) ?? "-", "|",
+            loopProgressScaled.ToString(CultureInfo.InvariantCulture), "|",
+            heapFragmentationScaled.ToString(CultureInfo.InvariantCulture), "|",
+            psramFragmentationScaled.ToString(CultureInfo.InvariantCulture), "|",
+            metrics.HasMetrics ? "1" : "0", "|",
+            metrics.IsOfflineSnapshot ? "1" : "0", "|",
+            metrics.IsPsramAvailable ? "1" : "0", "|",
+            placeholder);
+    }
+
+    private static string ResolveDashboardPlaceholder(bool hasSelection, DeviceMetricsPresentation metrics)
+    {
+        if (!hasSelection)
+        {
+            return "Selecione um dispositivo para ver metricas";
+        }
+
+        if (metrics.IsOfflineSnapshot)
+        {
+            return "Offline: exibindo ultimo snapshot conhecido";
+        }
+
+        if (!metrics.HasMetrics)
+        {
+            return metrics.PlaceholderMessage;
+        }
+
+        return string.Empty;
+    }
+
+    private static string BuildFragmentationLabel(string memoryKind, double? progress, bool available)
+    {
+        if (!available)
+        {
+            return $"{memoryKind} (maior bloco / livre): n/a";
+        }
+
+        if (!progress.HasValue)
+        {
+            return $"{memoryKind} (maior bloco / livre): -";
+        }
+
+        var percent = Math.Clamp((int)Math.Round(progress.Value * 100d), 0, 100);
+        return $"{memoryKind} (maior bloco / livre): {percent}%";
     }
 
     private DeviceListVisualItem? GetSelectedVisualItem()
@@ -660,6 +761,24 @@ public sealed partial class DevicesPage : Page
         return GetSelectedDeviceItem()?.DeviceId;
     }
 
+    private DeviceSnapshot? FindDeviceSnapshot(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return null;
+        }
+
+        foreach (var snapshot in currentState.DeviceListSnapshot)
+        {
+            if (string.Equals(snapshot.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return snapshot;
+            }
+        }
+
+        return null;
+    }
+
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateDeviceRowSelection();
@@ -676,6 +795,7 @@ public sealed partial class DevicesPage : Page
         }
     }
 
+    // DOCS: docs/wiki/guides/setup-new-device.md#tela-dispositivos
     private void ApplySelectionDetails()
     {
         var selectedVisual = GetSelectedVisualItem();
@@ -685,6 +805,8 @@ public sealed partial class DevicesPage : Page
             SelectedDeviceSubtitleText.Text = "-";
             SelectedDeviceRegistrationText.Text = "-";
             SelectedDeviceAppText.Text = "App ativo: -";
+            ApplyDashboard(selectionDeviceId: null, hasSelection: false, DeviceMetricsFormatter.Build(null));
+            UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Selecione um dispositivo para ver logs do dispositivo.");
             ShowSelectedPreviewPlaceholder("Selecione um dispositivo para ver o app ativo");
             return;
         }
@@ -694,6 +816,15 @@ public sealed partial class DevicesPage : Page
         SelectedDeviceSubtitleText.Text = selected.StatusLine;
         SelectedDeviceRegistrationText.Text = BuildRegistrationLine(selected);
         SelectedDeviceAppText.Text = DevicePreviewVisibilityPolicy.BuildSelectedAppLabel(selected.Status, selected.AppName);
+
+        var metrics = DeviceMetricsFormatter.Build(FindDeviceSnapshot(selected.DeviceId));
+        ApplyDashboard(selectionDeviceId: selected.DeviceId, hasSelection: true, metrics);
+
+        var deviceLogs = DeviceOps?.GetDeviceLogs(selected.DeviceId) ?? Array.Empty<string>();
+        var logsPlaceholder = deviceLogs.Count == 0
+            ? "Sem eventos para este dispositivo ainda."
+            : string.Empty;
+        UpdateDeviceLogs(selected.DeviceId, deviceLogs, logsPlaceholder);
 
         if (!DevicePreviewVisibilityPolicy.ShouldShowSelectedPreview(selected.Status, selectedVisual.PreviewItem))
         {

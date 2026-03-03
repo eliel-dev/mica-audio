@@ -299,7 +299,22 @@ public sealed partial class DeviceServerHost
                 return false;
             }
 
-            state.MarkTelemetry(telemetry.IpAddress, telemetry.Rssi, telemetry.FirmwareVersion, telemetry.ActiveAppId, telemetry.ActiveAppName, telemetry.BoardModel, telemetry.PanelType);
+            state.MarkTelemetry(
+                telemetry.IpAddress,
+                telemetry.Rssi,
+                telemetry.FirmwareVersion,
+                telemetry.ActiveAppId,
+                telemetry.ActiveAppName,
+                telemetry.BoardModel,
+                telemetry.PanelType,
+                telemetry.UptimeSeconds,
+                telemetry.LoopLoadPercent,
+                telemetry.FreeHeapBytes,
+                telemetry.LargestHeapBlockBytes,
+                telemetry.PsramAvailable,
+                telemetry.FreePsramBytes,
+                telemetry.LargestPsramBlockBytes,
+                telemetry.WifiConnected);
             return true;
         }
         catch

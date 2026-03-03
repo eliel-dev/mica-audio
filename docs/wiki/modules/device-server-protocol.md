@@ -96,3 +96,18 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
   - sem timeline de lifecycle
   - sem inferir `nao configurado` automaticamente
 
+## Atualizacao 2026-03 - Telemetria v2 pass-through
+
+- A mensagem de telemetria WS agora transporta tambem:
+  - `uptimeSeconds`
+  - `loopLoadPercent`
+  - `freeHeapBytes`
+  - `largestHeapBlockBytes`
+  - `psramAvailable`
+  - `freePsramBytes`
+  - `largestPsramBlockBytes`
+  - `wifiConnected`
+- O servidor mantem comportamento pass-through para esses campos (sem clamp ou renormalizacao no host).
+- Sanitizacao de `largest*BlockBytes` permanece restrita ao firmware emissor.
+- Detalhes de contrato e semantica: [device-telemetry-v2-fields](../reference/device-telemetry-v2-fields.md#objetivo).
+

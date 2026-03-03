@@ -97,6 +97,14 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             FirmwareVersion = record.FirmwareVersion,
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
+            UptimeSeconds = record.UptimeSeconds,
+            LoopLoadPercent = record.LoopLoadPercent,
+            FreeHeapBytes = record.FreeHeapBytes,
+            LargestHeapBlockBytes = record.LargestHeapBlockBytes,
+            PsramAvailable = record.PsramAvailable,
+            FreePsramBytes = record.FreePsramBytes,
+            LargestPsramBlockBytes = record.LargestPsramBlockBytes,
+            WifiConnected = record.WifiConnected,
             ActiveAppId = record.ActiveAppId,
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
@@ -123,6 +131,14 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             FirmwareVersion = record.FirmwareVersion,
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
+            UptimeSeconds = record.UptimeSeconds,
+            LoopLoadPercent = record.LoopLoadPercent,
+            FreeHeapBytes = record.FreeHeapBytes,
+            LargestHeapBlockBytes = record.LargestHeapBlockBytes,
+            PsramAvailable = record.PsramAvailable,
+            FreePsramBytes = record.FreePsramBytes,
+            LargestPsramBlockBytes = record.LargestPsramBlockBytes,
+            WifiConnected = record.WifiConnected,
             ActiveAppId = record.ActiveAppId,
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
@@ -221,6 +237,22 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         public string? LastKnownIp { get; init; }
 
         public int? LastKnownRssi { get; init; }
+
+        public int? UptimeSeconds { get; init; }
+
+        public int? LoopLoadPercent { get; init; }
+
+        public long? FreeHeapBytes { get; init; }
+
+        public long? LargestHeapBlockBytes { get; init; }
+
+        public bool? PsramAvailable { get; init; }
+
+        public long? FreePsramBytes { get; init; }
+
+        public long? LargestPsramBlockBytes { get; init; }
+
+        public bool? WifiConnected { get; init; }
 
         public string? ActiveAppId { get; init; }
 

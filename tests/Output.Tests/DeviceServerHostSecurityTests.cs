@@ -188,6 +188,87 @@ public sealed class DeviceServerHostSecurityTests
     }
 
     [Fact]
+    public async Task TelemetryMetrics_ShouldPassThroughWithoutServerNormalization_AndPersistOnRecord()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "telemetry-metrics-pass-through");
+
+        using var ws = new ClientWebSocket();
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var telemetryJson = JsonSerializer.Serialize(new
+        {
+            deviceId = paired.DeviceId,
+            uptimeSeconds = 321,
+            loopLoadPercent = 135,
+            freeHeapBytes = 1024,
+            largestHeapBlockBytes = 4096,
+            psramAvailable = true,
+            freePsramBytes = 2048,
+            largestPsramBlockBytes = 8192,
+            wifiConnected = false,
+        });
+
+        var payload = Encoding.UTF8.GetBytes(telemetryJson);
+        await ws.SendAsync(payload, WebSocketMessageType.Text, true, CancellationToken.None);
+
+        var telemetryApplied = await WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            return snapshot is not null
+                && snapshot.UptimeSeconds == 321
+                && snapshot.LoopLoadPercent == 135
+                && snapshot.FreeHeapBytes == 1024
+                && snapshot.LargestHeapBlockBytes == 4096
+                && snapshot.PsramAvailable == true
+                && snapshot.FreePsramBytes == 2048
+                && snapshot.LargestPsramBlockBytes == 8192
+                && snapshot.WifiConnected == false;
+        }, timeout: TimeSpan.FromSeconds(5));
+
+        Assert.True(telemetryApplied, "Telemetria com metricas estendidas nao foi refletida no snapshot no timeout esperado.");
+
+        var snapshotAfter = host.GetDevicesSnapshot().First(d =>
+            string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(321, snapshotAfter.UptimeSeconds);
+        Assert.Equal(135, snapshotAfter.LoopLoadPercent);
+        Assert.Equal(1024L, snapshotAfter.FreeHeapBytes);
+        Assert.Equal(4096L, snapshotAfter.LargestHeapBlockBytes);
+        Assert.True(snapshotAfter.PsramAvailable);
+        Assert.Equal(2048L, snapshotAfter.FreePsramBytes);
+        Assert.Equal(8192L, snapshotAfter.LargestPsramBlockBytes);
+        Assert.False(snapshotAfter.WifiConnected);
+
+        var recordAfter = host.GetDeviceRecords().First(d =>
+            string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(321, recordAfter.UptimeSeconds);
+        Assert.Equal(135, recordAfter.LoopLoadPercent);
+        Assert.Equal(1024L, recordAfter.FreeHeapBytes);
+        Assert.Equal(4096L, recordAfter.LargestHeapBlockBytes);
+        Assert.True(recordAfter.PsramAvailable);
+        Assert.Equal(2048L, recordAfter.FreePsramBytes);
+        Assert.Equal(8192L, recordAfter.LargestPsramBlockBytes);
+        Assert.False(recordAfter.WifiConnected);
+
+        await CloseWebSocketQuietlyAsync(ws);
+    }
+
+    [Fact]
     public async Task PairRateLimit_ShouldThrottleBurstByIp()
     {
         var port = GetFreeTcpPort();

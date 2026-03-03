@@ -87,6 +87,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Convencoes de links wiki<->codigo](reference/linking-conventions.md)
 - [HTTP API v1](reference/http-api-v1.md)
 - [WS protocol v1](reference/ws-protocol-v1.md)
+- [Device telemetry v2 fields](reference/device-telemetry-v2-fields.md)
 - [Troubleshooting matrix](reference/troubleshooting-matrix.md)
 - [Docs health](reference/docs-health.md)
 - [Glossario](reference/glossary.md)

@@ -9,12 +9,15 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
     private const int MaxLogEntries = 600;
+    private const int MaxDeviceLogEntries = 100;
 
-    private readonly DeviceIntegrationService integration;
-    private readonly SettingsRepository settingsRepository;
-    private readonly AppSettingsDomainService settingsDomainService;
+    private readonly IDeviceOperationsRuntime integration;
+    private readonly SettingsRepository? settingsRepository;
+    private readonly AppSettingsDomainService? settingsDomainService;
     private readonly object gate = new();
     private readonly List<string> logs = new();
+    private readonly Dictionary<string, List<string>> deviceLogsById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> awaitingFirstTelemetryByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<DeviceSnapshot> devicesSnapshot = new();
     private readonly Dictionary<string, CommandExecutionContext> commandByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Timer refreshTimer;
@@ -31,15 +34,29 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     private bool disposed;
 
     public DeviceOperationsCoordinator(DeviceIntegrationService integration, SettingsRepository settingsRepository, AppSettingsDomainService settingsDomainService)
+        : this(new DeviceOperationsRuntime(integration), settingsRepository, settingsDomainService)
+    {
+    }
+
+    internal DeviceOperationsCoordinator(
+        IDeviceOperationsRuntime integration,
+        SettingsRepository? settingsRepository,
+        AppSettingsDomainService? settingsDomainService)
     {
         this.integration = integration;
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
         refreshTimer = new Timer(OnRefreshTimerTick, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
+        if (settingsRepository is null || settingsDomainService is null)
+        {
+            lifecycleThresholds = DeviceLifecycleThresholds.Default;
+            lifecycleThresholdsLoaded = true;
+        }
+
         integration.DevicesChanged += OnDevicesChanged;
         integration.LogMessage += OnLogMessage;
-        integration.Host.CommandProgressChanged += OnHostCommandProgressChanged;
+        integration.CommandProgressChanged += OnHostCommandProgressChanged;
     }
 
     public event EventHandler? StateChanged;
@@ -68,6 +85,24 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
                 ServerBaseAddress = integration.GetServerBaseAddress(),
                 Logs = logs.ToArray(),
             };
+        }
+    }
+
+    public IReadOnlyList<string> GetDeviceLogs(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return Array.Empty<string>();
+        }
+
+        lock (gate)
+        {
+            if (!deviceLogsById.TryGetValue(deviceId.Trim(), out var entries) || entries.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            return entries.ToArray();
         }
     }
 
@@ -116,6 +151,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
             return false;
         }
 
+        AppendDeviceLog(normalizedDeviceId, "Dispositivo removido do registro local.");
         AppendLog($"Dispositivo removido do registro local: {normalizedDeviceId}");
         RequestRefresh();
         return true;
@@ -183,7 +219,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         refreshTimer.Dispose();
         integration.DevicesChanged -= OnDevicesChanged;
         integration.LogMessage -= OnLogMessage;
-        integration.Host.CommandProgressChanged -= OnHostCommandProgressChanged;
+        integration.CommandProgressChanged -= OnHostCommandProgressChanged;
     }
 
     private async Task<CommandDispatchResult> RunCommandCoreAsync(
@@ -242,12 +278,13 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
 
         RaiseStateChanged();
+        AppendDeviceLog(normalizedDeviceId, $"Comando iniciado ({operationLabel}).");
         AppendLog($"Comando iniciado ({operationLabel}) para {normalizedDeviceId}.");
 
         CommandDispatchResult result;
         try
         {
-            result = await integration.Host
+            result = await integration
                 .SendCommandTrackedAsync(normalizedDeviceId, commandType, parameters, CommandTimeout, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -306,6 +343,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
 
         RaiseStateChanged();
+        AppendDeviceLog(normalizedDeviceId, BuildResultLogMessage(result));
         AppendLog(BuildResultLogMessage(result));
         return result;
     }
@@ -340,11 +378,13 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
             return;
         }
 
+        var normalizedDeviceId = progress.DeviceId.Trim();
         var shouldRaise = false;
+        var progressPercent = 0;
 
         lock (gate)
         {
-            if (!commandByDevice.TryGetValue(progress.DeviceId, out var context))
+            if (!commandByDevice.TryGetValue(normalizedDeviceId, out var context))
             {
                 return;
             }
@@ -362,24 +402,27 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
             context.Percent = Math.Clamp(Math.Max(context.Percent, progress.ProgressPercent), 0, 100);
             context.Status = BuildLiveCommandStatus(progress);
             context.Stage = progress.Stage;
+            progressPercent = context.Percent;
             shouldRaise = true;
 
-            if (string.Equals(lastCommandDeviceId, progress.DeviceId, StringComparison.OrdinalIgnoreCase)
+            if (string.Equals(lastCommandDeviceId, normalizedDeviceId, StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(lastCommandDeviceId))
             {
                 commandPercent = context.Percent;
                 commandStatus = context.Status;
-                lastCommandDeviceId = progress.DeviceId;
+                lastCommandDeviceId = normalizedDeviceId;
             }
         }
 
         if (shouldRaise)
         {
+            var progressMessage = !string.IsNullOrWhiteSpace(progress.Message)
+                ? $"[{DescribeStage(progress.Stage)}] {progress.Message}"
+                : $"[{DescribeStage(progress.Stage)}] Progresso de comando: {progressPercent}%";
+
+            AppendDeviceLog(normalizedDeviceId, progressMessage);
             RaiseStateChanged();
-            if (!string.IsNullOrWhiteSpace(progress.Message))
-            {
-                AppendLog($"[{DescribeStage(progress.Stage)}] {progress.Message}");
-            }
+            AppendLog(progressMessage);
         }
     }
 
@@ -409,6 +452,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
                 if (forcePublish || nonOnlinePresent || !AreSnapshotsEquivalent(devicesSnapshot, nextSnapshot))
                 {
+                    RecordDeviceLifecycleEventsLocked(devicesSnapshot, nextSnapshot);
                     devicesSnapshot.Clear();
                     devicesSnapshot.AddRange(nextSnapshot);
                     changed = true;
@@ -442,9 +486,19 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
             return;
         }
 
+        var repository = settingsRepository;
+        var domainService = settingsDomainService;
+        if (repository is null || domainService is null)
+        {
+            lifecycleThresholds = DeviceLifecycleThresholds.Default;
+            lifecycleThresholdsLoaded = true;
+            return;
+        }
+
         try
         {
-            var settings = settingsDomainService.Migrate(await settingsRepository.LoadAsync().ConfigureAwait(false));
+            var loadedSettings = await repository.LoadAsync().ConfigureAwait(false);
+            var settings = domainService.Migrate(loadedSettings);
             lifecycleThresholds = DeviceLifecycleThresholds.FromSettings(settings);
         }
         catch
@@ -475,6 +529,14 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
                 || !string.Equals(a.FirmwareVersion, b.FirmwareVersion, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.LastKnownIp, b.LastKnownIp, StringComparison.OrdinalIgnoreCase)
                 || a.LastKnownRssi != b.LastKnownRssi
+                || a.UptimeSeconds != b.UptimeSeconds
+                || a.LoopLoadPercent != b.LoopLoadPercent
+                || a.FreeHeapBytes != b.FreeHeapBytes
+                || a.LargestHeapBlockBytes != b.LargestHeapBlockBytes
+                || a.PsramAvailable != b.PsramAvailable
+                || a.FreePsramBytes != b.FreePsramBytes
+                || a.LargestPsramBlockBytes != b.LargestPsramBlockBytes
+                || a.WifiConnected != b.WifiConnected
                 || !string.Equals(a.ActiveAppId, b.ActiveAppId, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal)
                 || !string.Equals(a.BoardModel, b.BoardModel, StringComparison.OrdinalIgnoreCase)
@@ -490,6 +552,87 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
 
         return true;
+    }
+
+    private void RecordDeviceLifecycleEventsLocked(IReadOnlyList<DeviceSnapshot> previous, IReadOnlyList<DeviceSnapshot> next)
+    {
+        var previousById = new Dictionary<string, DeviceSnapshot>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in previous)
+        {
+            if (!string.IsNullOrWhiteSpace(item.DeviceId))
+            {
+                previousById[item.DeviceId] = item;
+            }
+        }
+
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var now = DateTimeOffset.Now;
+
+        foreach (var current in next)
+        {
+            if (string.IsNullOrWhiteSpace(current.DeviceId))
+            {
+                continue;
+            }
+
+            var deviceId = current.DeviceId;
+            seenIds.Add(deviceId);
+            previousById.TryGetValue(deviceId, out var previousSnapshot);
+
+            var isOnline = current.Status == DeviceStatus.Online;
+            if (previousSnapshot is null)
+            {
+                if (isOnline)
+                {
+                    AppendDeviceLogLocked(deviceId, "Dispositivo autenticado e online.", now);
+                    awaitingFirstTelemetryByDevice.Add(deviceId);
+                }
+            }
+            else
+            {
+                var wasOnline = previousSnapshot.Status == DeviceStatus.Online;
+                if (!wasOnline && isOnline)
+                {
+                    AppendDeviceLogLocked(deviceId, "Dispositivo autenticado e online.", now);
+                    if (previousSnapshot.Status == DeviceStatus.Offline)
+                    {
+                        AppendDeviceLogLocked(deviceId, "Dispositivo voltou a aparecer apos ficar offline.", now);
+                    }
+
+                    awaitingFirstTelemetryByDevice.Add(deviceId);
+                }
+                else if (wasOnline && !isOnline)
+                {
+                    AppendDeviceLogLocked(deviceId, "Dispositivo ficou offline.", now);
+                    awaitingFirstTelemetryByDevice.Remove(deviceId);
+                }
+            }
+
+            if (isOnline
+                && awaitingFirstTelemetryByDevice.Contains(deviceId)
+                && HasFreshTelemetrySample(previousSnapshot, current))
+            {
+                AppendDeviceLogLocked(deviceId, "Primeira telemetria recebida apos reconexao.", now);
+                awaitingFirstTelemetryByDevice.Remove(deviceId);
+            }
+        }
+
+        awaitingFirstTelemetryByDevice.RemoveWhere(id => !seenIds.Contains(id));
+    }
+
+    private static bool HasFreshTelemetrySample(DeviceSnapshot? previous, DeviceSnapshot current)
+    {
+        if (!current.LastTelemetryUtc.HasValue)
+        {
+            return false;
+        }
+
+        if (previous is null)
+        {
+            return true;
+        }
+
+        return !previous.LastTelemetryUtc.HasValue || current.LastTelemetryUtc > previous.LastTelemetryUtc;
     }
 
     private static string BuildLiveCommandStatus(DeviceCommandProgressMessage progress)
@@ -551,6 +694,38 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         return stage;
     }
 
+    private void AppendDeviceLog(string deviceId, string message)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            AppendDeviceLogLocked(deviceId.Trim(), message, DateTimeOffset.Now);
+        }
+
+        RaiseStateChanged();
+    }
+
+    private void AppendDeviceLogLocked(string deviceId, string message, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        if (!deviceLogsById.TryGetValue(deviceId, out var entries))
+        {
+            entries = new List<string>();
+            deviceLogsById[deviceId] = entries;
+        }
+
+        entries.Add($"[{now:HH:mm:ss}] {message}");
+        TrimToLimit(entries, MaxDeviceLogEntries);
+    }
+
     private void AppendLog(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -610,6 +785,76 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
                 ErrorCode = ErrorCode,
             };
         }
+    }
+}
+
+internal interface IDeviceOperationsRuntime
+{
+    event EventHandler? DevicesChanged;
+
+    event EventHandler<string>? LogMessage;
+
+    event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
+
+    string GetServerBaseAddress();
+
+    PairingCodeInfo CreatePairingCode(TimeSpan ttl);
+
+    bool RemoveDevice(string deviceId);
+
+    IReadOnlyList<DeviceSnapshot> GetDevices();
+
+    Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
+}
+
+internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
+{
+    private readonly DeviceIntegrationService integration;
+
+    public DeviceOperationsRuntime(DeviceIntegrationService integration)
+    {
+        this.integration = integration;
+    }
+
+    public event EventHandler? DevicesChanged
+    {
+        add => integration.DevicesChanged += value;
+        remove => integration.DevicesChanged -= value;
+    }
+
+    public event EventHandler<string>? LogMessage
+    {
+        add => integration.LogMessage += value;
+        remove => integration.LogMessage -= value;
+    }
+
+    public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+    {
+        add => integration.Host.CommandProgressChanged += value;
+        remove => integration.Host.CommandProgressChanged -= value;
+    }
+
+    public string GetServerBaseAddress() => integration.GetServerBaseAddress();
+
+    public PairingCodeInfo CreatePairingCode(TimeSpan ttl) => integration.CreatePairingCode(ttl);
+
+    public bool RemoveDevice(string deviceId) => integration.RemoveDevice(deviceId);
+
+    public IReadOnlyList<DeviceSnapshot> GetDevices() => integration.GetDevices();
+
+    public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        return integration.Host.SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
     }
 }
 
