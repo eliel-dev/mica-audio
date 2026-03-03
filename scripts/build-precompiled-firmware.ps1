@@ -9,6 +9,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $firmwareRoot = Join-Path $repoRoot 'firmware/esp32s3-devkitc1'
 $outputRoot = Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
 $target = [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin' }
+$platformIoCommand = @()
 
 function Invoke-External {
     param(
@@ -18,19 +19,51 @@ function Invoke-External {
         [string]$ErrorMessage
     )
 
-    & $Args[0] $Args[1..($Args.Length - 1)] | Out-Host
+    if ($Args.Length -eq 0) {
+        throw "Invoke-External recebeu lista de argumentos vazia."
+    }
+
+    if ($Args.Length -eq 1) {
+        & $Args[0] | Out-Host
+    }
+    else {
+        & $Args[0] $Args[1..($Args.Length - 1)] | Out-Host
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "$ErrorMessage (exit code=$LASTEXITCODE)"
     }
 }
 
-function Require-Python {
-    try {
-        & python --version | Out-Host
+function Resolve-PlatformIoCommand {
+    $platformioCmd = Get-Command -Name 'platformio' -ErrorAction SilentlyContinue
+    if ($platformioCmd) {
+        return ,$platformioCmd.Source
     }
-    catch {
-        throw 'Executavel "python" nao encontrado. Instale Python e garanta o PATH antes de continuar.'
+
+    $pioCmd = Get-Command -Name 'pio' -ErrorAction SilentlyContinue
+    if ($pioCmd) {
+        return ,$pioCmd.Source
     }
+
+    $localPlatformIo = Join-Path $env:USERPROFILE '.platformio\penv\Scripts\platformio.exe'
+    if (Test-Path $localPlatformIo) {
+        return ,$localPlatformIo
+    }
+
+    $python = Get-Command -Name 'python' -ErrorAction SilentlyContinue
+    if ($python) {
+        try {
+            & python -m platformio --version *> $null
+            if ($LASTEXITCODE -eq 0) {
+                return @('python', '-m', 'platformio')
+            }
+        }
+        catch {
+            # fallback para erro mais claro no final
+        }
+    }
+
+    throw 'PlatformIO nao encontrado. Instale PlatformIO Core ou garanta "~/.platformio/penv/Scripts" no PATH.'
 }
 
 function Ensure-Tools {
@@ -38,15 +71,45 @@ function Ensure-Tools {
         return
     }
 
-    Write-Host '[build-precompiled-firmware] Garantindo PlatformIO e esptool no Python atual...'
-    Invoke-External -Args @('python', '-m', 'pip', 'install', '--upgrade', 'platformio', 'esptool') -ErrorMessage 'Falha ao instalar platformio/esptool'
+    $alreadyAvailable = $false
+    try {
+        $null = Resolve-PlatformIoCommand
+        $alreadyAvailable = $true
+    }
+    catch {
+        $alreadyAvailable = $false
+    }
+
+    if ($alreadyAvailable) {
+        return
+    }
+
+    $python = Get-Command -Name 'python' -ErrorAction SilentlyContinue
+    if (-not $python) {
+        return
+    }
+
+    Write-Host '[build-precompiled-firmware] PlatformIO nao encontrado. Instalando no Python atual...'
+    Invoke-External -Args @('python', '-m', 'pip', 'install', '--upgrade', 'platformio') -ErrorMessage 'Falha ao instalar platformio'
+}
+
+function Invoke-Pio {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Args,
+        [Parameter(Mandatory)]
+        [string]$ErrorMessage
+    )
+
+    $commandArgs = @($script:platformIoCommand) + $Args
+    Invoke-External -Args $commandArgs -ErrorMessage $ErrorMessage
 }
 
 function Invoke-PioBuild {
     param([Parameter(Mandatory)][string]$Env)
 
     Write-Host "[build-precompiled-firmware] Build iniciado: $Env"
-    Invoke-External -Args @('python', '-m', 'platformio', 'run', '-e', $Env, '--project-dir', $firmwareRoot) -ErrorMessage "Falha no build do firmware ($Env)"
+    Invoke-Pio -Args @('run', '-e', $Env, '--project-dir', $firmwareRoot) -ErrorMessage "Falha no build do firmware ($Env)"
 }
 
 function Merge-Firmware {
@@ -67,13 +130,14 @@ function Merge-Firmware {
     }
 
     Write-Host "[build-precompiled-firmware] Merge iniciado: $Env -> $DestinationPath"
-    Invoke-External -Args @(
-        'python', '-m', 'esptool', '--chip', 'esp32s3', 'merge-bin',
-        '--flash-mode', 'keep', '--flash-freq', 'keep', '--flash-size', 'keep',
+    Invoke-Pio -Args @(
+        'pkg', 'exec', '-p', 'tool-esptoolpy', '--', 'esptool.py',
+        '--chip', 'esp32s3', 'merge_bin',
+        '--flash_mode', 'keep', '--flash_freq', 'keep', '--flash_size', 'keep',
         '0x0', $bootloader,
         '0x8000', $partitions,
         '0x10000', $firmware,
-        '-o', $DestinationPath) -ErrorMessage "Falha no merge do firmware ($Env)"
+        '--output', $DestinationPath) -ErrorMessage "Falha no merge do firmware ($Env)"
 
     if (-not (Test-Path $DestinationPath)) {
         throw "Falha ao gerar merged bin: $DestinationPath"
@@ -87,8 +151,10 @@ function Merge-Firmware {
     Write-Host "[build-precompiled-firmware] OK: $DestinationPath ($size bytes)"
 }
 
-Require-Python
 Ensure-Tools
+$platformIoCommand = @(Resolve-PlatformIoCommand)
+Write-Host "[build-precompiled-firmware] PlatformIO: $($platformIoCommand -join ' ')"
+Invoke-Pio -Args @('--version') -ErrorMessage 'Falha ao consultar versao do PlatformIO'
 
 if (-not (Test-Path $firmwareRoot)) {
     throw "Pasta de firmware nao encontrada: $firmwareRoot"

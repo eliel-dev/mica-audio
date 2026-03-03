@@ -17,6 +17,8 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
     private readonly SemaphoreSlim reconcileGate = new(1, 1);
     private readonly object stateGate = new();
     private readonly Dictionary<string, DeviceSessionState> sessionsByDeviceId = new(StringComparer.OrdinalIgnoreCase);
+    private CancellationTokenSource? delayedReconcileCts;
+    private DateTimeOffset delayedReconcileAtUtc = DateTimeOffset.MinValue;
 
     private bool hub75Enabled;
     private bool disposed;
@@ -43,9 +45,27 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
     {
         ThrowIfDisposed();
 
+        var disableTransition = false;
         lock (stateGate)
         {
+            disableTransition = hub75Enabled && !enabled;
             hub75Enabled = enabled;
+
+            if (disableTransition)
+            {
+                foreach (var state in sessionsByDeviceId.Values)
+                {
+                    if (string.IsNullOrWhiteSpace(state.PreviousAppId))
+                    {
+                        continue;
+                    }
+
+                    state.NextAttemptUtc = DateTimeOffset.MinValue;
+                    state.RetryCount = 0;
+                    state.LastErrorCode = null;
+                    state.Status = DeviceSessionStatus.RestorePending;
+                }
+            }
         }
 
         await ReconcileAsync(cancellationToken).ConfigureAwait(false);
@@ -64,6 +84,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
         lock (stateGate)
         {
             sessionsByDeviceId.Clear();
+            CancelDelayedReconcileLocked();
         }
     }
 
@@ -122,11 +143,16 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
             var snapshot = deviceOps.GetStateSnapshot().DeviceListSnapshot;
             var nowUtc = DateTimeOffset.UtcNow;
             List<DeviceCommandPlan> commands;
+            DateTimeOffset? nextRetryUtc;
 
             lock (stateGate)
             {
-                commands = BuildCommandsLocked(snapshot, nowUtc);
+                var reconcilePlan = BuildCommandsLocked(snapshot, nowUtc);
+                commands = reconcilePlan.Commands;
+                nextRetryUtc = reconcilePlan.NextRetryUtc;
             }
+
+            UpdateDelayedReconcileSchedule(nextRetryUtc, nowUtc);
 
             var shouldRequestRefresh = false;
 
@@ -167,6 +193,14 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
             {
                 deviceOps.RequestRefresh();
             }
+
+            var finalNowUtc = DateTimeOffset.UtcNow;
+            lock (stateGate)
+            {
+                nextRetryUtc = GetNextRetryUtcLocked(finalNowUtc);
+            }
+
+            UpdateDelayedReconcileSchedule(nextRetryUtc, finalNowUtc);
         }
         finally
         {
@@ -174,7 +208,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
         }
     }
 
-    private List<DeviceCommandPlan> BuildCommandsLocked(IReadOnlyList<DeviceSnapshot> snapshot, DateTimeOffset nowUtc)
+    private ReconcilePlan BuildCommandsLocked(IReadOnlyList<DeviceSnapshot> snapshot, DateTimeOffset nowUtc)
     {
         var plans = new List<DeviceCommandPlan>();
         var onlineByDeviceId = new Dictionary<string, DeviceSnapshot>(StringComparer.OrdinalIgnoreCase);
@@ -216,7 +250,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
                 state.NextAttemptUtc = nowUtc + DispatchCooldown;
             }
 
-            return plans;
+            return new ReconcilePlan(plans, GetNextRetryUtcLocked(nowUtc));
         }
 
         foreach (var (deviceId, state) in sessionsByDeviceId.ToArray())
@@ -250,7 +284,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
             state.NextAttemptUtc = nowUtc + DispatchCooldown;
         }
 
-        return plans;
+        return new ReconcilePlan(plans, GetNextRetryUtcLocked(nowUtc));
     }
 
     private DeviceSessionState GetOrCreateStateLocked(string deviceId)
@@ -350,6 +384,116 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
     private static string Normalize(string? value)
         => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
 
+    private DateTimeOffset? GetNextRetryUtcLocked(DateTimeOffset nowUtc)
+    {
+        DateTimeOffset? nextRetryUtc = null;
+        foreach (var state in sessionsByDeviceId.Values)
+        {
+            if (state.NextAttemptUtc <= nowUtc)
+            {
+                continue;
+            }
+
+            if (state.Status is not DeviceSessionStatus.ActivationPending
+                and not DeviceSessionStatus.ActivationFailed
+                and not DeviceSessionStatus.RestorePending
+                and not DeviceSessionStatus.RestoreFailed)
+            {
+                continue;
+            }
+
+            if (!nextRetryUtc.HasValue || state.NextAttemptUtc < nextRetryUtc.Value)
+            {
+                nextRetryUtc = state.NextAttemptUtc;
+            }
+        }
+
+        return nextRetryUtc;
+    }
+
+    private void UpdateDelayedReconcileSchedule(DateTimeOffset? nextRetryUtc, DateTimeOffset nowUtc)
+    {
+        CancellationTokenSource? scheduledCts = null;
+        TimeSpan due = TimeSpan.Zero;
+
+        lock (stateGate)
+        {
+            if (disposed)
+            {
+                CancelDelayedReconcileLocked();
+                return;
+            }
+
+            if (!nextRetryUtc.HasValue)
+            {
+                CancelDelayedReconcileLocked();
+                return;
+            }
+
+            var scheduledAtUtc = nextRetryUtc.Value;
+            if (scheduledAtUtc <= nowUtc)
+            {
+                CancelDelayedReconcileLocked();
+                return;
+            }
+
+            if (delayedReconcileCts is not null && delayedReconcileAtUtc <= scheduledAtUtc)
+            {
+                return;
+            }
+
+            CancelDelayedReconcileLocked();
+
+            delayedReconcileAtUtc = scheduledAtUtc;
+            delayedReconcileCts = new CancellationTokenSource();
+            scheduledCts = delayedReconcileCts;
+            due = scheduledAtUtc - nowUtc;
+        }
+
+        _ = RunDelayedReconcileAsync(scheduledCts!, due);
+    }
+
+    private async Task RunDelayedReconcileAsync(CancellationTokenSource scheduledCts, TimeSpan due)
+    {
+        try
+        {
+            await Task.Delay(due, scheduledCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        lock (stateGate)
+        {
+            if (disposed || !ReferenceEquals(delayedReconcileCts, scheduledCts))
+            {
+                return;
+            }
+
+            delayedReconcileCts = null;
+            delayedReconcileAtUtc = DateTimeOffset.MinValue;
+        }
+
+        scheduledCts.Dispose();
+        RequestReconcile();
+    }
+
+    private void CancelDelayedReconcileLocked()
+    {
+        var cts = delayedReconcileCts;
+        delayedReconcileCts = null;
+        delayedReconcileAtUtc = DateTimeOffset.MinValue;
+
+        if (cts is null)
+        {
+            return;
+        }
+
+        cts.Cancel();
+        cts.Dispose();
+    }
+
     private void ThrowIfDisposed()
     {
         if (disposed)
@@ -363,6 +507,8 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
         string TargetAppId,
         string? TargetAppName,
         DeviceSessionAction Action);
+
+    private readonly record struct ReconcilePlan(List<DeviceCommandPlan> Commands, DateTimeOffset? NextRetryUtc);
 
     private enum DeviceSessionAction
     {

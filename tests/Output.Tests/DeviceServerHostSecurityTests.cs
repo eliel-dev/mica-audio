@@ -320,6 +320,30 @@ public sealed class DeviceServerHostSecurityTests
     }
 
     [Fact]
+    public async Task LegacyWsQueryToken_ShouldBeRejected_ByDefault()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ws-legacy-default-disabled");
+
+        using var ws = new ClientWebSocket();
+        var ex = await Assert.ThrowsAsync<WebSocketException>(() =>
+            ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream?deviceId={paired.DeviceId}&token={paired.Token}"), CancellationToken.None));
+
+        Assert.Contains("401", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task LegacyWsQueryToken_ShouldBeRejected_WhenDisabled()
     {
         var port = GetFreeTcpPort();
@@ -343,6 +367,33 @@ public sealed class DeviceServerHostSecurityTests
             ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream?deviceId={paired.DeviceId}&token={paired.Token}"), CancellationToken.None));
 
         Assert.Contains("401", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WebSocketHeaderToken_ShouldBeAccepted_WhenLegacyDisabled()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+            AllowLegacyWebSocketQueryToken = false,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ws-header-legacy-disabled");
+
+        using var ws = new ClientWebSocket();
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        Assert.Equal(WebSocketState.Open, ws.State);
+        await CloseWebSocketQuietlyAsync(ws);
     }
 
     [Fact]

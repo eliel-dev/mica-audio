@@ -57,6 +57,7 @@ internal sealed class AppSettingsDomainService
             DeviceFreshThresholdSeconds = thresholds.DeviceFreshThresholdSeconds,
             DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
             DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
+            AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
             WindowWidth = settings.WindowWidth,
             WindowHeight = settings.WindowHeight,
         };
@@ -134,6 +135,7 @@ internal sealed class AppSettingsDomainService
             DeviceFreshThresholdSeconds = source.DeviceFreshThresholdSeconds;
             DeviceStaleThresholdMinutes = source.DeviceStaleThresholdMinutes;
             DeviceDormantThresholdHours = source.DeviceDormantThresholdHours;
+            AllowLegacyWebSocketQueryToken = source.AllowLegacyWebSocketQueryToken;
             WindowWidth = source.WindowWidth;
             WindowHeight = source.WindowHeight;
         }
@@ -156,6 +158,7 @@ internal sealed class AppSettingsDomainService
         public int DeviceFreshThresholdSeconds { get; private set; }
         public int DeviceStaleThresholdMinutes { get; private set; }
         public int DeviceDormantThresholdHours { get; private set; }
+        public bool AllowLegacyWebSocketQueryToken { get; private set; }
         public int WindowWidth { get; private set; }
         public int WindowHeight { get; private set; }
 
@@ -170,6 +173,7 @@ internal sealed class AppSettingsDomainService
         public void SetDeviceFreshThresholdSeconds(int value) => DeviceFreshThresholdSeconds = value;
         public void SetDeviceStaleThresholdMinutes(int value) => DeviceStaleThresholdMinutes = value;
         public void SetDeviceDormantThresholdHours(int value) => DeviceDormantThresholdHours = value;
+        public void SetAllowLegacyWebSocketQueryToken(bool value) => AllowLegacyWebSocketQueryToken = value;
         public void SetFrequencyScale(FrequencyScale value) => FrequencyScale = value;
         public void SetFrequencyRange(float minHz, float maxHz)
         {
@@ -210,6 +214,7 @@ internal sealed class AppSettingsDomainService
                 DeviceFreshThresholdSeconds = thresholds.DeviceFreshThresholdSeconds,
                 DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
                 DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
+                AllowLegacyWebSocketQueryToken = AllowLegacyWebSocketQueryToken,
                 WindowWidth = WindowWidth,
                 WindowHeight = WindowHeight,
             };

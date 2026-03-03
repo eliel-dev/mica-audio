@@ -70,6 +70,10 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         publicHost = ResolvePublicHost();
 
         var settings = settingsDomainService.Migrate(await settingsRepository.LoadAsync(cancellationToken).ConfigureAwait(false));
+        if (settings.AllowLegacyWebSocketQueryToken)
+        {
+            logger.LogWarning("Modo legado de autenticacao WS via query-string esta ATIVO por settings.json.");
+        }
 
         await serverHost.StartAsync(new ServerConfig
         {
@@ -79,6 +83,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
             MdnsServiceName = "_micaaudio._tcp",
             PublicHost = publicHost,
             DeviceFreshThresholdSeconds = settings.DeviceFreshThresholdSeconds,
+            AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
         }, cancellationToken).ConfigureAwait(false);
 
         logger.LogInformation("Servidor HTTP publico: {BaseAddress}", GetServerBaseAddress());

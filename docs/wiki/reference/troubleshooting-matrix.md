@@ -4,6 +4,7 @@
 | --- | --- | --- | --- |
 | Preview HUB75 nao aparece no Visualizador | conferir se `Modo HUB75` esta ativo e se `HubPreviewPanel` esta visivel | preview local oculto por toggle | ativar `Modo HUB75`; validar `OnHubCanvasDraw` e `InvalidateHubPreviews()` em `MainPage` |
 | Device conecta, mas nao atualiza a matriz | conferir telemetria `panelType` | firmware antigo 64x32 ou protocolo legado | regravar firmware DevKitC-1 128x64 e validar `StreamFrameV2` |
+| WS retorna 401 logo apos upgrade | conferir handshake WS no firmware e a flag `AllowLegacyWebSocketQueryToken` | firmware antigo ainda envia token por query com servidor em default seguro (legado OFF) | atualizar firmware para header WS; em incidente, habilitar temporariamente `"AllowLegacyWebSocketQueryToken": true` em `%AppData%\\MicaAudio\\settings.json` |
 | GIF parece deformado | revisar `GifScaleMode` | modo de escala inadequado para 128x64 | alternar entre `Fit`, `Fill` e `Stretch` |
 | Visual parece estreito na loja | revisar renderers de preview | helper ainda usando grade antiga em branch local | validar `Hub75PreviewHelper.PanelWidth=128` e `PanelHeight=64` |
 | A lista de dispositivos mostra texto cru em vez de item rico | revisar a UI ativa da pagina | `DevicesPage.Ui.cs` sem bind para `DeviceListRowControl` | validar `DeviceListRowControl` e `ApplyRenderedItemsDiff()` |

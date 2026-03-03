@@ -42,6 +42,7 @@ public sealed class AppSettingsDomainServiceTests
             FftSize = 4096,
             FftSmoothing = 0.4f,
             WeightingFilter = WeightingFilter.C,
+            AllowLegacyWebSocketQueryToken = true,
         };
 
         var result = service.Migrate(source);
@@ -56,6 +57,7 @@ public sealed class AppSettingsDomainServiceTests
         Assert.Equal(4096, result.FftSize);
         Assert.Equal(0.4f, result.FftSmoothing);
         Assert.Equal(WeightingFilter.C, result.WeightingFilter);
+        Assert.True(result.AllowLegacyWebSocketQueryToken);
         Assert.Equal(-85f, result.SensitivityMinDb);
         Assert.Equal(-25f, result.SensitivityMaxDb);
     }
@@ -70,6 +72,7 @@ public sealed class AppSettingsDomainServiceTests
             SensitivityMinDb = -70f,
             SensitivityMaxDb = -12f,
             LinearBoost = 1.6f,
+            AllowLegacyWebSocketQueryToken = true,
         };
 
         var result = service.Copy(source, builder =>
@@ -80,8 +83,26 @@ public sealed class AppSettingsDomainServiceTests
 
         Assert.Equal(2.0f, result.LinearBoost);
         Assert.Equal(48, result.BarCount);
+        Assert.True(result.AllowLegacyWebSocketQueryToken);
         Assert.Equal(-25f, result.Sensitivity);
         Assert.Equal(-85f, result.SensitivityMinDb);
         Assert.Equal(-25f, result.SensitivityMaxDb);
+    }
+
+    [Fact]
+    public void Copy_ShouldAllowTogglingLegacyWsQueryToken()
+    {
+        var service = new AppSettingsDomainService();
+        var source = new AppSettings
+        {
+            AllowLegacyWebSocketQueryToken = false,
+        };
+
+        var result = service.Copy(source, builder =>
+        {
+            builder.SetAllowLegacyWebSocketQueryToken(true);
+        });
+
+        Assert.True(result.AllowLegacyWebSocketQueryToken);
     }
 }

@@ -62,6 +62,14 @@ Os arquivos acima devem continuar apontando para esta pagina quando houver mudan
 Eles ainda nao tem UI dedicada, mas ja podem ser ajustados em config e passam por migracao/coercao segura em `AppSettingsDomainService`.
 A regra de normalizacao garante sempre: `Fresh < Stale < Dormant`.
 
+## Toggle operacional de auth WS legado
+
+`AppSettings` persiste a flag `AllowLegacyWebSocketQueryToken` para controlar rollback emergencial de compatibilidade WS:
+
+- default: `false` (seguro, sem query token no handshake WS);
+- override emergencial: `true` em `%AppData%\\MicaAudio\\settings.json`;
+- sem UI dedicada nesta fase; controle intencionalmente operacional.
+
 ## Migracao de Registro de Devices
 
 O registro persistido de devices agora usa dupla protecao para evitar falso `Nunca conectado`:

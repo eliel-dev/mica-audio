@@ -1,5 +1,6 @@
 using App.WinUI.Services.Devices;
 using Device.Protocol.Models;
+using System.Diagnostics;
 
 namespace Output.Tests;
 
@@ -119,6 +120,72 @@ public sealed class Hub75VisualizerSessionServiceTests
             TimeSpan.FromSeconds(3));
     }
 
+    [Fact]
+    public async Task Disable_ShouldRetryRestore_AfterCooldown_WithoutNewDeviceEvent()
+    {
+        var runtime = new FakeDeviceOperationsRuntime();
+        using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
+        using var service = new Hub75VisualizerSessionService(coordinator);
+
+        runtime.SetDevices([
+            CreateSnapshot("device-1", DeviceStatus.Online, "analogclock", "Relogio"),
+        ]);
+
+        await WaitForConditionAsync(
+            () => coordinator.GetStateSnapshot().DeviceListSnapshot.Any(static d =>
+                string.Equals(d.DeviceId, "device-1", StringComparison.OrdinalIgnoreCase)
+                && d.Status == DeviceStatus.Online),
+            TimeSpan.FromSeconds(3));
+
+        await service.SetHub75ModeAsync(enabled: true);
+
+        await WaitForConditionAsync(
+            () => runtime.HasActivateCommand("device-1", Hub75VisualizerSessionService.VisualizerAppId),
+            TimeSpan.FromSeconds(3));
+
+        runtime.SetDevices([
+            CreateSnapshot("device-1", DeviceStatus.Online, Hub75VisualizerSessionService.VisualizerAppId, Hub75VisualizerSessionService.VisualizerAppName),
+        ]);
+
+        await WaitForConditionAsync(
+            () => coordinator.GetStateSnapshot().DeviceListSnapshot.Any(static d =>
+                string.Equals(d.DeviceId, "device-1", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(d.ActiveAppId, Hub75VisualizerSessionService.VisualizerAppId, StringComparison.OrdinalIgnoreCase)),
+            TimeSpan.FromSeconds(3));
+
+        runtime.EnqueueActivateResult("analogclock",
+            new CommandDispatchResult
+            {
+                Accepted = false,
+                Completed = true,
+                Success = false,
+                ProgressPercent = 100,
+                Stage = "busy",
+                Message = "busy",
+                ErrorCode = "busy",
+            },
+            new CommandDispatchResult
+            {
+                Accepted = true,
+                Completed = true,
+                Success = true,
+                ProgressPercent = 100,
+                Stage = "done",
+                Message = "ok",
+            });
+
+        var stopwatch = Stopwatch.StartNew();
+        await service.SetHub75ModeAsync(enabled: false);
+        stopwatch.Stop();
+
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(300), $"Restore inicial demorou {stopwatch.ElapsedMilliseconds}ms.");
+        Assert.Equal(1, runtime.CountActivateCommands("device-1", "analogclock"));
+
+        await WaitForConditionAsync(
+            () => runtime.CountActivateCommands("device-1", "analogclock") >= 2,
+            TimeSpan.FromSeconds(3));
+    }
+
     private static DeviceSnapshot CreateSnapshot(string deviceId, DeviceStatus status, string activeAppId, string activeAppName)
     {
         return new DeviceSnapshot
@@ -157,6 +224,7 @@ public sealed class Hub75VisualizerSessionServiceTests
         private readonly object gate = new();
         private IReadOnlyList<DeviceSnapshot> devices = Array.Empty<DeviceSnapshot>();
         private readonly List<CommandRecord> commands = new();
+        private readonly Dictionary<string, Queue<CommandDispatchResult>> activateResultsByAppId = new(StringComparer.OrdinalIgnoreCase);
 
         public event EventHandler? DevicesChanged;
 
@@ -212,6 +280,31 @@ public sealed class Hub75VisualizerSessionServiceTests
             lock (gate)
             {
                 commands.Add(new CommandRecord(deviceId, commandType, appId, displayName));
+
+                if (commandType == DeviceCommandType.ActivateApp
+                    && !string.IsNullOrWhiteSpace(appId)
+                    && activateResultsByAppId.TryGetValue(appId, out var plannedResults)
+                    && plannedResults.Count > 0)
+                {
+                    var next = plannedResults.Dequeue();
+                    if (plannedResults.Count == 0)
+                    {
+                        activateResultsByAppId.Remove(appId);
+                    }
+
+                    return Task.FromResult(new CommandDispatchResult
+                    {
+                        DeviceId = string.IsNullOrWhiteSpace(next.DeviceId) ? deviceId : next.DeviceId,
+                        CommandId = string.IsNullOrWhiteSpace(next.CommandId) ? Guid.NewGuid().ToString("N") : next.CommandId,
+                        Accepted = next.Accepted,
+                        Completed = next.Completed,
+                        Success = next.Success,
+                        ProgressPercent = next.ProgressPercent,
+                        Stage = next.Stage,
+                        Message = next.Message,
+                        ErrorCode = next.ErrorCode,
+                    });
+                }
             }
 
             return Task.FromResult(new CommandDispatchResult
@@ -245,6 +338,39 @@ public sealed class Hub75VisualizerSessionServiceTests
                     command.CommandType == DeviceCommandType.ActivateApp
                     && string.Equals(command.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase)
                     && string.Equals(command.AppId, appId, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        public int CountActivateCommands(string deviceId, string appId)
+        {
+            lock (gate)
+            {
+                return commands.Count(command =>
+                    command.CommandType == DeviceCommandType.ActivateApp
+                    && string.Equals(command.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(command.AppId, appId, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        public void EnqueueActivateResult(string appId, params CommandDispatchResult[] results)
+        {
+            if (string.IsNullOrWhiteSpace(appId) || results.Length == 0)
+            {
+                return;
+            }
+
+            lock (gate)
+            {
+                if (!activateResultsByAppId.TryGetValue(appId, out var queue))
+                {
+                    queue = new Queue<CommandDispatchResult>();
+                    activateResultsByAppId[appId] = queue;
+                }
+
+                foreach (var result in results)
+                {
+                    queue.Enqueue(result);
+                }
             }
         }
 

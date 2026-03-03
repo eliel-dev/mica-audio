@@ -40,6 +40,8 @@ public sealed class AppSettings
 
     public int DeviceDormantThresholdHours { get; init; } = 24;
 
+    public bool AllowLegacyWebSocketQueryToken { get; init; }
+
     public int WindowWidth { get; init; }
 
     public int WindowHeight { get; init; }

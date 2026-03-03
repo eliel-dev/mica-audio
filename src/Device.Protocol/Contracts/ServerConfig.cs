@@ -31,7 +31,7 @@ public sealed class ServerConfig
     public int DeviceFreshThresholdSeconds { get; init; } = 15;
 
     // Transitional compatibility for firmware that still sends token via query string on WebSocket handshake.
-    public bool AllowLegacyWebSocketQueryToken { get; init; } = true;
+    public bool AllowLegacyWebSocketQueryToken { get; init; }
 
     // Hard limits for incoming request/message payloads.
     public long MaxJsonBodyBytes { get; init; } = 64L * 1024L;

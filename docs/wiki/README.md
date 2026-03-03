@@ -25,6 +25,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Quero debugar falha de download/salvamento de firmware: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
 - Quero adicionar app no catalogo: [guides/add-app-catalog-item.md](guides/add-app-catalog-item.md)
 - Quero configurar modificadores dinamicos de app: [guides/configure-app-modifiers.md](guides/configure-app-modifiers.md)
+- Quero auditar codigo legado com Context7: [guides/context7-legacy-review.md](guides/context7-legacy-review.md)
+- Quero auditar criticidade do projeto com Context7: [guides/criticality-context7-audit.md](guides/criticality-context7-audit.md)
 - Quero resolver busca de cidade no clima: [guides/troubleshoot-city-autocomplete.md](guides/troubleshoot-city-autocomplete.md)
 - Quero ver status da documentacao: [reference/docs-health.md](reference/docs-health.md)
 - Quero aplicar hardening security-first: [guides/security-quality-hardening.md](guides/security-quality-hardening.md)
@@ -62,6 +64,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Adicionar novo comando de dispositivo](guides/add-device-command.md)
 - [Setup de novo dispositivo](guides/setup-new-device.md)
 - [Download de firmware pre-compilado](guides/build-export-firmware.md)
+- [Context7 para revisao de legado](guides/context7-legacy-review.md)
+- [Auditoria de criticidade + Context7](guides/criticality-context7-audit.md)
 - [Debug: visualizacao nao aparece](guides/debug-no-visualization.md)
 - [Adicionar item no catalogo de apps](guides/add-app-catalog-item.md)
 - [Configurar modificadores de apps](guides/configure-app-modifiers.md)
@@ -82,7 +86,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Playbooks de incidente](ai/incident-playbooks.md)
 - [Viabilidade MCP](ai/mcp-viability.md)
 - [Consistencia com Codex](ai/consistencia-codex.md)
-- [Setup OpenCode + ECC (local)](ai/opencode-ecc-setup.md)
+- [Setup OpenCode + ECC + Context7 (local)](ai/opencode-ecc-setup.md)
 
 ### Referencia
 - [Code index](reference/code-index.md)

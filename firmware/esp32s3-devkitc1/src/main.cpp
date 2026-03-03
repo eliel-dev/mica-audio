@@ -48,7 +48,7 @@ constexpr unsigned long kTestLedDurationMs = 1500;
 constexpr unsigned long kTestLedTogglePeriodMs = 120;
 
 constexpr const char* kFirmwareProfile = "dma_exp";
-constexpr const char* kFirmwareVersion = "vNext-dma_exp";
+constexpr const char* kFirmwareVersion = "v2026.03.03-rsk002-ws-header";
 
 #if defined(MICA_SECURITY_PROFILE_RELEASE)
 constexpr const char* kSecurityProfile = "release";
@@ -738,7 +738,9 @@ void connectWebSocket() {
     return;
   }
 
-  String path = "/ws/v1/stream?deviceId=" + gDeviceId + "&token=" + gToken;
+  String extraHeaders = "X-Device-Id: " + gDeviceId + "\r\nX-Device-Token: " + gToken;
+  gWs.setExtraHeaders(extraHeaders.c_str());
+  String path = "/ws/v1/stream";
   gWs.begin(gServerHost.c_str(), gServerPort, path.c_str());
   gWs.onEvent(onWsEvent);
   gWs.setReconnectInterval(2000);

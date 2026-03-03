@@ -23,6 +23,12 @@
 - O build do firmware define `WEBSOCKETS_MAX_DATA_SIZE=32768` em `platformio.ini`.
 - O objetivo e suportar com margem payloads binarios grandes do stream `frame 128x64 RGB565` sem queda de conexao por limite de frame no cliente WS.
 
+## Atualizacao 2026-03 - Auth WS por header (RSK-002)
+
+- O handshake WS oficial passou a usar path fixo `/ws/v1/stream` sem token na query string.
+- O firmware envia `X-Device-Id` e `X-Device-Token` via `setExtraHeaders(...)`.
+- Versao de release desta mudanca: `v2026.03.03-rsk002-ws-header`.
+
 ## Referencias de codigo
 
 - [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)

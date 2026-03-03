@@ -36,7 +36,9 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 
 3. Autenticacao:
 - HTTP (`/api/v1/*`): aceita somente `X-Device-Token` ou `Authorization: Bearer`.
-- WebSocket (`/ws/v1/stream`): aceita headers e, temporariamente, query token legado quando `AllowLegacyWebSocketQueryToken=true`.
+- WebSocket (`/ws/v1/stream`): aceita `X-Device-Id` + `X-Device-Token` (ou `Authorization: Bearer`).
+- Query token legado em WS permanece disponivel apenas por compatibilidade quando `AllowLegacyWebSocketQueryToken=true`.
+- Default de seguranca: `AllowLegacyWebSocketQueryToken=false`.
 
 4. Limites de payload:
 - body JSON limitado por `MaxJsonBodyBytes` (default 64KB).
@@ -116,4 +118,12 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - O detach de socket agora e seguro por identidade da conexao: somente o socket atualmente anexado pode transicionar a sessao para desconectada.
 - Foi adicionado grace period curto de 500ms apos detach para absorver reconexoes rapidas sem alternancia visual online/offline na UI.
 - O objetivo e reduzir falso flapping quando o firmware reconecta em janela curta.
+
+## Atualizacao 2026-03 - RSK-002 cutover de auth WS
+
+- O fallback de query token legado no WS foi mantido apenas como mecanismo de rollback, mas desligado por default.
+- O host carrega `AllowLegacyWebSocketQueryToken` via `settings.json` do app.
+- Em incidente de campo, o rollback pode reativar temporariamente o legado sem recompilar:
+  - `%AppData%\\MicaAudio\\settings.json`
+  - `"AllowLegacyWebSocketQueryToken": true`
 
