@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text;
 using Microsoft.Graphics.Canvas;
 using Windows.UI;
@@ -7,8 +7,8 @@ namespace App.WinUI.Views.Controls.Renderers;
 
 internal static class Hub75PreviewHelper
 {
-    public const int PanelWidth = 64;
-    public const int PanelHeight = 32;
+    public const int PanelWidth = 128;
+    public const int PanelHeight = 64;
 
     private static readonly IReadOnlyDictionary<char, string[]> Font5x7 = new Dictionary<char, string[]>
     {
@@ -156,3 +156,4 @@ internal static class Hub75PreviewHelper
         }
     }
 }
+

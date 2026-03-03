@@ -277,7 +277,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
     {
         var payload = new LedPayload
         {
-            Frame64x32 = frame,
+            Frame128x64 = frame,
             Level = 1f,
             PresetId = GifPresetId,
         };
@@ -291,7 +291,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
     {
         var payload = new LedPayload
         {
-            Frame64x32 = frame,
+            Frame128x64 = frame,
             Level = 1f,
             PresetId = GifPresetId,
         };
@@ -330,7 +330,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
     {
         matrixOutput.Send(new LedPayload
         {
-            Bins64 = new float[LedDefaults.MatrixWidth],
+            Bins128 = new float[LedDefaults.MatrixWidth],
             Level = 0f,
             PresetId = GifPresetId,
         });
@@ -348,6 +348,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
     }
 }
+
 
 
 

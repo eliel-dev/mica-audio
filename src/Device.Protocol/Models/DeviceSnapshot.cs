@@ -1,4 +1,4 @@
-﻿namespace Device.Protocol.Models;
+namespace Device.Protocol.Models;
 
 public sealed class DeviceSnapshot
 {
@@ -6,11 +6,21 @@ public sealed class DeviceSnapshot
 
     public string Name { get; init; } = string.Empty;
 
-    public string Profile { get; init; } = "stable";
+    public string Profile { get; init; } = "dma_exp";
 
     public DeviceStatus Status { get; init; }
 
+    public bool IsRegistered { get; init; }
+
     public DateTimeOffset LastSeenUtc { get; init; }
+
+    public DateTimeOffset? FirstSeenUtc { get; init; }
+
+    public DateTimeOffset? LastTelemetryUtc { get; init; }
+
+    public DateTimeOffset? LastAuthUtc { get; init; }
+
+    public DeviceConfigState ConfigState { get; init; }
 
     public string? LastKnownIp { get; init; }
 

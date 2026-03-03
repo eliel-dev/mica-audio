@@ -414,14 +414,14 @@
                         <TextBlock
                             Margin="0,0,0,8"
                             Style="{StaticResource AppStatusTextStyle}"
-                            Text="Simulacao HUB75 local (64x32 e 128x64)" />
+                            Text="Simulacao HUB75 local (128x64 nativo)" />
                         <Grid Grid.Row="1" ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
 
-                            <Grid>
+                            <Grid Grid.ColumnSpan="2">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
@@ -429,34 +429,26 @@
                                 <TextBlock
                                     Margin="0,0,0,6"
                                     Style="{StaticResource AppMutedTextStyle}"
-                                    Text="64x32" />
+                                    Text="128x64" />
                                 <canvas:CanvasControl
                                     x:Name="HubCanvas"
                                     Grid.Row="1"
                                     Draw="OnHubCanvasDraw" />
                             </Grid>
 
-                            <Grid Grid.Column="1">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-                                <TextBlock
-                                    Margin="0,0,0,6"
-                                    Style="{StaticResource AppMutedTextStyle}"
-                                    Text="128x64 (simulado 2x)" />
-                                <canvas:CanvasControl
-                                    x:Name="HubCanvas128"
-                                    Grid.Row="1"
-                                    Draw="OnHubCanvas128Draw" />
                             </Grid>
-                        </Grid>
                     </Grid>
                 </Border>
             </Grid>
         </SplitView.Content>
     </SplitView>
 </Page>
+
+
+
+
+
+
 
 
 

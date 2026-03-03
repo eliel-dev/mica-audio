@@ -1,4 +1,4 @@
-﻿# ADRs do Mica Audio
+# ADRs do Mica Audio
 
 Esta pasta registra Decisoes de Arquitetura (ADR) para governanca tecnica e continuidade.
 
@@ -21,3 +21,5 @@ Esta pasta registra Decisoes de Arquitetura (ADR) para governanca tecnica e cont
 7. [0007 - Bridge de reatividade e capacidades de UI para renderers](0007-renderer-reactivity-and-ui-capability-bridge.md)
 8. [0008 - Visualizacoes 2D-only para HUB75](0008-visualizacoes-2d-only-para-hub75.md)
 
+
+- [0009 - HUB75 128x64 hard cutover DevKitC-1 only](0009-hub75-128x64-hard-cutover-devkitc1-only.md)

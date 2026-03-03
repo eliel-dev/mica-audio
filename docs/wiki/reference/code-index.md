@@ -1,133 +1,46 @@
-# Code Index
-Indice expandido para localizar rapidamente pontos de alteracao por pagina, servico e protocolo.
-## App pages (WinUI)
-- [App](../../../src/App.WinUI/App.xaml.cs#L1)
-- [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
-- [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1) - visualizador principal; faixa de dB fixa em `-85/-25`; troca de preset por teclado com HUD temporario
-- [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
-- [AppsPage](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L1)
-- [MainPageViewModel](../../../src/App.WinUI/ViewModels/MainPageViewModel.cs#L1)
-- [DevicesPageViewModel](../../../src/App.WinUI/ViewModels/DevicesPageViewModel.cs#L1)
-- [AppsPageViewModel](../../../src/App.WinUI/ViewModels/AppsPageViewModel.cs#L1)
-- [ShellPageViewModel](../../../src/App.WinUI/ViewModels/ShellPageViewModel.cs#L1)
-## UI services
-- [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
-- [Hub75GifDecoder](../../../src/App.WinUI/Services/Gif/Hub75GifDecoder.cs#L1)
-- [Hub75FrameFormatter](../../../src/App.WinUI/Services/Gif/Hub75FrameFormatter.cs#L1)
-- [Hub75GifPlayer](../../../src/App.WinUI/Services/Gif/Hub75GifPlayer.cs#L1)
-- [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L1) - normaliza faixa fixa de dB e compatibilidade de settings
-- [MicaAudioOptions](../../../src/MicaAudio.Core/Config/MicaAudioOptions.cs#L1)
-- [DeviceIntegrationService](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L1)
-- [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
-- [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
-- [PrecompiledFirmwareOption](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareOption.cs#L1)
-- [DeviceCommandExecutionState](../../../src/App.WinUI/Services/Devices/DeviceCommandExecutionState.cs#L1)
-- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
-- [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
-- [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L1)
-- [GifCatalogAppRuntimeService](../../../src/App.WinUI/Services/Apps/GifCatalogAppRuntimeService.cs#L1)
-- [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)
-- [CityAutocompleteService](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L1)
-- [SaveAppConfigUseCase](../../../src/App.WinUI/Services/Apps/UseCases/SaveAppConfigUseCase.cs#L1)
-- [AppConfigValidationUseCase](../../../src/App.WinUI/Services/Apps/UseCases/AppConfigValidationUseCase.cs#L1)
-- [DeployAppUseCase](../../../src/App.WinUI/Services/Apps/UseCases/DeployAppUseCase.cs#L1)
-- [AppPreviewRendererRegistry](../../../src/App.WinUI/Views/Controls/AppPreviewRendererRegistry.cs#L1)
-- [AppPreviewThumbnailControl](../../../src/App.WinUI/Views/Controls/AppPreviewThumbnailControl.cs#L1)
-- [AppCatalogCardControl](../../../src/App.WinUI/Views/Controls/AppCatalogCardControl.cs#L1)
-- [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1)
-- [PresetNavigationHelper](../../../src/App.WinUI/Services/Visualizer/PresetNavigationHelper.cs#L1)
-- [GifPreviewRenderer](../../../src/App.WinUI/Views/Controls/Renderers/GifPreviewRenderer.cs#L1)
-## Audio, DSP and visual
-- [WasapiLoopbackCaptureService](../../../src/Audio.Loopback/Capture/WasapiLoopbackCaptureService.cs#L1)
-- [SpectrumAnalyzer](../../../src/Analyzer.Dsp/Analysis/SpectrumAnalyzer.cs#L1)
-- [LogBandMapper](../../../src/Analyzer.Dsp/Analysis/LogBandMapper.cs#L1)
-- [EnvelopeSmoother](../../../src/Analyzer.Dsp/Analysis/EnvelopeSmoother.cs#L1)
-- [VisualizerEngine](../../../src/Visual.Win2D/Engine/VisualizerEngine.cs#L1)
-- [AudioMotionCloneRenderer](../../../src/Visual.Win2D/Renderers/AudioMotionCloneRenderer.cs#L1)
-- [VizzyBlobNeonRenderer](../../../src/Visual.Win2D/Renderers/VizzyBlobNeonRenderer.cs#L1)
-- [VizzyOrbitRingsRenderer](../../../src/Visual.Win2D/Renderers/VizzyOrbitRingsRenderer.cs#L1)
-- [PolarArcsRenderer](../../../src/Visual.Win2D/Renderers/PolarArcsRenderer.cs#L1)
-## Output
-- [ILedOutput](../../../src/Output/Led/ILedOutput.cs#L1)
-- [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)
+# Referencia - Code Index
+
+Pontos principais do cutover HUB75 128x64:
+
+- [LedDefaults](../../../src/MicaAudio.Core/Led/LedDefaults.cs#L1)
+- [LedPayload](../../../src/MicaAudio.Core/Led/LedPayload.cs#L1)
+- [StreamFrameV2](../../../src/Device.Protocol/Stream/StreamFrameV2.cs#L1)
 - [MatrixPortalLedOutput](../../../src/Output/Led/MatrixPortalLedOutput.cs#L1)
-## Device server and protocol
-- [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1)
-- [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
-- [DeviceServerHost.Advanced](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1)
-- [ServerConfig](../../../src/Device.Protocol/Contracts/ServerConfig.cs#L1)
-- [DeviceCommandRequest](../../../src/Device.Protocol/Models/DeviceCommandRequest.cs#L1)
-- [DeviceCommandProgressMessage](../../../src/Device.Protocol/Models/DeviceCommandProgressMessage.cs#L1)
-- [StreamFrameV1](../../../src/Device.Protocol/Stream/StreamFrameV1.cs#L1)
-## Firmware and build
-- [main.cpp](../../../firmware/matrixportal-s3/src/main.cpp#L1)
+- [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)
+- [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
+- [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
+- [Hub75PreviewHelper](../../../src/App.WinUI/Views/Controls/Renderers/Hub75PreviewHelper.cs#L1)
+- [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)
+- [Firmware main.cpp](../../../firmware/matrixportal-s3/src/main.cpp#L1)
 - [platformio.ini](../../../firmware/matrixportal-s3/platformio.ini#L1)
-- [dev-run.ps1](../../../scripts/dev-run.ps1#L1)
-- [docs-validate.ps1](../../../scripts/docs-validate.ps1#L1)
-- [docs-structural-gate.ps1](../../../scripts/docs-structural-gate.ps1#L1)
-- [ai-governance-check.ps1](../../../scripts/ai-governance-check.ps1#L1)
-- [mvvm-validate.ps1](../../../scripts/mvvm-validate.ps1#L1)
-- [dependency-vulnerability-gate.ps1](../../../scripts/dependency-vulnerability-gate.ps1#L1)
-- [git-hooks-bootstrap.ps1](../../../scripts/git-hooks-bootstrap.ps1#L1)
-- [release.yml](../../../.github/workflows/release.yml#L1)
-- [codeql.yml](../../../.github/workflows/codeql.yml#L1)
-- [dependency-review.yml](../../../.github/workflows/dependency-review.yml#L1)
-- [sign-release.ps1](../../../scripts/sign-release.ps1#L1)
-- [MicaAudio.Installer.wixproj](../../../installer/MicaAudio.Installer/MicaAudio.Installer.wixproj#L1)
-- [Product.wxs](../../../installer/MicaAudio.Installer/Product.wxs#L1)
-- [MicaAudio.Bundle.wixproj](../../../installer/MicaAudio.Bundle/MicaAudio.Bundle.wixproj#L1)
-- [Bundle.wxs](../../../installer/MicaAudio.Bundle/Bundle.wxs#L1)
-- [dependabot.yml](../../../.github/dependabot.yml#L1)
-- [Directory.Build.props](../../../Directory.Build.props#L1)
-- [MicaAudio.Dev.slnf](../../../MicaAudio.Dev.slnf#L1)
-- [NuGet.config](../../../NuGet.config#L1)
-- [.editorconfig](../../../.editorconfig#L1)
-## App Module Pattern
-- [ADR 0004 - App Module Pattern](../../../docs/adr/0004-app-module-pattern.md#L1)
-- [Guia - App Module Pattern](../ai/app-module-pattern.md#L1)
-- [AppCatalogItem](../../../src/App.WinUI/Models/Apps/AppCatalogItem.cs#L1)
-- [AppPreviewDefinition](../../../src/App.WinUI/Models/Apps/AppPreviewDefinition.cs#L1)
-- [AppModifierDefinition](../../../src/App.WinUI/Models/Apps/AppModifierDefinition.cs#L1)
-- [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)
-- [AppDeploymentService](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L1)
-- [AppPreviewRendererRegistry](../../../src/App.WinUI/Views/Controls/AppPreviewRendererRegistry.cs#L1)
-- [GifCatalogAppRuntimeService](../../../src/App.WinUI/Services/Apps/GifCatalogAppRuntimeService.cs#L1)
-## Governanca IA
-- [AGENTS](../../../AGENTS.md#L1)
-- [AI index](../ai/README.md)
-- [Consistencia no desenvolvimento com Codex](../ai/consistencia-codex.md)
-- [AI contract YAML](ai-contract.v1.yaml)
-- [AI contract schema](ai-contract.schema.json)
-- [Handoffs](../../../docs/handoffs/README.md#L1)
-## Persistencia
-- [AppSettings](../../../src/MicaAudio.Core/Presets/AppSettings.cs#L1)
-- [SettingsRepository](../../../src/App.WinUI/Services/SettingsRepository.cs#L1)
-- [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L1)
 
-## Testes de bootstrap/aplicacao
-- [WinUiBootstrapSmokeTests](../../../tests/Integration.Smoke/WinUiBootstrapSmokeTests.cs#L1)
-- [AppConfigUseCasesTests](../../../tests/Output.Tests/AppConfigUseCasesTests.cs#L1)
-- [AppModifierStateStoreTests](../../../tests/Output.Tests/AppModifierStateStoreTests.cs#L1)
+Notas ativas:`r`n`r`n- Firmware oficial unico: `dma_exp` (DevKitC-1 128x64).
+
+Pontos de UI para operacao de devices:
+
+- [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
+- [DevicesPage UI programatica](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
+- [DeviceListRowControl](../../../src/App.WinUI/Views/Controls/DeviceListRowControl.cs#L1)
+- [DevicePreviewResolver](../../../src/App.WinUI/Services/Devices/DevicePreviewResolver.cs#L1)
+- [DevicePreviewVisibilityPolicy](../../../src/App.WinUI/Services/Devices/DevicePreviewVisibilityPolicy.cs#L1)
+
+
+Pontos de estado e visibilidade de devices:
+
+- [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
+- [DeviceListVisibilityPolicy](../../../src/App.WinUI/Services/Devices/DeviceListVisibilityPolicy.cs#L1)
+- [DeviceListRenderDiff](../../../src/App.WinUI/Services/Devices/DeviceListRenderDiff.cs#L1)
+- [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+Pontos de lifecycle leve de devices:
+
+- [DeviceLifecyclePolicy](../../../src/App.WinUI/Services/Devices/DeviceLifecyclePolicy.cs#L1)
+- [DeviceLifecyclePresentation](../../../src/App.WinUI/Services/Devices/DeviceLifecyclePresentation.cs#L1)
+- [DeviceLifecycleThresholds](../../../src/App.WinUI/Services/Devices/DeviceLifecycleThresholds.cs#L1)
+- [DeviceRegistryPresenceNormalizer](../../../src/App.WinUI/Services/Devices/DeviceRegistryPresenceNormalizer.cs#L1)
+- [migrate-device-registry-presence-v1.ps1](../../../scripts/migrate-device-registry-presence-v1.ps1#L1)
 
 
 
+- A DevicesPage usa diff incremental para manter a lista estavel e evitar rebuild total em refresh normal.
 
-
-## Renderer reactivity bridge (iteracao 1)
-- [IRendererCapabilitiesProvider](../../../src/Visual.Win2D/Engine/IRendererCapabilitiesProvider.cs#L1)
-- [RendererCapabilities](../../../src/Visual.Win2D/Engine/RendererCapabilities.cs#L1)
-- [RendererControlSupport](../../../src/Visual.Win2D/Engine/RendererControlSupport.cs#L1)
-- [RendererBarCountMode](../../../src/Visual.Win2D/Engine/RendererBarCountMode.cs#L1)
-- [RendererIntegrationMode](../../../src/Visual.Win2D/Engine/RendererIntegrationMode.cs#L1)
-- [ReactiveEnvelopeState](../../../src/Visual.Win2D/Engine/ReactiveEnvelopeState.cs#L1)
-- [ReactiveBandSnapshot](../../../src/Visual.Win2D/Engine/ReactiveBandSnapshot.cs#L1)
-- [ReactiveBandSampler](../../../src/Visual.Win2D/Engine/ReactiveBandSampler.cs#L1)
-- [RendererIntegrationContractSmokeTests](../../../tests/Integration.Smoke/RendererIntegrationContractSmokeTests.cs#L1)
-- [ReactiveBandSamplerTests](../../../tests/Output.Tests/ReactiveBandSamplerTests.cs#L1)
-
-
-
-
-
-
-
+- A DevicesPage diferencia App ativo (online) de Ultimo app conhecido (offline) e exp?e remocao local via botao Remover.

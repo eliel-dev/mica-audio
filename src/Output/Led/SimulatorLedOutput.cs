@@ -31,16 +31,16 @@ public sealed class SimulatorLedOutput : ILedOutput
     {
         lock (gate)
         {
-            if (payload.Frame64x32 is { Length: > 0 })
+            if (payload.Frame128x64 is { Length: > 0 })
             {
                 Array.Fill(frame, new RgbaColor(0, 0, 0, 255));
-                var length = Math.Min(frame.Length, payload.Frame64x32.Length);
+                var length = Math.Min(frame.Length, payload.Frame128x64.Length);
                 for (var i = 0; i < length; i++)
                 {
-                    frame[i] = ApplyBrightness(payload.Frame64x32[i]);
+                    frame[i] = ApplyBrightness(payload.Frame128x64[i]);
                 }
             }
-            else if (payload.Bins64 is { Length: LedDefaults.MatrixWidth } bins)
+            else if (payload.Bins128 is { Length: LedDefaults.MatrixWidth } bins)
             {
                 RenderBins(bins, payload.Level);
             }

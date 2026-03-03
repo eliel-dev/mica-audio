@@ -1,4 +1,5 @@
-﻿using Device.Protocol.Models;
+using App.WinUI.Services;
+using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
@@ -10,11 +11,15 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     private const int MaxLogEntries = 600;
 
     private readonly DeviceIntegrationService integration;
+    private readonly SettingsRepository settingsRepository;
+    private readonly AppSettingsDomainService settingsDomainService;
     private readonly object gate = new();
     private readonly List<string> logs = new();
     private readonly List<DeviceSnapshot> devicesSnapshot = new();
     private readonly Dictionary<string, CommandExecutionContext> commandByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Timer refreshTimer;
+    private DeviceLifecycleThresholds lifecycleThresholds = DeviceLifecycleThresholds.Default;
+    private bool lifecycleThresholdsLoaded;
 
     private int refreshInFlight;
     private bool refreshActive;
@@ -25,9 +30,11 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     private DateTimeOffset lastRefreshUtc;
     private bool disposed;
 
-    public DeviceOperationsCoordinator(DeviceIntegrationService integration)
+    public DeviceOperationsCoordinator(DeviceIntegrationService integration, SettingsRepository settingsRepository, AppSettingsDomainService settingsDomainService)
     {
         this.integration = integration;
+        this.settingsRepository = settingsRepository;
+        this.settingsDomainService = settingsDomainService;
         refreshTimer = new Timer(OnRefreshTimerTick, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
         integration.DevicesChanged += OnDevicesChanged;
@@ -93,6 +100,25 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         var pairing = integration.CreatePairingCode(ttl);
         AppendLog($"Codigo de pareamento: {pairing.Code} (expira {pairing.ExpiresAtUtc:HH:mm:ss} UTC)");
         return pairing;
+    }
+
+    public bool RemoveDevice(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return false;
+        }
+
+        var normalizedDeviceId = deviceId.Trim();
+        var removed = integration.RemoveDevice(normalizedDeviceId);
+        if (!removed)
+        {
+            return false;
+        }
+
+        AppendLog($"Dispositivo removido do registro local: {normalizedDeviceId}");
+        RequestRefresh();
+        return true;
     }
 
     // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
@@ -366,19 +392,22 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
         try
         {
-            var nextSnapshot = integration.GetDevices()
-                .Where(device => device.Status == DeviceStatus.Online && !string.IsNullOrWhiteSpace(device.FirmwareVersion))
-                .OrderBy(device => device.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(device => device.DeviceId, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            await EnsureLifecycleThresholdsLoadedAsync().ConfigureAwait(false);
+
+            // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
+            var nextSnapshot = DeviceListVisibilityPolicy.BuildVisibleList(
+                integration.GetDevices(),
+                lifecycleThresholds,
+                DateTimeOffset.UtcNow);
 
             var changed = false;
 
             lock (gate)
             {
                 lastRefreshUtc = DateTimeOffset.UtcNow;
+                var nonOnlinePresent = nextSnapshot.Any(static d => d.Status != DeviceStatus.Online);
 
-                if (forcePublish || !AreSnapshotsEquivalent(devicesSnapshot, nextSnapshot))
+                if (forcePublish || nonOnlinePresent || !AreSnapshotsEquivalent(devicesSnapshot, nextSnapshot))
                 {
                     devicesSnapshot.Clear();
                     devicesSnapshot.AddRange(nextSnapshot);
@@ -406,6 +435,28 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
     }
 
+    private async Task EnsureLifecycleThresholdsLoadedAsync()
+    {
+        if (lifecycleThresholdsLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            var settings = settingsDomainService.Migrate(await settingsRepository.LoadAsync().ConfigureAwait(false));
+            lifecycleThresholds = DeviceLifecycleThresholds.FromSettings(settings);
+        }
+        catch
+        {
+            lifecycleThresholds = DeviceLifecycleThresholds.Default;
+        }
+        finally
+        {
+            lifecycleThresholdsLoaded = true;
+        }
+    }
+
     private static bool AreSnapshotsEquivalent(IReadOnlyList<DeviceSnapshot> current, IReadOnlyList<DeviceSnapshot> next)
     {
         if (current.Count != next.Count)
@@ -427,7 +478,12 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
                 || !string.Equals(a.ActiveAppId, b.ActiveAppId, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal)
                 || !string.Equals(a.BoardModel, b.BoardModel, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(a.PanelType, b.PanelType, StringComparison.OrdinalIgnoreCase))
+                || !string.Equals(a.PanelType, b.PanelType, StringComparison.OrdinalIgnoreCase)
+                || a.IsRegistered != b.IsRegistered
+                || a.FirstSeenUtc != b.FirstSeenUtc
+                || a.LastTelemetryUtc != b.LastTelemetryUtc
+                || a.LastAuthUtc != b.LastAuthUtc
+                || a.ConfigState != b.ConfigState)
             {
                 return false;
             }
@@ -556,5 +612,4 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
     }
 }
-
 

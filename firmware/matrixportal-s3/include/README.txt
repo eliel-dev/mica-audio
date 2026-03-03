@@ -1,7 +1,7 @@
-Matrix Portal S3 firmware scaffold for MicaAudio.
+ESP32-S3 DevKitC-1 firmware scaffold for MicaAudio.
 
-Profiles:
-- matrixportal_s3_stable (Arduino + Protomatter)
-- matrixportal_s3_dma_exp (experimental DMA)
+Official profile:
+- esp32s3_devkitc1_dma_exp (single official DMA profile)
 
-The dma_exp profile is experimental on Matrix Portal S3 and may affect Wi-Fi stability.
+This repository no longer ships a stable/non-DMA firmware track.
+The active firmware path is DMA-first for the HUB75 P2.5 128x64 1/32 panel and may still require hardware tuning.

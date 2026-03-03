@@ -1,4 +1,4 @@
-﻿using App.WinUI.Services.Devices;
+using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -127,11 +127,6 @@ public sealed partial class ServerPage : Page
         lastRenderedLogTail = tail;
     }
 
-    private async void OnDownloadStableClicked(object sender, RoutedEventArgs e)
-    {
-        await SaveFirmwareAsync("stable").ConfigureAwait(false);
-    }
-
     private async void OnDownloadDmaClicked(object sender, RoutedEventArgs e)
     {
         await SaveFirmwareAsync("dma_exp").ConfigureAwait(false);
@@ -257,5 +252,6 @@ public sealed partial class ServerPage : Page
         DeviceOps?.RequestRefresh();
     }
 }
+
 
 

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -103,14 +103,14 @@ public sealed class DeviceServerHostSecurityTests
             client,
             "meta-pair",
             boardModel: "esp32s3_devkitc1",
-            panelType: "hub75_64x32");
+            panelType: "hub75_p2_5_128x64_smd2121_scan32");
 
         var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
             string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
 
         Assert.NotNull(snapshot);
         Assert.Equal("esp32s3_devkitc1", snapshot!.BoardModel);
-        Assert.Equal("hub75_64x32", snapshot.PanelType);
+        Assert.Equal("hub75_p2_5_128x64_smd2121_scan32", snapshot.PanelType);
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public sealed class DeviceServerHostSecurityTests
             firmwareVersion = "1.2.3",
             ipAddress = "192.168.1.55",
             boardModel = "esp32s3_devkitc1",
-            panelType = "hub75_64x32",
+            panelType = "hub75_p2_5_128x64_smd2121_scan32",
         });
 
         var payload = Encoding.UTF8.GetBytes(telemetryJson);
@@ -180,7 +180,7 @@ public sealed class DeviceServerHostSecurityTests
 
             return snapshot is not null
                 && string.Equals(snapshot.BoardModel, "esp32s3_devkitc1", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(snapshot.PanelType, "hub75_64x32", StringComparison.OrdinalIgnoreCase);
+                && string.Equals(snapshot.PanelType, "hub75_p2_5_128x64_smd2121_scan32", StringComparison.OrdinalIgnoreCase);
         }, timeout: TimeSpan.FromSeconds(5));
 
         Assert.True(updated, "Snapshot nao refletiu board/panel enviados por telemetria.");
@@ -472,6 +472,105 @@ public sealed class DeviceServerHostSecurityTests
         Assert.Equal("server_stopped", result.ErrorCode);
     }
 
+    [Fact]
+    public async Task WebSocketAuthentication_ShouldStampLastAuthUtc_WhenTokenIsValid()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ws-auth-stamp");
+
+        using var ws = new ClientWebSocket();
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var stamped = await WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            return snapshot is not null
+                && snapshot.LastAuthUtc.HasValue
+                && snapshot.FirstSeenUtc.HasValue
+                && snapshot.ConfigState == DeviceConfigState.KnownGood;
+        }, timeout: TimeSpan.FromSeconds(5));
+
+        Assert.True(stamped, "Autenticacao WebSocket nao atualizou LastAuthUtc/FirstSeenUtc/ConfigState no timeout esperado.");
+        await CloseWebSocketQuietlyAsync(ws);
+    }
+
+    [Fact]
+    public async Task TelemetryProcessing_ShouldStampLastTelemetryUtc_WithoutOwningLastAuthUtc()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "ws-telemetry-stamp");
+
+        using var ws = new ClientWebSocket();
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var authStamped = await WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            return snapshot is not null && snapshot.LastAuthUtc.HasValue;
+        }, timeout: TimeSpan.FromSeconds(5));
+
+        Assert.True(authStamped, "LastAuthUtc nao foi preenchido antes da telemetria.");
+
+        var beforeTelemetry = host.GetDevicesSnapshot().First(d =>
+            string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+        var authUtc = beforeTelemetry.LastAuthUtc;
+
+        var telemetryJson = JsonSerializer.Serialize(new
+        {
+            deviceId = paired.DeviceId,
+            rssi = -47,
+            firmwareVersion = "2.0.0",
+            ipAddress = "192.168.1.88",
+            activeAppId = "clock",
+            activeAppName = "Relogio",
+        });
+
+        var payload = Encoding.UTF8.GetBytes(telemetryJson);
+        await ws.SendAsync(payload, WebSocketMessageType.Text, true, CancellationToken.None);
+
+        var telemetryStamped = await WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            return snapshot is not null
+                && snapshot.LastTelemetryUtc.HasValue
+                && snapshot.LastAuthUtc == authUtc;
+        }, timeout: TimeSpan.FromSeconds(5));
+
+        Assert.True(telemetryStamped, "Telemetria nao atualizou LastTelemetryUtc preservando LastAuthUtc no timeout esperado.");
+        await CloseWebSocketQuietlyAsync(ws);
+    }
     private static async Task CloseWebSocketQuietlyAsync(ClientWebSocket ws)
     {
         if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
@@ -546,4 +645,6 @@ public sealed class DeviceServerHostSecurityTests
         return predicate();
     }
 }
+
+
 

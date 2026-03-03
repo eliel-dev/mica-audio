@@ -8,6 +8,7 @@ using Output.Led;
 namespace App.WinUI.Services;
 
 // DOCS: docs/wiki/modules/app-winui.md#responsabilidades
+// DOCS: docs/wiki/modules/output-led.md#fluxo-de-execucao
 internal sealed class AudioPipelineCoordinator
 {
     private readonly ILoopbackCapture capture;
@@ -124,16 +125,16 @@ internal sealed class AudioPipelineCoordinator
         ConfigureOutputs(enableSimulator, brightness);
     }
 
-    public void SendHubFrame(RgbaColor[] frame64x32, bool forceSimulator = false, string presetId = "gif-hub75")
+    public void SendHubFrame(RgbaColor[] frame128x64, bool forceSimulator = false, string presetId = "gif-hub75")
     {
-        if (frame64x32.Length != (LedDefaults.MatrixWidth * LedDefaults.MatrixHeight))
+        if (frame128x64.Length != (LedDefaults.MatrixWidth * LedDefaults.MatrixHeight))
         {
             return;
         }
 
         var payload = new LedPayload
         {
-            Frame64x32 = frame64x32,
+            Frame128x64 = frame128x64,
             Level = 1f,
             PresetId = presetId,
         };
@@ -183,7 +184,6 @@ internal sealed class AudioPipelineCoordinator
 
     private async Task PipelineLoopAsync(CancellationToken cancellationToken)
     {
-        // DOCS: docs/wiki/architecture/01-system-overview.md#pipeline-principal
         var reader = capture.Frames;
 
         while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
@@ -199,9 +199,10 @@ internal sealed class AudioPipelineCoordinator
 
                 LatestFrame = spectrum;
 
+                var bins128 = GetOutputBins128(spectrum);
                 var payload = new LedPayload
                 {
-                    Bins64 = spectrum.Bands64,
+                    Bins128 = bins128,
                     Level = spectrum.Level,
                     PresetId = currentPresetId,
                 };
@@ -218,6 +219,38 @@ internal sealed class AudioPipelineCoordinator
                 }
             }
         }
+    }
+
+    private static float[] GetOutputBins128(SpectrumFrame spectrum)
+    {
+        if (spectrum.BandsDisplay.Length == LedDefaults.MatrixWidth)
+        {
+            return spectrum.BandsDisplay.ToArray();
+        }
+
+        var source = spectrum.BandsDisplay.Length > 0 ? spectrum.BandsDisplay : spectrum.Bands64;
+        if (source.Length == LedDefaults.MatrixWidth)
+        {
+            return source.ToArray();
+        }
+
+        var bins = new float[LedDefaults.MatrixWidth];
+        if (source.Length == 0)
+        {
+            return bins;
+        }
+
+        for (var i = 0; i < bins.Length; i++)
+        {
+            var t = bins.Length == 1 ? 0f : i / (float)(bins.Length - 1);
+            var scaled = t * (source.Length - 1);
+            var left = (int)MathF.Floor(scaled);
+            var right = Math.Min(source.Length - 1, left + 1);
+            var blend = scaled - left;
+            bins[i] = (source[left] * (1f - blend)) + (source[right] * blend);
+        }
+
+        return bins;
     }
 }
 

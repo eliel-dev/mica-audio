@@ -1,33 +1,38 @@
-﻿# Guia - Setup de novo dispositivo
+# Guia - Setup New Device
 
 ## Objetivo
 
-Executar o onboarding de um novo ESP32/HUB75 pela aba `Dispositivos`, com selecao de placa, painel e firmware pre-compilado.
+Documentar o fluxo oficial de setup para o painel HUB75 `128x64`.
 
 ## Passos
 
-1. Abrir `Dispositivos` e clicar em `Novo dispositivo`.
-2. Selecionar a placa:
-   - `Matrix Portal S3`
-   - `ESP32-S3 N8R2/N16R8 (DevKitC-1 v1.0)`
-3. Selecionar o painel `HUB75 64x32 (scan 1/32)`.
-4. Selecionar o perfil de firmware (`stable` ou `dma_exp`).
-5. Usar as acoes do wizard conforme necessidade:
-   - `Baixar firmware`
-   - `Gerar pareamento`
-6. Fazer flash manual externo e concluir provisioning na placa.
-7. A pinagem e fixa por variante de firmware da placa e nao e editada na UI nesta fase.
+1. Selecionar a placa `ESP32-S3 DevKitC-1 / WROOM-1`.
+2. Selecionar o painel `P2.5 128x64 (320x160mm, SMD2121, HUB75, 1/32 scan)`.
+3. Usar o unico perfil oficial `dma_exp`.
+4. Gravar o BIN `esp32s3-devkitc1-128x64-dma_exp_merged.bin`.
+5. Na tela `Dispositivos`, usar o botao `Baixar firmware` para salvar esse BIN localmente.
+6. Validar na telemetria:
+   - `boardModel = esp32s3_devkitc1`
+   - `panelType = hub75_p2_5_128x64_smd2121_scan32`
 
 ## Referencias de codigo
 
-- [DevicesPage.ShowNewDeviceSetupDialogAsync](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L163) - assinatura: `private async Task ShowNewDeviceSetupDialogAsync()`
-- [PrecompiledFirmwareOption](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareOption.cs#L1) - assinatura: `internal sealed class PrecompiledFirmwareOption`
-- [PrecompiledFirmwareService.TryResolveSource](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L105) - assinatura: `bool TryResolveSource(...)`
-- [DeviceIntegrationService.CreatePairingCode](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L158) - assinatura: `PairingCodeInfo CreatePairingCode(TimeSpan)`
+- [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
+- [DeviceConfigResponse](../../../src/Device.Protocol/Models/DeviceConfigResponse.cs#L1)
 
 ## Checklist rapido
 
-- [ ] O wizard persiste a ultima selecao local de placa/painel/perfil.
-- [ ] A acao `Gerar pareamento` registra codigo e expiracao no log.
-- [ ] A acao `Baixar firmware` falha com mensagem clara quando o BIN nao existe.
-- [ ] O fluxo funciona com mais de um dispositivo online simultaneamente.
+- Catalogo mostra apenas DevKitC-1.
+- Painel `64x32` nao aparece no fluxo ativo.
+- O perfil `stable` nao aparece mais no fluxo ativo.
+- Telemetria retorna o `panelType` canonico.
+
+
+## Tela Dispositivos
+
+- Cada dispositivo online mostra uma miniatura pequena do app ativo na lista; dispositivos offline nao exibem preview visual.
+- O painel da direita mostra um preview maior apenas para dispositivos online; offline mostra placeholder e o ultimo app conhecido apenas como texto.
+- Sem selecao, o preview maior fica em placeholder ate escolher um device.
+
+
+- A acao Remover apaga apenas o registro local do app; para o ESP online, continue usando Revogar quando quiser alterar o dispositivo fisico.

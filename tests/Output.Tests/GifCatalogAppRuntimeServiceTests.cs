@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+using System.Drawing;
 using System.Drawing.Imaging;
 using System.Net;
 using System.Net.Http.Headers;
@@ -98,16 +98,16 @@ public sealed class GifCatalogAppRuntimeServiceTests
             service.Stop();
 
             Assert.True(matrix.Sent.Count >= 2);
-            Assert.Contains(matrix.Sent, static payload => payload.Frame64x32 is { Length: > 0 });
+            Assert.Contains(matrix.Sent, static payload => payload.Frame128x64 is { Length: > 0 });
 
             var binsPayload = matrix.Sent[^1];
-            Assert.NotNull(binsPayload.Bins64);
-            Assert.All(binsPayload.Bins64!, value => Assert.Equal(0f, value));
-            Assert.Null(binsPayload.Frame64x32);
+            Assert.NotNull(binsPayload.Bins128);
+            Assert.All(binsPayload.Bins128!, value => Assert.Equal(0f, value));
+            Assert.Null(binsPayload.Frame128x64);
 
             var simulatorLast = simulator.Sent[^1];
-            Assert.NotNull(simulatorLast.Frame64x32);
-            Assert.All(simulatorLast.Frame64x32!, px => Assert.Equal(new RgbaColor(0, 0, 0, 255), px));
+            Assert.NotNull(simulatorLast.Frame128x64);
+            Assert.All(simulatorLast.Frame128x64!, px => Assert.Equal(new RgbaColor(0, 0, 0, 255), px));
         }
         finally
         {
@@ -215,8 +215,8 @@ public sealed class GifCatalogAppRuntimeServiceTests
         {
             Sent.Add(new LedPayload
             {
-                Bins64 = payload.Bins64?.ToArray(),
-                Frame64x32 = payload.Frame64x32?.ToArray(),
+                Bins128 = payload.Bins128?.ToArray(),
+                Frame128x64 = payload.Frame128x64?.ToArray(),
                 Level = payload.Level,
                 PresetId = payload.PresetId,
             });
@@ -247,4 +247,5 @@ public sealed class GifCatalogAppRuntimeServiceTests
         }
     }
 }
+
 

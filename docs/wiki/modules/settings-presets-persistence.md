@@ -50,3 +50,22 @@ Centralizar configuracoes de sessao, presets e armazenamento em `%AppData%`.
 ## Backlinks no codigo
 
 Os arquivos acima devem continuar apontando para esta pagina quando houver mudancas de schema.
+
+## Thresholds de Presence de Device
+
+`AppSettings` agora persiste thresholds leves de lifecycle para devices:
+
+- `DeviceFreshThresholdSeconds`
+- `DeviceStaleThresholdMinutes`
+- `DeviceDormantThresholdHours`
+
+Eles ainda nao tem UI dedicada, mas ja podem ser ajustados em config e passam por migracao/coercao segura em `AppSettingsDomainService`.
+A regra de normalizacao garante sempre: `Fresh < Stale < Dormant`.
+
+## Migracao de Registro de Devices
+
+O registro persistido de devices agora usa dupla protecao para evitar falso `Nunca conectado`:
+
+- script explicito: `scripts/migrate-device-registry-presence-v1.ps1`
+- fallback automatico em runtime: `DeviceRegistryPresenceNormalizer` + `JsonDeviceRegistryStore`
+

@@ -1,4 +1,4 @@
-﻿using MicaAudio.Core.Audio;
+using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 
@@ -12,6 +12,9 @@ internal sealed class AppSettingsDomainService
     private const float DefaultMinDecibels = -85f;
     private const float DefaultMaxDecibels = -25f;
     private const float DefaultLinearBoost = 1.6f;
+    private const int DefaultDeviceFreshThresholdSeconds = 15;
+    private const int DefaultDeviceStaleThresholdMinutes = 2;
+    private const int DefaultDeviceDormantThresholdHours = 24;
 
     // DOCS: docs/wiki/guides/change-visualizer-settings.md#passos
     public AppSettings Migrate(AppSettings settings)
@@ -28,6 +31,11 @@ internal sealed class AppSettingsDomainService
             minHz = 20f;
             maxHz = 1000f;
         }
+
+        var thresholds = NormalizeDeviceLifecycleThresholds(
+            settings.DeviceFreshThresholdSeconds,
+            settings.DeviceStaleThresholdMinutes,
+            settings.DeviceDormantThresholdHours);
 
         return new AppSettings
         {
@@ -46,6 +54,9 @@ internal sealed class AppSettingsDomainService
             FftSize = FftSizePolicy.CoerceUiSize(settings.FftSize),
             FftSmoothing = Math.Clamp(settings.FftSmoothing, 0f, 0.99f),
             WeightingFilter = Enum.IsDefined(typeof(WeightingFilter), settings.WeightingFilter) ? settings.WeightingFilter : WeightingFilter.Off,
+            DeviceFreshThresholdSeconds = thresholds.DeviceFreshThresholdSeconds,
+            DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
+            DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
             WindowWidth = settings.WindowWidth,
             WindowHeight = settings.WindowHeight,
         };
@@ -60,6 +71,46 @@ internal sealed class AppSettingsDomainService
 
     private static float CoerceLinearBoost(float value)
         => float.IsNaN(value) || float.IsInfinity(value) ? DefaultLinearBoost : Math.Clamp(value, 1f, 3f);
+
+    private static DeviceLifecycleThresholdValues NormalizeDeviceLifecycleThresholds(
+        int freshThresholdSeconds,
+        int staleThresholdMinutes,
+        int dormantThresholdHours)
+    {
+        var normalizedFresh = freshThresholdSeconds <= 0
+            ? DefaultDeviceFreshThresholdSeconds
+            : Math.Clamp(freshThresholdSeconds, 5, 120);
+        var normalizedStale = staleThresholdMinutes <= 0
+            ? DefaultDeviceStaleThresholdMinutes
+            : Math.Clamp(staleThresholdMinutes, 1, 240);
+        var normalizedDormant = dormantThresholdHours <= 0
+            ? DefaultDeviceDormantThresholdHours
+            : Math.Clamp(dormantThresholdHours, 1, 720);
+
+        var fresh = TimeSpan.FromSeconds(normalizedFresh);
+        var stale = TimeSpan.FromMinutes(normalizedStale);
+        var dormant = TimeSpan.FromHours(normalizedDormant);
+
+        if (fresh >= stale)
+        {
+            stale = fresh + TimeSpan.FromMinutes(1);
+            normalizedStale = Math.Clamp((int)Math.Ceiling(stale.TotalMinutes), 1, 240);
+            stale = TimeSpan.FromMinutes(normalizedStale);
+        }
+
+        if (stale >= dormant)
+        {
+            dormant = stale + TimeSpan.FromHours(1);
+            normalizedDormant = Math.Clamp((int)Math.Ceiling(dormant.TotalHours), 1, 720);
+        }
+
+        return new DeviceLifecycleThresholdValues(normalizedFresh, normalizedStale, normalizedDormant);
+    }
+
+    private readonly record struct DeviceLifecycleThresholdValues(
+        int DeviceFreshThresholdSeconds,
+        int DeviceStaleThresholdMinutes,
+        int DeviceDormantThresholdHours);
 
     internal sealed class AppSettingsBuilder
     {
@@ -80,6 +131,9 @@ internal sealed class AppSettingsDomainService
             FftSize = source.FftSize;
             FftSmoothing = source.FftSmoothing;
             WeightingFilter = source.WeightingFilter;
+            DeviceFreshThresholdSeconds = source.DeviceFreshThresholdSeconds;
+            DeviceStaleThresholdMinutes = source.DeviceStaleThresholdMinutes;
+            DeviceDormantThresholdHours = source.DeviceDormantThresholdHours;
             WindowWidth = source.WindowWidth;
             WindowHeight = source.WindowHeight;
         }
@@ -99,6 +153,9 @@ internal sealed class AppSettingsDomainService
         public int FftSize { get; private set; }
         public float FftSmoothing { get; private set; }
         public WeightingFilter WeightingFilter { get; private set; }
+        public int DeviceFreshThresholdSeconds { get; private set; }
+        public int DeviceStaleThresholdMinutes { get; private set; }
+        public int DeviceDormantThresholdHours { get; private set; }
         public int WindowWidth { get; private set; }
         public int WindowHeight { get; private set; }
 
@@ -110,6 +167,9 @@ internal sealed class AppSettingsDomainService
         public void SetFftSize(int value) => FftSize = value;
         public void SetFftSmoothing(float value) => FftSmoothing = value;
         public void SetWeightingFilter(WeightingFilter value) => WeightingFilter = value;
+        public void SetDeviceFreshThresholdSeconds(int value) => DeviceFreshThresholdSeconds = value;
+        public void SetDeviceStaleThresholdMinutes(int value) => DeviceStaleThresholdMinutes = value;
+        public void SetDeviceDormantThresholdHours(int value) => DeviceDormantThresholdHours = value;
         public void SetFrequencyScale(FrequencyScale value) => FrequencyScale = value;
         public void SetFrequencyRange(float minHz, float maxHz)
         {
@@ -123,25 +183,36 @@ internal sealed class AppSettingsDomainService
             WindowHeight = height;
         }
 
-        public AppSettings Build() => new()
+        public AppSettings Build()
         {
-            ActivePresetId = ActivePresetId,
-            SelectedRendererId = SelectedRendererId,
-            Hub75PreviewEnabled = Hub75PreviewEnabled,
-            Brightness = Brightness,
-            Sensitivity = Sensitivity,
-            SensitivityMinDb = SensitivityMinDb,
-            SensitivityMaxDb = SensitivityMaxDb,
-            LinearBoost = LinearBoost,
-            BarCount = BarCount,
-            FrequencyScale = FrequencyScale,
-            FrequencyMinHz = FrequencyMinHz,
-            FrequencyMaxHz = FrequencyMaxHz,
-            FftSize = FftSize,
-            FftSmoothing = FftSmoothing,
-            WeightingFilter = WeightingFilter,
-            WindowWidth = WindowWidth,
-            WindowHeight = WindowHeight,
-        };
+            var thresholds = NormalizeDeviceLifecycleThresholds(
+                DeviceFreshThresholdSeconds,
+                DeviceStaleThresholdMinutes,
+                DeviceDormantThresholdHours);
+
+            return new AppSettings
+            {
+                ActivePresetId = ActivePresetId,
+                SelectedRendererId = SelectedRendererId,
+                Hub75PreviewEnabled = Hub75PreviewEnabled,
+                Brightness = Brightness,
+                Sensitivity = Sensitivity,
+                SensitivityMinDb = SensitivityMinDb,
+                SensitivityMaxDb = SensitivityMaxDb,
+                LinearBoost = LinearBoost,
+                BarCount = BarCount,
+                FrequencyScale = FrequencyScale,
+                FrequencyMinHz = FrequencyMinHz,
+                FrequencyMaxHz = FrequencyMaxHz,
+                FftSize = FftSize,
+                FftSmoothing = FftSmoothing,
+                WeightingFilter = WeightingFilter,
+                DeviceFreshThresholdSeconds = thresholds.DeviceFreshThresholdSeconds,
+                DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
+                DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
+                WindowWidth = WindowWidth,
+                WindowHeight = WindowHeight,
+            };
+        }
     }
 }

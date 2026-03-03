@@ -136,7 +136,7 @@
       "id": "gifhub75",
       "name": "GIF HUB75",
       "summary": "GIF por URL ou arquivo local",
-      "description": "Executa GIF no desktop com stream HUB75 64x32 para devices conectados (12 FPS fixos).",
+      "description": "Executa GIF no desktop com stream HUB75 128x64 para devices conectados (12 FPS fixos).",
       "author": "Mica Audio",
       "packageName": "gifhub75",
       "fileName": "gifhub75.star",
@@ -178,7 +178,7 @@
           "key": "scaleMode",
           "label": "Escala",
           "type": "Select",
-          "description": "Ajuste do frame para HUB75 64x32.",
+          "description": "Ajuste do frame para HUB75 128x64.",
           "defaultValue": "fit",
           "required": true,
           "options": [
@@ -203,3 +203,4 @@
     }
   ]
 }
+

@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using App.WinUI.Services;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
@@ -13,6 +14,8 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
 {
     private readonly IDeviceServerHost serverHost;
     private readonly IDeviceRegistryStore registryStore;
+    private readonly SettingsRepository settingsRepository;
+    private readonly AppSettingsDomainService settingsDomainService;
     private readonly ILogger<DeviceIntegrationService> logger;
 
     private const int ServerPort = 5272;
@@ -27,10 +30,14 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
     public DeviceIntegrationService(
         IDeviceServerHost serverHost,
         IDeviceRegistryStore registryStore,
+        SettingsRepository settingsRepository,
+        AppSettingsDomainService settingsDomainService,
         ILogger<DeviceIntegrationService> logger)
     {
         this.serverHost = serverHost;
         this.registryStore = registryStore;
+        this.settingsRepository = settingsRepository;
+        this.settingsDomainService = settingsDomainService;
         this.logger = logger;
 
         serverHost.DevicesChanged += OnDevicesChanged;
@@ -62,6 +69,8 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
 
         publicHost = ResolvePublicHost();
 
+        var settings = settingsDomainService.Migrate(await settingsRepository.LoadAsync(cancellationToken).ConfigureAwait(false));
+
         await serverHost.StartAsync(new ServerConfig
         {
             ListenHost = "0.0.0.0",
@@ -69,6 +78,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
             MaxDevices = 5,
             MdnsServiceName = "_micaaudio._tcp",
             PublicHost = publicHost,
+            DeviceFreshThresholdSeconds = settings.DeviceFreshThresholdSeconds,
         }, cancellationToken).ConfigureAwait(false);
 
         logger.LogInformation("Servidor HTTP publico: {BaseAddress}", GetServerBaseAddress());
@@ -219,23 +229,17 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         var descriptor = $"{nic.Name} {nic.Description}";
         return VirtualAdapterKeywords.Any(keyword => descriptor.Contains(keyword, StringComparison.OrdinalIgnoreCase));
     }
-    private static bool IsPrivateIpv4(string ipString)
+
+    private static bool IsPrivateIpv4(string candidate)
     {
-        if (!IPAddress.TryParse(ipString, out var address))
+        if (!IPAddress.TryParse(candidate, out var address))
         {
             return false;
         }
 
         var bytes = address.GetAddressBytes();
-        if (bytes.Length != 4)
-        {
-            return false;
-        }
-
         return bytes[0] == 10
             || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
             || (bytes[0] == 192 && bytes[1] == 168);
     }
 }
-
-

@@ -28,6 +28,8 @@ public sealed class ServerConfig
 
     public int PairingAttemptWindowSeconds { get; init; } = 60;
 
+    public int DeviceFreshThresholdSeconds { get; init; } = 15;
+
     // Transitional compatibility for firmware that still sends token via query string on WebSocket handshake.
     public bool AllowLegacyWebSocketQueryToken { get; init; } = true;
 
@@ -36,6 +38,3 @@ public sealed class ServerConfig
 
     public int MaxWebSocketMessageBytes { get; init; } = 64 * 1024;
 }
-
-
-

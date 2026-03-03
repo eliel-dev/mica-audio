@@ -34,6 +34,12 @@ public sealed class AppSettings
 
     public WeightingFilter WeightingFilter { get; init; } = WeightingFilter.B;
 
+    public int DeviceFreshThresholdSeconds { get; init; } = 15;
+
+    public int DeviceStaleThresholdMinutes { get; init; } = 2;
+
+    public int DeviceDormantThresholdHours { get; init; } = 24;
+
     public int WindowWidth { get; init; }
 
     public int WindowHeight { get; init; }

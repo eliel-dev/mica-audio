@@ -45,6 +45,17 @@
     <Compile Include="..\..\src\App.WinUI\Services\Apps\UseCases\SaveAppConfigUseCase.cs" Link="Shared\UseCases\SaveAppConfigUseCase.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\UseCases\DeployAppUseCase.cs" Link="Shared\UseCases\DeployAppUseCase.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppCatalogItem.cs" Link="Shared\Models\AppCatalogItem.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DevicePreviewResolver.cs" Link="Shared\Devices\DevicePreviewResolver.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceListVisibilityPolicy.cs" Link="Shared\Devices\DeviceListVisibilityPolicy.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceListRenderDiff.cs" Link="Shared\Devices\DeviceListRenderDiff.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceRegistryPresenceNormalizer.cs" Link="Shared\Devices\DeviceRegistryPresenceNormalizer.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLifecycleThresholds.cs" Link="Shared\Devices\DeviceLifecycleThresholds.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLifecycleTone.cs" Link="Shared\Devices\DeviceLifecycleTone.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLifecycleIcon.cs" Link="Shared\Devices\DeviceLifecycleIcon.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLifecyclePresentation.cs" Link="Shared\Devices\DeviceLifecyclePresentation.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLifecyclePolicy.cs" Link="Shared\Devices\DeviceLifecyclePolicy.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DevicePreviewVisibilityPolicy.cs" Link="Shared\Devices\DevicePreviewVisibilityPolicy.cs" />
+    
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppConfigDraft.cs" Link="Shared\Models\AppConfigDraft.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppModifierDefinition.cs" Link="Shared\Models\AppModifierDefinition.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppModifierFieldType.cs" Link="Shared\Models\AppModifierFieldType.cs" />
@@ -63,4 +74,9 @@
   </ItemGroup>
 
 </Project>
+
+
+
+
+
 

@@ -8,11 +8,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $firmwareRoot = Join-Path $repoRoot 'firmware/matrixportal-s3'
 $outputRoot = Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
-
-$targets = @(
-    [pscustomobject]@{ Env = 'esp32s3_devkitc1_stable'; OutputFile = 'esp32s3-devkitc1-stable_merged.bin' },
-    [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-dma_exp_merged.bin' }
-)
+$target = [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin' }
 
 function Invoke-External {
     param(
@@ -30,10 +26,10 @@ function Invoke-External {
 
 function Require-Python {
     try {
-        & py --version | Out-Host
+        & python --version | Out-Host
     }
     catch {
-        throw 'Python launcher "py" nao encontrado. Instale Python para continuar.'
+        throw 'Executavel "python" nao encontrado. Instale Python e garanta o PATH antes de continuar.'
     }
 }
 
@@ -43,14 +39,14 @@ function Ensure-Tools {
     }
 
     Write-Host '[build-precompiled-firmware] Garantindo PlatformIO e esptool no Python atual...'
-    Invoke-External -Args @('py', '-m', 'pip', 'install', '--upgrade', 'platformio', 'esptool') -ErrorMessage 'Falha ao instalar platformio/esptool'
+    Invoke-External -Args @('python', '-m', 'pip', 'install', '--upgrade', 'platformio', 'esptool') -ErrorMessage 'Falha ao instalar platformio/esptool'
 }
 
 function Invoke-PioBuild {
     param([Parameter(Mandatory)][string]$Env)
 
     Write-Host "[build-precompiled-firmware] Build iniciado: $Env"
-    Invoke-External -Args @('py', '-m', 'platformio', 'run', '-e', $Env, '--project-dir', $firmwareRoot) -ErrorMessage "Falha no build do firmware ($Env)"
+    Invoke-External -Args @('python', '-m', 'platformio', 'run', '-e', $Env, '--project-dir', $firmwareRoot) -ErrorMessage "Falha no build do firmware ($Env)"
 }
 
 function Merge-Firmware {
@@ -72,7 +68,7 @@ function Merge-Firmware {
 
     Write-Host "[build-precompiled-firmware] Merge iniciado: $Env -> $DestinationPath"
     Invoke-External -Args @(
-        'py', '-m', 'esptool', '--chip', 'esp32s3', 'merge-bin',
+        'python', '-m', 'esptool', '--chip', 'esp32s3', 'merge-bin',
         '--flash-mode', 'keep', '--flash-freq', 'keep', '--flash-size', 'keep',
         '0x0', $bootloader,
         '0x8000', $partitions,
@@ -102,15 +98,10 @@ if (-not (Test-Path $outputRoot)) {
     New-Item -Path $outputRoot -ItemType Directory | Out-Null
 }
 
-foreach ($target in $targets) {
-    Invoke-PioBuild -Env $target.Env
-    $destinationPath = Join-Path $outputRoot $target.OutputFile
-    Merge-Firmware -Env $target.Env -DestinationPath $destinationPath
-}
+Invoke-PioBuild -Env $target.Env
+$destinationPath = Join-Path $outputRoot $target.OutputFile
+Merge-Firmware -Env $target.Env -DestinationPath $destinationPath
 
 Write-Host '[build-precompiled-firmware] Concluido com sucesso.'
-foreach ($target in $targets) {
-    $path = Join-Path $outputRoot $target.OutputFile
-    $size = (Get-Item $path).Length
-    Write-Host " - $($target.OutputFile) ($size bytes)"
-}
+$size = (Get-Item $destinationPath).Length
+Write-Host " - $($target.OutputFile) ($size bytes)"

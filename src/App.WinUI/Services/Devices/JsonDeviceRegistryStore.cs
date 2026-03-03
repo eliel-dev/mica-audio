@@ -85,10 +85,15 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         {
             DeviceId = record.DeviceId ?? string.Empty,
             Name = string.IsNullOrWhiteSpace(record.Name) ? "Matrix Portal" : record.Name,
-            Profile = string.IsNullOrWhiteSpace(record.Profile) ? "stable" : record.Profile,
+            Profile = NormalizeFirmwareProfile(record.Profile),
             Token = decryptedToken,
+            IsRegistered = DeviceRegistryPresenceNormalizer.NormalizeIsRegistered(record.IsRegistered),
             CreatedAtUtc = record.CreatedAtUtc,
             LastSeenUtc = record.LastSeenUtc,
+            FirstSeenUtc = DeviceRegistryPresenceNormalizer.NormalizeFirstSeenUtc(record.FirstSeenUtc, record.LastSeenUtc, record.CreatedAtUtc),
+            LastTelemetryUtc = DeviceRegistryPresenceNormalizer.NormalizeTimestamp(record.LastTelemetryUtc),
+            LastAuthUtc = DeviceRegistryPresenceNormalizer.NormalizeLastAuthUtc(record.LastAuthUtc, record.LastSeenUtc, record.CreatedAtUtc),
+            ConfigState = DeviceRegistryPresenceNormalizer.NormalizeConfigState(record.ConfigState),
             FirmwareVersion = record.FirmwareVersion,
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
@@ -105,11 +110,16 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         {
             DeviceId = record.DeviceId,
             Name = record.Name,
-            Profile = record.Profile,
+            Profile = NormalizeFirmwareProfile(record.Profile),
             TokenProtected = EncryptToken(record.Token),
             Token = null,
+            IsRegistered = record.IsRegistered,
             CreatedAtUtc = record.CreatedAtUtc,
             LastSeenUtc = record.LastSeenUtc,
+            FirstSeenUtc = record.FirstSeenUtc,
+            LastTelemetryUtc = record.LastTelemetryUtc,
+            LastAuthUtc = record.LastAuthUtc,
+            ConfigState = record.ConfigState,
             FirmwareVersion = record.FirmwareVersion,
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
@@ -142,7 +152,6 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
 
         if (!tokenProtected.StartsWith(TokenCipherPrefix, StringComparison.Ordinal))
         {
-            // Backward-compatibility with legacy plaintext format.
             return tokenProtected;
         }
 
@@ -168,6 +177,19 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         }
     }
 
+    private static string NormalizeFirmwareProfile(string? profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile))
+        {
+            return "dma_exp";
+        }
+
+        var normalized = profile.Trim();
+        return string.Equals(normalized, "stable", StringComparison.OrdinalIgnoreCase)
+            ? "dma_exp"
+            : normalized;
+    }
+
     private sealed class PersistedDeviceRecord
     {
         public string? DeviceId { get; init; }
@@ -180,9 +202,19 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
 
         public string? TokenProtected { get; init; }
 
+        public bool? IsRegistered { get; init; }
+
         public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 
         public DateTimeOffset LastSeenUtc { get; init; } = DateTimeOffset.MinValue;
+
+        public DateTimeOffset? FirstSeenUtc { get; init; }
+
+        public DateTimeOffset? LastTelemetryUtc { get; init; }
+
+        public DateTimeOffset? LastAuthUtc { get; init; }
+
+        public DeviceConfigState? ConfigState { get; init; }
 
         public string? FirmwareVersion { get; init; }
 
@@ -199,7 +231,3 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         public string? PanelType { get; init; }
     }
 }
-
-
-
-

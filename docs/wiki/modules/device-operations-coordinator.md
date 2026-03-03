@@ -7,12 +7,15 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
 ## Responsabilidades
 
 - Manter snapshot de dispositivos para UI.
+- Manter devices conhecidos visiveis mesmo quando estao offline.
 - Controlar timer de refresh e diff de lista.
 - Executar comandos tracked com timeout.
 - Permitir concorrencia por dispositivo: 1 comando por device, em paralelo entre devices diferentes.
 - Armazenar logs de operacao com limite.
 
 ## Fluxo de execucao
+
+- A lista da UI nao e mais online-only: devices offline continuam no snapshot e aparecem abaixo dos online.
 
 1. `SetDevicesPageVisible(true)` liga polling.
 2. `RefreshDevicesAsync` coleta snapshot e publica eventos.
@@ -23,7 +26,7 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
 ## Pontos de alteracao frequente
 
 - `RefreshInterval` e `CommandTimeout`.
-- Politica de filtro de dispositivos online.
+- Politica de visibilidade de dispositivos online/offline.
 - Mensagens de status e log por dispositivo.
 
 ## Riscos e efeitos colaterais
@@ -52,3 +55,22 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
 
 - `src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs`
 - `src/App.WinUI/Views/DevicesPage.xaml.cs`
+
+## Atualizacao 2026-03 - Lifecycle Leve
+
+- A lista de devices nao depende mais apenas de `DeviceStatus` bruto.
+- A `DevicesPage` aplica uma politica local de lifecycle (`DeviceLifecyclePolicy`) para distinguir:
+  - `Online | Configurado`
+  - `Offline | Configurado`
+  - `Offline | Configuracao incerta`
+  - `Registrado | Nunca conectado`
+  - `Registrado | Aguardando provisionamento` (compatibilidade legada de `Pairing`)
+- `Offline` nao significa automaticamente `nao configurado`.
+- A ordenacao continua priorizando devices ativos, mas o snapshot mantem devices offline visiveis.
+
+
+## Atualizacao 2026-03 - Render Estavel na DevicesPage
+
+- `DeviceListChanged` e a fonte principal do refresh da lista na `DevicesPage` apos a carga inicial.
+- `StateChanged` continua atualizando estado geral, mas nao deve disparar rebuild da lista de devices.
+- A UI reaproveita a arvore visual existente e aplica diff incremental para reduzir flicker.

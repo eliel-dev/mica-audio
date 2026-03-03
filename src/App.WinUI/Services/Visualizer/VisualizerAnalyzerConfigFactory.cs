@@ -1,6 +1,5 @@
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
-using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 using Visual.Win2D.Engine;
 
@@ -42,7 +41,9 @@ internal static class VisualizerAnalyzerConfigFactory
             DisplayMode = cloneMode ? DisplayMode.AudioMotionMode0 : DisplayMode.FixedBands,
             DisplayViewportWidthPx = analyzerViewportWidth,
             BarSpace = Math.Clamp(barSpace, 0f, 0.95f),
-            OutputBandCount = LedDefaults.MatrixWidth,
+            // SpectrumAnalyzer ainda valida rigidamente 64 bands no output interno.
+            // O caminho HUB75 continua indo para 128 colunas via resample posterior.
+            OutputBandCount = 64,
             MinHz = frequencyMinHz,
             MaxHz = frequencyMaxHz,
             ScaleMode = ScaleMode.Linear,
@@ -65,5 +66,7 @@ internal static class VisualizerAnalyzerConfigFactory
         };
     }
 }
+
+
 
 

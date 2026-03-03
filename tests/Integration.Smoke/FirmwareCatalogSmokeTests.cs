@@ -1,4 +1,4 @@
-﻿using App.WinUI.Services.Firmware;
+using App.WinUI.Services.Firmware;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Integration.Smoke;
@@ -6,35 +6,19 @@ namespace Integration.Smoke;
 public sealed class FirmwareCatalogSmokeTests
 {
     [Fact]
-    public void PrecompiledFirmwareService_ShouldReturnAllExpectedBoardProfileOptions()
+    public void PrecompiledFirmwareService_ShouldReturnOnlyDmaProfile()
     {
         var provider = App.WinUI.App.BuildServiceProvider();
         var service = provider.GetRequiredService<PrecompiledFirmwareService>();
 
-        var matrixStable = Assert.Single(service.GetOptions(
-            PrecompiledFirmwareService.MatrixPortalS3Board,
-            PrecompiledFirmwareService.Hub75Panel64x32,
-            "stable"));
-
-        var matrixDma = Assert.Single(service.GetOptions(
-            PrecompiledFirmwareService.MatrixPortalS3Board,
-            PrecompiledFirmwareService.Hub75Panel64x32,
-            "dma_exp"));
-
-        var devkitStable = Assert.Single(service.GetOptions(
+        var options = service.GetOptions(
             PrecompiledFirmwareService.Esp32S3DevKitC1Board,
-            PrecompiledFirmwareService.Hub75Panel64x32,
-            "stable"));
+            PrecompiledFirmwareService.Hub75PanelP25_128x64_Smd2121_Scan32);
 
-        var devkitDma = Assert.Single(service.GetOptions(
-            PrecompiledFirmwareService.Esp32S3DevKitC1Board,
-            PrecompiledFirmwareService.Hub75Panel64x32,
-            "dma_exp"));
-
-        Assert.Equal("matrixportal-s3-stable_merged.bin", matrixStable.FileName);
-        Assert.Equal("matrixportal-s3-dma_exp_merged.bin", matrixDma.FileName);
-        Assert.Equal("esp32s3-devkitc1-stable_merged.bin", devkitStable.FileName);
-        Assert.Equal("esp32s3-devkitc1-dma_exp_merged.bin", devkitDma.FileName);
+        var dma = Assert.Single(options);
+        Assert.Equal("dma_exp", dma.Profile);
+        Assert.Equal("esp32s3-devkitc1-128x64-dma_exp_merged.bin", dma.FileName);
+        Assert.Empty(service.GetOptions(boardModel: "matrixportal_s3"));
     }
 
     [Fact]
@@ -45,14 +29,14 @@ public sealed class FirmwareCatalogSmokeTests
 
         var ok = service.TryGetOption(
             PrecompiledFirmwareService.Esp32S3DevKitC1Board,
-            "hub75_128x64",
+            "hub75_64x32",
             "stable",
             out var _,
             out var error);
 
         Assert.False(ok);
         Assert.Contains("board='esp32s3_devkitc1'", error, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("painel='hub75_128x64'", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("painel='hub75_64x32'", error, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("perfil='stable'", error, StringComparison.OrdinalIgnoreCase);
     }
 }

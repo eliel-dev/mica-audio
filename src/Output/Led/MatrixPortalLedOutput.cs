@@ -7,6 +7,7 @@ using MicaAudio.Core.Presets;
 namespace Output.Led;
 
 // DOCS: docs/wiki/modules/output-led.md#modulo-output-led
+// DOCS: docs/wiki/reference/ws-protocol-v2.md#estrutura-streamframev2
 public sealed class MatrixPortalLedOutput : ILedOutput
 {
     private readonly IDeviceServerHost deviceServerHost;
@@ -42,7 +43,6 @@ public sealed class MatrixPortalLedOutput : ILedOutput
 
     public void Send(LedPayload payload)
     {
-        // DOCS: docs/wiki/modules/output-led.md#fluxo-de-execucao
         float[]? bins;
         RgbaColor[]? frame;
         float level;
@@ -56,47 +56,47 @@ public sealed class MatrixPortalLedOutput : ILedOutput
                 return;
             }
 
-            bins = payload.Bins64;
-            frame = payload.Frame64x32;
+            bins = payload.Bins128;
+            frame = payload.Frame128x64;
             level = payload.Level;
             localBrightness = brightness;
             localSequence = ++sequence;
         }
 
-        if (frame is { Length: StreamFrameV1.PixelCount64x32 })
+        if (frame is { Length: StreamFrameV2.PixelCount128x64 })
         {
-            Span<ushort> pixels = stackalloc ushort[StreamFrameV1.PixelCount64x32];
+            Span<ushort> pixels = stackalloc ushort[StreamFrameV2.PixelCount128x64];
             for (var i = 0; i < frame.Length; i++)
             {
                 pixels[i] = ToRgb565(frame[i]);
             }
 
-            var frameBytes = StreamFrameV1.CreateFrame64x32Rgb565(
+            var frameBytes = StreamFrameV2.CreateFrame128x64Rgb565(
                 sequence: localSequence,
                 timestampQpc: Stopwatch.GetTimestamp(),
-                pixels64x32Rgb565: pixels,
+                pixels128x64Rgb565: pixels,
                 brightness0To255: ToByte01(localBrightness));
 
             deviceServerHost.BroadcastFrame(frameBytes);
             return;
         }
 
-        if (bins is null || bins.Length != 64)
+        if (bins is null || bins.Length != StreamFrameV2.BinCount128)
         {
             return;
         }
 
-        Span<byte> binsBytes = stackalloc byte[64];
-        for (var i = 0; i < 64; i++)
+        Span<byte> binsBytes = stackalloc byte[StreamFrameV2.BinCount128];
+        for (var i = 0; i < StreamFrameV2.BinCount128; i++)
         {
             binsBytes[i] = ToByte01(bins[i]);
         }
 
-        var bytes = StreamFrameV1.Create(
+        var bytes = StreamFrameV2.CreateBins128(
             sequence: localSequence,
             timestampQpc: Stopwatch.GetTimestamp(),
             level0To255: ToByte01(level),
-            bins64: binsBytes,
+            bins128: binsBytes,
             brightness0To255: ToByte01(localBrightness));
 
         deviceServerHost.BroadcastFrame(bytes);

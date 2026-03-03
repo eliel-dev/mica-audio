@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Device.Protocol.Models;
 using Microsoft.AspNetCore.Http;
 
@@ -299,7 +299,7 @@ public sealed partial class DeviceServerHost
                 return false;
             }
 
-            state.MarkSeen(telemetry.IpAddress, telemetry.Rssi, telemetry.FirmwareVersion, telemetry.ActiveAppId, telemetry.ActiveAppName, telemetry.BoardModel, telemetry.PanelType);
+            state.MarkTelemetry(telemetry.IpAddress, telemetry.Rssi, telemetry.FirmwareVersion, telemetry.ActiveAppId, telemetry.ActiveAppName, telemetry.BoardModel, telemetry.PanelType);
             return true;
         }
         catch
@@ -370,5 +370,6 @@ public sealed partial class DeviceServerHost
         public bool TrySetResult(CommandDispatchResult result) => tcs.TrySetResult(result);
     }
 }
+
 
 

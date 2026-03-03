@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Net;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
@@ -28,6 +28,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private const string CommandAckRatePolicy = "command-ack";
     private const string WebSocketHandshakeRatePolicy = "ws-handshake";
 
+
     private enum AuthContext
     {
         HttpApi,
@@ -40,6 +41,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly Dictionary<string, PairingAttemptWindow> pairingAttemptsByIp = new(StringComparer.OrdinalIgnoreCase);
 
     private ServerConfig config = new();
+    private TimeSpan deviceOfflineTimeout = TimeSpan.FromSeconds(15);
     private WebApplication? app;
     private CancellationTokenSource? appCts;
     public event EventHandler? DevicesChanged;
@@ -62,6 +64,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         var runtimeConfig = this.config;
+        deviceOfflineTimeout = TimeSpan.FromSeconds(Math.Clamp(runtimeConfig.DeviceFreshThresholdSeconds, 5, 120));
         var allowedCidrs = ParseAllowedCidrs(runtimeConfig.AllowedCidrs);
         var maxJsonBodyBytes = NormalizeMaxJsonBodyBytes(runtimeConfig.MaxJsonBodyBytes);
 
@@ -258,7 +261,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return devices.Values.Select(d => d.ToSnapshot()).OrderByDescending(d => d.LastSeenUtc).ToArray();
+            return devices.Values.Select(d => d.ToSnapshot(deviceOfflineTimeout)).OrderByDescending(d => d.LastSeenUtc).ToArray();
         }
     }
 
@@ -406,7 +409,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 DeviceId = id,
                 Token = token,
                 Name = string.IsNullOrWhiteSpace(req.DeviceName) ? ResolveDefaultDeviceName(req.BoardModel) : req.DeviceName.Trim(),
-                Profile = string.IsNullOrWhiteSpace(req.Profile) ? "stable" : req.Profile.Trim(),
+                Profile = NormalizeFirmwareProfile(req.Profile),
                 FirmwareVersion = req.FirmwareVersion,
                 LastKnownIp = ctx.Connection.RemoteIpAddress?.ToString(),
                 LastSeenUtc = DateTimeOffset.UtcNow,
@@ -444,9 +447,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         {
             DeviceId = state.Record.DeviceId,
             Name = state.Record.Name,
-            MatrixWidth = 64,
-            MatrixHeight = 32,
-            StreamMode = "bins64",
+            MatrixWidth = 128,
+            MatrixHeight = 64,
+            StreamMode = "bins128",
             MdnsService = config.MdnsServiceName,
         });
     }
@@ -471,6 +474,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         var ws = await ctx.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+        state.MarkAuthenticated();
         state.AttachSocket(ws, ctx.Connection.RemoteIpAddress?.ToString());
         NotifyDevicesChanged();
 
@@ -676,7 +680,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return "ESP32-S3 DevKitC-1";
         }
 
-        return "Matrix Portal S3";
+        return "ESP32-S3 DevKitC-1";
     }
 
     private bool TryConsumePairingCode(string code)
@@ -935,6 +939,17 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return (value & mask) == Network;
         }
     }
+    private static string NormalizeFirmwareProfile(string? profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile))
+        {
+            return "dma_exp";
+        }
+        var normalized = profile.Trim();
+        return string.Equals(normalized, "stable", StringComparison.OrdinalIgnoreCase)
+            ? "dma_exp"
+            : normalized;
+    }
     private sealed class DeviceState : IDisposable
     {
         private CancellationTokenSource senderCts = new();
@@ -942,7 +957,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         public DeviceState(DeviceRecord record)
         {
             Record = record;
-            LastActivityUtc = DateTimeOffset.UtcNow;
+            LastActivityUtc = record.LastSeenUtc != default && record.LastSeenUtc != DateTimeOffset.MinValue
+                ? record.LastSeenUtc
+                : record.CreatedAtUtc;
             Outgoing = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(1)
             {
                 FullMode = BoundedChannelFullMode.DropOldest,
@@ -959,6 +976,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         public DateTimeOffset LastActivityUtc { get; private set; }
 
         public CancellationToken SendToken => senderCts.Token;
+
         public void MarkSeen(
             string? ip,
             int? rssi,
@@ -968,7 +986,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             string? boardModel = null,
             string? panelType = null)
         {
-            LastActivityUtc = DateTimeOffset.UtcNow;
+            var now = DateTimeOffset.UtcNow;
+            LastActivityUtc = now;
             Record = new DeviceRecord
             {
                 DeviceId = Record.DeviceId,
@@ -976,7 +995,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 Profile = Record.Profile,
                 Token = Record.Token,
                 CreatedAtUtc = Record.CreatedAtUtc,
-                LastSeenUtc = DateTimeOffset.UtcNow,
+                LastSeenUtc = now,
                 LastKnownIp = string.IsNullOrWhiteSpace(ip) ? Record.LastKnownIp : ip,
                 LastKnownRssi = rssi ?? Record.LastKnownRssi,
                 FirmwareVersion = string.IsNullOrWhiteSpace(firmwareVersion) ? Record.FirmwareVersion : firmwareVersion,
@@ -984,6 +1003,71 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 ActiveAppName = string.IsNullOrWhiteSpace(activeAppName) ? Record.ActiveAppName : activeAppName,
                 BoardModel = string.IsNullOrWhiteSpace(boardModel) ? Record.BoardModel : boardModel,
                 PanelType = string.IsNullOrWhiteSpace(panelType) ? Record.PanelType : panelType,
+                IsRegistered = Record.IsRegistered,
+                FirstSeenUtc = Record.FirstSeenUtc,
+                LastTelemetryUtc = Record.LastTelemetryUtc,
+                LastAuthUtc = Record.LastAuthUtc,
+                ConfigState = Record.ConfigState,
+            };
+        }
+
+        public void MarkAuthenticated()
+        {
+            var now = DateTimeOffset.UtcNow;
+            Record = new DeviceRecord
+            {
+                DeviceId = Record.DeviceId,
+                Name = Record.Name,
+                Profile = Record.Profile,
+                Token = Record.Token,
+                CreatedAtUtc = Record.CreatedAtUtc,
+                LastSeenUtc = Record.LastSeenUtc,
+                LastKnownIp = Record.LastKnownIp,
+                LastKnownRssi = Record.LastKnownRssi,
+                FirmwareVersion = Record.FirmwareVersion,
+                ActiveAppId = Record.ActiveAppId,
+                ActiveAppName = Record.ActiveAppName,
+                BoardModel = Record.BoardModel,
+                PanelType = Record.PanelType,
+                IsRegistered = true,
+                FirstSeenUtc = Record.FirstSeenUtc ?? now,
+                LastTelemetryUtc = Record.LastTelemetryUtc,
+                LastAuthUtc = now,
+                ConfigState = DeviceConfigState.KnownGood,
+            };
+        }
+
+        public void MarkTelemetry(
+            string? ip,
+            int? rssi,
+            string? firmwareVersion,
+            string? activeAppId = null,
+            string? activeAppName = null,
+            string? boardModel = null,
+            string? panelType = null)
+        {
+            var now = DateTimeOffset.UtcNow;
+            LastActivityUtc = now;
+            Record = new DeviceRecord
+            {
+                DeviceId = Record.DeviceId,
+                Name = Record.Name,
+                Profile = Record.Profile,
+                Token = Record.Token,
+                CreatedAtUtc = Record.CreatedAtUtc,
+                LastSeenUtc = now,
+                LastKnownIp = string.IsNullOrWhiteSpace(ip) ? Record.LastKnownIp : ip,
+                LastKnownRssi = rssi ?? Record.LastKnownRssi,
+                FirmwareVersion = string.IsNullOrWhiteSpace(firmwareVersion) ? Record.FirmwareVersion : firmwareVersion,
+                ActiveAppId = string.IsNullOrWhiteSpace(activeAppId) ? Record.ActiveAppId : activeAppId,
+                ActiveAppName = string.IsNullOrWhiteSpace(activeAppName) ? Record.ActiveAppName : activeAppName,
+                BoardModel = string.IsNullOrWhiteSpace(boardModel) ? Record.BoardModel : boardModel,
+                PanelType = string.IsNullOrWhiteSpace(panelType) ? Record.PanelType : panelType,
+                IsRegistered = true,
+                FirstSeenUtc = Record.FirstSeenUtc ?? now,
+                LastTelemetryUtc = now,
+                LastAuthUtc = Record.LastAuthUtc,
+                ConfigState = Record.ConfigState,
             };
         }
 
@@ -1012,10 +1096,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             Outgoing.Writer.TryWrite(frame);
         }
 
-        public DeviceSnapshot ToSnapshot()
+        public DeviceSnapshot ToSnapshot(TimeSpan offlineTimeout)
         {
-            var staleTimeout = TimeSpan.FromSeconds(6);
-            var online = Socket is { State: WebSocketState.Open } && (DateTimeOffset.UtcNow - LastActivityUtc) <= staleTimeout;
+            var online = Socket is { State: WebSocketState.Open } && (DateTimeOffset.UtcNow - LastActivityUtc) <= offlineTimeout;
 
             return new DeviceSnapshot
             {
@@ -1031,6 +1114,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 ActiveAppName = Record.ActiveAppName,
                 BoardModel = Record.BoardModel,
                 PanelType = Record.PanelType,
+                IsRegistered = Record.IsRegistered,
+                FirstSeenUtc = Record.FirstSeenUtc,
+                LastTelemetryUtc = Record.LastTelemetryUtc,
+                LastAuthUtc = Record.LastAuthUtc,
+                ConfigState = Record.ConfigState,
             };
         }
 
@@ -1058,8 +1146,3 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 }
-
-
-
-
-

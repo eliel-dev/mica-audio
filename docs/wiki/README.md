@@ -49,7 +49,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Visual.Win2D](modules/visual-win2d.md)
 - [Output (LED)](modules/output-led.md)
 - [Device.Server + Device.Protocol](modules/device-server-protocol.md)
-- [Firmware Matrix Portal S3](modules/firmware-matrixportal-s3.md)
+- [Firmware HUB75 128x64 (DevKitC-1)](modules/firmware-matrixportal-s3.md)
 - [Settings + Presets + Persistencia](modules/settings-presets-persistence.md)
 - [DeviceOperationsCoordinator](modules/device-operations-coordinator.md)
 - [Apps catalog + deployment](modules/apps-catalog-deployment.md)
@@ -121,3 +121,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Codigo -> wiki: sempre marcador `DOCS:` em comentario.
 - Cada mudanca tecnica relevante deve atualizar wiki e backlinks.
 - Politica canonica: `docs/wiki/reference/ai-contract.v1.yaml`.
+
+- [WS protocol v2](reference/ws-protocol-v2.md)
+- [App module pattern](ai/app-module-pattern.md)

@@ -1,3 +1,4 @@
+using App.WinUI.Views.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -7,15 +8,20 @@ namespace App.WinUI.Views;
 
 public sealed partial class DevicesPage
 {
+    // DOCS: docs/wiki/guides/setup-new-device.md#passos
     private TextBox SearchBox = null!;
     private ListView DevicesList = null!;
     private TextBlock SelectedDeviceTitleText = null!;
     private TextBlock SelectedDeviceSubtitleText = null!;
+    private TextBlock SelectedDeviceRegistrationText = null!;
     private TextBlock SelectedDeviceAppText = null!;
     private TextBlock ServerInfoText = null!;
+    private AppPreviewThumbnailControl SelectedDevicePreview = null!;
+    private TextBlock SelectedDevicePreviewPlaceholderText = null!;
     private AppBarButton EnterProvisioningButton = null!;
     private AppBarButton RevokeButton = null!;
     private AppBarButton TestLedButton = null!;
+    private AppBarButton RemoveDeviceButton = null!;
     private ProgressRing CommandProgressRing = null!;
     private TextBlock CommandStatusText = null!;
     private TextBlock CommandPercentText = null!;
@@ -41,8 +47,8 @@ public sealed partial class DevicesPage
             DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
         };
 
-        var setupButton = new AppBarButton { Label = "Novo dispositivo", Icon = new SymbolIcon(Symbol.AddFriend) };
-        setupButton.Click += OnNewDeviceSetupClicked;
+        var setupButton = new AppBarButton { Label = "Baixar firmware", Icon = new SymbolIcon(Symbol.Download) };
+        setupButton.Click += OnDownloadFirmwareClicked;
         var pairButton = new AppBarButton { Label = "Parear", Icon = new SymbolIcon(Symbol.Add) };
         pairButton.Click += OnGeneratePairingCodeClicked;
         var refreshButton = new AppBarButton { Label = "Atualizar", Icon = new SymbolIcon(Symbol.Refresh) };
@@ -50,7 +56,6 @@ public sealed partial class DevicesPage
         topCommandBar.PrimaryCommands.Add(setupButton);
         topCommandBar.PrimaryCommands.Add(pairButton);
         topCommandBar.PrimaryCommands.Add(refreshButton);
-
 
         root.Children.Add(CreateCard(topCommandBar, elevated: true, padding: 4));
 
@@ -82,6 +87,7 @@ public sealed partial class DevicesPage
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         rightGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         Grid.SetColumn(rightGrid, 1);
 
@@ -92,14 +98,54 @@ public sealed partial class DevicesPage
             Style = Application.Current.Resources["TitleTextBlockStyle"] as Style,
         };
         SelectedDeviceSubtitleText = new TextBlock { Text = "-", Opacity = 0.82 };
+        SelectedDeviceRegistrationText = new TextBlock { Text = "-", Opacity = 0.78, TextWrapping = TextWrapping.Wrap };
         SelectedDeviceAppText = new TextBlock { Text = "App ativo: -", Opacity = 0.78 };
         ServerInfoText = new TextBlock { Text = "Servidor: iniciando...", Opacity = 0.78, TextWrapping = TextWrapping.Wrap };
 
         summary.Children.Add(SelectedDeviceTitleText);
         summary.Children.Add(SelectedDeviceSubtitleText);
+        summary.Children.Add(SelectedDeviceRegistrationText);
         summary.Children.Add(SelectedDeviceAppText);
         summary.Children.Add(ServerInfoText);
         rightGrid.Children.Add(CreateCard(summary));
+
+        var previewStack = new StackPanel { Spacing = 8 };
+        previewStack.Children.Add(new TextBlock
+        {
+            Text = "Preview do app",
+            Opacity = 0.82,
+        });
+
+        var previewHost = new Grid
+        {
+            MinHeight = 120,
+        };
+
+        SelectedDevicePreview = new AppPreviewThumbnailControl
+        {
+            Width = 232,
+            Height = 116,
+            Visibility = Visibility.Collapsed,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+
+        SelectedDevicePreviewPlaceholderText = new TextBlock
+        {
+            Text = "Selecione um dispositivo para ver o app ativo",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.72,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MaxWidth = 260,
+        };
+
+        previewHost.Children.Add(SelectedDevicePreview);
+        previewHost.Children.Add(SelectedDevicePreviewPlaceholderText);
+        previewStack.Children.Add(previewHost);
+
+        var previewCard = CreateCard(previewStack);
+        Grid.SetRow(previewCard, 1);
+        rightGrid.Children.Add(previewCard);
 
         var actionsCommandBar = new CommandBar
         {
@@ -113,13 +159,16 @@ public sealed partial class DevicesPage
         RevokeButton.Click += OnRevokeClicked;
         TestLedButton = new AppBarButton { Label = "Testar LED", Icon = new SymbolIcon(Symbol.TouchPointer) };
         TestLedButton.Click += OnTestLedClicked;
+        RemoveDeviceButton = new AppBarButton { Label = "Remover", Icon = new SymbolIcon(Symbol.Delete) };
+        RemoveDeviceButton.Click += OnRemoveDeviceClicked;
 
         actionsCommandBar.PrimaryCommands.Add(EnterProvisioningButton);
         actionsCommandBar.PrimaryCommands.Add(RevokeButton);
         actionsCommandBar.PrimaryCommands.Add(TestLedButton);
+        actionsCommandBar.PrimaryCommands.Add(RemoveDeviceButton);
 
         var actionsCard = CreateCard(actionsCommandBar, padding: 4);
-        Grid.SetRow(actionsCard, 1);
+        Grid.SetRow(actionsCard, 2);
         rightGrid.Children.Add(actionsCard);
 
         var statusGrid = new Grid { ColumnSpacing = 10 };
@@ -158,7 +207,7 @@ public sealed partial class DevicesPage
         statusGrid.Children.Add(CommandPercentText);
 
         var statusCard = CreateCard(statusGrid);
-        Grid.SetRow(statusCard, 2);
+        Grid.SetRow(statusCard, 3);
         rightGrid.Children.Add(statusCard);
 
         LogsTextBox = new TextBox
@@ -172,7 +221,7 @@ public sealed partial class DevicesPage
         ScrollViewer.SetVerticalScrollBarVisibility(LogsTextBox, ScrollBarVisibility.Auto);
 
         var logsCard = CreateCard(LogsTextBox);
-        Grid.SetRow(logsCard, 3);
+        Grid.SetRow(logsCard, 4);
         rightGrid.Children.Add(logsCard);
 
         middle.Children.Add(rightGrid);
@@ -211,6 +260,4 @@ public sealed partial class DevicesPage
         return UiResourceResolver.ResolveBrush(key, fallback);
     }
 }
-
-
 

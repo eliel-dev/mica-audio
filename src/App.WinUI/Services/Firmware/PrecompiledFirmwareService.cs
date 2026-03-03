@@ -1,56 +1,26 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
 
 namespace App.WinUI.Services.Firmware;
 
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
+// DOCS: docs/wiki/guides/setup-new-device.md#referencias-de-codigo
 internal sealed class PrecompiledFirmwareService
 {
-    public const string MatrixPortalS3Board = "matrixportal_s3";
     public const string Esp32S3DevKitC1Board = "esp32s3_devkitc1";
-    public const string Hub75Panel64x32 = "hub75_64x32";
+    public const string Hub75PanelP25_128x64_Smd2121_Scan32 = "hub75_p2_5_128x64_smd2121_scan32";
 
     private static readonly IReadOnlyList<PrecompiledFirmwareOption> Options =
     [
         new PrecompiledFirmwareOption
         {
-            Id = "stable",
-            DisplayName = "Matrix Portal S3 - Stable",
-            Description = "Perfil est\u00E1vel (Protomatter) para Matrix Portal S3.",
-            FileName = "matrixportal-s3-stable_merged.bin",
-            BoardModel = MatrixPortalS3Board,
-            PanelType = Hub75Panel64x32,
-            Profile = "stable",
-        },
-        new PrecompiledFirmwareOption
-        {
-            Id = "dma_exp",
-            DisplayName = "Matrix Portal S3 - DMA Experimental",
-            Description = "Perfil experimental com DMA para Matrix Portal S3.",
-            FileName = "matrixportal-s3-dma_exp_merged.bin",
-            BoardModel = MatrixPortalS3Board,
-            PanelType = Hub75Panel64x32,
-            Profile = "dma_exp",
-        },
-        new PrecompiledFirmwareOption
-        {
-            Id = "esp32s3_devkitc1_stable",
-            DisplayName = "ESP32-S3 DevKitC-1 - Stable",
-            Description = "Perfil est\u00E1vel para ESP32-S3 DevKitC-1 v1.0 (WROOM-1).",
-            FileName = "esp32s3-devkitc1-stable_merged.bin",
+            Id = "esp32s3_devkitc1_128x64_dma_exp",
+            DisplayName = "ESP32-S3 DevKitC-1 128x64 - DMA",
+            Description = "Perfil oficial unico em DMA para ESP32-S3 DevKitC-1/WROOM-1 no painel P2.5 128x64 1/32.",
+            FileName = "esp32s3-devkitc1-128x64-dma_exp_merged.bin",
             BoardModel = Esp32S3DevKitC1Board,
-            PanelType = Hub75Panel64x32,
-            Profile = "stable",
-        },
-        new PrecompiledFirmwareOption
-        {
-            Id = "esp32s3_devkitc1_dma_exp",
-            DisplayName = "ESP32-S3 DevKitC-1 - DMA Experimental",
-            Description = "Perfil DMA experimental para ESP32-S3 DevKitC-1 v1.0 (WROOM-1).",
-            FileName = "esp32s3-devkitc1-dma_exp_merged.bin",
-            BoardModel = Esp32S3DevKitC1Board,
-            PanelType = Hub75Panel64x32,
+            PanelType = Hub75PanelP25_128x64_Smd2121_Scan32,
             Profile = "dma_exp",
         },
     ];
@@ -128,7 +98,6 @@ internal sealed class PrecompiledFirmwareService
         return false;
     }
 
-    // DOCS: docs/wiki/guides/build-export-firmware.md#passos
     public bool TryResolveSource(string optionId, out string sourcePath, out string error)
     {
         sourcePath = string.Empty;
@@ -204,6 +173,3 @@ internal sealed class PrecompiledFirmwareService
         LogMessage?.Invoke(this, message);
     }
 }
-
-
-

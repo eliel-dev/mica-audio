@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
@@ -127,6 +127,8 @@ public partial class App : Application
         services.AddSingleton(sp => new DeviceIntegrationService(
             sp.GetRequiredService<IDeviceServerHost>(),
             sp.GetRequiredService<IDeviceRegistryStore>(),
+            sp.GetRequiredService<SettingsRepository>(),
+            sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<ILogger<DeviceIntegrationService>>()));
         services.AddSingleton<DeviceOperationsCoordinator>();
 
@@ -163,7 +165,11 @@ public partial class App : Application
 
         services.AddTransient<DevicesPage>(sp => new DevicesPage(
             sp.GetRequiredService<DevicesPageViewModel>(),
-            sp.GetRequiredService<DeviceOperationsCoordinator>()));
+            sp.GetRequiredService<DeviceOperationsCoordinator>(),
+            sp.GetRequiredService<PrecompiledFirmwareService>(),
+            sp.GetRequiredService<IAppCatalogService>(),
+            sp.GetRequiredService<SettingsRepository>(),
+            sp.GetRequiredService<AppSettingsDomainService>()));
 
         services.AddTransient<AppsPage>(sp => new AppsPage(
             sp.GetRequiredService<AppsPageViewModel>(),
@@ -393,8 +399,6 @@ public partial class App : Application
         };
     }
 }
-
-
 
 
 

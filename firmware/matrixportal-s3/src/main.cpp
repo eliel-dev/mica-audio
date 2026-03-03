@@ -1,14 +1,10 @@
-﻿#include <Arduino.h>
+#include <Arduino.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
-
-#if defined(MICA_PROFILE_STABLE)
-#include <Adafruit_Protomatter.h>
-#endif
 
 #if defined(MICA_PROFILE_DMA_EXP)
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
@@ -17,11 +13,11 @@
 namespace {
 // DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#fluxo-de-execucao
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
-constexpr size_t kStreamFrameSize = 81;
-constexpr size_t kStreamFrame64x32Rgb565Size = 4112;
-constexpr uint8_t kStreamVersion = 1;
+constexpr size_t kStreamFrameSize = 145;
+constexpr size_t kStreamFrame128x64Rgb565Size = 16400;
+constexpr uint8_t kStreamVersion = 2;
 constexpr uint8_t kStreamBinsMessageType = 1;
-constexpr uint8_t kStreamFrame64x32Rgb565MessageType = 2;
+constexpr uint8_t kStreamFrame128x64Rgb565MessageType = 2;
 constexpr unsigned long kProvisioningFallbackMs = 60000;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
 constexpr uint8_t kMatrixWidth = MICA_MATRIX_WIDTH;
@@ -48,7 +44,7 @@ constexpr uint8_t kMatrixLatchPin = 47;
 constexpr uint8_t kMatrixOePin = 14;
 #endif
 
-constexpr const char* kPanelType = "hub75_64x32";
+constexpr const char* kPanelType = "hub75_p2_5_128x64_smd2121_scan32";
 #if defined(LED_BUILTIN)
 constexpr int kTestLedPin = LED_BUILTIN;
 #elif defined(PIN_LED)
@@ -60,13 +56,8 @@ constexpr int kTestLedPin = -1;
 constexpr unsigned long kTestLedDurationMs = 1500;
 constexpr unsigned long kTestLedTogglePeriodMs = 120;
 
-#if defined(MICA_PROFILE_DMA_EXP)
 constexpr const char* kFirmwareProfile = "dma_exp";
 constexpr const char* kFirmwareVersion = "vNext-dma_exp";
-#else
-constexpr const char* kFirmwareProfile = "stable";
-constexpr const char* kFirmwareVersion = "vNext-stable";
-#endif
 
 #if defined(MICA_SECURITY_PROFILE_RELEASE)
 constexpr const char* kSecurityProfile = "release";
@@ -96,20 +87,6 @@ bool gTestLedState = false;
 bool gMatrixReady = false;
 uint8_t gAppliedBrightness = 255;
 bool gFrameModeActive = false;
-
-#if defined(MICA_PROFILE_STABLE)
-Adafruit_Protomatter gMatrix(
-    kMatrixWidth,
-    4,
-    1,
-    const_cast<uint8_t*>(kMatrixRgbPins),
-    4,
-    const_cast<uint8_t*>(kMatrixAddrPins),
-    kMatrixClockPin,
-    kMatrixLatchPin,
-    kMatrixOePin,
-    true);
-#endif
 
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
@@ -178,10 +155,6 @@ void clearMatrix() {
     return;
   }
 
-#if defined(MICA_PROFILE_STABLE)
-  gMatrix.fillScreen(0);
-#endif
-
 #if defined(MICA_PROFILE_DMA_EXP)
   if (gMatrix != nullptr) {
     gMatrix->clearScreen();
@@ -190,12 +163,6 @@ void clearMatrix() {
 }
 
 void drawMatrixPixel(uint8_t x, uint8_t y, const RgbColor& color) {
-#if defined(MICA_PROFILE_STABLE)
-  const uint8_t scaledR = static_cast<uint8_t>((static_cast<uint16_t>(color.r) * gAppliedBrightness) / 255u);
-  const uint8_t scaledG = static_cast<uint8_t>((static_cast<uint16_t>(color.g) * gAppliedBrightness) / 255u);
-  const uint8_t scaledB = static_cast<uint8_t>((static_cast<uint16_t>(color.b) * gAppliedBrightness) / 255u);
-  gMatrix.drawPixel(x, y, gMatrix.color565(scaledR, scaledG, scaledB));
-#endif
 
 #if defined(MICA_PROFILE_DMA_EXP)
   if (gMatrix != nullptr) {
@@ -205,20 +172,10 @@ void drawMatrixPixel(uint8_t x, uint8_t y, const RgbColor& color) {
 }
 
 void commitMatrixFrame() {
-#if defined(MICA_PROFILE_STABLE)
-  gMatrix.show();
-#endif
 }
 
 // DOCS: docs/wiki/modules/firmware-matrixportal-s3.md#pontos-de-alteracao-frequente
 bool initMatrixDisplay() {
-#if defined(MICA_PROFILE_STABLE)
-  ProtomatterStatus status = gMatrix.begin();
-  if (status != PROTOMATTER_OK) {
-    Serial.printf("Falha ao inicializar Protomatter (status=%d)\n", static_cast<int>(status));
-    return false;
-  }
-#endif
 
 #if defined(MICA_PROFILE_DMA_EXP)
   HUB75_I2S_CFG::i2s_pins pinMap = {
@@ -518,14 +475,14 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
       gLevel = payload[14];
       memcpy(gBins, payload + 15, kBinsCount);
-      gServerBrightness = payload[79];
+      gServerBrightness = payload[143];
       gFrameModeActive = false;
       gLastFrameMs = millis();
       return;
     }
 
-    if (messageType == kStreamFrame64x32Rgb565MessageType) {
-      if (len < kStreamFrame64x32Rgb565Size) {
+    if (messageType == kStreamFrame128x64Rgb565MessageType) {
+      if (len < kStreamFrame128x64Rgb565Size) {
         return;
       }
 
@@ -701,7 +658,7 @@ void drawBars() {
   commitMatrixFrame();
 }
 
-void drawFrame64x32() {
+void drawFrame128x64() {
   if (!gMatrixReady) {
     return;
   }
@@ -783,7 +740,7 @@ void loop() {
 
   updateTestLed();
   if (gFrameModeActive) {
-    drawFrame64x32();
+    drawFrame128x64();
   } else {
     drawBars();
   }

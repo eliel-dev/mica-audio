@@ -83,3 +83,16 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
 - `src/Device.Protocol/Models/PairDeviceRequest.cs`
 - `src/Device.Protocol/Models/DeviceTelemetryMessage.cs`
+
+## Atualizacao 2026-03 - Presenca Leve e Carimbos de Sessao
+
+- `LastAuthUtc` e preenchido quando a autenticacao WebSocket e concluida com sucesso em `HandleWebSocketAsync`, apos `TryAuthenticate(..., AuthContext.WebSocket, ...)` validar o token.
+- `LastTelemetryUtc` e preenchido apenas no processamento de telemetria em `HandleIncomingWsTextAsync`.
+- Esses carimbos tem semanticas diferentes e nao devem ser misturados:
+  - `LastAuthUtc` = sessao autenticada estabelecida
+  - `LastTelemetryUtc` = telemetria recente recebida
+- A estrategia deliberadamente continua leve:
+  - sem `shadow`
+  - sem timeline de lifecycle
+  - sem inferir `nao configurado` automaticamente
+
