@@ -99,6 +99,19 @@ platformio pkg outdated -d firmware/esp32s3-devkitc1 -e esp32s3_devkitc1_dma_exp
 3. Resultado:
    - item `RSK-001` saiu de falha ativa para mitigado/corrigido nesta fase.
 
+## Atualizacao RSK-003 2026-03-03
+
+1. Trilha faseada executada:
+   - Fase 1 (runtime): `App.WinUI` atualizado em `Microsoft.Extensions.DependencyInjection/Logging/Logging.Debug` para `10.0.3` e `Microsoft.Web.WebView2` para `1.0.3800.47`.
+   - Fase 2 (test toolchain): `Microsoft.NET.Test.Sdk` para `18.3.0`, `coverlet.collector` para `8.0.0`, `xunit.runner.visualstudio` para `3.1.5` nos 3 projetos de teste.
+   - Fase 3 (benchmark): `BenchmarkDotNet` para `0.15.8`.
+2. Validacao da trilha:
+   - `dotnet build MicaAudio.sln -c Debug` -> OK.
+   - `dotnet test MicaAudio.sln -c Debug --no-build` -> OK (172 pass, 1 skip manual em smoke).
+   - `dotnet list ... --vulnerable --include-transitive` -> sem vulnerabilidades conhecidas.
+3. Resultado:
+   - item `RSK-003` saiu de `Parcial` para `Corrigido` nesta rodada (com backlog transitive residual fora do escopo P1).
+
 ## Validacao Context7 por componente
 
 1. Win2D for WinUI3:
@@ -126,7 +139,7 @@ os status acima incluem inferencia tecnica a partir das referencias Context7 e d
 |---|---|---|---:|---|---|---|---|---|---|
 | RSK-001 | Session restore HUB75 | falha intermitente de restore (corrigida em 2026-03-03) | 3.7 | Alto | Corrigido | manter monitoramento de regressao em testes de sessao HUB75 | rerun da suite `Output.Tests` e smoke de devices | P0 | reverter alteracao de session policy |
 | RSK-002 | Auth WS legado | query token legado habilitado por default (corrigido em 2026-03-03) | 4.1 | Alto | Corrigido | manter auth WS por header; usar flag de rollback somente em incidente | testes de auth WS com token em header/query | P0 | reativar flag em release emergencial |
-| RSK-003 | Drift de pacotes .NET | backlog de `Microsoft.Extensions.*` e `WebView2` | 3.4 | Alto | Parcial | abrir trilha de upgrade faseado por modulo e por risco | build + test completo por fase | P1 | pin de versoes anteriores no csproj |
+| RSK-003 | Drift de pacotes .NET | backlog de `Microsoft.Extensions.*` e `WebView2` (trilha faseada executada em 2026-03-03) | 3.4 | Alto | Corrigido | monitorar drift transitive fora do escopo P1 e abrir lote futuro dedicado | build + test completo por fase | P1 | pin de versoes anteriores no csproj |
 | RSK-004 | Firmware versioning | `kFirmwareVersion` ainda fixo por release (sem automacao por tag/commit) | 2.9 | Medio | Parcial | adotar versionamento de build (tag/commit/date) no firmware | telemetria valida em device snapshot | P1 | fallback para string estatica |
 | RSK-005 | Firmware deps | `ArduinoJson` patch desatualizado | 2.6 | Medio | Parcial | atualizar para `7.4.3` e validar regressao de parse | build firmware + smoke de pair/telemetria | P1 | restaurar lock anterior |
 | RSK-006 | Artefato precompilado | risco de bin stale sem carimbo/hash no processo | 3.2 | Medio | Parcial | registrar hash + metadata de build no fluxo de export | validar hash no download local | P2 | manter fluxo atual de copia |
