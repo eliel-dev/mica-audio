@@ -10,17 +10,20 @@ public sealed class DevicesPageSmokeTests
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
 
-        Assert.NotNull(typeof(DevicesPage).GetField("DashboardStatusText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("SelectedDeviceSignalText", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardPlaceholderText", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardMetricsGrid", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardLoopLoadBar", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("DashboardConnectionChipText", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("DashboardConnectionChipIcon", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("DashboardWifiChipIcon", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("DashboardRssiChipIcon", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("DashboardBrightnessSlider", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("DashboardBrightnessStatusText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("DashboardTelemetryHeartbeatText", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardLoopTrendGrid", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardLoopTrendBars", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DeviceLogsTextBox", flags));
+
+        Assert.Null(typeof(DevicesPage).GetField("CommandStatusText", flags));
+        Assert.Null(typeof(DevicesPage).GetField("DashboardConnectionChipText", flags));
+        Assert.Null(typeof(DevicesPage).GetField("DashboardConnectivityStateText", flags));
     }
 
     [Fact]

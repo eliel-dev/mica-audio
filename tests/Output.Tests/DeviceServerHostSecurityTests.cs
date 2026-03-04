@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
@@ -220,6 +221,17 @@ public sealed class DeviceServerHostSecurityTests
             freePsramBytes = 2048,
             largestPsramBlockBytes = 8192,
             wifiConnected = false,
+            wifiState = "portal",
+            provisioningPortalActive = true,
+            auxLedAvailable = false,
+            testLedAvailable = true,
+            lastWifiEvent = "wifi_disconnected",
+            telemetrySequence = 9u,
+            brightnessCap = 120,
+            brightnessRequested = 180,
+            brightnessApplied = 120,
+            testLedEnabled = true,
+            testLedDuty = 120,
         });
 
         var payload = Encoding.UTF8.GetBytes(telemetryJson);
@@ -238,7 +250,18 @@ public sealed class DeviceServerHostSecurityTests
                 && snapshot.PsramAvailable == true
                 && snapshot.FreePsramBytes == 2048
                 && snapshot.LargestPsramBlockBytes == 8192
-                && snapshot.WifiConnected == false;
+                && snapshot.WifiConnected == false
+                && string.Equals(snapshot.WifiState, "portal", StringComparison.OrdinalIgnoreCase)
+                && snapshot.ProvisioningPortalActive == true
+                && snapshot.AuxLedAvailable == false
+                && snapshot.TestLedAvailable == true
+                && string.Equals(snapshot.LastWifiEvent, "wifi_disconnected", StringComparison.OrdinalIgnoreCase)
+                && snapshot.TelemetrySequence == 9u
+                && snapshot.BrightnessCap == 120
+                && snapshot.BrightnessRequested == 180
+                && snapshot.BrightnessApplied == 120
+                && snapshot.TestLedEnabled == true
+                && snapshot.TestLedDuty == 120;
         }, timeout: TimeSpan.FromSeconds(5));
 
         Assert.True(telemetryApplied, "Telemetria com metricas estendidas nao foi refletida no snapshot no timeout esperado.");
@@ -253,6 +276,17 @@ public sealed class DeviceServerHostSecurityTests
         Assert.Equal(2048L, snapshotAfter.FreePsramBytes);
         Assert.Equal(8192L, snapshotAfter.LargestPsramBlockBytes);
         Assert.False(snapshotAfter.WifiConnected);
+        Assert.Equal("portal", snapshotAfter.WifiState);
+        Assert.True(snapshotAfter.ProvisioningPortalActive);
+        Assert.False(snapshotAfter.AuxLedAvailable);
+        Assert.True(snapshotAfter.TestLedAvailable);
+        Assert.Equal("wifi_disconnected", snapshotAfter.LastWifiEvent);
+        Assert.Equal(9u, snapshotAfter.TelemetrySequence);
+        Assert.Equal(120, snapshotAfter.BrightnessCap);
+        Assert.Equal(180, snapshotAfter.BrightnessRequested);
+        Assert.Equal(120, snapshotAfter.BrightnessApplied);
+        Assert.True(snapshotAfter.TestLedEnabled);
+        Assert.Equal(120, snapshotAfter.TestLedDuty);
 
         var recordAfter = host.GetDeviceRecords().First(d =>
             string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
@@ -264,6 +298,17 @@ public sealed class DeviceServerHostSecurityTests
         Assert.Equal(2048L, recordAfter.FreePsramBytes);
         Assert.Equal(8192L, recordAfter.LargestPsramBlockBytes);
         Assert.False(recordAfter.WifiConnected);
+        Assert.Equal("portal", recordAfter.WifiState);
+        Assert.True(recordAfter.ProvisioningPortalActive);
+        Assert.False(recordAfter.AuxLedAvailable);
+        Assert.True(recordAfter.TestLedAvailable);
+        Assert.Equal("wifi_disconnected", recordAfter.LastWifiEvent);
+        Assert.Equal(9u, recordAfter.TelemetrySequence);
+        Assert.Equal(120, recordAfter.BrightnessCap);
+        Assert.Equal(180, recordAfter.BrightnessRequested);
+        Assert.Equal(120, recordAfter.BrightnessApplied);
+        Assert.True(recordAfter.TestLedEnabled);
+        Assert.Equal(120, recordAfter.TestLedDuty);
 
         await CloseWebSocketQuietlyAsync(ws);
     }
@@ -605,6 +650,105 @@ public sealed class DeviceServerHostSecurityTests
     }
 
     [Fact]
+    public async Task LegacyTestLedCommand_ShouldBeSentWithoutParameters_WhenNoPayloadProvided()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "test-led-legacy");
+
+        using var ws = new ClientWebSocket();
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var dispatchTask = host.SendCommandTrackedAsync(
+            paired.DeviceId,
+            DeviceCommandType.TestLed,
+            timeout: TimeSpan.FromSeconds(5));
+
+        var commandJson = await ReceiveWebSocketTextAsync(ws, TimeSpan.FromSeconds(5));
+        using var commandDoc = JsonDocument.Parse(commandJson);
+        var root = commandDoc.RootElement;
+
+        Assert.Equal("command", root.GetProperty("type").GetString());
+        Assert.Equal("test_led", root.GetProperty("command").GetString());
+        Assert.False(root.TryGetProperty("parameters", out _), "Comando legado test_led nao deve enviar parametros.");
+
+        var commandId = root.GetProperty("commandId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(commandId));
+
+        await SendWebSocketCommandProgressAsync(ws, paired.DeviceId, commandId!, success: true);
+
+        var result = await dispatchTask;
+        Assert.True(result.Success);
+        Assert.Equal("done", result.Stage);
+
+        await CloseWebSocketQuietlyAsync(ws);
+    }
+
+    [Fact]
+    public async Task SetBrightnessCommand_ShouldSendBrightnessParameter()
+    {
+        var port = GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await PairDeviceAsync(host, client, "set-brightness");
+
+        using var ws = new ClientWebSocket();
+        ws.Options.SetRequestHeader("X-Device-Id", paired.DeviceId);
+        ws.Options.SetRequestHeader("X-Device-Token", paired.Token);
+        await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        var dispatchTask = host.SendCommandTrackedAsync(
+            paired.DeviceId,
+            DeviceCommandType.SetBrightness,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["brightness"] = "120",
+            },
+            timeout: TimeSpan.FromSeconds(5));
+
+        var commandJson = await ReceiveWebSocketTextAsync(ws, TimeSpan.FromSeconds(5));
+        using var commandDoc = JsonDocument.Parse(commandJson);
+        var root = commandDoc.RootElement;
+
+        Assert.Equal("command", root.GetProperty("type").GetString());
+        Assert.Equal("set_brightness", root.GetProperty("command").GetString());
+        Assert.True(root.TryGetProperty("parameters", out var parametersElement));
+        Assert.Equal("120", parametersElement.GetProperty("brightness").GetString());
+
+        var commandId = root.GetProperty("commandId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(commandId));
+
+        await SendWebSocketCommandProgressAsync(ws, paired.DeviceId, commandId!, success: true);
+
+        var result = await dispatchTask;
+        Assert.True(result.Success);
+        Assert.Equal("done", result.Stage);
+
+        await CloseWebSocketQuietlyAsync(ws);
+    }
+
+    [Fact]
     public async Task WebSocketAuthentication_ShouldStampLastAuthUtc_WhenTokenIsValid()
     {
         var port = GetFreeTcpPort();
@@ -794,6 +938,50 @@ public sealed class DeviceServerHostSecurityTests
         Assert.True(telemetryStamped, "Telemetria nao atualizou LastTelemetryUtc preservando LastAuthUtc no timeout esperado.");
         await CloseWebSocketQuietlyAsync(ws);
     }
+
+    private static async Task<string> ReceiveWebSocketTextAsync(ClientWebSocket ws, TimeSpan timeout)
+    {
+        using var timeoutCts = new CancellationTokenSource(timeout);
+        var buffer = new byte[2048];
+        using var ms = new MemoryStream();
+        while (true)
+        {
+            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), timeoutCts.Token);
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                throw new InvalidOperationException("Socket fechado antes de receber comando.");
+            }
+
+            if (result.Count > 0)
+            {
+                ms.Write(buffer, 0, result.Count);
+            }
+
+            if (result.EndOfMessage)
+            {
+                break;
+            }
+        }
+
+        return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+    }
+
+    private static async Task SendWebSocketCommandProgressAsync(ClientWebSocket ws, string deviceId, string commandId, bool success)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            type = "command_progress",
+            deviceId,
+            commandId,
+            progressPercent = 100,
+            stage = "done",
+            message = success ? "ok" : "erro",
+            success,
+        });
+
+        await ws.SendAsync(Encoding.UTF8.GetBytes(payload), WebSocketMessageType.Text, true, CancellationToken.None);
+    }
+
     private static async Task CloseWebSocketQuietlyAsync(ClientWebSocket ws)
     {
         if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)

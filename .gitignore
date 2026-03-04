@@ -8,6 +8,7 @@
 .tmp-*/
 .dotnet-home/
 **/.pio/
+firmware/esp32s3-devkitc1/src/firmware_version.auto.h
 
 # Logs and diagnostics
 publish-*.log

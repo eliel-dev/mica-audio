@@ -8,4 +8,5 @@ public enum DeviceCommandType
     InstallApp = 5,
     ActivateApp = 6,
     SetAppConfig = 7,
+    SetBrightness = 8,
 }

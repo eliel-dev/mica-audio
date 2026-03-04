@@ -9,9 +9,13 @@ Executar rotina operacional completa: parear, validar online, enviar comandos, a
 1. Gerar codigo de pareamento em Dispositivos.
 2. Provisionar firmware com host correto e pairing code.
 3. Confirmar device online na lista.
-4. Testar comandos basicos (`test_led`, `enter_provisioning`).
-5. Validar logs, progresso e status final.
-6. Simular queda de rede e confirmar reconnect.
+4. Validar controles operacionais:
+- acionar `Testar LED` (envia `test_led` sem parametros);
+- ajustar slider de brilho (envia `set_brightness` no commit);
+- opcionalmente validar compat legado com `test_led` + `enabled=true|false` em ambiente tecnico.
+5. Testar comando administrativo `enter_provisioning`.
+6. Validar logs, progresso e status final.
+7. Simular queda de rede e confirmar reconnect.
 
 ## Referencias de codigo
 
@@ -25,4 +29,6 @@ Executar rotina operacional completa: parear, validar online, enviar comandos, a
 - [ ] Pareamento finaliza com token valido.
 - [ ] Device aparece online.
 - [ ] Comando retorna ACK/progresso.
+- [ ] Heartbeat (`telemetrySequence`) avanca no dashboard.
+- [ ] Brilho aplicado/limite e disponibilidade de LED de teste atualizam na UI.
 - [ ] Reconnect apos queda de rede funciona.

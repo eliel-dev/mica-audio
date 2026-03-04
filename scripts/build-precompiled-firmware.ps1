@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $firmwareRoot = Join-Path $repoRoot 'firmware/esp32s3-devkitc1'
 $outputRoot = Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
+$autoVersionHeaderPath = Join-Path $firmwareRoot 'src/firmware_version.auto.h'
 $target = [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin' }
 $platformIoCommand = @()
 
@@ -151,23 +152,130 @@ function Merge-Firmware {
     Write-Host "[build-precompiled-firmware] OK: $DestinationPath ($size bytes)"
 }
 
-Ensure-Tools
-$platformIoCommand = @(Resolve-PlatformIoCommand)
-Write-Host "[build-precompiled-firmware] PlatformIO: $($platformIoCommand -join ' ')"
-Invoke-Pio -Args @('--version') -ErrorMessage 'Falha ao consultar versao do PlatformIO'
+function Normalize-VersionToken {
+    param([string]$Value)
 
-if (-not (Test-Path $firmwareRoot)) {
-    throw "Pasta de firmware nao encontrada: $firmwareRoot"
+    $trimmed = $Value.Trim()
+    if ([string]::IsNullOrWhiteSpace($trimmed)) {
+        return 'unknown'
+    }
+
+    $normalized = $trimmed -replace '[^0-9A-Za-z._-]', '_'
+    $normalized = $normalized.Trim('_')
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return 'unknown'
+    }
+
+    return $normalized
 }
 
-if (-not (Test-Path $outputRoot)) {
-    New-Item -Path $outputRoot -ItemType Directory | Out-Null
+function Try-GetGitLine {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Args
+    )
+
+    $git = Get-Command -Name 'git' -ErrorAction SilentlyContinue
+    if (-not $git) {
+        return $null
+    }
+
+    try {
+        $output = & $git.Source @Args 2>$null
+        if ($LASTEXITCODE -ne 0 -or $null -eq $output) {
+            return $null
+        }
+    }
+    catch {
+        return $null
+    }
+
+    if ($output -is [array]) {
+        foreach ($line in $output) {
+            $text = "$line".Trim()
+            if (-not [string]::IsNullOrWhiteSpace($text)) {
+                return $text
+            }
+        }
+
+        return $null
+    }
+
+    $single = "$output".Trim()
+    if ([string]::IsNullOrWhiteSpace($single)) {
+        return $null
+    }
+
+    return $single
 }
 
-Invoke-PioBuild -Env $target.Env
+function Resolve-FirmwareVersion {
+    $utcDate = (Get-Date).ToUniversalTime().ToString('yyyy.MM.dd')
+
+    $tag = Try-GetGitLine -Args @('-C', $repoRoot, 'tag', '--points-at', 'HEAD')
+    if ([string]::IsNullOrWhiteSpace($tag)) {
+        $tag = Try-GetGitLine -Args @('-C', $repoRoot, 'describe', '--tags', '--abbrev=0')
+    }
+    if ([string]::IsNullOrWhiteSpace($tag)) {
+        $tag = 'untagged'
+    }
+
+    $commit = Try-GetGitLine -Args @('-C', $repoRoot, 'rev-parse', '--short', 'HEAD')
+    if ([string]::IsNullOrWhiteSpace($commit)) {
+        $commit = 'nocommit'
+    }
+
+    $tagToken = Normalize-VersionToken -Value $tag
+    $commitToken = Normalize-VersionToken -Value $commit
+    return "v$utcDate-$tagToken-$commitToken"
+}
+
+function Write-AutoFirmwareVersionHeader {
+    param(
+        [Parameter(Mandatory)][string]$HeaderPath,
+        [Parameter(Mandatory)][string]$Version
+    )
+
+    $escapedVersion = $Version.Replace('\', '\\').Replace('"', '\"')
+    $content = @(
+        '#pragma once',
+        '',
+        '// Arquivo gerado por scripts/build-precompiled-firmware.ps1',
+        "#define MICA_FIRMWARE_VERSION `"$escapedVersion`""
+    )
+
+    Set-Content -Path $HeaderPath -Value $content -Encoding ascii
+}
 $destinationPath = Join-Path $outputRoot $target.OutputFile
-Merge-Firmware -Env $target.Env -DestinationPath $destinationPath
+$firmwareVersion = Resolve-FirmwareVersion
 
-Write-Host '[build-precompiled-firmware] Concluido com sucesso.'
-$size = (Get-Item $destinationPath).Length
-Write-Host " - $($target.OutputFile) ($size bytes)"
+try {
+    if (-not (Test-Path $firmwareRoot)) {
+        throw "Pasta de firmware nao encontrada: $firmwareRoot"
+    }
+
+    Write-AutoFirmwareVersionHeader -HeaderPath $autoVersionHeaderPath -Version $firmwareVersion
+    Write-Host "[build-precompiled-firmware] Firmware version: $firmwareVersion"
+
+    Ensure-Tools
+    $platformIoCommand = @(Resolve-PlatformIoCommand)
+    Write-Host "[build-precompiled-firmware] PlatformIO: $($platformIoCommand -join ' ')"
+    Invoke-Pio -Args @('--version') -ErrorMessage 'Falha ao consultar versao do PlatformIO'
+
+    if (-not (Test-Path $outputRoot)) {
+        New-Item -Path $outputRoot -ItemType Directory | Out-Null
+    }
+
+    Invoke-PioBuild -Env $target.Env
+    Merge-Firmware -Env $target.Env -DestinationPath $destinationPath
+
+    Write-Host '[build-precompiled-firmware] Concluido com sucesso.'
+    $size = (Get-Item $destinationPath).Length
+    Write-Host " - $($target.OutputFile) ($size bytes)"
+}
+finally {
+    if (Test-Path $autoVersionHeaderPath) {
+        Remove-Item -Path $autoVersionHeaderPath -Force
+        Write-Host '[build-precompiled-firmware] Removido arquivo temporario firmware_version.auto.h'
+    }
+}

@@ -46,6 +46,16 @@ public sealed class DeviceRecord
 
     public bool? WifiConnected { get; init; }
 
+    public string? WifiState { get; init; }
+
+    public bool? ProvisioningPortalActive { get; init; }
+
+    public bool? AuxLedAvailable { get; init; }
+
+    public bool? TestLedAvailable { get; init; }
+
+    public string? LastWifiEvent { get; init; }
+
     public uint? StreamLastSequence { get; init; }
 
     public uint? StreamFramesReceived { get; init; }
@@ -55,6 +65,18 @@ public sealed class DeviceRecord
     public uint? StreamSequenceGapCount { get; init; }
 
     public uint? StreamInvalidFrameCount { get; init; }
+
+    public uint? TelemetrySequence { get; init; }
+
+    public int? BrightnessCap { get; init; }
+
+    public int? BrightnessRequested { get; init; }
+
+    public int? BrightnessApplied { get; init; }
+
+    public bool? TestLedEnabled { get; init; }
+
+    public int? TestLedDuty { get; init; }
 
     public string? ActiveAppId { get; init; }
 

@@ -37,17 +37,18 @@
 - Devices offline continuam visiveis, mas nao exibem preview visual do app.
 - O painel da direita mostra apenas informacoes textuais do app ativo/ultimo app conhecido.
 - As acoes de device ficam no card de resumo: `Testar LED` e `Remover`.
+- O slider de brilho (`30..160`) envia `set_brightness` no commit e atualiza o painel.
 - A acao `Remover` foi consolidada: online tenta `revogar/reiniciar` e depois remove do registro local; offline remove apenas localmente.
 
 ## Atualizacao 2026-03 - Dashboard ESP e logs por dispositivo
 
 - O card de logs gerais foi substituido por dois cards na `DevicesPage`: `Dashboard ESP` e `Logs do dispositivo`.
 - O dashboard usa `DeviceMetricsFormatter` para montar labels e barras a partir do snapshot selecionado, incluindo `Carga do loop`, heap, PSRAM e rede.
-- O dashboard segue visual de painel NOC: chips de status, grade de blocos operacionais e tendencia curta de carga do loop.
+- O dashboard segue visual de painel NOC com grade de blocos operacionais e tendencia curta de carga do loop.
 - A paleta do dashboard foi suavizada para seguir o estilo Fluent/Settings da Microsoft: superficies neutras e icones discretos em vez de blocos saturados.
 - Quando o device esta offline, a pagina exibe o ultimo snapshot conhecido com aviso explicito de offline.
 - Quando nao ha selecao, dashboard e logs exibem placeholders estaveis.
-- A linha de status da lista removeu `IP` e `RSSI`; o `RSSI` aparece apenas no dashboard quando o device esta online.
+- A linha de status da lista removeu `IP` e `RSSI`; o `RSSI` agora aparece no topo do card de resumo ao lado das acoes.
 - A atualizacao evita flicker usando assinatura/cache para dashboard e logs do device selecionado.
 
 ## Atualizacao 2026-03 - Preview animado e pump de frame real
@@ -58,6 +59,15 @@
 - O pump respeita a flag `isApplyingDeviceList` para nao competir com o diff incremental.
 - A leitura do frame do simulador e lazy: so ocorre se houver ao menos uma linha com visualizer ativo.
 - O `DeviceListRowControl` expoe `StartPreview()` e `StopPreview()` simetricos; o caminho de remocao no diff chama `StopPreview()` para evitar leak de timer.
+
+## Atualizacao 2026-03 - Cleanup P0 para priorizar logs
+
+- O card visual `Comandos:` foi removido da `DevicesPage` para liberar area util de diagnostico.
+- Chips redundantes (online/Wi-Fi/snapshot) e bloco de conectividade/eventos foram removidos do dashboard.
+- O `RSSI` foi movido para o topo do card de resumo, ao lado dos botoes `Testar LED` e `Remover`.
+- O card `Logs do dispositivo` recebeu prioridade de espaco vertical para facilitar leitura operacional.
+- O botao `Testar LED` continua respeitando `testLedAvailable` (fallback para firmware legado):
+  - quando indisponivel, fica desabilitado e mostra rotulo `LED indisponivel`.
 
 ## Referencias de codigo
 

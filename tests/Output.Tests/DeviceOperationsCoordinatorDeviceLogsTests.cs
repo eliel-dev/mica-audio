@@ -72,7 +72,7 @@ public sealed class DeviceOperationsCoordinatorDeviceLogsTests
         await coordinator.RunCommandAsync("device-cmd", DeviceCommandType.TestLed);
 
         var logs = coordinator.GetDeviceLogs("device-cmd");
-        Assert.Contains(logs, line => line.Contains("Comando iniciado (testar LED).", StringComparison.Ordinal));
+        Assert.Contains(logs, line => line.Contains("Comando iniciado (controlar LED auxiliar).", StringComparison.Ordinal));
         Assert.Contains(logs, line => line.Contains("Comando recebido no device.", StringComparison.Ordinal));
         Assert.Contains(logs, line => line.Contains("Executando etapa principal.", StringComparison.Ordinal));
         Assert.Contains(logs, line => line.Contains("Comando concluido com sucesso", StringComparison.Ordinal));

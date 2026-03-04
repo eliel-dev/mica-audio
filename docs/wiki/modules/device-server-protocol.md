@@ -9,8 +9,10 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
 - WebSocket `/ws/v1/stream` para comandos e telemetria/progresso.
 - Sessao de comandos rastreados com timeout.
+- Encaminhamento de comandos de operacao do device (`test_led`, `set_brightness`, `install/activate/set_app_config`).
 - Controle de acesso de rede e rate limiting por endpoint critico.
 - Persistencia de metadados de hardware (`BoardModel`, `PanelType`) por dispositivo.
+- Pass-through de telemetria de conectividade (`wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`).
 
 ## Fluxo de execucao
 
@@ -113,6 +115,21 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - Sanitizacao de `largest*BlockBytes` permanece restrita ao firmware emissor.
 - Detalhes de contrato e semantica: [device-telemetry-v2-fields](../reference/device-telemetry-v2-fields.md#objetivo).
 
+## Atualizacao 2026-03 - Brilho + LED auxiliar + heartbeat de telemetria
+
+- O comando wire `set_brightness` foi adicionado para controlar `brightnessCap` por dispositivo.
+- O comando wire `test_led` mantem comportamento principal de pulso curto sem parametros.
+- `test_led` continua aceitando parametro legado `enabled=true|false` em compatibilidade operacional.
+- A telemetria agora inclui:
+  - `telemetrySequence`
+  - `brightnessCap`
+  - `brightnessRequested`
+  - `brightnessApplied`
+  - `testLedEnabled`
+  - `testLedDuty`
+  - `testLedAvailable`
+- `DeviceServerHost` faz pass-through desses campos para `DeviceRecord`/`DeviceSnapshot`, preservando compatibilidade com firmware legado (campos `nullable`).
+
 ## Atualizacao 2026-03 - Mitigacao de flapping de sessao WS
 
 - O detach de socket agora e seguro por identidade da conexao: somente o socket atualmente anexado pode transicionar a sessao para desconectada.
@@ -126,4 +143,16 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - Em incidente de campo, o rollback pode reativar temporariamente o legado sem recompilar:
   - `%AppData%\\MicaAudio\\settings.json`
   - `"AllowLegacyWebSocketQueryToken": true`
+
+## Atualizacao 2026-03 - Hotfix P0 de conectividade (Wi-Fi/AP)
+
+- O protocolo de telemetria manteve compatibilidade e recebeu 5 campos opcionais:
+  - `wifiState`
+  - `provisioningPortalActive`
+  - `auxLedAvailable`
+  - `testLedAvailable`
+  - `lastWifiEvent`
+- `DeviceServerHost` faz pass-through desses campos para `DeviceRecord` e `DeviceSnapshot` sem normalizacao destrutiva.
+- `test_led` preserva compatibilidade legado, mas pode responder erro operacional explicito quando nenhum LED de teste esta disponivel no hardware:
+  - `errorCode = "test_led_unavailable"`
 

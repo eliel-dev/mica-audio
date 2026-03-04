@@ -112,6 +112,33 @@ platformio pkg outdated -d firmware/esp32s3-devkitc1 -e esp32s3_devkitc1_dma_exp
 3. Resultado:
    - item `RSK-003` saiu de `Parcial` para `Corrigido` nesta rodada (com backlog transitive residual fora do escopo P1).
 
+## Atualizacao P0 2026-03-04 - Wi-Fi/AP + dashboard observavel
+
+1. Hotfix de conectividade aplicado no firmware oficial `esp32s3_devkitc1_dma_exp`:
+   - LED auxiliar com pino explicito e seguro por build flag (`MICA_TEST_LED_GPIO=-1` default).
+   - Removido fallback automatico para `LED_BUILTIN/PIN_LED`.
+   - Provisioning sem reboot-loop (`setConfigPortalTimeout(0)` e sem `ESP.restart()` no fail de `autoConnect`).
+   - Reabertura automatica de provisioning apos queda continua de Wi-Fi.
+2. Telemetria ampliada e pass-through no host/store:
+   - `wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`.
+3. Dashboard WinUI atualizado:
+   - bloco de conectividade com estado canonico, portal e idade do heartbeat;
+   - linha rolling de eventos curtos por dispositivo;
+   - botao `Testar LED` desabilitado quando `testLedAvailable=false`.
+
+### Trilha de compatibilidade inspirada em ESP-DASH (fora do hotfix)
+
+| Componente | Baseline observado | Referencia alvo | Risco principal |
+| --- | --- | --- | --- |
+| ESP32 Arduino Core | `2.0.17` (via `framework-arduinoespressif32 3.20017.*`) | `>= 3.2.0` | quebra de compatibilidade em libs de rede e build flags |
+| AsyncTCP | nao usado no firmware oficial atual | `>= 3.3.5` | introduzir stack async no hotfix aumentaria superficie de regressao |
+| ESPAsyncWebServer | nao usado no firmware oficial atual | `>= 3.7.7` | mudanca arquitetural fora do escopo de incidente |
+| ArduinoJson | `7.4.2` | `>= 7.4.1` (ja atendido), recomendado `7.4.3` | drift de patch e necessidade de smoke de parse |
+
+Decisao desta rodada:
+- upgrades de stack async/web ficam explicitamente fora do hotfix P0;
+- backlog de modernizacao permanece em trilha separada para fase posterior.
+
 ## Validacao Context7 por componente
 
 1. Win2D for WinUI3:
@@ -140,7 +167,7 @@ os status acima incluem inferencia tecnica a partir das referencias Context7 e d
 | RSK-001 | Session restore HUB75 | falha intermitente de restore (corrigida em 2026-03-03) | 3.7 | Alto | Corrigido | manter monitoramento de regressao em testes de sessao HUB75 | rerun da suite `Output.Tests` e smoke de devices | P0 | reverter alteracao de session policy |
 | RSK-002 | Auth WS legado | query token legado habilitado por default (corrigido em 2026-03-03) | 4.1 | Alto | Corrigido | manter auth WS por header; usar flag de rollback somente em incidente | testes de auth WS com token em header/query | P0 | reativar flag em release emergencial |
 | RSK-003 | Drift de pacotes .NET | backlog de `Microsoft.Extensions.*` e `WebView2` (trilha faseada executada em 2026-03-03) | 3.4 | Alto | Corrigido | monitorar drift transitive fora do escopo P1 e abrir lote futuro dedicado | build + test completo por fase | P1 | pin de versoes anteriores no csproj |
-| RSK-004 | Firmware versioning | `kFirmwareVersion` ainda fixo por release (sem automacao por tag/commit) | 2.9 | Medio | Parcial | adotar versionamento de build (tag/commit/date) no firmware | telemetria valida em device snapshot | P1 | fallback para string estatica |
+| RSK-004 | Firmware versioning | versionamento automatico por build (`UTC date + tag + short commit`) com fallback estatico | 2.9 | Medio | Corrigido | manter script de build gerando `firmware_version.auto.h` temporario e validando telemetria | telemetria valida em device snapshot | P1 | fallback para string estatica |
 | RSK-005 | Firmware deps | `ArduinoJson` patch desatualizado | 2.6 | Medio | Parcial | atualizar para `7.4.3` e validar regressao de parse | build firmware + smoke de pair/telemetria | P1 | restaurar lock anterior |
 | RSK-006 | Artefato precompilado | risco de bin stale sem carimbo/hash no processo | 3.2 | Medio | Parcial | registrar hash + metadata de build no fluxo de export | validar hash no download local | P2 | manter fluxo atual de copia |
 | RSK-007 | Cobertura de firmware secundario | `firmware/matrixportal-s3/src/main.cpp` vazio | 2.9 | Medio | N/A | marcar oficialmente como experimental ou remover da trilha ativa | docs + gate de coverage por firmware ativo | P2 | manter pasta isolada sem build |
@@ -173,7 +200,7 @@ os status acima incluem inferencia tecnica a partir das referencias Context7 e d
 - [ServerConfig.cs](../../../src/Device.Protocol/Contracts/ServerConfig.cs#L34) - assinatura: `AllowLegacyWebSocketQueryToken`
 - [StreamFrameV2.cs](../../../src/Device.Protocol/Stream/StreamFrameV2.cs#L13) - assinatura: `PayloadSizeBins128 = 145`
 - [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L17) - assinatura: `kStreamFrameSize = 145`
-- [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L51) - assinatura: `kFirmwareVersion = "v2026.03.03-rsk002-ws-header"`
+- [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L63) - assinatura: `kFirmwareVersion = MICA_FIRMWARE_VERSION`
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L2) - assinatura: `default_envs = esp32s3_devkitc1_dma_exp`
 - [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L37) - assinatura: `Resolve-PlatformIoCommand`
 - [PrecompiledFirmwareService.cs](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L21) - assinatura: `FileName = "esp32s3-devkitc1-128x64-dma_exp_merged.bin"`

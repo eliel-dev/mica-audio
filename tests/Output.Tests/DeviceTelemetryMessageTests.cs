@@ -25,6 +25,17 @@ public sealed class DeviceTelemetryMessageTests
               "freePsramBytes": 6209536,
               "largestPsramBlockBytes": 4718592,
               "wifiConnected": true,
+              "wifiState": "connected",
+              "provisioningPortalActive": false,
+              "auxLedAvailable": true,
+              "testLedAvailable": true,
+              "lastWifiEvent": "ws_connected",
+              "telemetrySequence": 42,
+              "brightnessCap": 120,
+              "brightnessRequested": 180,
+              "brightnessApplied": 120,
+              "testLedEnabled": true,
+              "testLedDuty": 120,
               "firmwareVersion": "v1.2.3",
               "ipAddress": "192.168.1.23"
             }
@@ -43,6 +54,17 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Equal(6209536L, telemetry.FreePsramBytes);
         Assert.Equal(4718592L, telemetry.LargestPsramBlockBytes);
         Assert.True(telemetry.WifiConnected);
+        Assert.Equal("connected", telemetry.WifiState);
+        Assert.False(telemetry.ProvisioningPortalActive);
+        Assert.True(telemetry.AuxLedAvailable);
+        Assert.True(telemetry.TestLedAvailable);
+        Assert.Equal("ws_connected", telemetry.LastWifiEvent);
+        Assert.Equal(42u, telemetry.TelemetrySequence);
+        Assert.Equal(120, telemetry.BrightnessCap);
+        Assert.Equal(180, telemetry.BrightnessRequested);
+        Assert.Equal(120, telemetry.BrightnessApplied);
+        Assert.True(telemetry.TestLedEnabled);
+        Assert.Equal(120, telemetry.TestLedDuty);
         Assert.Equal("v1.2.3", telemetry.FirmwareVersion);
         Assert.Equal("192.168.1.23", telemetry.IpAddress);
     }
@@ -72,6 +94,17 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Null(telemetry.FreePsramBytes);
         Assert.Null(telemetry.LargestPsramBlockBytes);
         Assert.Null(telemetry.WifiConnected);
+        Assert.Null(telemetry.WifiState);
+        Assert.Null(telemetry.ProvisioningPortalActive);
+        Assert.Null(telemetry.AuxLedAvailable);
+        Assert.Null(telemetry.TestLedAvailable);
+        Assert.Null(telemetry.LastWifiEvent);
+        Assert.Null(telemetry.TelemetrySequence);
+        Assert.Null(telemetry.BrightnessCap);
+        Assert.Null(telemetry.BrightnessRequested);
+        Assert.Null(telemetry.BrightnessApplied);
+        Assert.Null(telemetry.TestLedEnabled);
+        Assert.Null(telemetry.TestLedDuty);
     }
 
     [Fact]

@@ -9,6 +9,8 @@ using Device.Protocol.Models;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Output.Led;
 using System.Globalization;
@@ -38,6 +40,8 @@ public sealed partial class DevicesPage : Page
     private readonly Dictionary<string, Queue<int>> loopTrendByDeviceId = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset?> lastLoopTrendStampByDeviceId = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> lastLoopTrendValueByDeviceId = new(StringComparer.OrdinalIgnoreCase);
+    private const int SafeBrightnessMin = 30;
+    private const int SafeBrightnessMax = 160;
     private const int DashboardTrendSampleCapacity = 24;
 
     private string? lastRenderedDashboardSignature;
@@ -53,6 +57,8 @@ public sealed partial class DevicesPage : Page
     private IReadOnlyList<DeviceSnapshot>? pendingDeviceListSnapshot;
     private string? lastAppliedDeviceListSignature;
     private DispatcherQueueTimer? previewPumpTimer;
+    private bool suppressBrightnessSliderEvents;
+    private bool brightnessCommitPending;
 
     internal DevicesPage(
         DevicesPageViewModel viewModel,
@@ -130,6 +136,8 @@ public sealed partial class DevicesPage : Page
         loopTrendByDeviceId.Clear();
         lastLoopTrendStampByDeviceId.Clear();
         lastLoopTrendValueByDeviceId.Clear();
+        suppressBrightnessSliderEvents = false;
+        brightnessCommitPending = false;
         ClearRenderedItems();
     }
 
@@ -226,7 +234,43 @@ public sealed partial class DevicesPage : Page
 
     private async void OnTestLedClicked(object sender, RoutedEventArgs e)
     {
-        await RunSelectedCommandAsync(DeviceCommandType.TestLed).ConfigureAwait(false);
+        var selected = GetSelectedDeviceItem();
+        var ops = DeviceOps;
+        if (selected is null || ops is null)
+        {
+            return;
+        }
+
+        var result = await ops.TriggerTestLedAsync(selected.DeviceId).ConfigureAwait(false);
+        if (result.Accepted && result.Completed && result.Success)
+        {
+            return;
+        }
+
+        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
+        AddLocalLog($"Falha ao acionar teste de LED em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
+    }
+
+    private void OnBrightnessSliderValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (suppressBrightnessSliderEvents)
+        {
+            return;
+        }
+
+        var normalized = Math.Clamp((int)Math.Round(e.NewValue), SafeBrightnessMin, SafeBrightnessMax);
+        DashboardBrightnessValueText.Text = $"{normalized}/255";
+        brightnessCommitPending = true;
+    }
+
+    private async void OnBrightnessSliderPointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
+    }
+
+    private async void OnBrightnessSliderLostFocus(object sender, RoutedEventArgs e)
+    {
+        await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
     }
 
     private async void OnRemoveDeviceClicked(object sender, RoutedEventArgs e)
@@ -414,15 +458,37 @@ public sealed partial class DevicesPage : Page
         await DeviceOps.RunCommandAsync(selected.DeviceId, commandType).ConfigureAwait(false);
     }
 
+    private async Task CommitBrightnessIfPendingAsync()
+    {
+        if (!brightnessCommitPending || suppressBrightnessSliderEvents)
+        {
+            return;
+        }
+
+        var selected = GetSelectedDeviceItem();
+        var ops = DeviceOps;
+        if (selected is null || ops is null || selected.Status != DeviceStatus.Online)
+        {
+            brightnessCommitPending = false;
+            return;
+        }
+
+        brightnessCommitPending = false;
+        var brightness = Math.Clamp((int)Math.Round(DashboardBrightnessSlider.Value), SafeBrightnessMin, SafeBrightnessMax);
+        var result = await ops.SetBrightnessAsync(selected.DeviceId, brightness).ConfigureAwait(false);
+        if (result.Accepted && result.Completed && result.Success)
+        {
+            return;
+        }
+
+        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
+        AddLocalLog($"Falha ao ajustar brilho em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
+    }
+
     // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
     private void ApplyState(DeviceOperationsState state)
     {
         currentState = state;
-
-        CommandProgressRing.IsActive = state.CommandInProgress;
-        CommandProgressRing.Visibility = state.CommandInProgress ? Visibility.Visible : Visibility.Collapsed;
-        CommandStatusText.Text = state.CommandStatus;
-        CommandPercentText.Text = $"{Math.Clamp(state.CommandPercent, 0, 100)}%";
 
         var refreshText = state.LastRefreshUtc == default
             ? "sem atualizacao"
@@ -732,20 +798,18 @@ public sealed partial class DevicesPage : Page
         var placeholder = ResolveDashboardPlaceholder(hasSelection, metrics);
         var loopTrendSamples = CaptureLoopTrendSamples(selectionDeviceId, snapshot, metrics);
         var loopTrendSignature = BuildLoopTrendSignature(loopTrendSamples);
-        var connectionChipLabel = BuildConnectionChipLabel(hasSelection, metrics);
-        var wifiChipLabel = BuildWifiChipLabel(snapshot);
-        var rssiChipLabel = BuildRssiChipLabel(snapshot);
-        var snapshotChipLabel = BuildSnapshotChipLabel(snapshot, metrics);
+        var brightnessValueLabel = BuildBrightnessValueLabel(snapshot);
+        var brightnessStatusLabel = BuildBrightnessStatusLabel(snapshot);
+        var heartbeatLabel = BuildHeartbeatLabel(snapshot);
 
         var signature = BuildDashboardSignature(
             selectionDeviceId,
             hasSelection,
             metrics,
             placeholder,
-            connectionChipLabel,
-            wifiChipLabel,
-            rssiChipLabel,
-            snapshotChipLabel,
+            brightnessValueLabel,
+            brightnessStatusLabel,
+            heartbeatLabel,
             loopTrendSignature);
 
         if (string.Equals(lastRenderedDashboardSignature, signature, StringComparison.Ordinal))
@@ -753,16 +817,17 @@ public sealed partial class DevicesPage : Page
             return;
         }
 
-        DashboardStatusText.Text = metrics.StatusLabel;
-        DashboardConnectionChipText.Text = connectionChipLabel;
-        DashboardWifiChipText.Text = wifiChipLabel;
-        DashboardRssiChipText.Text = rssiChipLabel;
-        DashboardSnapshotChipText.Text = snapshotChipLabel;
+        DashboardBrightnessValueText.Text = brightnessValueLabel;
+        DashboardBrightnessStatusText.Text = brightnessStatusLabel;
+        DashboardTelemetryHeartbeatText.Text = heartbeatLabel;
 
-        DashboardConnectionChipIcon.Symbol = ResolveConnectionSymbol(hasSelection, metrics);
-        DashboardWifiChipIcon.Symbol = ResolveWifiSymbol(snapshot);
-        DashboardRssiChipIcon.Symbol = ResolveRssiSymbol(snapshot);
-        DashboardSnapshotChipIcon.Symbol = ResolveSnapshotSymbol(snapshot, metrics);
+        var sliderValue = snapshot?.BrightnessCap is int brightnessCap
+            ? Math.Clamp(brightnessCap, SafeBrightnessMin, SafeBrightnessMax)
+            : SafeBrightnessMax;
+        suppressBrightnessSliderEvents = true;
+        DashboardBrightnessSlider.Value = sliderValue;
+        suppressBrightnessSliderEvents = false;
+        brightnessCommitPending = false;
 
         DashboardLoopLoadText.Text = metrics.LoopLoadPercent.HasValue
             ? $"{Math.Clamp(metrics.LoopLoadPercent.Value, 0, 100)}%"
@@ -793,11 +858,6 @@ public sealed partial class DevicesPage : Page
             DashboardPlaceholderText.Visibility = Visibility.Visible;
         }
 
-        ApplyChipTone(DashboardConnectionChipBorder, DashboardConnectionChipIcon, DashboardConnectionChipText, ResolveConnectionTone(hasSelection, metrics));
-        ApplyChipTone(DashboardWifiChipBorder, DashboardWifiChipIcon, DashboardWifiChipText, ResolveWifiTone(snapshot));
-        ApplyChipTone(DashboardRssiChipBorder, DashboardRssiChipIcon, DashboardRssiChipText, ResolveRssiTone(snapshot));
-        ApplyChipTone(DashboardSnapshotChipBorder, DashboardSnapshotChipIcon, DashboardSnapshotChipText, ResolveSnapshotTone(snapshot, metrics));
-
         ApplyTileTone(DashboardLoopTile);
         ApplyTileTone(DashboardHeapTile);
         ApplyTileTone(DashboardPsramTile);
@@ -812,10 +872,9 @@ public sealed partial class DevicesPage : Page
         bool hasSelection,
         DeviceMetricsPresentation metrics,
         string placeholder,
-        string connectionChipLabel,
-        string wifiChipLabel,
-        string rssiChipLabel,
-        string snapshotChipLabel,
+        string brightnessValueLabel,
+        string brightnessStatusLabel,
+        string heartbeatLabel,
         string loopTrendSignature)
     {
         var loopProgressScaled = (int)Math.Round(Math.Clamp(metrics.LoopLoadProgress, 0d, 1d) * 1000d);
@@ -841,10 +900,9 @@ public sealed partial class DevicesPage : Page
             metrics.HasMetrics ? "1" : "0", "|",
             metrics.IsOfflineSnapshot ? "1" : "0", "|",
             metrics.IsPsramAvailable ? "1" : "0", "|",
-            connectionChipLabel, "|",
-            wifiChipLabel, "|",
-            rssiChipLabel, "|",
-            snapshotChipLabel, "|",
+            brightnessValueLabel, "|",
+            brightnessStatusLabel, "|",
+            heartbeatLabel, "|",
             loopTrendSignature, "|",
             placeholder);
     }
@@ -988,240 +1046,60 @@ public sealed partial class DevicesPage : Page
         return $"{memoryKind} integridade bloco: {percent}%";
     }
 
-    private static string BuildConnectionChipLabel(bool hasSelection, DeviceMetricsPresentation metrics)
+    private static string BuildBrightnessValueLabel(DeviceSnapshot? snapshot)
     {
-        if (!hasSelection)
-        {
-            return "Sem selecao";
-        }
-
-        if (metrics.IsOfflineSnapshot)
-        {
-            return "Dispositivo offline";
-        }
-
-        return metrics.HasMetrics ? "Dispositivo online" : "Online sem metricas";
+        var cap = snapshot?.BrightnessCap is int capValue
+            ? Math.Clamp(capValue, SafeBrightnessMin, SafeBrightnessMax)
+            : SafeBrightnessMax;
+        return $"{cap}/255";
     }
 
-    private static string BuildWifiChipLabel(DeviceSnapshot? snapshot)
+    private static string BuildBrightnessStatusLabel(DeviceSnapshot? snapshot)
     {
-        if (snapshot is null || snapshot.Status != DeviceStatus.Online)
+        if (snapshot is null)
         {
-            return "Wi-Fi indisponivel";
+            return "Brilho aplicado: - | Limite: -";
         }
 
-        return snapshot?.WifiConnected switch
+        var applied = snapshot.BrightnessApplied is int appliedValue
+            ? Math.Clamp(appliedValue, 0, 255).ToString(CultureInfo.InvariantCulture)
+            : "-";
+        var cap = snapshot.BrightnessCap is int capValue
+            ? Math.Clamp(capValue, SafeBrightnessMin, SafeBrightnessMax).ToString(CultureInfo.InvariantCulture)
+            : "-";
+        return $"Brilho aplicado: {applied} | Limite: {cap}";
+    }
+
+    private static string BuildHeartbeatLabel(DeviceSnapshot? snapshot)
+    {
+        if (snapshot is null)
         {
-            true => "Wi-Fi conectado",
-            false => "Wi-Fi sem conexao",
-            _ => "Wi-Fi sem estado",
+            return "Heartbeat: - | LED teste: - | Duty: -";
+        }
+
+        var sequence = snapshot.TelemetrySequence?.ToString(CultureInfo.InvariantCulture) ?? "-";
+        var ledState = snapshot.TestLedEnabled switch
+        {
+            true => "habilitado",
+            false => "desabilitado",
+            _ => snapshot.TestLedAvailable == false ? "indisponivel" : "-",
         };
+        var duty = snapshot.TestLedDuty is int dutyValue
+            ? Math.Clamp(dutyValue, 0, 255).ToString(CultureInfo.InvariantCulture)
+            : "-";
+        return $"Heartbeat: #{sequence} | LED teste: {ledState} | Duty: {duty}";
     }
 
-    private static string BuildRssiChipLabel(DeviceSnapshot? snapshot)
+    private static string BuildSelectedSignalLabel(DeviceSnapshot? snapshot)
     {
-        if (snapshot is null || snapshot.Status != DeviceStatus.Online)
+        if (snapshot is null)
         {
-            return "Sinal indisponivel";
+            return "Sinal -";
         }
 
         return snapshot.LastKnownRssi is int rssi
             ? $"Sinal {rssi} dBm"
             : "Sinal indisponivel";
-    }
-
-    private static string BuildSnapshotChipLabel(DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
-    {
-        if (snapshot is null || !snapshot.LastTelemetryUtc.HasValue)
-        {
-            return "Snapshot indisponivel";
-        }
-
-        var age = DateTimeOffset.UtcNow - snapshot.LastTelemetryUtc.Value;
-        return metrics.IsOfflineSnapshot
-            ? $"Ultimo snapshot ha {FormatAgeShort(age)}"
-            : $"Snapshot atualizado ha {FormatAgeShort(age)}";
-    }
-
-    private static string FormatAgeShort(TimeSpan age)
-    {
-        if (age < TimeSpan.Zero)
-        {
-            age = TimeSpan.Zero;
-        }
-
-        if (age.TotalHours >= 1)
-        {
-            return $"{(int)age.TotalHours}h";
-        }
-
-        if (age.TotalMinutes >= 1)
-        {
-            return $"{(int)age.TotalMinutes}m";
-        }
-
-        return $"{Math.Max(0, age.Seconds)}s";
-    }
-
-    private enum DashboardTone
-    {
-        Neutral,
-        Good,
-        Warning,
-        Critical,
-    }
-
-    private static Symbol ResolveConnectionSymbol(bool hasSelection, DeviceMetricsPresentation metrics)
-    {
-        if (!hasSelection)
-        {
-            return Symbol.Help;
-        }
-
-        if (metrics.IsOfflineSnapshot)
-        {
-            return Symbol.Pause;
-        }
-
-        return metrics.HasMetrics ? Symbol.Accept : Symbol.Clock;
-    }
-
-    private static Symbol ResolveWifiSymbol(DeviceSnapshot? snapshot)
-    {
-        if (snapshot is null || snapshot.Status != DeviceStatus.Online)
-        {
-            return Symbol.Help;
-        }
-
-        return snapshot.WifiConnected switch
-        {
-            true => Symbol.Accept,
-            false => Symbol.Important,
-            _ => Symbol.Help,
-        };
-    }
-
-    private static Symbol ResolveRssiSymbol(DeviceSnapshot? snapshot)
-    {
-        if (snapshot is null || snapshot.Status != DeviceStatus.Online || !snapshot.LastKnownRssi.HasValue)
-        {
-            return Symbol.Help;
-        }
-
-        if (snapshot.LastKnownRssi.Value >= -60)
-        {
-            return Symbol.Accept;
-        }
-
-        return snapshot.LastKnownRssi.Value >= -75
-            ? Symbol.Clock
-            : Symbol.Important;
-    }
-
-    private static Symbol ResolveSnapshotSymbol(DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
-    {
-        if (snapshot is null || !snapshot.LastTelemetryUtc.HasValue)
-        {
-            return Symbol.Help;
-        }
-
-        var age = DateTimeOffset.UtcNow - snapshot.LastTelemetryUtc.Value;
-        if (metrics.IsOfflineSnapshot && age > TimeSpan.FromMinutes(5))
-        {
-            return Symbol.Important;
-        }
-
-        if (age > TimeSpan.FromMinutes(1))
-        {
-            return Symbol.Clock;
-        }
-
-        return Symbol.Accept;
-    }
-
-    private static DashboardTone ResolveConnectionTone(bool hasSelection, DeviceMetricsPresentation metrics)
-    {
-        if (!hasSelection)
-        {
-            return DashboardTone.Neutral;
-        }
-
-        if (metrics.IsOfflineSnapshot)
-        {
-            return DashboardTone.Warning;
-        }
-
-        return metrics.HasMetrics ? DashboardTone.Good : DashboardTone.Warning;
-    }
-
-    private static DashboardTone ResolveWifiTone(DeviceSnapshot? snapshot)
-    {
-        if (snapshot is null || snapshot.Status != DeviceStatus.Online)
-        {
-            return DashboardTone.Neutral;
-        }
-
-        return snapshot?.WifiConnected switch
-        {
-            true => DashboardTone.Good,
-            false => DashboardTone.Critical,
-            _ => DashboardTone.Neutral,
-        };
-    }
-
-    private static DashboardTone ResolveRssiTone(DeviceSnapshot? snapshot)
-    {
-        if (snapshot is null || snapshot.Status != DeviceStatus.Online || !snapshot.LastKnownRssi.HasValue)
-        {
-            return DashboardTone.Neutral;
-        }
-
-        if (snapshot.LastKnownRssi.Value >= -60)
-        {
-            return DashboardTone.Good;
-        }
-
-        return snapshot.LastKnownRssi.Value >= -75
-            ? DashboardTone.Warning
-            : DashboardTone.Critical;
-    }
-
-    private static DashboardTone ResolveSnapshotTone(DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
-    {
-        if (snapshot is null || !snapshot.LastTelemetryUtc.HasValue)
-        {
-            return DashboardTone.Neutral;
-        }
-
-        var age = DateTimeOffset.UtcNow - snapshot.LastTelemetryUtc.Value;
-        if (metrics.IsOfflineSnapshot && age > TimeSpan.FromMinutes(5))
-        {
-            return DashboardTone.Critical;
-        }
-
-        if (age > TimeSpan.FromMinutes(1))
-        {
-            return DashboardTone.Warning;
-        }
-
-        return DashboardTone.Good;
-    }
-
-    private void ApplyChipTone(Border chipBorder, SymbolIcon icon, TextBlock text, DashboardTone tone)
-    {
-        chipBorder.BorderThickness = new Thickness(0);
-        chipBorder.BorderBrush = null;
-        chipBorder.Background = null;
-
-        var foreground = tone switch
-        {
-            DashboardTone.Neutral => ResolveBrush("AppTextSecondaryBrush", Color.FromArgb(255, 184, 192, 204)),
-            _ => ResolveBrush("AppTextPrimaryBrush", Color.FromArgb(255, 245, 247, 250)),
-        };
-
-        icon.Foreground = foreground;
-        icon.Opacity = 0.86;
-        text.Foreground = foreground;
     }
 
     private void ApplyTileTone(Border tileBorder)
@@ -1294,6 +1172,8 @@ public sealed partial class DevicesPage : Page
             SelectedDeviceSubtitleText.Text = "-";
             SelectedDeviceRegistrationText.Text = "-";
             SelectedDeviceAppText.Text = "App ativo: -";
+            SelectedDeviceSignalText.Text = "Sinal -";
+            TestLedButton.Label = "Testar LED";
             ApplyDashboard(selectionDeviceId: null, hasSelection: false, snapshot: null, DeviceMetricsFormatter.Build(null));
             UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Selecione um dispositivo para ver logs do dispositivo.");
             return;
@@ -1306,6 +1186,9 @@ public sealed partial class DevicesPage : Page
         SelectedDeviceAppText.Text = DevicePreviewVisibilityPolicy.BuildSelectedAppLabel(selected.Status, selected.AppName);
 
         var selectedSnapshot = FindDeviceSnapshot(selected.DeviceId);
+        SelectedDeviceSignalText.Text = BuildSelectedSignalLabel(selectedSnapshot);
+        var testLedAvailable = selectedSnapshot?.TestLedAvailable != false;
+        TestLedButton.Label = testLedAvailable ? "Testar LED" : "LED indisponivel";
         var metrics = DeviceMetricsFormatter.Build(selectedSnapshot);
         ApplyDashboard(selectionDeviceId: selected.DeviceId, hasSelection: true, snapshot: selectedSnapshot, metrics);
 
@@ -1319,12 +1202,24 @@ public sealed partial class DevicesPage : Page
     private void ApplyButtonState()
     {
         var selected = GetSelectedDeviceItem();
+        var selectedSnapshot = selected is null ? null : FindDeviceSnapshot(selected.DeviceId);
         var canRunCommand = selected is not null
             && selected.Presence.CanRunCommands
             && !currentState.CommandInProgress;
         var canRemove = selected is not null && !currentState.CommandInProgress;
+        var testLedAvailable = selectedSnapshot?.TestLedAvailable != false;
 
-        TestLedButton.IsEnabled = canRunCommand;
+        TestLedButton.IsEnabled = canRunCommand && testLedAvailable;
+        if (selected is null)
+        {
+            TestLedButton.Label = "Testar LED";
+        }
+        else
+        {
+            TestLedButton.Label = testLedAvailable ? "Testar LED" : "LED indisponivel";
+        }
+
+        DashboardBrightnessSlider.IsEnabled = canRunCommand;
         RemoveDeviceButton.IsEnabled = canRemove;
     }
 

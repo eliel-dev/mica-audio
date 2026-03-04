@@ -315,11 +315,22 @@ public sealed partial class DeviceServerHost
                 telemetry.FreePsramBytes,
                 telemetry.LargestPsramBlockBytes,
                 telemetry.WifiConnected,
+                telemetry.WifiState,
+                telemetry.ProvisioningPortalActive,
+                telemetry.AuxLedAvailable,
+                telemetry.TestLedAvailable,
+                telemetry.LastWifiEvent,
                 telemetry.StreamLastSequence,
                 telemetry.StreamFramesReceived,
                 telemetry.StreamFramesApplied,
                 telemetry.StreamSequenceGapCount,
-                telemetry.StreamInvalidFrameCount);
+                telemetry.StreamInvalidFrameCount,
+                telemetry.TelemetrySequence,
+                telemetry.BrightnessCap,
+                telemetry.BrightnessRequested,
+                telemetry.BrightnessApplied,
+                telemetry.TestLedEnabled,
+                telemetry.TestLedDuty);
             return true;
         }
         catch
@@ -362,6 +373,7 @@ public sealed partial class DeviceServerHost
             DeviceCommandType.InstallApp => "install_app",
             DeviceCommandType.ActivateApp => "activate_app",
             DeviceCommandType.SetAppConfig => "set_app_config",
+            DeviceCommandType.SetBrightness => "set_brightness",
             _ => "unknown",
         };
     }

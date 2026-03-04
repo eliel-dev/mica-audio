@@ -4,6 +4,7 @@
 | --- | --- | --- | --- |
 | Preview HUB75 nao aparece no Visualizador | conferir se `Modo HUB75` esta ativo e se `HubPreviewPanel` esta visivel | preview local oculto por toggle | ativar `Modo HUB75`; validar `OnHubCanvasDraw` e `InvalidateHubPreviews()` em `MainPage` |
 | Device conecta, mas nao atualiza a matriz | conferir telemetria `panelType` | firmware antigo 64x32 ou protocolo legado | regravar firmware DevKitC-1 128x64 e validar `StreamFrameV2` |
+| LED verde onboard piscando e AP de setup nao aparece no celular | conferir build flag `MICA_TEST_LED_GPIO`, status de `wifiState`/`provisioningPortalActive` e logs seriais de boot | fallback indevido para pseudo-pin (`LED_BUILTIN`) + fluxo de provisioning em ciclo ruim | manter `MICA_TEST_LED_GPIO=-1`, atualizar para hotfix P0 (portal sem timeout e sem reboot-loop) e validar AP `MicaAudio-Setup-*` |
 | WS retorna 401 logo apos upgrade | conferir handshake WS no firmware e a flag `AllowLegacyWebSocketQueryToken` | firmware antigo ainda envia token por query com servidor em default seguro (legado OFF) | atualizar firmware para header WS; em incidente, habilitar temporariamente `"AllowLegacyWebSocketQueryToken": true` em `%AppData%\\MicaAudio\\settings.json` |
 | GIF parece deformado | revisar `GifScaleMode` | modo de escala inadequado para 128x64 | alternar entre `Fit`, `Fill` e `Stretch` |
 | Visual parece estreito na loja | revisar renderers de preview | helper ainda usando grade antiga em branch local | validar `Hub75PreviewHelper.PanelWidth=128` e `PanelHeight=64` |
@@ -25,7 +26,9 @@
 | Logs nao acompanham o device selecionado | trocar selecao e observar texto do card de logs | UI ainda lendo logs globais | validar `GetDeviceLogs(deviceId)` no `ApplySelectionDetails()` |
 | Card de logs fica vazio sem contexto | verificar placeholder sem selecao/sem eventos | placeholder nao aplicado no fluxo atual | validar placeholders de logs na `DevicesPage` |
 | Remover em online nao tenta revogar | confirmar status e logs do comando antes da remocao | fluxo consolidado nao foi aplicado no handler | validar `OnRemoveDeviceClicked`: online envia `RevokeAndRestart` e depois remove local |
-| Botoes de acao nao aparecem no card de resumo | conferir layout do card do dispositivo selecionado | acoes ainda estao em card separado | manter `Testar LED` e `Remover` no mesmo card de nome/status |
+| Controles de acao nao aparecem no card de resumo | conferir layout do card do dispositivo selecionado | acoes ainda estao em card separado | manter `Testar LED` e `Remover` no mesmo card de nome/status |
+| Botao `Testar LED` fica indisponivel | verificar `testLedAvailable` no snapshot e telemetria | firmware sem LED onboard detectado e sem GPIO auxiliar valido | manter hotfix atual e, se necessario, definir `MICA_TEST_LED_GPIO` para GPIO fisico livre |
+| Dashboard nao muda apesar de device online | verificar `Heartbeat #` no card e `telemetrySequence` no snapshot | firmware sem novos heartbeats ou sem novos campos de telemetria | validar conexao WS ativa, revisar payload de telemetria e versao do firmware |
 
 Notas:
 

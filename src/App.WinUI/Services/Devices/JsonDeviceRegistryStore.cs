@@ -105,6 +105,17 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             FreePsramBytes = record.FreePsramBytes,
             LargestPsramBlockBytes = record.LargestPsramBlockBytes,
             WifiConnected = record.WifiConnected,
+            WifiState = record.WifiState,
+            ProvisioningPortalActive = record.ProvisioningPortalActive,
+            AuxLedAvailable = record.AuxLedAvailable,
+            TestLedAvailable = record.TestLedAvailable,
+            LastWifiEvent = record.LastWifiEvent,
+            TelemetrySequence = record.TelemetrySequence,
+            BrightnessCap = record.BrightnessCap,
+            BrightnessRequested = record.BrightnessRequested,
+            BrightnessApplied = record.BrightnessApplied,
+            TestLedEnabled = record.TestLedEnabled,
+            TestLedDuty = record.TestLedDuty,
             ActiveAppId = record.ActiveAppId,
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
@@ -139,6 +150,17 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             FreePsramBytes = record.FreePsramBytes,
             LargestPsramBlockBytes = record.LargestPsramBlockBytes,
             WifiConnected = record.WifiConnected,
+            WifiState = record.WifiState,
+            ProvisioningPortalActive = record.ProvisioningPortalActive,
+            AuxLedAvailable = record.AuxLedAvailable,
+            TestLedAvailable = record.TestLedAvailable,
+            LastWifiEvent = record.LastWifiEvent,
+            TelemetrySequence = record.TelemetrySequence,
+            BrightnessCap = record.BrightnessCap,
+            BrightnessRequested = record.BrightnessRequested,
+            BrightnessApplied = record.BrightnessApplied,
+            TestLedEnabled = record.TestLedEnabled,
+            TestLedDuty = record.TestLedDuty,
             ActiveAppId = record.ActiveAppId,
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
@@ -253,6 +275,28 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         public long? LargestPsramBlockBytes { get; init; }
 
         public bool? WifiConnected { get; init; }
+
+        public string? WifiState { get; init; }
+
+        public bool? ProvisioningPortalActive { get; init; }
+
+        public bool? AuxLedAvailable { get; init; }
+
+        public bool? TestLedAvailable { get; init; }
+
+        public string? LastWifiEvent { get; init; }
+
+        public uint? TelemetrySequence { get; init; }
+
+        public int? BrightnessCap { get; init; }
+
+        public int? BrightnessRequested { get; init; }
+
+        public int? BrightnessApplied { get; init; }
+
+        public bool? TestLedEnabled { get; init; }
+
+        public int? TestLedDuty { get; init; }
 
         public string? ActiveAppId { get; init; }
 

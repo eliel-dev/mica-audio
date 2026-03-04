@@ -16,12 +16,24 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | `freePsramBytes` | `long?` | psram livre em bytes |
 | `largestPsramBlockBytes` | `long?` | maior bloco contiguo de psram livre |
 | `wifiConnected` | `bool?` | estado de conectividade Wi-Fi reportado pelo firmware |
+| `wifiState` | `string?` | estado canonico de conectividade (`connecting|connected|portal|disconnected`) |
+| `provisioningPortalActive` | `bool?` | indica se o portal de provisioning esta ativo no firmware |
+| `auxLedAvailable` | `bool?` | disponibilidade do LED auxiliar no hardware/build atual |
+| `testLedAvailable` | `bool?` | disponibilidade efetiva de LED de teste (onboard e/ou auxiliar) |
+| `lastWifiEvent` | `string?` | ultimo evento curto de conectividade reportado pelo firmware |
+| `telemetrySequence` | `uint?` | contador monotono de heartbeats de telemetria por sessao |
+| `brightnessCap` | `int?` | limite de brilho aplicado pelo device (`30..160`) |
+| `brightnessRequested` | `int?` | brilho solicitado pelo stream/comando antes do cap |
+| `brightnessApplied` | `int?` | brilho efetivamente aplicado no painel |
+| `testLedEnabled` | `bool?` | estado legado/compatibilidade do LED auxiliar continuo |
+| `testLedDuty` | `int?` | duty atual do LED auxiliar em escala 8-bit (quando aplicavel) |
 
 ## Regras de sanitizacao e pass-through
 
 1. Sanitizacao de `largestHeapBlockBytes` e `largestPsramBlockBytes` ocorre apenas no firmware emissor.
 2. O servidor deve tratar os campos v2 em pass-through (sem clamp/renormalizacao).
 3. Campos permanecem `nullable` para compatibilidade com firmware legado.
+4. `wifiState` usa valores canonicos em minusculo para facilitar consumo no dashboard.
 
 ## Persistencia local
 
@@ -37,6 +49,13 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 - `RSSI` deve aparecer apenas quando o `snapshot.Status` esta online; para offline a UI exibe estado de rede sem sinal numerico.
 - O card de logs usa `GetDeviceLogs(deviceId)` e exibe somente o device selecionado.
 - Sem selecao, dashboard e logs exibem placeholders dedicados.
+- O dashboard exibe heartbeat (`telemetrySequence`) e estado de LED de teste sem depender de log textual.
+- O slider de brilho usa `brightnessCap` e o card mostra `brightnessApplied/brightnessCap`.
+- O dashboard tambem mostra:
+  - estado canonico de Wi-Fi;
+  - portal ativo/inativo;
+  - idade do ultimo heartbeat;
+  - linha rolling de eventos curtos de conectividade por dispositivo.
 
 ## Checklist rapido de validacao
 

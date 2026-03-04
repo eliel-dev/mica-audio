@@ -1,4 +1,5 @@
 using Device.Protocol.Models;
+using System.Collections.Generic;
 using System.Globalization;
 
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
@@ -83,6 +84,11 @@ internal static class DeviceMetricsFormatter
             || snapshot.FreePsramBytes.HasValue
             || snapshot.LargestPsramBlockBytes.HasValue
             || snapshot.WifiConnected.HasValue
+            || !string.IsNullOrWhiteSpace(snapshot.WifiState)
+            || snapshot.ProvisioningPortalActive.HasValue
+            || snapshot.AuxLedAvailable.HasValue
+            || snapshot.TestLedAvailable.HasValue
+            || !string.IsNullOrWhiteSpace(snapshot.LastWifiEvent)
             || snapshot.LastKnownRssi.HasValue
             || snapshot.StreamFramesReceived.HasValue
             || snapshot.StreamFramesApplied.HasValue
@@ -107,34 +113,84 @@ internal static class DeviceMetricsFormatter
 
     private static string BuildNetworkLabel(DeviceSnapshot snapshot)
     {
+        var wifiStateLabel = !string.IsNullOrWhiteSpace(snapshot.WifiState)
+            ? snapshot.WifiState
+            : null;
+        var portalLabel = snapshot.ProvisioningPortalActive switch
+        {
+            true => "portal ativo",
+            false => "portal inativo",
+            _ => null,
+        };
+        var effectiveTestLedAvailable = snapshot.TestLedAvailable ?? snapshot.AuxLedAvailable;
+        var testLedLabel = effectiveTestLedAvailable switch
+        {
+            true => "LED teste disponivel",
+            false => "LED teste indisponivel",
+            _ => null,
+        };
+
         if (snapshot.Status != DeviceStatus.Online)
         {
-            return snapshot.WifiConnected == false
+            var offlineLabel = snapshot.WifiConnected == false
                 ? "Wi-Fi: sem conexao"
                 : "Wi-Fi: indisponivel (offline)";
+            return AppendConnectivityDetails(offlineLabel, wifiStateLabel, portalLabel, testLedLabel);
         }
 
+        string baseLabel;
         if (snapshot.WifiConnected == true)
         {
             if (snapshot.LastKnownRssi.HasValue)
             {
-                return $"Wi-Fi: conectado | RSSI {snapshot.LastKnownRssi.Value} dBm";
+                baseLabel = $"Wi-Fi: conectado | RSSI {snapshot.LastKnownRssi.Value} dBm";
+                return AppendConnectivityDetails(baseLabel, wifiStateLabel, portalLabel, testLedLabel);
             }
 
-            return "Wi-Fi: conectado";
+            baseLabel = "Wi-Fi: conectado";
+            return AppendConnectivityDetails(baseLabel, wifiStateLabel, portalLabel, testLedLabel);
         }
 
         if (snapshot.WifiConnected == false)
         {
-            return "Wi-Fi: sem conexao";
+            baseLabel = "Wi-Fi: sem conexao";
+            return AppendConnectivityDetails(baseLabel, wifiStateLabel, portalLabel, testLedLabel);
         }
 
         if (snapshot.LastKnownRssi.HasValue)
         {
-            return $"Wi-Fi: RSSI {snapshot.LastKnownRssi.Value} dBm";
+            baseLabel = $"Wi-Fi: RSSI {snapshot.LastKnownRssi.Value} dBm";
+            return AppendConnectivityDetails(baseLabel, wifiStateLabel, portalLabel, testLedLabel);
         }
 
-        return "Wi-Fi: -";
+        baseLabel = "Wi-Fi: -";
+        return AppendConnectivityDetails(baseLabel, wifiStateLabel, portalLabel, testLedLabel);
+    }
+
+    private static string AppendConnectivityDetails(string baseLabel, string? wifiStateLabel, string? portalLabel, string? auxLedLabel)
+    {
+        var details = new List<string>(capacity: 3);
+        if (!string.IsNullOrWhiteSpace(wifiStateLabel))
+        {
+            details.Add($"state {wifiStateLabel}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(portalLabel))
+        {
+            details.Add(portalLabel!);
+        }
+
+        if (!string.IsNullOrWhiteSpace(auxLedLabel))
+        {
+            details.Add(auxLedLabel!);
+        }
+
+        if (details.Count == 0)
+        {
+            return baseLabel;
+        }
+
+        return string.Concat(baseLabel, " | ", string.Join(" | ", details));
     }
 
     private static string BuildStreamLabel(DeviceSnapshot snapshot)

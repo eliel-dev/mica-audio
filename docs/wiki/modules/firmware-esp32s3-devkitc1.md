@@ -29,6 +29,45 @@
 - O firmware envia `X-Device-Id` e `X-Device-Token` via `setExtraHeaders(...)`.
 - Versao de release desta mudanca: `v2026.03.03-rsk002-ws-header`.
 
+## Atualizacao 2026-03 - Brilho seguro + teste de LED padrao por pulso
+
+- Controle de brilho por dispositivo com limites seguros: `30..160` (escala interna `0..255`).
+- Comando `set_brightness` atualiza `brightnessCap` e persiste no `Preferences`.
+- `test_led` voltou a ser primariamente pulso curto (modo operacional padrao):
+  - usa LED onboard WS2812 quando disponivel;
+  - usa LED auxiliar por GPIO quando disponivel;
+  - pode acionar ambos no mesmo pulso quando ambos existem.
+- Compatibilidade legado:
+  - `test_led` com `parameters.enabled=true|false` e aceito como compatibilidade;
+  - o hotfix nao depende mais de modo continuo na UI.
+- Telemetria expoe `telemetrySequence`, `brightnessCap`, `brightnessRequested`, `brightnessApplied`, `testLedEnabled`, `testLedDuty` e `testLedAvailable`.
+
+## Atualizacao 2026-03 - RSK-004 versionamento automatico do firmware
+
+- `kFirmwareVersion` agora usa macro `MICA_FIRMWARE_VERSION`.
+- Fallback estatico: `src/firmware_version.h`.
+- Build precompilado gera `src/firmware_version.auto.h` com carimbo `UTC date + tag + short commit`.
+- O arquivo auto-gerado e temporario (limpo ao final do script de build).
+
+## Atualizacao 2026-03 - Hotfix P0 Wi-Fi/AP + LED auxiliar seguro
+
+- O pino do LED auxiliar deixou de usar fallback automatico para `LED_BUILTIN/PIN_LED`.
+- O pino auxiliar agora e explicito por build flag:
+  - `MICA_TEST_LED_GPIO=-1` por default no `platformio.ini` (modo seguro).
+- LED onboard do ESP32-S3 e tratado por backend dedicado (`neopixelWrite`) em vez de LEDC em pseudo-pin.
+- Em runtime, o firmware valida o pino auxiliar:
+  - faixa fisica (`0..SOC_GPIO_PIN_COUNT-1`);
+  - sem conflito com pinos HUB75;
+  - sem conflito com serial critica (`RX0/TX0`).
+- Quando nenhum LED de teste esta disponivel, o firmware retorna `test_led_unavailable`.
+- Provisioning foi estabilizado para incidente de campo:
+  - sem `ESP.restart()` na falha de `autoConnect`;
+  - `WiFiManager` com portal sem timeout (`setConfigPortalTimeout(0)`);
+  - fallback automatico para provisioning apos queda continua de Wi-Fi;
+  - desconexao de WS agora dispara reconexao de WS sem abrir portal automaticamente.
+- Telemetria ganhou observabilidade de conectividade:
+  - `wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`.
+
 ## Referencias de codigo
 
 - [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)

@@ -1,5 +1,6 @@
 using App.WinUI.Services;
 using Device.Protocol.Models;
+using System.Globalization;
 
 namespace App.WinUI.Services.Devices;
 
@@ -10,6 +11,8 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
     private const int MaxLogEntries = 600;
     private const int MaxDeviceLogEntries = 100;
+    private const int SafeBrightnessMin = 30;
+    private const int SafeBrightnessMax = 160;
 
     private readonly IDeviceOperationsRuntime integration;
     private readonly SettingsRepository? settingsRepository;
@@ -206,6 +209,32 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         };
 
         return RunCommandAsync(deviceId, DeviceCommandType.SetAppConfig, parameters, cancellationToken);
+    }
+
+    public Task<CommandDispatchResult> SetBrightnessAsync(string deviceId, int brightness, CancellationToken cancellationToken = default)
+    {
+        var normalized = Math.Clamp(brightness, SafeBrightnessMin, SafeBrightnessMax);
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["brightness"] = normalized.ToString(CultureInfo.InvariantCulture),
+        };
+
+        return RunCommandAsync(deviceId, DeviceCommandType.SetBrightness, parameters, cancellationToken);
+    }
+
+    public Task<CommandDispatchResult> TriggerTestLedAsync(string deviceId, CancellationToken cancellationToken = default)
+    {
+        return RunCommandAsync(deviceId, DeviceCommandType.TestLed, parameters: null, cancellationToken);
+    }
+
+    public Task<CommandDispatchResult> SetTestLedEnabledAsync(string deviceId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["enabled"] = enabled ? "true" : "false",
+        };
+
+        return RunCommandAsync(deviceId, DeviceCommandType.TestLed, parameters, cancellationToken);
     }
 
     public void Dispose()
@@ -537,6 +566,17 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
                 || a.FreePsramBytes != b.FreePsramBytes
                 || a.LargestPsramBlockBytes != b.LargestPsramBlockBytes
                 || a.WifiConnected != b.WifiConnected
+                || !string.Equals(a.WifiState, b.WifiState, StringComparison.OrdinalIgnoreCase)
+                || a.ProvisioningPortalActive != b.ProvisioningPortalActive
+                || a.AuxLedAvailable != b.AuxLedAvailable
+                || a.TestLedAvailable != b.TestLedAvailable
+                || !string.Equals(a.LastWifiEvent, b.LastWifiEvent, StringComparison.OrdinalIgnoreCase)
+                || a.TelemetrySequence != b.TelemetrySequence
+                || a.BrightnessCap != b.BrightnessCap
+                || a.BrightnessRequested != b.BrightnessRequested
+                || a.BrightnessApplied != b.BrightnessApplied
+                || a.TestLedEnabled != b.TestLedEnabled
+                || a.TestLedDuty != b.TestLedDuty
                 || !string.Equals(a.ActiveAppId, b.ActiveAppId, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal)
                 || !string.Equals(a.BoardModel, b.BoardModel, StringComparison.OrdinalIgnoreCase)
@@ -615,6 +655,45 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
                 AppendDeviceLogLocked(deviceId, "Primeira telemetria recebida apos reconexao.", now);
                 awaitingFirstTelemetryByDevice.Remove(deviceId);
             }
+
+            if (previousSnapshot is null)
+            {
+                if (!string.IsNullOrWhiteSpace(current.WifiState))
+                {
+                    AppendDeviceLogLocked(deviceId, $"Wi-Fi estado: {current.WifiState}.", now);
+                }
+
+                if (current.ProvisioningPortalActive == true)
+                {
+                    AppendDeviceLogLocked(deviceId, "Portal de provisioning ativo.", now);
+                }
+
+                if (!string.IsNullOrWhiteSpace(current.LastWifiEvent))
+                {
+                    AppendDeviceLogLocked(deviceId, $"Evento conectividade: {current.LastWifiEvent}.", now);
+                }
+            }
+            else
+            {
+                if (!string.Equals(previousSnapshot.WifiState, current.WifiState, StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(current.WifiState))
+                {
+                    AppendDeviceLogLocked(deviceId, $"Wi-Fi estado: {current.WifiState}.", now);
+                }
+
+                if (previousSnapshot.ProvisioningPortalActive != current.ProvisioningPortalActive
+                    && current.ProvisioningPortalActive.HasValue)
+                {
+                    var portalState = current.ProvisioningPortalActive.Value ? "ativo" : "inativo";
+                    AppendDeviceLogLocked(deviceId, $"Portal de provisioning: {portalState}.", now);
+                }
+
+                if (!string.Equals(previousSnapshot.LastWifiEvent, current.LastWifiEvent, StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(current.LastWifiEvent))
+                {
+                    AppendDeviceLogLocked(deviceId, $"Evento conectividade: {current.LastWifiEvent}.", now);
+                }
+            }
         }
 
         awaitingFirstTelemetryByDevice.RemoveWhere(id => !seenIds.Contains(id));
@@ -677,10 +756,11 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         {
             DeviceCommandType.EnterProvisioning => "entrar em provisioning",
             DeviceCommandType.RevokeAndRestart => "revogar/reiniciar",
-            DeviceCommandType.TestLed => "testar LED",
+            DeviceCommandType.TestLed => "controlar LED auxiliar",
             DeviceCommandType.InstallApp => "instalar app",
             DeviceCommandType.ActivateApp => "ativar app",
             DeviceCommandType.SetAppConfig => "configurar app",
+            DeviceCommandType.SetBrightness => "ajustar brilho do painel",
             _ => "comando",
         };
 

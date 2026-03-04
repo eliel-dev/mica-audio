@@ -6,6 +6,16 @@
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <esp_heap_caps.h>
+#include <soc/soc_caps.h>
+#include "firmware_version.h"
+
+#if __has_include("firmware_version.auto.h")
+#include "firmware_version.auto.h"
+#endif
+
+#ifndef MICA_FIRMWARE_VERSION
+#define MICA_FIRMWARE_VERSION MICA_FIRMWARE_VERSION_FALLBACK
+#endif
 
 #if defined(MICA_PROFILE_DMA_EXP)
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
@@ -19,7 +29,8 @@ constexpr size_t kStreamFrame128x64Rgb565Size = 16400;
 constexpr uint8_t kStreamVersion = 2;
 constexpr uint8_t kStreamBinsMessageType = 1;
 constexpr uint8_t kStreamFrame128x64Rgb565MessageType = 2;
-constexpr unsigned long kProvisioningFallbackMs = 60000;
+constexpr unsigned long kWifiDisconnectProvisioningFallbackMs = 20000;
+constexpr unsigned long kWsReconnectRetryMs = 60000;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
 constexpr uint8_t kMatrixWidth = MICA_MATRIX_WIDTH;
 constexpr uint8_t kMatrixHeight = MICA_MATRIX_HEIGHT;
@@ -34,21 +45,37 @@ constexpr uint8_t kMatrixAddrPins[5] = {18, 8, 3, 42, 41};
 constexpr uint8_t kMatrixClockPin = 41;
 constexpr uint8_t kMatrixLatchPin = 40;
 constexpr uint8_t kMatrixOePin = 2;
+constexpr uint8_t kSerialRxPin = 44;
+constexpr uint8_t kSerialTxPin = 43;
 
 constexpr const char* kPanelType = "hub75_p2_5_128x64_smd2121_scan32";
-#if defined(LED_BUILTIN)
-constexpr int kTestLedPin = LED_BUILTIN;
-#elif defined(PIN_LED)
-constexpr int kTestLedPin = PIN_LED;
+#ifndef MICA_TEST_LED_GPIO
+#define MICA_TEST_LED_GPIO -1
+#endif
+constexpr int kTestLedPin = MICA_TEST_LED_GPIO;
+#if defined(RGB_BUILTIN)
+constexpr int kOnboardTestLedPin = RGB_BUILTIN;
+#elif defined(PIN_NEOPIXEL)
+constexpr int kOnboardTestLedPin = PIN_NEOPIXEL;
 #else
-constexpr int kTestLedPin = -1;
+constexpr int kOnboardTestLedPin = -1;
 #endif
 
 constexpr unsigned long kTestLedDurationMs = 1500;
 constexpr unsigned long kTestLedTogglePeriodMs = 120;
+constexpr uint8_t kTestLedPwmChannel = 0;
+constexpr uint16_t kTestLedPwmFrequencyHz = 5000;
+constexpr uint8_t kTestLedPwmResolutionBits = 8;
 
 constexpr const char* kFirmwareProfile = "dma_exp";
-constexpr const char* kFirmwareVersion = "v2026.03.03-rsk002-ws-header";
+constexpr const char* kFirmwareVersion = MICA_FIRMWARE_VERSION;
+constexpr uint8_t kBrightnessSafeMin = 30;
+constexpr uint8_t kBrightnessSafeMax = 160;
+constexpr uint8_t kBrightnessDefaultCap = 160;
+constexpr const char* kWifiStateConnecting = "connecting";
+constexpr const char* kWifiStateConnected = "connected";
+constexpr const char* kWifiStatePortal = "portal";
+constexpr const char* kWifiStateDisconnected = "disconnected";
 
 #if defined(MICA_SECURITY_PROFILE_RELEASE)
 constexpr const char* kSecurityProfile = "release";
@@ -67,26 +94,39 @@ String gActiveAppName;
 String gActiveAppConfig;
 uint8_t gBins[kBinsCount] = {0};
 uint8_t gLevel = 0;
-uint8_t gServerBrightness = 255;
+uint8_t gStreamBrightness = 255;
+uint8_t gBrightnessCap = kBrightnessDefaultCap;
 uint16_t gFrameRgb565[kMatrixPixelCount] = {0};
 unsigned long gLastFrameMs = 0;
-unsigned long gDisconnectedSinceMs = 0;
+unsigned long gWsDisconnectedSinceMs = 0;
+unsigned long gWifiDisconnectedSinceMs = 0;
 unsigned long gLastTelemetryMs = 0;
 unsigned long gTestLedUntilMs = 0;
 unsigned long gTestLedNextToggleMs = 0;
 bool gTestLedState = false;
+bool gTestLedEnabled = false;
+bool gTestLedPwmReady = false;
+bool gAuxLedAvailable = false;
+bool gOnboardTestLedAvailable = false;
+uint8_t gTestLedDuty = 0;
+uint8_t gTestLedPulseDuty = 0;
 bool gMatrixReady = false;
 uint8_t gAppliedBrightness = 255;
 bool gFrameModeActive = false;
 uint64_t gLoopBusyTimeUs = 0;
 unsigned long gLoopWindowStartMs = 0;
 uint8_t gLoopLoadPercent = 0;
+uint32_t gTelemetrySequence = 0;
 bool gHasStreamLastSequence = false;
 uint32_t gStreamLastSequence = 0;
 uint32_t gStreamFramesReceived = 0;
 uint32_t gStreamFramesApplied = 0;
 uint32_t gStreamSequenceGapCount = 0;
 uint32_t gStreamInvalidFrameCount = 0;
+bool gProvisioningPortalActive = false;
+String gWifiState = kWifiStateConnecting;
+String gLastWifiEvent = "boot";
+String gAuxLedUnavailableReason;
 
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
@@ -136,13 +176,211 @@ RgbColor rgb565ToRgb888(uint16_t rgb565) {
   return {r, g, b};
 }
 
+bool isReservedHub75Pin(int pin) {
+  for (uint8_t gpio : kMatrixRgbPins) {
+    if (static_cast<int>(gpio) == pin) {
+      return true;
+    }
+  }
+
+  for (uint8_t gpio : kMatrixAddrPins) {
+    if (static_cast<int>(gpio) == pin) {
+      return true;
+    }
+  }
+
+  return pin == static_cast<int>(kMatrixClockPin)
+      || pin == static_cast<int>(kMatrixLatchPin)
+      || pin == static_cast<int>(kMatrixOePin);
+}
+
+bool tryValidateAuxLedPin(int pin, String& reason) {
+  if (pin < 0) {
+    reason = "desabilitado por build flag";
+    return false;
+  }
+
+  if (pin >= static_cast<int>(SOC_GPIO_PIN_COUNT)) {
+    reason = "fora da faixa de GPIO fisico";
+    return false;
+  }
+
+  if (isReservedHub75Pin(pin)) {
+    reason = "conflito com pinos HUB75";
+    return false;
+  }
+
+  if (pin == static_cast<int>(kSerialRxPin) || pin == static_cast<int>(kSerialTxPin)) {
+    reason = "conflito com serial";
+    return false;
+  }
+
+  return true;
+}
+
+void setConnectivityState(const char* wifiState, const char* lastEvent, bool forceLog = false) {
+  bool changed = false;
+  if (wifiState != nullptr && wifiState[0] != '\0' && !gWifiState.equals(wifiState)) {
+    gWifiState = wifiState;
+    changed = true;
+  }
+
+  if (lastEvent != nullptr && lastEvent[0] != '\0' && !gLastWifiEvent.equals(lastEvent)) {
+    gLastWifiEvent = lastEvent;
+    changed = true;
+  }
+
+  if (changed || forceLog) {
+    Serial.printf("[conn] wifiState=%s portal=%s event=%s\n",
+        gWifiState.c_str(),
+        gProvisioningPortalActive ? "on" : "off",
+        gLastWifiEvent.c_str());
+  }
+}
+
+void setProvisioningPortalActive(bool active, const char* eventName) {
+  if (gProvisioningPortalActive == active && (eventName == nullptr || eventName[0] == '\0')) {
+    return;
+  }
+
+  gProvisioningPortalActive = active;
+  setConnectivityState(active ? kWifiStatePortal : kWifiStateConnected, eventName, true);
+}
+
+void initializeOnboardTestLed() {
+  gOnboardTestLedAvailable = false;
+
+#if defined(RGB_BUILTIN) || defined(PIN_NEOPIXEL)
+  if (kOnboardTestLedPin >= 0) {
+    gOnboardTestLedAvailable = true;
+    neopixelWrite(kOnboardTestLedPin, 0, 0, 0);
+    Serial.printf("[led] LED onboard habilitado no pino %d.\n", kOnboardTestLedPin);
+    return;
+  }
+#endif
+
+  Serial.println("[led] LED onboard indisponivel neste build.");
+}
+
+void initializeAuxLed() {
+  gAuxLedAvailable = false;
+  gTestLedPwmReady = false;
+  gTestLedDuty = 0;
+  gAuxLedUnavailableReason = "";
+
+  String validationReason;
+  if (!tryValidateAuxLedPin(kTestLedPin, validationReason)) {
+    gAuxLedUnavailableReason = validationReason;
+    gTestLedEnabled = false;
+    gPrefs.putBool("testLedEnabled", false);
+    Serial.printf("[led] LED auxiliar indisponivel (GPIO %d): %s\n", kTestLedPin, gAuxLedUnavailableReason.c_str());
+    return;
+  }
+
+  if (ledcSetup(kTestLedPwmChannel, kTestLedPwmFrequencyHz, kTestLedPwmResolutionBits) <= 0) {
+    gAuxLedUnavailableReason = "falha no ledcSetup";
+    gTestLedEnabled = false;
+    gPrefs.putBool("testLedEnabled", false);
+    Serial.printf("[led] Falha ao inicializar PWM do LED auxiliar (GPIO %d).\n", kTestLedPin);
+    return;
+  }
+
+  pinMode(kTestLedPin, OUTPUT);
+  ledcAttachPin(kTestLedPin, kTestLedPwmChannel);
+  gTestLedPwmReady = true;
+  gAuxLedAvailable = true;
+  Serial.printf("[led] LED auxiliar habilitado no GPIO %d.\n", kTestLedPin);
+}
+
+bool isTestLedAvailable() {
+  return gOnboardTestLedAvailable || gAuxLedAvailable;
+}
+
+uint8_t clampBrightnessToSafeRange(int value) {
+  if (value < static_cast<int>(kBrightnessSafeMin)) {
+    return kBrightnessSafeMin;
+  }
+
+  if (value > static_cast<int>(kBrightnessSafeMax)) {
+    return kBrightnessSafeMax;
+  }
+
+  return static_cast<uint8_t>(value);
+}
+
+uint8_t resolveRequestedBrightness() {
+  return clampBrightnessToSafeRange(static_cast<int>(gStreamBrightness));
+}
+
+uint8_t resolveAppliedBrightness() {
+  const uint8_t requested = resolveRequestedBrightness();
+  return (requested < gBrightnessCap) ? requested : gBrightnessCap;
+}
+
+void applyAuxTestLedDuty(uint8_t duty) {
+  if (!gAuxLedAvailable || !gTestLedPwmReady) {
+    return;
+  }
+
+  ledcWrite(kTestLedPwmChannel, duty);
+}
+
+void applyOnboardTestLedDuty(uint8_t duty) {
+  if (!gOnboardTestLedAvailable) {
+    return;
+  }
+
+#if defined(RGB_BUILTIN) || defined(PIN_NEOPIXEL)
+  neopixelWrite(kOnboardTestLedPin, duty, duty, duty);
+#else
+  (void)duty;
+#endif
+}
+
+void applyTestLedDutyToOutputs(uint8_t duty) {
+  applyAuxTestLedDuty(duty);
+  applyOnboardTestLedDuty(duty);
+}
+
+void applyTestLedState() {
+  if (!isTestLedAvailable()) {
+    return;
+  }
+
+  if (gTestLedUntilMs > 0) {
+    applyTestLedDutyToOutputs(gTestLedState ? gTestLedPulseDuty : 0);
+    return;
+  }
+
+  if (gAuxLedAvailable && gTestLedEnabled) {
+    applyAuxTestLedDuty(gTestLedDuty);
+  } else {
+    applyAuxTestLedDuty(0);
+  }
+
+  applyOnboardTestLedDuty(0);
+}
+
+void updateTestLedDutyFromBrightness(uint8_t brightness) {
+  if (!gAuxLedAvailable) {
+    gTestLedDuty = 0;
+  } else if (gTestLedDuty != brightness) {
+    gTestLedDuty = brightness;
+  }
+
+  gTestLedPulseDuty = brightness;
+  if (gTestLedUntilMs == 0) {
+    applyTestLedState();
+  }
+}
+
 void setMatrixBrightness(uint8_t brightness) {
-  if (!gMatrixReady || gAppliedBrightness == brightness) {
+  if (gAppliedBrightness == brightness) {
     return;
   }
 
 #if defined(MICA_PROFILE_DMA_EXP)
-  if (gMatrix != nullptr) {
+  if (gMatrixReady && gMatrix != nullptr) {
     gMatrix->setBrightness8(brightness);
   }
 #endif
@@ -213,8 +451,9 @@ bool initMatrixDisplay() {
 #endif
 
   gMatrixReady = true;
-  gAppliedBrightness = gServerBrightness;
-  setMatrixBrightness(gServerBrightness);
+  gAppliedBrightness = 0;
+  setMatrixBrightness(resolveAppliedBrightness());
+  updateTestLedDutyFromBrightness(gAppliedBrightness);
   clearMatrix();
   commitMatrixFrame();
   return true;
@@ -369,6 +608,11 @@ void sendTelemetry(bool force) {
   telemetry["type"] = "telemetry";
   telemetry["deviceId"] = gDeviceId;
   telemetry["wifiConnected"] = wifiConnected;
+  telemetry["wifiState"] = gWifiState;
+  telemetry["provisioningPortalActive"] = gProvisioningPortalActive;
+  telemetry["auxLedAvailable"] = gAuxLedAvailable;
+  telemetry["testLedAvailable"] = isTestLedAvailable();
+  telemetry["lastWifiEvent"] = gLastWifiEvent;
   telemetry["rssi"] = wifiConnected ? WiFi.RSSI() : -100;
   telemetry["uptimeSeconds"] = uptimeSeconds;
   telemetry["loopLoadPercent"] = gLoopLoadPercent;
@@ -377,6 +621,12 @@ void sendTelemetry(bool force) {
   telemetry["streamFramesApplied"] = gStreamFramesApplied;
   telemetry["streamSequenceGapCount"] = gStreamSequenceGapCount;
   telemetry["streamInvalidFrameCount"] = gStreamInvalidFrameCount;
+  telemetry["telemetrySequence"] = ++gTelemetrySequence;
+  telemetry["brightnessCap"] = gBrightnessCap;
+  telemetry["brightnessRequested"] = gStreamBrightness;
+  telemetry["brightnessApplied"] = gAppliedBrightness;
+  telemetry["testLedEnabled"] = gTestLedEnabled;
+  telemetry["testLedDuty"] = gTestLedDuty;
   if (gHasStreamLastSequence) {
     telemetry["streamLastSequence"] = gStreamLastSequence;
   }
@@ -417,29 +667,30 @@ void sendTelemetry(bool force) {
 }
 
 void clearTestLed() {
-  if (kTestLedPin < 0) {
+  if (!isTestLedAvailable()) {
     return;
   }
 
   gTestLedState = false;
   gTestLedUntilMs = 0;
   gTestLedNextToggleMs = 0;
-  digitalWrite(kTestLedPin, LOW);
+  applyTestLedState();
 }
 
 void triggerTestLed() {
-  if (kTestLedPin < 0) {
+  if (!isTestLedAvailable()) {
     return;
   }
 
   gTestLedState = false;
+  gTestLedPulseDuty = resolveAppliedBrightness();
   gTestLedUntilMs = millis() + kTestLedDurationMs;
   gTestLedNextToggleMs = 0;
-  digitalWrite(kTestLedPin, LOW);
+  applyTestLedState();
 }
 
 void updateTestLed() {
-  if (kTestLedPin < 0 || gTestLedUntilMs == 0) {
+  if (!isTestLedAvailable() || gTestLedUntilMs == 0) {
     return;
   }
 
@@ -451,15 +702,51 @@ void updateTestLed() {
 
   if (gTestLedNextToggleMs == 0 || now >= gTestLedNextToggleMs) {
     gTestLedState = !gTestLedState;
-    digitalWrite(kTestLedPin, gTestLedState ? HIGH : LOW);
+    applyTestLedState();
     gTestLedNextToggleMs = now + kTestLedTogglePeriodMs;
   }
 }
 
-void startProvisioningPortal() {
+bool tryParseBooleanParameter(JsonVariantConst value, bool& output) {
+  if (value.isNull()) {
+    return false;
+  }
+
+  if (value.is<bool>()) {
+    output = value.as<bool>();
+    return true;
+  }
+
+  if (value.is<int>()) {
+    output = value.as<int>() != 0;
+    return true;
+  }
+
+  String raw = value.as<String>();
+  raw.trim();
+  raw.toLowerCase();
+  if (raw == "1" || raw == "true" || raw == "on" || raw == "enabled") {
+    output = true;
+    return true;
+  }
+
+  if (raw == "0" || raw == "false" || raw == "off" || raw == "disabled") {
+    output = false;
+    return true;
+  }
+
+  return false;
+}
+
+bool startProvisioningPortal(const char* reason) {
+  gWs.disconnect();
+  gLastTelemetryMs = 0;
+  setProvisioningPortalActive(true, reason);
+  Serial.printf("[portal_open] motivo=%s\n", reason == nullptr ? "-" : reason);
+
   WiFiManager wm;
   wm.setConfigPortalBlocking(true);
-  wm.setConfigPortalTimeout(300);
+  wm.setConfigPortalTimeout(0);
 
   WiFiManagerParameter pHost("host", "Servidor host", gPrefs.getString("host", "micaaudio.local").c_str(), 63);
   WiFiManagerParameter pPort("port", "Servidor porta", gPrefs.getString("port", "5272").c_str(), 8);
@@ -472,10 +759,17 @@ void startProvisioningPortal() {
   wm.addParameter(&pName);
 
   String apName = "MicaAudio-Setup-" + String((uint32_t)ESP.getEfuseMac(), HEX).substring(6);
+  Serial.printf("[provisioning] AP=%s reason=%s\n", apName.c_str(), reason == nullptr ? "-" : reason);
   if (!wm.autoConnect(apName.c_str())) {
-    ESP.restart();
-    return;
+    setConnectivityState(kWifiStatePortal, "portal_error", true);
+    Serial.println("[provisioning] autoConnect retornou false; portal permanece disponivel.");
+    return false;
   }
+
+  setProvisioningPortalActive(false, "wifi_connected");
+  Serial.println("[portal_close] provisioning encerrado apos conexao Wi-Fi.");
+  gWifiDisconnectedSinceMs = 0;
+  setConnectivityState(kWifiStateConnected, "wifi_connected", true);
 
   gPrefs.putString("host", pHost.getValue());
   gPrefs.putString("port", pPort.getValue());
@@ -485,13 +779,15 @@ void startProvisioningPortal() {
 
   String pairingCode = pPair.getValue();
   if (pairingCode.length() == 0) {
-    return;
+    setConnectivityState(kWifiStateConnected, "provisioned_without_pairing", true);
+    return true;
   }
 
   HTTPClient http;
   String url = "http://" + gServerHost + ":" + String(gServerPort) + "/api/v1/pair";
   if (!http.begin(url)) {
-    return;
+    setConnectivityState(kWifiStateConnected, "pair_http_begin_failed", true);
+    return true;
   }
 
   http.addHeader("Content-Type", "application/json");
@@ -514,30 +810,40 @@ void startProvisioningPortal() {
     if (!gDeviceId.isEmpty() && !gToken.isEmpty()) {
       gPrefs.putString("deviceId", gDeviceId);
       gPrefs.putString("token", gToken);
+      setConnectivityState(kWifiStateConnected, "pair_success", true);
     }
+  } else {
+    setConnectivityState(kWifiStateConnected, "pair_http_error", true);
   }
 
   http.end();
+  return true;
 }
 
-void enterProvisioningMode() {
-  gWs.disconnect();
-  gPrefs.remove("deviceId");
-  gPrefs.remove("token");
-  gDeviceId = "";
-  gToken = "";
-  startProvisioningPortal();
+void enterProvisioningMode(bool clearDeviceCredentials, const char* reason) {
+  if (clearDeviceCredentials) {
+    gPrefs.remove("deviceId");
+    gPrefs.remove("token");
+    gDeviceId = "";
+    gToken = "";
+  }
+
+  (void)startProvisioningPortal(reason);
 }
 
 // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
 void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
   if (type == WStype_CONNECTED) {
-    gDisconnectedSinceMs = 0;
+    gWsDisconnectedSinceMs = 0;
+    setConnectivityState(kWifiStateConnected, "ws_connected", true);
+    Serial.println("[ws_connected] sessao websocket estabelecida.");
     sendTelemetry(true);
     return;
   }
 
   if (type == WStype_DISCONNECTED) {
+    setConnectivityState(WiFi.status() == WL_CONNECTED ? kWifiStateConnected : kWifiStateDisconnected, "ws_disconnected", true);
+    Serial.println("[ws_disconnected] sessao websocket encerrada.");
     gLastTelemetryMs = 0;
     return;
   }
@@ -581,7 +887,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
       gLevel = payload[14];
       memcpy(gBins, payload + 15, kBinsCount);
-      gServerBrightness = payload[143];
+      gStreamBrightness = payload[143];
       gFrameModeActive = false;
       gLastFrameMs = millis();
       gStreamFramesApplied++;
@@ -604,7 +910,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         gHasStreamLastSequence = true;
       }
 
-      gServerBrightness = payload[14];
+      gStreamBrightness = payload[14];
       size_t offset = 15;
       for (size_t i = 0; i < kMatrixPixelCount; i++) {
         gFrameRgb565[i] = static_cast<uint16_t>(payload[offset]) |
@@ -640,7 +946,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
     sendCommandProgress(commandId, 20, "received", "Comando recebido.");
     postCommandAck(commandId, true, "Entrando em provisioning.", 100, "enter-provisioning");
     sendCommandProgress(commandId, 100, "enter-provisioning", "Entrando em provisioning.", 1);
-    enterProvisioningMode();
+    enterProvisioningMode(true, "command_enter_provisioning");
     return;
   }
 
@@ -657,9 +963,75 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
   if (strcmp(command, "test_led") == 0) {
     sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+
+    JsonVariantConst enabledValue = parameters["enabled"];
+    if (!enabledValue.isNull()) {
+      bool enabled = false;
+      if (!tryParseBooleanParameter(enabledValue, enabled)) {
+        postCommandAck(commandId, false, "Parametro enabled invalido.", 100, "invalid", "param_invalid");
+        sendCommandProgress(commandId, 100, "invalid", "Parametro enabled invalido.", 0);
+        return;
+      }
+
+      Serial.printf("[led] parametro legado enabled recebido: %s\n", enabled ? "true" : "false");
+      if (gAuxLedAvailable) {
+        gTestLedEnabled = enabled;
+        gPrefs.putBool("testLedEnabled", gTestLedEnabled);
+      } else {
+        gTestLedEnabled = false;
+        gPrefs.putBool("testLedEnabled", false);
+      }
+
+      updateTestLedDutyFromBrightness(resolveAppliedBrightness());
+      clearTestLed();
+      applyTestLedState();
+      sendTelemetry(true);
+      const char* message = gAuxLedAvailable
+          ? (gTestLedEnabled ? "Compat legado: LED auxiliar habilitado." : "Compat legado: LED auxiliar desabilitado.")
+          : "Compat legado: sem LED auxiliar, parametro enabled ignorado.";
+      postCommandAck(commandId, true, message, 100, "set-test-led-compat");
+      sendCommandProgress(commandId, 100, "set-test-led-compat", message, 1);
+      return;
+    }
+
+    if (!isTestLedAvailable()) {
+      postCommandAck(commandId, false, "Nenhum LED de teste disponivel neste hardware.", 100, "test-led-unavailable", "test_led_unavailable");
+      sendCommandProgress(commandId, 100, "test-led-unavailable", "Nenhum LED de teste disponivel neste hardware.", 0);
+      return;
+    }
+
     triggerTestLed();
     postCommandAck(commandId, true, "Teste de LED acionado.", 100, "test-led");
     sendCommandProgress(commandId, 100, "test-led", "Teste de LED acionado.", 1);
+    return;
+  }
+
+  if (strcmp(command, "set_brightness") == 0) {
+    String brightnessRaw = parameters["brightness"] | "";
+
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    if (brightnessRaw.length() == 0) {
+      postCommandAck(commandId, false, "brightness ausente.", 100, "invalid", "brightness_invalid");
+      sendCommandProgress(commandId, 100, "invalid", "brightness ausente.", 0);
+      return;
+    }
+
+    const int brightnessValue = brightnessRaw.toInt();
+    if (brightnessValue == 0 && brightnessRaw != "0") {
+      postCommandAck(commandId, false, "brightness invalido.", 100, "invalid", "brightness_invalid");
+      sendCommandProgress(commandId, 100, "invalid", "brightness invalido.", 0);
+      return;
+    }
+
+    gBrightnessCap = clampBrightnessToSafeRange(brightnessValue);
+    gPrefs.putUChar("brightnessCap", gBrightnessCap);
+    setMatrixBrightness(resolveAppliedBrightness());
+    updateTestLedDutyFromBrightness(gAppliedBrightness);
+    applyTestLedState();
+    sendTelemetry(true);
+
+    postCommandAck(commandId, true, "Brilho atualizado.", 100, "set-brightness");
+    sendCommandProgress(commandId, 100, "set-brightness", "Brilho atualizado.", 1);
     return;
   }
   if (strcmp(command, "install_app") == 0) {
@@ -735,12 +1107,20 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
 void connectWebSocket() {
   if (gDeviceId.isEmpty() || gToken.isEmpty() || gServerHost.isEmpty()) {
+    setConnectivityState(kWifiStateConnecting, "ws_missing_auth", true);
+    return;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    setConnectivityState(kWifiStateConnecting, "ws_waiting_wifi", true);
     return;
   }
 
   String extraHeaders = "X-Device-Id: " + gDeviceId + "\r\nX-Device-Token: " + gToken;
   gWs.setExtraHeaders(extraHeaders.c_str());
   String path = "/ws/v1/stream";
+  Serial.printf("[ws] conectando em ws://%s:%u%s\n", gServerHost.c_str(), gServerPort, path.c_str());
+  setConnectivityState(kWifiStateConnected, "ws_connecting", true);
   gWs.begin(gServerHost.c_str(), gServerPort, path.c_str());
   gWs.onEvent(onWsEvent);
   gWs.setReconnectInterval(2000);
@@ -752,7 +1132,8 @@ void drawBars() {
     return;
   }
 
-  setMatrixBrightness(gServerBrightness);
+  setMatrixBrightness(resolveAppliedBrightness());
+  updateTestLedDutyFromBrightness(gAppliedBrightness);
   clearMatrix();
 
   const uint16_t columnCount = (kBinsCount < kMatrixWidth) ? kBinsCount : kMatrixWidth;
@@ -786,7 +1167,8 @@ void drawFrame128x64() {
     return;
   }
 
-  setMatrixBrightness(gServerBrightness);
+  setMatrixBrightness(resolveAppliedBrightness());
+  updateTestLedDutyFromBrightness(gAppliedBrightness);
   clearMatrix();
 
   for (uint8_t y = 0; y < kMatrixHeight; y++) {
@@ -803,18 +1185,28 @@ void drawFrame128x64() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("[boot] inicializando firmware.");
   if (strcmp(kSecurityProfile, "dev") == 0) {
     Serial.printf("MicaAudio firmware board=%s profile=%s security=%s\\n", kBoardModel, kFirmwareProfile, kSecurityProfile);
   }
+
   gPrefs.begin("micaaudio", false);
+  Serial.println("[wifi_connecting] preparando conectividade.");
+  setConnectivityState(kWifiStateConnecting, "boot", true);
+
+  gBrightnessCap = clampBrightnessToSafeRange(static_cast<int>(gPrefs.getUChar("brightnessCap", kBrightnessDefaultCap)));
+  gTestLedEnabled = gPrefs.getBool("testLedEnabled", false);
+  gStreamBrightness = gBrightnessCap;
+  gAppliedBrightness = resolveAppliedBrightness();
+  initializeOnboardTestLed();
+  initializeAuxLed();
 
   if (!initMatrixDisplay()) {
     Serial.println("Painel HUB75 indisponivel: exibicao de barras desativada.");
   }
-  if (kTestLedPin >= 0) {
-    pinMode(kTestLedPin, OUTPUT);
-    digitalWrite(kTestLedPin, LOW);
-  }
+
+  updateTestLedDutyFromBrightness(resolveAppliedBrightness());
+  applyTestLedState();
 
   gServerHost = gPrefs.getString("host", "");
   gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
@@ -823,9 +1215,14 @@ void setup() {
   gActiveAppId = gPrefs.getString("activeAppId", "");
   gActiveAppName = gPrefs.getString("activeAppName", "");
   gActiveAppConfig = gPrefs.getString("activeAppConfig", "");
+  WiFi.mode(WIFI_STA);
 
   if (gServerHost.isEmpty() || gServerPort == 0 || WiFi.status() != WL_CONNECTED) {
-    startProvisioningPortal();
+    Serial.println("[wifi] iniciando provisioning no boot.");
+    (void)startProvisioningPortal("boot");
+  } else {
+    Serial.println("[wifi_connected] Wi-Fi conectado no boot.");
+    setConnectivityState(kWifiStateConnected, "wifi_connected", true);
   }
 
   connectWebSocket();
@@ -833,27 +1230,54 @@ void setup() {
 
 void loop() {
   const uint32_t loopStartUs = micros();
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
 
-  if (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
+  if (!wifiConnected) {
+    if (gWifiDisconnectedSinceMs == 0) {
+      gWifiDisconnectedSinceMs = millis();
+      setConnectivityState(kWifiStateDisconnected, "wifi_disconnected", true);
+      Serial.println("[wifi] desconectado, aguardando reconexao.");
+    }
+
+    if (!gProvisioningPortalActive
+        && (millis() - gWifiDisconnectedSinceMs) > kWifiDisconnectProvisioningFallbackMs) {
+      Serial.println("[wifi] fallback para provisioning apos queda prolongada.");
+      (void)startProvisioningPortal("wifi_disconnected_fallback");
+      gWifiDisconnectedSinceMs = 0;
+      connectWebSocket();
+    } else {
+      delay(120);
+    }
+
+    updateTestLed();
     updateLoopLoadPercent(loopStartUs);
     return;
   }
 
+  if (gWifiDisconnectedSinceMs != 0) {
+    gWifiDisconnectedSinceMs = 0;
+  }
+
+  if (gProvisioningPortalActive) {
+    setProvisioningPortalActive(false, "portal_closed");
+  }
+
+  setConnectivityState(kWifiStateConnected, "wifi_connected");
   gWs.loop();
 
   if (!gWs.isConnected()) {
-    if (gDisconnectedSinceMs == 0) {
-      gDisconnectedSinceMs = millis();
+    if (gWsDisconnectedSinceMs == 0) {
+      gWsDisconnectedSinceMs = millis();
+      setConnectivityState(kWifiStateConnected, "ws_disconnected");
     }
 
-    if (millis() - gDisconnectedSinceMs > kProvisioningFallbackMs) {
-      enterProvisioningMode();
+    if (millis() - gWsDisconnectedSinceMs > kWsReconnectRetryMs) {
+      Serial.println("[ws_disconnected] sem sessao por tempo prolongado; tentando reconectar websocket.");
       connectWebSocket();
-      gDisconnectedSinceMs = 0;
+      gWsDisconnectedSinceMs = millis();
     }
   } else {
-    gDisconnectedSinceMs = 0;
+    gWsDisconnectedSinceMs = 0;
     sendTelemetry(false);
   }
 

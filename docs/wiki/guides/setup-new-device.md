@@ -36,15 +36,17 @@ Documentar o fluxo oficial de setup para o painel HUB75 `128x64`.
 - Quando o app ativo do device e `visualizer-hub75`, a miniatura exibe frame real do `SimulatorLedOutput` via pump de 8 Hz.
 - O painel da direita nao mostra mais preview maior; a leitura visual do app fica na miniatura da lista.
 - O card `Dashboard ESP` mostra metrica do device selecionado: carga do loop, uptime, heap, PSRAM e rede.
-- O dashboard tem leitura estilo NOC com linguagem visual Fluent: chips de estado com icones discretos e barras de tendencia da carga do loop.
+- O dashboard tem leitura estilo NOC com linguagem visual Fluent e barras de tendencia da carga do loop.
 - Em offline, o dashboard exibe o ultimo snapshot conhecido com aviso explicito de offline.
-- `RSSI` e exibido apenas quando o device esta online.
+- `RSSI` aparece no topo do card de resumo, ao lado de `Testar LED` e `Remover`.
 - A linha da lista/selecionado nao exibe mais `IP` nem `RSSI`.
 - O card `Logs do dispositivo` mostra somente eventos do `deviceId` selecionado.
+- O bloco visual `Comandos:` nao aparece mais nessa tela.
 - Sem selecao, dashboard e logs mostram placeholders dedicados e estaveis.
 
 
 - Na tela, os botoes de acao do device ficam no card de resumo (`Testar LED` e `Remover`).
+- O slider de brilho seguro (`30..160`) controla o cap do painel.
 - A acao `Remover` e consolidada: online tenta revogar/reiniciar e remove local; offline remove apenas o registro local.
 
 ## Referencias adicionais
