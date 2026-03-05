@@ -63,24 +63,19 @@
 - Provisioning foi estabilizado para incidente de campo:
   - sem `ESP.restart()` na falha de `autoConnect`;
   - `WiFiManager` com portal sem timeout (`setConfigPortalTimeout(0)`);
+  - abertura imediata do AP no boot quando faltar host/porta ou credencial de device;
   - fallback automatico para provisioning apos queda continua de Wi-Fi;
   - desconexao de WS agora dispara reconexao de WS sem abrir portal automaticamente.
 - Telemetria ganhou observabilidade de conectividade:
   - `wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`.
 
-## Atualizacao 2026-03 - Onboarding USB por serial (`mica.serial.v1`)
+## Atualizacao 2026-03 - Rollback onboarding para COM+flash + AP
 
-- O firmware passou a expor canal serial de provisionamento (`115200`) com mensagens JSONL.
-- Handshake periodico:
-  - `hello` com `protocol = mica.serial.v1`.
-- Request suportado:
-  - `provision` com `ssid`, `password`, `serverBaseUrl`, `pairCode`.
-- Feedback durante onboarding:
-  - `progress` (`wifi_connecting`, `wifi_connected`, `pairing`, `done`, `error`).
-  - `result` (`ok`, `errorCode`, `message`, `deviceId`).
-- Boot behavior:
-  - ao iniciar sem configuracao valida, o firmware aguarda onboarding serial e so entra no portal AP por fallback de janela.
-  - permanece sem `ESP.restart()` automatico em falha de conexao/provisioning.
+- Fluxo oficial voltou para:
+  - app faz somente `COM -> flash -> exibe pair code`;
+  - provisioning de rede/pair ocorre no portal AP do firmware.
+- O firmware abre AP de setup imediatamente no boot quando detectar configuracao incompleta.
+- O contrato serial `mica.serial.v1` permanece no codigo apenas para compatibilidade futura e diagnostico.
 
 ## Referencias de codigo
 

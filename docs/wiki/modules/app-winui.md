@@ -69,19 +69,48 @@
 - O botao `Testar LED` continua respeitando `testLedAvailable` (fallback para firmware legado):
   - quando indisponivel, fica desabilitado e mostra rotulo `LED indisponivel`.
 
-## Atualizacao 2026-03 - Novo dispositivo em 2 etapas (USB end-to-end)
+## Atualizacao 2026-03 - Rollback onboarding para COM+flash + AP
 
-- A lista de devices removeu o campo de busca para reduzir ruido operacional.
-- O botao `Novo dispositivo` foi movido para o rodape da coluna esquerda.
-- O painel de detalhes da direita fica oculto quando nao ha selecao ativa.
-- O fluxo `Novo dispositivo` agora usa wizard de 2 etapas:
-  - etapa 1: SSID e senha Wi-Fi;
-  - etapa 2: selecao da porta COM com auto-detect e opcao de mostrar todas as portas.
-- O onboarding dispara pipeline completo:
-  - flash do firmware oficial com `esptool`;
-  - provisionamento serial (`mica.serial.v1`);
-  - pareamento automatico (sem input manual de pairing code na UI);
-  - validacao de dispositivo online no dashboard.
+- O wizard `Novo dispositivo` voltou para etapa funcional unica:
+  - selecao de porta COM + flash de firmware.
+- SSID/senha deixaram de ser coletados pela UI nesse fluxo.
+- Ao fim do flash, o app exibe `pair code` em modal com instrucoes de provisioning via AP.
+- O onboarding oficial nao depende mais de handshake serial para concluir.
+
+## Atualizacao 2026-03 - Paridade visual com HTML canonico
+
+- A `DevicesPage` agora segue contrato visual 1:1 do arquivo canonicamente aprovado em `C:\Users\eliels\Pictures\nice\mica-dashboard.html`.
+- Estrutura fixa do detalhe:
+  - header do dispositivo com `RSSI` + acoes verticais (`Testar LED` e `Remover`);
+  - bloco de brilho (`30..160`) com status/aplicado/heartbeat;
+  - grade de metricas (CPU/RAM/PSRAM);
+  - tendencia de CPU;
+  - secao `Status em tempo real` (ESP-DASH style);
+  - linha de conectividade;
+  - historico de eventos (logs).
+- O wizard foi migrado para overlay custom (sem `ContentDialog`) para controlar dimensoes/padding/radius iguais ao HTML.
+- O fluxo tecnico de onboarding USB nao foi alterado: a mudanca foi de composicao visual.
+
+## Atualizacao 2026-03 - Hotfix de estabilidade ao selecionar device offline
+
+- Foi aplicado fallback seguro na `DevicesPage` para o estado offline.
+- Quando o device selecionado esta offline (ou sem snapshot valido), o dashboard entra em modo simplificado:
+  - mantem resumo do device e logs;
+  - oculta renderizacao avancada (`ESP-DASH`, conectividade detalhada, charts dinamicos).
+- O caminho de render de selecao/dashboard ganhou hardening e telemetria local de erro para evitar encerramento do app por excecao de XAML.
+- O modo online continua exibindo dashboard completo.
+
+## Atualizacao 2026-03 - Onboarding USB com perfil esptool fixo + progresso visual
+
+- O onboarding USB passou a usar perfil canonico de flash:
+  - `--chip esp32s3`
+  - `--baud 115200`
+  - `--before default_reset`
+  - `--after hard_reset`
+  - `write_flash --no-compress 0x0 <firmware.bin>`
+- O wizard de `Novo dispositivo` mostra barra de progresso + percentual real na etapa `Flashing`.
+- O percentual e derivado diretamente das linhas de saida do `esptool` (`NN%` e `NN %`).
+- Em sucesso, o wizard encerra apos mostrar o `pair code` e orientar configuracao no AP do ESP32.
 
 ## Referencias de codigo
 

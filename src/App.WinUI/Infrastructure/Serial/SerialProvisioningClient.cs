@@ -1,4 +1,4 @@
-using System.IO.Ports;
+﻿using System.IO.Ports;
 using System.Text.Json;
 using App.WinUI.Services.Devices.Onboarding;
 using Microsoft.Extensions.Logging;
@@ -41,7 +41,9 @@ internal sealed record SerialProvisioningResult
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
 internal sealed class SerialProvisioningClient : ISerialProvisioningClient
 {
-    private static readonly TimeSpan HelloTimeout = TimeSpan.FromSeconds(20);
+    private const int HelloAttemptCount = 3;
+    private static readonly TimeSpan HelloTimeout = TimeSpan.FromSeconds(25);
+    private static readonly TimeSpan HelloRetryDelay = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan ResultTimeout = TimeSpan.FromSeconds(90);
     private readonly ILogger<SerialProvisioningClient> logger;
 
@@ -66,43 +68,6 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
             };
         }
 
-        using var serial = new SerialPort(portName, 115200, Parity.None, 8, StopBits.One)
-        {
-            DtrEnable = true,
-            RtsEnable = false,
-            Handshake = Handshake.None,
-            NewLine = "\n",
-            ReadTimeout = 1000,
-            WriteTimeout = 1000,
-        };
-
-        try
-        {
-            serial.Open();
-        }
-        catch (Exception ex)
-        {
-            return new SerialProvisioningResult
-            {
-                Success = false,
-                ErrorCode = "port_open_failed",
-                Message = $"Falha ao abrir {portName}: {ex.Message}",
-            };
-        }
-
-        progress?.Report(new DeviceOnboardingProgress
-        {
-            Stage = DeviceOnboardingStage.Provisioning,
-            Message = "Aguardando handshake serial do firmware...",
-            Percent = 10,
-        });
-
-        var hello = await WaitForHelloAsync(serial, cancellationToken).ConfigureAwait(false);
-        if (!hello.Success)
-        {
-            return hello;
-        }
-
         var payload = JsonSerializer.Serialize(new Dictionary<string, object?>
         {
             ["type"] = "provision",
@@ -113,28 +78,87 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
             ["pairCode"] = request.PairCode,
         });
 
-        try
+        for (var attempt = 1; attempt <= HelloAttemptCount; attempt++)
         {
-            serial.WriteLine(payload);
-        }
-        catch (Exception ex)
-        {
-            return new SerialProvisioningResult
+            using var serial = BuildSerialPort(portName);
+            try
             {
-                Success = false,
-                ErrorCode = "serial_write_failed",
-                Message = $"Falha ao enviar provisionamento: {ex.Message}",
-            };
+                serial.Open();
+                serial.DiscardInBuffer();
+                serial.DiscardOutBuffer();
+            }
+            catch (Exception ex)
+            {
+                if (attempt < HelloAttemptCount)
+                {
+                    logger.LogWarning(ex, "Falha ao abrir porta serial (tentativa {Attempt}/{Total}). porta={PortName}", attempt, HelloAttemptCount, portName);
+                    await Task.Delay(HelloRetryDelay, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                return new SerialProvisioningResult
+                {
+                    Success = false,
+                    ErrorCode = "port_open_failed",
+                    Message = $"Falha ao abrir {portName}: {ex.Message}",
+                };
+            }
+
+            progress?.Report(new DeviceOnboardingProgress
+            {
+                Stage = DeviceOnboardingStage.Provisioning,
+                Message = attempt == 1
+                    ? "Aguardando handshake serial do firmware..."
+                    : $"Aguardando handshake serial (tentativa {attempt}/{HelloAttemptCount})...",
+                Percent = 10,
+            });
+
+            var hello = await WaitForHelloAsync(serial, cancellationToken).ConfigureAwait(false);
+            if (!hello.Success)
+            {
+                if (attempt < HelloAttemptCount)
+                {
+                    logger.LogWarning("Handshake serial nao recebido (tentativa {Attempt}/{Total}). porta={PortName}", attempt, HelloAttemptCount, portName);
+                    await Task.Delay(HelloRetryDelay, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                return hello with
+                {
+                    Message = $"{hello.Message} Tentativas: {HelloAttemptCount}.",
+                };
+            }
+
+            try
+            {
+                serial.WriteLine(payload);
+            }
+            catch (Exception ex)
+            {
+                return new SerialProvisioningResult
+                {
+                    Success = false,
+                    ErrorCode = "serial_write_failed",
+                    Message = $"Falha ao enviar provisionamento: {ex.Message}",
+                };
+            }
+
+            progress?.Report(new DeviceOnboardingProgress
+            {
+                Stage = DeviceOnboardingStage.Provisioning,
+                Message = "Provisionamento enviado para o dispositivo.",
+                Percent = 20,
+            });
+
+            return await WaitForResultAsync(serial, request.RequestId, progress, cancellationToken).ConfigureAwait(false);
         }
 
-        progress?.Report(new DeviceOnboardingProgress
+        return new SerialProvisioningResult
         {
-            Stage = DeviceOnboardingStage.Provisioning,
-            Message = "Provisionamento enviado para o dispositivo.",
-            Percent = 20,
-        });
-
-        return await WaitForResultAsync(serial, request.RequestId, progress, cancellationToken).ConfigureAwait(false);
+            Success = false,
+            ErrorCode = "serial_hello_timeout",
+            Message = "Timeout aguardando handshake serial mica.serial.v1.",
+        };
     }
 
     private async Task<SerialProvisioningResult> WaitForHelloAsync(SerialPort serial, CancellationToken cancellationToken)
@@ -154,6 +178,7 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
                 {
                     if (!TryParseMessage(line, out var type, out var document))
                     {
+                        logger.LogDebug("[serial hello] {Line}", line);
                         continue;
                     }
 
@@ -404,5 +429,18 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
         }
 
         return lines;
+    }
+
+    private static SerialPort BuildSerialPort(string portName)
+    {
+        return new SerialPort(portName, 115200, Parity.None, 8, StopBits.One)
+        {
+            DtrEnable = false,
+            RtsEnable = false,
+            Handshake = Handshake.None,
+            NewLine = "\n",
+            ReadTimeout = 1000,
+            WriteTimeout = 1000,
+        };
     }
 }

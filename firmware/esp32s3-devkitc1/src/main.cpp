@@ -1449,6 +1449,22 @@ void setup() {
   gActiveAppId = gPrefs.getString("activeAppId", "");
   gActiveAppName = gPrefs.getString("activeAppName", "");
   gActiveAppConfig = gPrefs.getString("activeAppConfig", "");
+
+  const bool missingServerConfig = gServerHost.isEmpty() || gServerPort == 0;
+  const bool missingDeviceCredentials = gDeviceId.isEmpty() || gToken.isEmpty();
+  if (missingServerConfig || missingDeviceCredentials) {
+    const char* bootReason = missingServerConfig
+        ? "boot_missing_server_config"
+        : "boot_missing_device_credentials";
+    Serial.printf("[boot] configuracao incompleta; abrindo provisioning portal (%s).\n", bootReason);
+    (void)startProvisioningPortal(bootReason);
+
+    gServerHost = gPrefs.getString("host", "");
+    gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
+    gDeviceId = gPrefs.getString("deviceId", "");
+    gToken = gPrefs.getString("token", "");
+  }
+
   WiFi.mode(WIFI_STA);
   WiFi.begin();
 
@@ -1463,8 +1479,8 @@ void setup() {
     bootWifiConnected = WiFi.status() == WL_CONNECTED;
   }
 
-  if (gServerHost.isEmpty() || gServerPort == 0) {
-    Serial.println("[wifi_connecting] aguardando provisioning serial ou fallback para portal.");
+  if (gServerHost.isEmpty() || gServerPort == 0 || gDeviceId.isEmpty() || gToken.isEmpty()) {
+    Serial.println("[wifi_connecting] aguardando provisioning por AP para concluir configuracao.");
     setConnectivityState(kWifiStateDisconnected, "boot_missing_server_config", true);
     gWifiDisconnectedSinceMs = millis();
   } else if (bootWifiConnected) {

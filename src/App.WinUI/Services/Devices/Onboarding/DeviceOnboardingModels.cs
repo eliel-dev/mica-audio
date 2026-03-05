@@ -15,10 +15,6 @@ internal enum DeviceOnboardingStage
 
 internal sealed record DeviceOnboardingRequest
 {
-    public required string Ssid { get; init; }
-
-    public required string Password { get; init; }
-
     public required string PortName { get; init; }
 }
 
@@ -36,6 +32,8 @@ internal sealed record DeviceOnboardingResult
     public bool Success { get; init; }
 
     public string? DeviceId { get; init; }
+
+    public string? PairCode { get; init; }
 
     public string? ErrorCode { get; init; }
 

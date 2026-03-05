@@ -7,7 +7,7 @@ namespace App.WinUI.Services.Devices.Onboarding;
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
 internal sealed class EspToolFlashService : IEspToolFlashService
 {
-    private static readonly Regex PercentRegex = new(@"(\d{1,3})%", RegexOptions.Compiled);
+    private static readonly Regex PercentRegex = new(@"(\d{1,3})\s*%", RegexOptions.Compiled);
     private readonly ILogger<EspToolFlashService> logger;
 
     public EspToolFlashService(ILogger<EspToolFlashService> logger)
@@ -73,20 +73,10 @@ internal sealed class EspToolFlashService : IEspToolFlashService
             startInfo.ArgumentList.Add(arg);
         }
 
-        startInfo.ArgumentList.Add("--chip");
-        startInfo.ArgumentList.Add("esp32s3");
-        startInfo.ArgumentList.Add("--port");
-        startInfo.ArgumentList.Add(portName);
-        startInfo.ArgumentList.Add("--baud");
-        startInfo.ArgumentList.Add("921600");
-        startInfo.ArgumentList.Add("--before");
-        startInfo.ArgumentList.Add("default_reset");
-        startInfo.ArgumentList.Add("--after");
-        startInfo.ArgumentList.Add("hard_reset");
-        startInfo.ArgumentList.Add("write_flash");
-        startInfo.ArgumentList.Add("-z");
-        startInfo.ArgumentList.Add("0x0");
-        startInfo.ArgumentList.Add(firmwarePath);
+        foreach (var arg in BuildWriteFlashArguments(portName, firmwarePath))
+        {
+            startInfo.ArgumentList.Add(arg);
+        }
 
         using var process = new Process
         {
@@ -103,24 +93,23 @@ internal sealed class EspToolFlashService : IEspToolFlashService
             }
 
             logger.LogInformation("[esptool] {Line}", line);
-            var match = PercentRegex.Match(line);
-            if (!match.Success || !int.TryParse(match.Groups[1].Value, out var percent))
+            var percent = ParseProgressPercent(line);
+            if (!percent.HasValue)
             {
                 return;
             }
 
-            percent = Math.Clamp(percent, 0, 100);
-            if (percent <= latestPercent)
+            if (percent.Value <= latestPercent)
             {
                 return;
             }
 
-            latestPercent = percent;
+            latestPercent = percent.Value;
             progress?.Report(new DeviceOnboardingProgress
             {
                 Stage = DeviceOnboardingStage.Flashing,
-                Message = $"Gravando firmware ({percent}%)",
-                Percent = percent,
+                Message = $"Gravando firmware ({percent.Value}%)",
+                Percent = percent.Value,
             });
         }
 
@@ -219,6 +208,38 @@ internal sealed class EspToolFlashService : IEspToolFlashService
         }
 
         return new EsptoolInvocation("python", ["-m", "esptool"]);
+    }
+
+    internal static IReadOnlyList<string> BuildWriteFlashArguments(string portName, string firmwarePath)
+    {
+        return
+        [
+            "--chip", "esp32s3",
+            "--port", portName,
+            "--baud", "115200",
+            "--before", "default_reset",
+            "--after", "hard_reset",
+            "write_flash",
+            "--no-compress",
+            "0x0",
+            firmwarePath,
+        ];
+    }
+
+    internal static int? ParseProgressPercent(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return null;
+        }
+
+        var match = PercentRegex.Match(line);
+        if (!match.Success || !int.TryParse(match.Groups[1].Value, out var rawPercent))
+        {
+            return null;
+        }
+
+        return Math.Clamp(rawPercent, 0, 100);
     }
 
     private sealed record EsptoolInvocation(string FileName, IReadOnlyList<string> Arguments);
