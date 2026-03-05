@@ -9,8 +9,10 @@ namespace App.WinUI.Views;
 public sealed partial class DevicesPage
 {
     // DOCS: docs/wiki/guides/setup-new-device.md#passos
-    private TextBox SearchBox = null!;
     private ListView DevicesList = null!;
+    private Button NewDeviceButton = null!;
+    private ColumnDefinition DevicesDetailsColumn = null!;
+    private Grid DeviceDetailsGrid = null!;
     private TextBlock SelectedDeviceTitleText = null!;
     private TextBlock SelectedDeviceSubtitleText = null!;
     private TextBlock SelectedDeviceRegistrationText = null!;
@@ -54,57 +56,42 @@ public sealed partial class DevicesPage
             Background = ResolveBrush("AppSurfaceBaseBrush", Color.FromArgb(255, 11, 15, 20)),
         };
 
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var topCommandBar = new CommandBar
-        {
-            Background = null,
-            DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
-        };
-
-        var setupButton = new AppBarButton { Label = "Baixar firmware", Icon = new SymbolIcon(Symbol.Download) };
-        setupButton.Click += OnDownloadFirmwareClicked;
-        var pairButton = new AppBarButton { Label = "Parear", Icon = new SymbolIcon(Symbol.Add) };
-        pairButton.Click += OnGeneratePairingCodeClicked;
-        var refreshButton = new AppBarButton { Label = "Atualizar", Icon = new SymbolIcon(Symbol.Refresh) };
-        refreshButton.Click += OnRefreshClicked;
-        topCommandBar.PrimaryCommands.Add(setupButton);
-        topCommandBar.PrimaryCommands.Add(pairButton);
-        topCommandBar.PrimaryCommands.Add(refreshButton);
-
-        root.Children.Add(CreateCard(topCommandBar, elevated: true, padding: 4));
-
         var middle = new Grid { ColumnSpacing = 12 };
         middle.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
-        middle.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
-        Grid.SetRow(middle, 1);
+        DevicesDetailsColumn = new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) };
+        middle.ColumnDefinitions.Add(DevicesDetailsColumn);
+        Grid.SetRow(middle, 0);
 
         var leftGrid = new Grid { RowSpacing = 10 };
-        leftGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         leftGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
-        SearchBox = new TextBox
-        {
-            Header = "Buscar",
-            PlaceholderText = "Nome, id, app ou status",
-        };
-        SearchBox.TextChanged += OnSearchTextChanged;
+        leftGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         DevicesList = new ListView();
         DevicesList.SelectionChanged += OnDeviceSelectionChanged;
-        Grid.SetRow(DevicesList, 1);
+        Grid.SetRow(DevicesList, 0);
 
-        leftGrid.Children.Add(SearchBox);
         leftGrid.Children.Add(DevicesList);
+
+        NewDeviceButton = new Button
+        {
+            Content = "Novo dispositivo",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinHeight = 40,
+        };
+        NewDeviceButton.Click += OnNewDeviceClicked;
+        Grid.SetRow(NewDeviceButton, 1);
+        leftGrid.Children.Add(NewDeviceButton);
+
         middle.Children.Add(CreateCard(leftGrid));
 
-        var rightGrid = new Grid { RowSpacing = 10 };
-        rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        rightGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        rightGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetColumn(rightGrid, 1);
+        DeviceDetailsGrid = new Grid { RowSpacing = 10 };
+        DeviceDetailsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DeviceDetailsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        DeviceDetailsGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(DeviceDetailsGrid, 1);
 
         var summaryLayout = new Grid { ColumnSpacing = 12 };
         summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -127,10 +114,9 @@ public sealed partial class DevicesPage
         summary.Children.Add(SelectedDeviceAppText);
         summary.Children.Add(ServerInfoText);
 
-        var summaryActionsBar = new CommandBar
+        var summaryActionsStack = new StackPanel
         {
-            Background = null,
-            DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
+            Spacing = 8,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
         };
@@ -141,8 +127,8 @@ public sealed partial class DevicesPage
         RemoveDeviceButton = new AppBarButton { Label = "Remover", Icon = new SymbolIcon(Symbol.Delete) };
         RemoveDeviceButton.Click += OnRemoveDeviceClicked;
 
-        summaryActionsBar.PrimaryCommands.Add(TestLedButton);
-        summaryActionsBar.PrimaryCommands.Add(RemoveDeviceButton);
+        summaryActionsStack.Children.Add(TestLedButton);
+        summaryActionsStack.Children.Add(RemoveDeviceButton);
 
         // DOCS: docs/wiki/guides/setup-new-device.md#tela-dispositivos
         SelectedDeviceSignalText = new TextBlock
@@ -155,19 +141,19 @@ public sealed partial class DevicesPage
 
         var summaryActionsPanel = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
+            Orientation = Orientation.Vertical,
+            Spacing = 8,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
         };
         summaryActionsPanel.Children.Add(SelectedDeviceSignalText);
-        summaryActionsPanel.Children.Add(summaryActionsBar);
+        summaryActionsPanel.Children.Add(summaryActionsStack);
 
         summaryLayout.Children.Add(summary);
         Grid.SetColumn(summaryActionsPanel, 1);
         summaryLayout.Children.Add(summaryActionsPanel);
 
-        rightGrid.Children.Add(CreateCard(summaryLayout));
+        DeviceDetailsGrid.Children.Add(CreateCard(summaryLayout));
 
         var dashboardStack = new StackPanel { Spacing = 10 };
 
@@ -422,7 +408,7 @@ public sealed partial class DevicesPage
 
         var dashboardCard = CreateCard(dashboardStack);
         Grid.SetRow(dashboardCard, 1);
-        rightGrid.Children.Add(dashboardCard);
+        DeviceDetailsGrid.Children.Add(dashboardCard);
 
         DeviceLogsTextBox = new TextBox
         {
@@ -441,9 +427,9 @@ public sealed partial class DevicesPage
         var logsCard = CreateCard(DeviceLogsTextBox);
         logsCard.MinHeight = 280;
         Grid.SetRow(logsCard, 2);
-        rightGrid.Children.Add(logsCard);
+        DeviceDetailsGrid.Children.Add(logsCard);
 
-        middle.Children.Add(rightGrid);
+        middle.Children.Add(DeviceDetailsGrid);
         root.Children.Add(middle);
 
         PairingCodeText = new InfoBar
@@ -453,7 +439,7 @@ public sealed partial class DevicesPage
             IsOpen = true,
             Message = "Pareamento: -",
         };
-        Grid.SetRow(PairingCodeText, 2);
+        Grid.SetRow(PairingCodeText, 1);
         root.Children.Add(PairingCodeText);
 
         Content = root;

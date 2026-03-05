@@ -69,6 +69,20 @@
 - O botao `Testar LED` continua respeitando `testLedAvailable` (fallback para firmware legado):
   - quando indisponivel, fica desabilitado e mostra rotulo `LED indisponivel`.
 
+## Atualizacao 2026-03 - Novo dispositivo em 2 etapas (USB end-to-end)
+
+- A lista de devices removeu o campo de busca para reduzir ruido operacional.
+- O botao `Novo dispositivo` foi movido para o rodape da coluna esquerda.
+- O painel de detalhes da direita fica oculto quando nao ha selecao ativa.
+- O fluxo `Novo dispositivo` agora usa wizard de 2 etapas:
+  - etapa 1: SSID e senha Wi-Fi;
+  - etapa 2: selecao da porta COM com auto-detect e opcao de mostrar todas as portas.
+- O onboarding dispara pipeline completo:
+  - flash do firmware oficial com `esptool`;
+  - provisionamento serial (`mica.serial.v1`);
+  - pareamento automatico (sem input manual de pairing code na UI);
+  - validacao de dispositivo online no dashboard.
+
 ## Referencias de codigo
 
 - [Hub75VisualizerSessionService](../../../src/App.WinUI/Services/Devices/Hub75VisualizerSessionService.cs#L1)

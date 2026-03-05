@@ -68,6 +68,20 @@
 - Telemetria ganhou observabilidade de conectividade:
   - `wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`.
 
+## Atualizacao 2026-03 - Onboarding USB por serial (`mica.serial.v1`)
+
+- O firmware passou a expor canal serial de provisionamento (`115200`) com mensagens JSONL.
+- Handshake periodico:
+  - `hello` com `protocol = mica.serial.v1`.
+- Request suportado:
+  - `provision` com `ssid`, `password`, `serverBaseUrl`, `pairCode`.
+- Feedback durante onboarding:
+  - `progress` (`wifi_connecting`, `wifi_connected`, `pairing`, `done`, `error`).
+  - `result` (`ok`, `errorCode`, `message`, `deviceId`).
+- Boot behavior:
+  - ao iniciar sem configuracao valida, o firmware aguarda onboarding serial e so entra no portal AP por fallback de janela.
+  - permanece sem `ESP.restart()` automatico em falha de conexao/provisioning.
+
 ## Referencias de codigo
 
 - [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)

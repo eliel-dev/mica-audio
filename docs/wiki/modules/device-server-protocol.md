@@ -156,3 +156,11 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - `test_led` preserva compatibilidade legado, mas pode responder erro operacional explicito quando nenhum LED de teste esta disponivel no hardware:
   - `errorCode = "test_led_unavailable"`
 
+## Atualizacao 2026-03 - Onboarding USB sem mudanca no wire WS/HTTP
+
+- O onboarding de novo dispositivo passou a ter etapa USB (`mica.serial.v1`) entre app e firmware.
+- Nao houve mudanca nos contratos publicos WS/HTTP do servidor:
+  - `/api/v1/pair` permanece o endpoint de pareamento;
+  - `/ws/v1/stream` permanece para sessao e telemetria.
+- O serial onboarding apenas automatiza o preenchimento de host/credenciais/pair code antes da sessao WS.
+

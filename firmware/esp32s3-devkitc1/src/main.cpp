@@ -32,6 +32,9 @@ constexpr uint8_t kStreamFrame128x64Rgb565MessageType = 2;
 constexpr unsigned long kWifiDisconnectProvisioningFallbackMs = 20000;
 constexpr unsigned long kWsReconnectRetryMs = 60000;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
+constexpr unsigned long kSerialHelloIntervalMs = 3000;
+constexpr size_t kSerialInputMaxLength = 1024;
+constexpr unsigned long kWifiConnectAttemptTimeoutMs = 20000;
 constexpr uint8_t kMatrixWidth = MICA_MATRIX_WIDTH;
 constexpr uint8_t kMatrixHeight = MICA_MATRIX_HEIGHT;
 constexpr uint8_t kMatrixHalfHeight = kMatrixHeight / 2;
@@ -76,6 +79,7 @@ constexpr const char* kWifiStateConnecting = "connecting";
 constexpr const char* kWifiStateConnected = "connected";
 constexpr const char* kWifiStatePortal = "portal";
 constexpr const char* kWifiStateDisconnected = "disconnected";
+constexpr const char* kSerialProvisioningProtocol = "mica.serial.v1";
 
 #if defined(MICA_SECURITY_PROFILE_RELEASE)
 constexpr const char* kSecurityProfile = "release";
@@ -127,6 +131,10 @@ bool gProvisioningPortalActive = false;
 String gWifiState = kWifiStateConnecting;
 String gLastWifiEvent = "boot";
 String gAuxLedUnavailableReason;
+String gSerialInputBuffer;
+unsigned long gLastSerialHelloMs = 0;
+
+void connectWebSocket();
 
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
@@ -738,6 +746,265 @@ bool tryParseBooleanParameter(JsonVariantConst value, bool& output) {
   return false;
 }
 
+void sendSerialJson(JsonDocument& document) {
+  String payload;
+  serializeJson(document, payload);
+  Serial.println(payload);
+}
+
+void sendSerialHello() {
+  JsonDocument hello;
+  hello["type"] = "hello";
+  hello["protocol"] = kSerialProvisioningProtocol;
+  hello["deviceId"] = gDeviceId;
+  hello["firmwareVersion"] = kFirmwareVersion;
+  JsonArray caps = hello["capabilities"].to<JsonArray>();
+  caps.add("provision");
+  sendSerialJson(hello);
+}
+
+void sendSerialProgress(const String& requestId, const char* stage, const char* message) {
+  if (requestId.length() == 0) {
+    return;
+  }
+
+  JsonDocument progress;
+  progress["type"] = "progress";
+  progress["requestId"] = requestId;
+  progress["stage"] = stage;
+  progress["message"] = message;
+  sendSerialJson(progress);
+}
+
+void sendSerialResult(
+    const String& requestId,
+    bool ok,
+    const String& message,
+    const char* errorCode = nullptr) {
+  if (requestId.length() == 0) {
+    return;
+  }
+
+  JsonDocument result;
+  result["type"] = "result";
+  result["requestId"] = requestId;
+  result["ok"] = ok;
+  result["message"] = message;
+  if (errorCode != nullptr && errorCode[0] != '\0') {
+    result["errorCode"] = errorCode;
+  }
+
+  if (!gDeviceId.isEmpty()) {
+    result["deviceId"] = gDeviceId;
+  }
+
+  sendSerialJson(result);
+}
+
+bool tryParseServerBaseUrl(const String& rawBaseUrl, String& host, uint16_t& port) {
+  String normalized = rawBaseUrl;
+  normalized.trim();
+  if (normalized.length() == 0) {
+    return false;
+  }
+
+  if (normalized.startsWith("http://")) {
+    normalized = normalized.substring(7);
+  } else if (normalized.startsWith("https://")) {
+    normalized = normalized.substring(8);
+  }
+
+  int slashIndex = normalized.indexOf('/');
+  if (slashIndex >= 0) {
+    normalized = normalized.substring(0, slashIndex);
+  }
+
+  int colonIndex = normalized.lastIndexOf(':');
+  if (colonIndex >= 0) {
+    host = normalized.substring(0, colonIndex);
+    String portRaw = normalized.substring(colonIndex + 1);
+    int parsedPort = portRaw.toInt();
+    if (parsedPort <= 0 || parsedPort > 65535) {
+      return false;
+    }
+
+    port = static_cast<uint16_t>(parsedPort);
+    return host.length() > 0;
+  }
+
+  host = normalized;
+  port = 5272;
+  return host.length() > 0;
+}
+
+bool connectWifiWithTimeout(const String& ssid, const String& password, unsigned long timeoutMs) {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  setConnectivityState(kWifiStateConnecting, "wifi_connecting", true);
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - start > timeoutMs) {
+      return false;
+    }
+
+    delay(200);
+  }
+
+  gWifiDisconnectedSinceMs = 0;
+  setConnectivityState(kWifiStateConnected, "wifi_connected", true);
+  return true;
+}
+
+bool pairWithServer(const String& pairingCode, const String& deviceName, String& errorCode, String& errorMessage) {
+  if (pairingCode.length() == 0) {
+    setConnectivityState(kWifiStateConnected, "provisioned_without_pairing", true);
+    return true;
+  }
+
+  HTTPClient http;
+  String url = "http://" + gServerHost + ":" + String(gServerPort) + "/api/v1/pair";
+  if (!http.begin(url)) {
+    errorCode = "pair_http_begin_failed";
+    errorMessage = "Nao foi possivel iniciar conexao HTTP para pareamento.";
+    setConnectivityState(kWifiStateConnected, "pair_http_begin_failed", true);
+    return false;
+  }
+
+  http.addHeader("Content-Type", "application/json");
+  JsonDocument req;
+  req["pairingCode"] = pairingCode;
+  req["deviceName"] = deviceName;
+  req["profile"] = kFirmwareProfile;
+  req["firmwareVersion"] = kFirmwareVersion;
+  req["boardModel"] = kBoardModel;
+  req["panelType"] = kPanelType;
+
+  String body;
+  serializeJson(req, body);
+  int code = http.POST(body);
+  if (code >= 200 && code < 300) {
+    JsonDocument resp;
+    if (deserializeJson(resp, http.getString()) != DeserializationError::Ok) {
+      errorCode = "pair_response_invalid";
+      errorMessage = "Resposta de pareamento invalida.";
+      http.end();
+      return false;
+    }
+
+    gDeviceId = resp["deviceId"] | "";
+    gToken = resp["token"] | "";
+    if (gDeviceId.isEmpty() || gToken.isEmpty()) {
+      errorCode = "pair_response_missing_auth";
+      errorMessage = "Resposta de pareamento sem credenciais.";
+      http.end();
+      return false;
+    }
+
+    gPrefs.putString("deviceId", gDeviceId);
+    gPrefs.putString("token", gToken);
+    setConnectivityState(kWifiStateConnected, "pair_success", true);
+    http.end();
+    return true;
+  }
+
+  errorCode = "pair_http_error";
+  errorMessage = "Servidor rejeitou pareamento.";
+  setConnectivityState(kWifiStateConnected, "pair_http_error", true);
+  http.end();
+  return false;
+}
+
+void handleSerialProvisioningLine(const String& line) {
+  JsonDocument command;
+  if (deserializeJson(command, line) != DeserializationError::Ok) {
+    return;
+  }
+
+  String type = command["type"] | "";
+  if (!type.equalsIgnoreCase("provision")) {
+    return;
+  }
+
+  String requestId = command["requestId"] | "";
+  String ssid = command["ssid"] | "";
+  String password = command["password"] | "";
+  String serverBaseUrl = command["serverBaseUrl"] | "";
+  String pairCode = command["pairCode"] | "";
+
+  if (requestId.length() == 0) {
+    return;
+  }
+
+  if (ssid.length() == 0) {
+    sendSerialResult(requestId, false, "SSID ausente no request de provisionamento.", "ssid_required");
+    return;
+  }
+
+  String parsedHost;
+  uint16_t parsedPort = 0;
+  if (!tryParseServerBaseUrl(serverBaseUrl, parsedHost, parsedPort)) {
+    sendSerialResult(requestId, false, "serverBaseUrl invalido.", "server_base_url_invalid");
+    return;
+  }
+
+  sendSerialProgress(requestId, "wifi_connecting", "Conectando ao Wi-Fi.");
+  if (!connectWifiWithTimeout(ssid, password, kWifiConnectAttemptTimeoutMs)) {
+    sendSerialResult(requestId, false, "Falha ao conectar no Wi-Fi.", "wifi_connect_failed");
+    return;
+  }
+
+  gServerHost = parsedHost;
+  gServerPort = parsedPort;
+  gPrefs.putString("host", gServerHost);
+  gPrefs.putString("port", String(gServerPort));
+  sendSerialProgress(requestId, "wifi_connected", "Wi-Fi conectado.");
+
+  String deviceName = gPrefs.getString("name", kBoardDisplayName);
+  String pairErrorCode;
+  String pairErrorMessage;
+  sendSerialProgress(requestId, "pairing", "Executando pareamento com o servidor.");
+  if (!pairWithServer(pairCode, deviceName, pairErrorCode, pairErrorMessage)) {
+    sendSerialResult(requestId, false, pairErrorMessage, pairErrorCode.c_str());
+    return;
+  }
+
+  connectWebSocket();
+  sendTelemetry(true);
+  sendSerialProgress(requestId, "done", "Provisionamento concluido.");
+  sendSerialResult(requestId, true, "Provisionamento concluido com sucesso.");
+}
+
+void processSerialProvisioning() {
+  const unsigned long now = millis();
+  if (gLastSerialHelloMs == 0 || (now - gLastSerialHelloMs) >= kSerialHelloIntervalMs) {
+    sendSerialHello();
+    gLastSerialHelloMs = now;
+  }
+
+  while (Serial.available() > 0) {
+    char character = static_cast<char>(Serial.read());
+    if (character == '\r') {
+      continue;
+    }
+
+    if (character == '\n') {
+      String line = gSerialInputBuffer;
+      gSerialInputBuffer = "";
+      line.trim();
+      if (line.length() > 0) {
+        handleSerialProvisioningLine(line);
+      }
+
+      continue;
+    }
+
+    if (gSerialInputBuffer.length() < kSerialInputMaxLength) {
+      gSerialInputBuffer += character;
+    }
+  }
+}
+
 bool startProvisioningPortal(const char* reason) {
   gWs.disconnect();
   gLastTelemetryMs = 0;
@@ -778,45 +1045,12 @@ bool startProvisioningPortal(const char* reason) {
   gServerPort = static_cast<uint16_t>(atoi(pPort.getValue()));
 
   String pairingCode = pPair.getValue();
-  if (pairingCode.length() == 0) {
-    setConnectivityState(kWifiStateConnected, "provisioned_without_pairing", true);
-    return true;
+  String pairErrorCode;
+  String pairErrorMessage;
+  if (!pairWithServer(pairingCode, pName.getValue(), pairErrorCode, pairErrorMessage)) {
+    Serial.printf("[pair] falha no provisioning portal: %s (%s)\n", pairErrorMessage.c_str(), pairErrorCode.c_str());
   }
 
-  HTTPClient http;
-  String url = "http://" + gServerHost + ":" + String(gServerPort) + "/api/v1/pair";
-  if (!http.begin(url)) {
-    setConnectivityState(kWifiStateConnected, "pair_http_begin_failed", true);
-    return true;
-  }
-
-  http.addHeader("Content-Type", "application/json");
-  JsonDocument req;
-  req["pairingCode"] = pairingCode;
-  req["deviceName"] = pName.getValue();
-  req["profile"] = kFirmwareProfile;
-  req["firmwareVersion"] = kFirmwareVersion;
-  req["boardModel"] = kBoardModel;
-  req["panelType"] = kPanelType;
-
-  String body;
-  serializeJson(req, body);
-  int code = http.POST(body);
-  if (code >= 200 && code < 300) {
-    JsonDocument resp;
-    deserializeJson(resp, http.getString());
-    gDeviceId = resp["deviceId"] | "";
-    gToken = resp["token"] | "";
-    if (!gDeviceId.isEmpty() && !gToken.isEmpty()) {
-      gPrefs.putString("deviceId", gDeviceId);
-      gPrefs.putString("token", gToken);
-      setConnectivityState(kWifiStateConnected, "pair_success", true);
-    }
-  } else {
-    setConnectivityState(kWifiStateConnected, "pair_http_error", true);
-  }
-
-  http.end();
   return true;
 }
 
@@ -1216,20 +1450,39 @@ void setup() {
   gActiveAppName = gPrefs.getString("activeAppName", "");
   gActiveAppConfig = gPrefs.getString("activeAppConfig", "");
   WiFi.mode(WIFI_STA);
+  WiFi.begin();
 
-  if (gServerHost.isEmpty() || gServerPort == 0 || WiFi.status() != WL_CONNECTED) {
-    Serial.println("[wifi] iniciando provisioning no boot.");
-    (void)startProvisioningPortal("boot");
-  } else {
-    Serial.println("[wifi_connected] Wi-Fi conectado no boot.");
-    setConnectivityState(kWifiStateConnected, "wifi_connected", true);
+  bool bootWifiConnected = false;
+  if (!gServerHost.isEmpty() && gServerPort != 0) {
+    unsigned long bootWifiWaitStart = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - bootWifiWaitStart) < 5000) {
+      processSerialProvisioning();
+      delay(120);
+    }
+
+    bootWifiConnected = WiFi.status() == WL_CONNECTED;
   }
 
-  connectWebSocket();
+  if (gServerHost.isEmpty() || gServerPort == 0) {
+    Serial.println("[wifi_connecting] aguardando provisioning serial ou fallback para portal.");
+    setConnectivityState(kWifiStateDisconnected, "boot_missing_server_config", true);
+    gWifiDisconnectedSinceMs = millis();
+  } else if (bootWifiConnected) {
+    Serial.println("[wifi_connected] Wi-Fi conectado no boot.");
+    setConnectivityState(kWifiStateConnected, "wifi_connected", true);
+    connectWebSocket();
+  } else {
+    Serial.println("[wifi_connecting] sem Wi-Fi no boot, aguardando reconexao.");
+    setConnectivityState(kWifiStateDisconnected, "boot_waiting_wifi", true);
+    gWifiDisconnectedSinceMs = millis();
+  }
+
+  sendSerialHello();
 }
 
 void loop() {
   const uint32_t loopStartUs = micros();
+  processSerialProvisioning();
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
 
   if (!wifiConnected) {
@@ -1249,6 +1502,7 @@ void loop() {
       delay(120);
     }
 
+    processSerialProvisioning();
     updateTestLed();
     updateLoopLoadPercent(loopStartUs);
     return;
@@ -1289,6 +1543,7 @@ void loop() {
   }
 
   updateTestLed();
+  processSerialProvisioning();
   if (gFrameModeActive) {
     drawFrame128x64();
   } else {

@@ -1,8 +1,10 @@
 using System.Text;
+using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
+using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
@@ -132,6 +134,10 @@ public partial class App : Application
             sp.GetRequiredService<ILogger<DeviceIntegrationService>>()));
         services.AddSingleton<DeviceOperationsCoordinator>();
         services.AddSingleton<Hub75VisualizerSessionService>();
+        services.AddSingleton<ISerialPortCatalogService, SerialPortCatalogService>();
+        services.AddSingleton<ISerialProvisioningClient, SerialProvisioningClient>();
+        services.AddSingleton<IEspToolFlashService, EspToolFlashService>();
+        services.AddSingleton<IDeviceUsbOnboardingService, DeviceUsbOnboardingService>();
 
         services.AddSingleton<IAppCatalogService, AppCatalogService>();
         services.AddSingleton<IAppModifierStateStore, AppModifierStateStore>();
@@ -168,6 +174,8 @@ public partial class App : Application
             sp.GetRequiredService<DevicesPageViewModel>(),
             sp.GetRequiredService<DeviceOperationsCoordinator>(),
             sp.GetRequiredService<PrecompiledFirmwareService>(),
+            sp.GetRequiredService<ISerialPortCatalogService>(),
+            sp.GetRequiredService<IDeviceUsbOnboardingService>(),
             sp.GetRequiredService<IAppCatalogService>(),
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>(),

@@ -1,7 +1,9 @@
 using App.WinUI.Models.Apps;
+using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
+using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
 using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
@@ -33,6 +35,8 @@ public sealed partial class DevicesPage : Page
     private readonly DevicesPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly PrecompiledFirmwareService firmwareService;
+    private readonly ISerialPortCatalogService serialPortCatalogService;
+    private readonly IDeviceUsbOnboardingService onboardingService;
     private readonly IAppCatalogService appCatalogService;
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
@@ -64,6 +68,8 @@ public sealed partial class DevicesPage : Page
         DevicesPageViewModel viewModel,
         DeviceOperationsCoordinator deviceOps,
         PrecompiledFirmwareService firmwareService,
+        ISerialPortCatalogService serialPortCatalogService,
+        IDeviceUsbOnboardingService onboardingService,
         IAppCatalogService appCatalogService,
         SettingsRepository settingsRepository,
         AppSettingsDomainService settingsDomainService,
@@ -72,6 +78,8 @@ public sealed partial class DevicesPage : Page
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
         this.firmwareService = firmwareService;
+        this.serialPortCatalogService = serialPortCatalogService;
+        this.onboardingService = onboardingService;
         this.appCatalogService = appCatalogService;
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
@@ -89,6 +97,10 @@ public sealed partial class DevicesPage : Page
     private DeviceOperationsCoordinator? DeviceOps => deviceOps;
 
     private PrecompiledFirmwareService? FirmwareService => firmwareService;
+
+    private ISerialPortCatalogService? SerialPortCatalogService => serialPortCatalogService;
+
+    private IDeviceUsbOnboardingService? OnboardingService => onboardingService;
 
     private IAppCatalogService? AppCatalogService => appCatalogService;
 
@@ -364,6 +376,397 @@ public sealed partial class DevicesPage : Page
         await SaveFirmwareAsync().ConfigureAwait(false);
     }
 
+    private async void OnNewDeviceClicked(object sender, RoutedEventArgs e)
+    {
+        await ShowNewDeviceWizardAsync().ConfigureAwait(false);
+    }
+
+    private async Task ShowNewDeviceWizardAsync()
+    {
+        var serialCatalog = SerialPortCatalogService;
+        var onboarding = OnboardingService;
+        if (serialCatalog is null || onboarding is null)
+        {
+            AddLocalLog("Fluxo de onboarding indisponivel: servicos nao resolvidos.");
+            return;
+        }
+
+        var cardBorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81));
+        var cardBackground = ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32));
+        var cardElevatedBackground = ResolveBrush("AppSurfaceElevatedBrush", Color.FromArgb(255, 24, 32, 42));
+        var activeStepBrush = ResolveBrush("AppAccentBrush", Color.FromArgb(255, 44, 180, 255));
+        var inactiveStepBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 62, 73, 92));
+
+        var headerTitle = new TextBlock
+        {
+            Text = "Novo dispositivo",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 21,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var headerSubtitle = new TextBlock
+        {
+            Text = "Etapa 1 de 2",
+            Opacity = 0.72,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = new FontFamily("Cascadia Mono"),
+        };
+
+        var closeButton = new Button
+        {
+            Content = new SymbolIcon(Symbol.Cancel),
+            Width = 38,
+            Height = 38,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var headerGrid = new Grid { ColumnSpacing = 10 };
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.Children.Add(headerTitle);
+        Grid.SetColumn(headerSubtitle, 1);
+        headerGrid.Children.Add(headerSubtitle);
+        Grid.SetColumn(closeButton, 2);
+        headerGrid.Children.Add(closeButton);
+
+        var progressStepOne = new Border
+        {
+            Height = 4,
+            CornerRadius = new CornerRadius(4),
+            Background = activeStepBrush,
+        };
+        var progressStepTwo = new Border
+        {
+            Height = 4,
+            CornerRadius = new CornerRadius(4),
+            Background = inactiveStepBrush,
+        };
+
+        var progressGrid = new Grid { ColumnSpacing = 8, Margin = new Thickness(0, 6, 0, 4) };
+        progressGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        progressGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        progressGrid.Children.Add(progressStepOne);
+        Grid.SetColumn(progressStepTwo, 1);
+        progressGrid.Children.Add(progressStepTwo);
+
+        var stepTitleText = new TextBlock
+        {
+            Text = "Rede Wi-Fi (SSID)",
+            FontSize = 16,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        };
+
+        var stepDescriptionText = new TextBlock
+        {
+            Text = "Informe SSID e senha para prosseguir com a configuracao.",
+            Opacity = 0.78,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var wifiSsidBox = new TextBox
+        {
+            Header = "Rede Wi-Fi (SSID)",
+            PlaceholderText = "Nome da rede",
+        };
+        var wifiPasswordBox = new PasswordBox
+        {
+            Header = "Senha Wi-Fi",
+            PlaceholderText = "Senha",
+        };
+
+        var wifiStepPanel = new StackPanel { Spacing = 8 };
+        wifiStepPanel.Children.Add(wifiSsidBox);
+        wifiStepPanel.Children.Add(wifiPasswordBox);
+
+        var portsComboBox = new ComboBox
+        {
+            Header = "Porta USB (COM)",
+            MinWidth = 340,
+            DisplayMemberPath = nameof(SerialPortDescriptor.Label),
+        };
+        var includeAllPortsCheckBox = new CheckBox
+        {
+            Content = "Mostrar todas as portas",
+        };
+        var refreshPortsButton = new Button
+        {
+            Content = "Atualizar portas",
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+
+        var serialActionsGrid = new Grid { ColumnSpacing = 10 };
+        serialActionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        serialActionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        serialActionsGrid.Children.Add(includeAllPortsCheckBox);
+        Grid.SetColumn(refreshPortsButton, 1);
+        serialActionsGrid.Children.Add(refreshPortsButton);
+
+        var serialStepPanel = new StackPanel
+        {
+            Spacing = 10,
+            Visibility = Visibility.Collapsed,
+        };
+        serialStepPanel.Children.Add(portsComboBox);
+        serialStepPanel.Children.Add(serialActionsGrid);
+
+        var statusText = new TextBlock
+        {
+            Text = "Preencha os dados para iniciar.",
+            Opacity = 0.84,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+
+        var bodyStack = new StackPanel { Spacing = 10 };
+        bodyStack.Children.Add(progressGrid);
+        bodyStack.Children.Add(stepTitleText);
+        bodyStack.Children.Add(wifiStepPanel);
+        bodyStack.Children.Add(serialStepPanel);
+        bodyStack.Children.Add(stepDescriptionText);
+        bodyStack.Children.Add(statusText);
+
+        var backButton = new Button
+        {
+            Content = "Voltar",
+            IsEnabled = false,
+            MinWidth = 96,
+        };
+        var nextButton = new Button
+        {
+            Content = "Proximo",
+            MinWidth = 144,
+        };
+
+        var footerActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 10,
+        };
+        footerActions.Children.Add(backButton);
+        footerActions.Children.Add(nextButton);
+
+        var dialogGrid = new Grid();
+        dialogGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        dialogGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        dialogGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var headerCard = new Border
+        {
+            Padding = new Thickness(14, 10, 14, 10),
+            Background = cardElevatedBackground,
+            BorderBrush = cardBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10, 10, 0, 0),
+            Child = headerGrid,
+        };
+        dialogGrid.Children.Add(headerCard);
+
+        var bodyCard = new Border
+        {
+            Padding = new Thickness(14, 10, 14, 10),
+            Background = cardBackground,
+            BorderBrush = cardBorderBrush,
+            BorderThickness = new Thickness(1, 0, 1, 0),
+            Child = bodyStack,
+        };
+        Grid.SetRow(bodyCard, 1);
+        dialogGrid.Children.Add(bodyCard);
+
+        var footerCard = new Border
+        {
+            Padding = new Thickness(14, 10, 14, 10),
+            Background = cardElevatedBackground,
+            BorderBrush = cardBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(0, 0, 10, 10),
+            Child = footerActions,
+        };
+        Grid.SetRow(footerCard, 2);
+        dialogGrid.Children.Add(footerCard);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Content = dialogGrid,
+            DefaultButton = ContentDialogButton.None,
+            FullSizeDesired = false,
+        };
+
+        var currentStep = 0;
+        var operationInFlight = false;
+
+        async Task RefreshPortsAsync(bool includeAllPorts)
+        {
+            var selectedPort = (portsComboBox.SelectedItem as SerialPortDescriptor)?.PortName;
+            var ports = await serialCatalog.ListAsync(includeAllPorts).ConfigureAwait(true);
+            portsComboBox.ItemsSource = ports;
+            if (!string.IsNullOrWhiteSpace(selectedPort))
+            {
+                portsComboBox.SelectedItem = ports.FirstOrDefault(item =>
+                    string.Equals(item.PortName, selectedPort, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (portsComboBox.SelectedIndex < 0 && ports.Count > 0)
+            {
+                portsComboBox.SelectedIndex = 0;
+            }
+
+            statusText.Text = ports.Count == 0
+                ? "Nenhuma porta COM detectada. Conecte o ESP32 e atualize a lista."
+                : $"Portas detectadas: {ports.Count}.";
+        }
+
+        void ApplyStepUi()
+        {
+            var stepOne = currentStep == 0;
+            headerSubtitle.Text = stepOne ? "Etapa 1 de 2" : "Etapa 2 de 2";
+            stepTitleText.Text = stepOne ? "Rede Wi-Fi (SSID)" : "Conexao USB (COM)";
+            stepDescriptionText.Text = stepOne
+                ? "Informe SSID e senha para prosseguir com a configuracao."
+                : "Selecione a porta COM para flash + provisionamento automatico.";
+            wifiStepPanel.Visibility = stepOne ? Visibility.Visible : Visibility.Collapsed;
+            serialStepPanel.Visibility = stepOne ? Visibility.Collapsed : Visibility.Visible;
+            progressStepOne.Background = activeStepBrush;
+            progressStepTwo.Background = stepOne ? inactiveStepBrush : activeStepBrush;
+
+            backButton.IsEnabled = !stepOne && !operationInFlight;
+            nextButton.Content = stepOne
+                ? "Proximo"
+                : operationInFlight
+                    ? "Processando..."
+                    : "Iniciar onboarding";
+        }
+
+        void ApplyBusyState(bool busy)
+        {
+            operationInFlight = busy;
+            closeButton.IsEnabled = !busy;
+            backButton.IsEnabled = !busy && currentStep > 0;
+            nextButton.IsEnabled = !busy;
+            wifiSsidBox.IsEnabled = !busy;
+            wifiPasswordBox.IsEnabled = !busy;
+            portsComboBox.IsEnabled = !busy;
+            includeAllPortsCheckBox.IsEnabled = !busy;
+            refreshPortsButton.IsEnabled = !busy;
+            ApplyStepUi();
+        }
+
+        includeAllPortsCheckBox.Checked += async (_, _) => await RefreshPortsAsync(includeAllPorts: true).ConfigureAwait(true);
+        includeAllPortsCheckBox.Unchecked += async (_, _) => await RefreshPortsAsync(includeAllPorts: false).ConfigureAwait(true);
+        refreshPortsButton.Click += async (_, _) => await RefreshPortsAsync(includeAllPortsCheckBox.IsChecked == true).ConfigureAwait(true);
+
+        closeButton.Click += (_, _) =>
+        {
+            if (!operationInFlight)
+            {
+                dialog.Hide();
+            }
+        };
+
+        backButton.Click += (_, _) =>
+        {
+            if (operationInFlight || currentStep == 0)
+            {
+                return;
+            }
+
+            currentStep = 0;
+            statusText.Text = "Revise SSID e senha para continuar.";
+            ApplyStepUi();
+        };
+
+        nextButton.Click += async (_, _) =>
+        {
+            if (operationInFlight)
+            {
+                return;
+            }
+
+            if (currentStep == 0)
+            {
+                if (string.IsNullOrWhiteSpace(wifiSsidBox.Text))
+                {
+                    statusText.Text = "Informe o SSID antes de continuar.";
+                    return;
+                }
+
+                currentStep = 1;
+                ApplyStepUi();
+                await RefreshPortsAsync(includeAllPorts: false).ConfigureAwait(true);
+                return;
+            }
+
+            var selectedPort = portsComboBox.SelectedItem as SerialPortDescriptor;
+            if (selectedPort is null)
+            {
+                statusText.Text = "Selecione uma porta COM valida para continuar.";
+                return;
+            }
+
+            ApplyBusyState(true);
+
+            var progress = new Progress<DeviceOnboardingProgress>(update =>
+            {
+                statusText.Text = $"[{DescribeOnboardingStage(update.Stage)}] {update.Message}";
+            });
+
+            DeviceOnboardingResult result;
+            try
+            {
+                result = await onboarding.RunAsync(
+                    new DeviceOnboardingRequest
+                    {
+                        Ssid = wifiSsidBox.Text.Trim(),
+                        Password = wifiPasswordBox.Password,
+                        PortName = selectedPort.PortName,
+                    },
+                    progress).ConfigureAwait(true);
+            }
+            finally
+            {
+                wifiPasswordBox.Password = string.Empty;
+            }
+
+            if (result.Success)
+            {
+                PairingCodeText.Severity = InfoBarSeverity.Success;
+                PairingCodeText.Message = $"Novo dispositivo pronto: {result.DeviceId}";
+                statusText.Text = result.Message;
+                DeviceOps?.RequestRefresh();
+                dialog.Hide();
+                return;
+            }
+
+            PairingCodeText.Severity = InfoBarSeverity.Error;
+            PairingCodeText.Message = $"Onboarding falhou: {result.Message}";
+            statusText.Text = $"Falha ({result.ErrorCode ?? "erro"}): {result.Message}";
+            ApplyBusyState(false);
+        };
+
+        ApplyStepUi();
+        await dialog.ShowAsync();
+    }
+
+    private static string DescribeOnboardingStage(DeviceOnboardingStage stage)
+    {
+        return stage switch
+        {
+            DeviceOnboardingStage.Flashing => "Flashing",
+            DeviceOnboardingStage.Provisioning => "Provisionando",
+            DeviceOnboardingStage.Pairing => "Pareando",
+            DeviceOnboardingStage.Verifying => "Verificando",
+            DeviceOnboardingStage.Done => "Concluido",
+            DeviceOnboardingStage.Failed => "Falha",
+            DeviceOnboardingStage.SelectPort => "Selecionando porta",
+            DeviceOnboardingStage.InputWifi => "Wi-Fi",
+            _ => "Onboarding",
+        };
+    }
+
     private async Task SaveFirmwareAsync()
     {
         var service = FirmwareService;
@@ -546,29 +949,10 @@ public sealed partial class DevicesPage : Page
         }
     }
 
-    private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
-    {
-        ApplyFilter(GetSelectedDeviceId());
-        ApplySelectionDetails();
-        ApplyButtonState();
-    }
-
     private void ApplyFilter(string? selectedDeviceId)
     {
-        var query = SearchBox.Text?.Trim() ?? string.Empty;
         visibleItems.Clear();
-
-        IEnumerable<DeviceListItem> source = allItems;
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            source = source.Where(item =>
-                item.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || item.DeviceId.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || item.StatusLine.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || item.AppName.Contains(query, StringComparison.OrdinalIgnoreCase));
-        }
-
-        visibleItems.AddRange(source);
+        visibleItems.AddRange(allItems);
         ApplyRenderedItemsDiff(selectedDeviceId);
     }
 
@@ -1168,6 +1552,7 @@ public sealed partial class DevicesPage : Page
         var selectedVisual = GetSelectedVisualItem();
         if (selectedVisual is null)
         {
+            SetDetailsPaneVisible(false);
             SelectedDeviceTitleText.Text = "Nenhum dispositivo selecionado";
             SelectedDeviceSubtitleText.Text = "-";
             SelectedDeviceRegistrationText.Text = "-";
@@ -1178,6 +1563,8 @@ public sealed partial class DevicesPage : Page
             UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Selecione um dispositivo para ver logs do dispositivo.");
             return;
         }
+
+        SetDetailsPaneVisible(true);
 
         var selected = selectedVisual.Source;
         SelectedDeviceTitleText.Text = selected.Name;
@@ -1197,6 +1584,14 @@ public sealed partial class DevicesPage : Page
             ? "Sem eventos para este dispositivo ainda."
             : string.Empty;
         UpdateDeviceLogs(selected.DeviceId, deviceLogs, logsPlaceholder);
+    }
+
+    private void SetDetailsPaneVisible(bool visible)
+    {
+        DeviceDetailsGrid.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        DevicesDetailsColumn.Width = visible
+            ? new GridLength(3, GridUnitType.Star)
+            : new GridLength(0);
     }
 
     private void ApplyButtonState()

@@ -20,10 +20,12 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardLoopTrendGrid", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardLoopTrendBars", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DeviceLogsTextBox", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("NewDeviceButton", flags));
 
         Assert.Null(typeof(DevicesPage).GetField("CommandStatusText", flags));
         Assert.Null(typeof(DevicesPage).GetField("DashboardConnectionChipText", flags));
         Assert.Null(typeof(DevicesPage).GetField("DashboardConnectivityStateText", flags));
+        Assert.Null(typeof(DevicesPage).GetField("SearchBox", flags));
     }
 
     [Fact]
