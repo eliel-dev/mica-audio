@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>App.Headless</RootNamespace>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MicaAudio.Core\MicaAudio.Core.csproj" />
+    <ProjectReference Include="..\Audio.Loopback\Audio.Loopback.csproj" />
+    <ProjectReference Include="..\Analyzer.Dsp\Analyzer.Dsp.csproj" />
+    <ProjectReference Include="..\Output\Output.csproj" />
+    <ProjectReference Include="..\Device.Server\Device.Server.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+    <PackageReference Include="System.Management" Version="10.0.0" />
+  </ItemGroup>
+
+  <Target Name="CopyWebHeadlessDist" AfterTargets="Build" Condition="Exists('..\\Web.Headless\\dist')">
+    <ItemGroup>
+      <WebDistFiles Include="..\\Web.Headless\\dist\\**\\*" />
+    </ItemGroup>
+
+    <Copy
+      SourceFiles="@(WebDistFiles)"
+      DestinationFiles="@(WebDistFiles->'$(OutDir)wwwroot\\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

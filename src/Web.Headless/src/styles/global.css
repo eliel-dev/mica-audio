@@ -1,0 +1,207 @@
+/* WinUI 3 Mica Dark Theme — Design Tokens */
+:root {
+  --bg-gradient: linear-gradient(135deg, #2A2C30 0%, #17181A 100%);
+  --surface-mica: rgba(255, 255, 255, 0.03);
+  --surface-layer: rgba(255, 255, 255, 0.05);
+  --surface-layer-alt: rgba(0, 0, 0, 0.2);
+
+  --hover: rgba(255, 255, 255, 0.06);
+  --active: rgba(255, 255, 255, 0.03);
+
+  --stroke: rgba(255, 255, 255, 0.06);
+  --stroke-top: rgba(255, 255, 255, 0.12);
+  --stroke-bottom: rgba(0, 0, 0, 0.4);
+
+  --text-1: #ffffff;
+  --text-2: #cccccc;
+  --text-3: #999999;
+
+  --accent: #60cdff;
+  --accent-hover: #4fb2df;
+
+  --green: #6ccb5f;
+  --red: #ff99a4;
+  --yellow: #fce100;
+}
+
+/* Reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg-gradient);
+  color: var(--text-1);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Panels with WinUI elevation */
+.panel {
+  background: var(--surface-mica);
+  border: 1px solid var(--stroke);
+  border-top: 1px solid var(--stroke-top);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* WinUI Buttons */
+.tbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 4px;
+  background: var(--surface-layer);
+  border: 1px solid var(--stroke);
+  border-top-color: var(--stroke-top);
+  border-bottom-color: var(--stroke-bottom);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-1);
+  font-family: inherit;
+  transition: all 0.1s;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tbar-btn:hover {
+  background: var(--hover);
+}
+
+.tbar-btn:active {
+  background: var(--active);
+  border-bottom-color: var(--stroke);
+}
+
+.tbar-btn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.tbar-btn.accent {
+  background: rgba(96, 205, 255, 0.12);
+  border-color: rgba(96, 205, 255, 0.25);
+  color: var(--accent);
+}
+
+.tbar-btn.accent:hover {
+  background: rgba(96, 205, 255, 0.2);
+}
+
+/* WinUI Slider */
+.win-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-layer-alt);
+  outline: none;
+  cursor: pointer;
+}
+
+.win-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.2);
+  border: 4px solid var(--accent);
+  transition: transform 0.1s;
+}
+
+.win-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+}
+
+.win-slider::-webkit-slider-thumb:active {
+  transform: scale(0.9);
+}
+
+/* WinUI Select */
+select {
+  background: var(--surface-layer);
+  color: var(--text-1);
+  border: 1px solid var(--stroke);
+  border-radius: 4px;
+  padding: 4px 12px;
+  height: 32px;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+}
+
+select:focus {
+  border-color: var(--accent);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+/* Badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 48px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.badge-online {
+  background: rgba(108, 203, 95, 0.1);
+  color: var(--green);
+}
+
+.badge-offline {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-3);
+}
+
+/* Pulse animation */
+@keyframes lpulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}

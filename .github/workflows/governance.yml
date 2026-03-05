@@ -142,9 +142,54 @@ jobs:
         run: |
           dotnet build MicaAudio.sln -c Debug
 
-  governance-build-debug:
+  governance-web-headless:
     runs-on: windows-latest
     needs: governance-ai-guardrails
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install web dependencies
+        shell: pwsh
+        working-directory: src/Web.Headless
+        run: |
+          npm.cmd ci
+
+      - name: Lint web
+        shell: pwsh
+        working-directory: src/Web.Headless
+        run: |
+          npm.cmd run lint
+
+      - name: Typecheck web
+        shell: pwsh
+        working-directory: src/Web.Headless
+        run: |
+          npm.cmd run typecheck
+
+      - name: Unit tests web
+        shell: pwsh
+        working-directory: src/Web.Headless
+        run: |
+          npm.cmd run test:unit
+
+      - name: Build web
+        shell: pwsh
+        working-directory: src/Web.Headless
+        run: |
+          npm.cmd run build
+
+  governance-build-debug:
+    runs-on: windows-latest
+    needs: governance-web-headless
 
     steps:
       - name: Checkout
