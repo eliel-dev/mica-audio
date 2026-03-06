@@ -33,6 +33,8 @@ public sealed class VisualizerEngine
             [RendererIds.VizzyBlobNeon] = new VizzyBlobNeonRenderer(),
             [RendererIds.VizzyOrbitRings] = new VizzyOrbitRingsRenderer(),
             [RendererIds.PolarArcs] = new PolarArcsRenderer(),
+            [RendererIds.AuroraRibbon] = new AuroraRibbonRenderer(),
+            [RendererIds.PlasmaPulse] = new PlasmaPulseRenderer(),
         };
     }
 

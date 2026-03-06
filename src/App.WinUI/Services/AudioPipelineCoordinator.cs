@@ -4,6 +4,7 @@ using MicaAudio.Core.Audio;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 using Output.Led;
+using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services;
 
@@ -23,6 +24,7 @@ internal sealed class AudioPipelineCoordinator
     private bool hubPreviewEnabled;
     private float brightness = LedDefaults.Brightness;
     private string currentPresetId = "audiomotion-clone";
+    private int hubTransportMode = (int)RendererHubTransportMode.Bins128;
 
     public AudioPipelineCoordinator(
         ILoopbackCapture capture,
@@ -153,6 +155,11 @@ internal sealed class AudioPipelineCoordinator
 
     public void SetCurrentPreset(string presetId) => currentPresetId = presetId;
 
+    public void SetHubTransportMode(RendererHubTransportMode mode)
+    {
+        Volatile.Write(ref hubTransportMode, (int)mode);
+    }
+
     private void ConfigureOutputs(bool enableSimulator, float brightness)
     {
         hubPreviewEnabled = enableSimulator;
@@ -198,6 +205,12 @@ internal sealed class AudioPipelineCoordinator
                 }
 
                 LatestFrame = spectrum;
+
+                var activeTransportMode = (RendererHubTransportMode)Volatile.Read(ref hubTransportMode);
+                if (activeTransportMode == RendererHubTransportMode.Frame128x64)
+                {
+                    continue;
+                }
 
                 var bins128 = GetOutputBins128(spectrum);
                 var payload = new LedPayload

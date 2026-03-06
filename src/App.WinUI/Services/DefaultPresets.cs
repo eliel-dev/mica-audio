@@ -7,7 +7,7 @@ namespace App.WinUI.Services;
 // DOCS: docs/wiki/modules/visual-win2d.md#polar-arcs
 internal static class DefaultPresets
 {
-    private const int CurrentSchemaVersion = 13;
+    private const int CurrentSchemaVersion = 14;
 
     public static IReadOnlyList<PresetDefinition> Create()
     {
@@ -71,6 +71,37 @@ internal static class DefaultPresets
                     ["polarArcsMaxSweepDegrees"] = 34f,
                     ["polarArcsJitter"] = 0.01f,
                     ["polarArcsBandThicknessFactor"] = 0.14f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-aurora-ribbon",
+                name: "Aurora Ribbon",
+                rendererId: RendererIds.AuroraRibbon,
+                paletteStops: CreateAuroraStops(),
+                glow: true,
+                displayBandCount: 64,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["auroraThickness"] = 0.14f,
+                    ["auroraWaveDepth"] = 0.16f,
+                    ["auroraAudioDepth"] = 0.24f,
+                    ["auroraGlowAlpha"] = 0.22f,
+                    ["auroraDriftSpeed"] = 0.78f,
+                    ["auroraBassBloom"] = 0.19f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-plasma-pulse",
+                name: "Plasma Pulse",
+                rendererId: RendererIds.PlasmaPulse,
+                paletteStops: CreatePlasmaStops(),
+                glow: true,
+                displayBandCount: 72,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["plasmaCellsX"] = 56f,
+                    ["plasmaSpeed"] = 0.92f,
+                    ["plasmaWarp"] = 0.72f,
+                    ["plasmaBassPulse"] = 0.32f,
+                    ["plasmaContrast"] = 1.34f,
                 }),
             CreateRendererPreset(
                 id: "spectrum-bars",
@@ -368,6 +399,30 @@ internal static class DefaultPresets
             new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 255, 255) },
             new PaletteStop { Offset = 0.45f, Color = new RgbaColor(255, 188, 188) },
             new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 110, 110) },
+        ];
+    }
+
+    private static IReadOnlyList<PaletteStop> CreateAuroraStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(48, 255, 170) },
+            new PaletteStop { Offset = 0.28f, Color = new RgbaColor(0, 222, 255) },
+            new PaletteStop { Offset = 0.58f, Color = new RgbaColor(88, 124, 255) },
+            new PaletteStop { Offset = 0.82f, Color = new RgbaColor(198, 84, 255) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 170, 226) },
+        ];
+    }
+
+    private static IReadOnlyList<PaletteStop> CreatePlasmaStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 82, 46) },
+            new PaletteStop { Offset = 0.22f, Color = new RgbaColor(255, 162, 28) },
+            new PaletteStop { Offset = 0.48f, Color = new RgbaColor(255, 58, 168) },
+            new PaletteStop { Offset = 0.76f, Color = new RgbaColor(64, 108, 255) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(72, 244, 255) },
         ];
     }
 }

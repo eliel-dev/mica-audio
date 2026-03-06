@@ -19,4 +19,6 @@ public static class RendererIds
     public const string VizzyBlobNeon = "vizzy-blob-neon";
     public const string VizzyOrbitRings = "vizzy-orbit-rings";
     public const string PolarArcs = "polar-arcs";
+    public const string AuroraRibbon = "aurora-ribbon";
+    public const string PlasmaPulse = "plasma-pulse";
 }
