@@ -1,0 +1,11 @@
+[
+  {
+    "Name": "Web Headless Dev",
+    "Projects": [
+      {
+        "Path": "src\\App.DevLauncher\\App.DevLauncher.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

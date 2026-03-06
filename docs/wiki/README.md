@@ -32,6 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Quero aplicar hardening security-first: [guides/security-quality-hardening.md](guides/security-quality-hardening.md)
 - Quero operar release 1.0 com setup assinado: [guides/release-1.0-installer.md](guides/release-1.0-installer.md)
 - Quero carregar GIF para HUB75 por URL/arquivo: [guides/load-gif-hub75.md](guides/load-gif-hub75.md)
+- Quero subir o stack web no VS com um clique: [guides/visual-studio-web-headless-dev.md](guides/visual-studio-web-headless-dev.md)
 - Quero operar no modo solo + IA: [ai/README.md](ai/README.md)
 - Quero usar OpenCode + ECC neste repo: [ai/opencode-ecc-setup.md](ai/opencode-ecc-setup.md)
 
@@ -76,6 +77,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Release 1.0 com setup assinado](guides/release-1.0-installer.md)
 - [Hardening de seguranca e qualidade](guides/security-quality-hardening.md)
 - [Carregar GIF HUB75 (URL/arquivo)](guides/load-gif-hub75.md)
+- [Rodar Web Headless pelo botao verde do Visual Studio](guides/visual-studio-web-headless-dev.md)
 
 ### IA / Agentes
 - [IA index](ai/README.md)

@@ -1,3 +1,6 @@
+# DOCS: docs/wiki/guides/visual-studio-web-headless-dev.md#passos
+# DOCS: docs/handoffs/2026-03-06-vs-green-button-web-dev.md#decisoes-tomadas
+
 param(
     [ValidateSet('dev', 'prod')]
     [string]$Mode = 'dev',
@@ -11,6 +14,10 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $webPath = Join-Path $repoRoot 'src\Web.Headless'
 $headlessProject = Join-Path $repoRoot 'src\App.Headless\App.Headless.csproj'
 $childProcesses = @()
+$packageJsonPath = Join-Path $webPath 'package.json'
+$packageLockPath = Join-Path $webPath 'package-lock.json'
+$nodeModulesPath = Join-Path $webPath 'node_modules'
+$installedLockPath = Join-Path $nodeModulesPath '.package-lock.json'
 
 function Add-ChildProcess {
     param([System.Diagnostics.Process]$Process)
@@ -52,11 +59,45 @@ function Wait-UntilAnyExit {
     }
 }
 
+function Test-WebInstallRequired {
+    if (-not (Test-Path $packageJsonPath)) {
+        throw "Web package.json not found: $packageJsonPath"
+    }
+
+    if (-not (Test-Path $packageLockPath)) {
+        throw "Web package-lock.json not found: $packageLockPath"
+    }
+
+    if (-not (Test-Path $nodeModulesPath)) {
+        Write-Host '[headless-web-run] node_modules missing; npm ci required.'
+        return $true
+    }
+
+    if (-not (Test-Path $installedLockPath)) {
+        Write-Host '[headless-web-run] node_modules install stamp missing; npm ci required.'
+        return $true
+    }
+
+    $installedLockTime = (Get-Item $installedLockPath).LastWriteTimeUtc
+    $packageLockTime = (Get-Item $packageLockPath).LastWriteTimeUtc
+    $packageJsonTime = (Get-Item $packageJsonPath).LastWriteTimeUtc
+
+    if ($packageLockTime -gt $installedLockTime -or $packageJsonTime -gt $installedLockTime) {
+        Write-Host '[headless-web-run] package metadata newer than node_modules; npm ci required.'
+        return $true
+    }
+
+    return $false
+}
+
 try {
     Write-Host "[headless-web-run] Mode: $Mode"
 
-    if (-not $SkipInstall) {
-        Write-Host '[headless-web-run] Installing web dependencies...'
+    if ($SkipInstall) {
+        Write-Host '[headless-web-run] Skipping web dependency installation by flag.'
+    }
+    elseif (Test-WebInstallRequired) {
+        Write-Host '[headless-web-run] Installing web dependencies (auto mode)...'
         Push-Location $webPath
         try {
             npm.cmd ci
@@ -64,6 +105,9 @@ try {
         finally {
             Pop-Location
         }
+    }
+    else {
+        Write-Host '[headless-web-run] Web dependencies already up to date.'
     }
 
     if ($Mode -eq 'prod') {
