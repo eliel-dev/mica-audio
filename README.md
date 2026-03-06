@@ -180,7 +180,7 @@ scripts/
 - `float[]? DisplayBarX` (opcional)
 - `float[]? DisplayBarWidth` (opcional)
 
-Regra importante: `Bands64` Ã© derivado do mesmo espectro calculado no frame (sem segunda FFT).
+Regra importante: `Bands64` ÃƒÂ© derivado do mesmo espectro calculado no frame (sem segunda FFT).
 
 ### Output
 
@@ -194,14 +194,15 @@ Regra importante: `Bands64` Ã© derivado do mesmo espectro calculado no frame (
 
 - Windows 10/11 x64.
 - .NET SDK conforme `global.json`:
-- `10.0.102`
-- Target da app: `net8.0-windows10.0.19041.0`.
-- Nota: o SDK 10.x e usado como toolchain para build/restore, enquanto o runtime alvo da aplicacao continua sendo .NET 8 (`net8.0-windows...`).
+- `10.0.103`
+- Target principal da app: `net10.0-windows10.0.22621.0`.
+- Bibliotecas e testes sem dependencia de Windows: `net10.0`.
+- Visual Studio local: usar versao compativel com `net10.0` (baseline `18.0+`) ou CLI `dotnet` 10.
+- Release bundle: instala/verifica `.NET Desktop Runtime 10 x64`.
 - UI: WinUI 3 (`Microsoft.WindowsAppSDK` 1.8.x).
 - Render: Win2D.
 - Captura de audio: NAudio (WASAPI loopback).
 - Scripts auxiliares: PowerShell.
-
 ## Instalacao para usuario final (Windows 11)
 
 Para usuarios finais (sem scripts PowerShell), a distribuicao oficial do 1.0 e feita por setup assinado no GitHub Releases.

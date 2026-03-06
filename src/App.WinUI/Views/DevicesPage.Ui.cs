@@ -60,7 +60,11 @@ public sealed partial class DevicesPage
     private TextBlock DashboardPsramText = null!;
     private TextBlock DashboardPsramFragmentationText = null!;
     private ProgressBar DashboardPsramFragmentationBar = null!;
+    private Border DashboardStatusSectionBorder = null!;
     private TextBlock DashboardNetworkText = null!;
+    private TextBlock DashboardPortalStateText = null!;
+    private TextBlock DashboardLastEventText = null!;
+    private TextBlock DashboardAuxLedText = null!;
     private TextBlock DashboardLoopTrendCaptionText = null!;
     private TextBlock DashboardLoopTrendPlaceholderText = null!;
     private Grid DashboardLoopTrendGrid = null!;
@@ -256,9 +260,7 @@ public sealed partial class DevicesPage
         var contentStack = new StackPanel();
         contentStack.Children.Add(BuildBrightnessSection());
         contentStack.Children.Add(BuildMetricsSection());
-        contentStack.Children.Add(BuildTrendSection());
-        contentStack.Children.Add(BuildEspDashSection());
-        contentStack.Children.Add(BuildConnectivitySection());
+        contentStack.Children.Add(BuildStatusSection());
         contentStack.Children.Add(BuildLogsSection());
 
         scroll.Content = contentStack;
@@ -490,17 +492,6 @@ public sealed partial class DevicesPage
         });
         DashboardNetworkTile.Visibility = Visibility.Collapsed;
 
-        DashboardNetworkText = new TextBlock
-        {
-            Text = "Wi-Fi: -",
-            Visibility = Visibility.Collapsed,
-        };
-        DashboardUptimeText = new TextBlock
-        {
-            Text = "Uptime: -",
-            Visibility = Visibility.Collapsed,
-        };
-
         DashboardMetricsGrid.Children.Add(DashboardLoopTile);
         DashboardMetricsGrid.Children.Add(DashboardHeapTile);
         DashboardMetricsGrid.Children.Add(DashboardPsramTile);
@@ -508,6 +499,41 @@ public sealed partial class DevicesPage
         wrapper.Children.Add(DashboardMetricsGrid);
         return wrapper;
     }
+
+    // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-dashboard-online-seguro
+    private UIElement BuildStatusSection()
+    {
+        DashboardStatusSectionBorder = CreateSectionBorder();
+
+        var stack = new StackPanel { Spacing = 14 };
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Status do dispositivo",
+            FontSize = 16,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        });
+
+        var summary = new StackPanel { Spacing = 4 };
+        DashboardNetworkText = BuildConnectivityItem("Wi-Fi:", "-");
+        DashboardUptimeText = BuildConnectivityItem("Uptime:", "-");
+        DashboardPortalStateText = BuildConnectivityItem("Modo configuracao:", "-");
+        DashboardLastEventText = BuildConnectivityItem("Ultimo evento de rede:", "-");
+        DashboardAuxLedText = BuildConnectivityItem("LED auxiliar:", "-");
+
+        summary.Children.Add(DashboardNetworkText);
+        summary.Children.Add(DashboardUptimeText);
+        summary.Children.Add(DashboardPortalStateText);
+        summary.Children.Add(DashboardLastEventText);
+        summary.Children.Add(DashboardAuxLedText);
+
+        stack.Children.Add(summary);
+        stack.Children.Add(CreateDashboardTile(BuildStreamStatsTable()));
+
+        DashboardStatusSectionBorder.Child = stack;
+        DashboardStatusSectionBorder.Visibility = Visibility.Collapsed;
+        return DashboardStatusSectionBorder;
+    }
+
     private UIElement BuildTrendSection()
     {
         var section = CreateSectionBorder();

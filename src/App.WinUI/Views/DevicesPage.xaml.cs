@@ -55,6 +55,7 @@ public sealed partial class DevicesPage : Page
     private const int HeapTotalBytesBaseline = 320000;
     private const int PsramTotalBytesBaseline = 8000000;
     private const string OfflineDashboardFallbackText = "Offline: exibindo snapshot seguro";
+    private const string PendingTelemetryFallbackText = "Online: aguardando primeira telemetria do dispositivo";
 
     private string? lastRenderedDashboardSignature;
     private string? lastRenderedDeviceLogsDeviceId;
@@ -68,8 +69,10 @@ public sealed partial class DevicesPage : Page
     private bool isApplyingDeviceList;
     private IReadOnlyList<DeviceSnapshot>? pendingDeviceListSnapshot;
     private string? lastAppliedDeviceListSignature;
+    private string? selectedDeviceId;
     private DispatcherQueueTimer? previewPumpTimer;
     private bool suppressBrightnessSliderEvents;
+    private bool suppressDeviceSelectionChanged;
     private bool brightnessCommitPending;
     private bool wizardBindingsInitialized;
     private bool wizardOperationInFlight;
@@ -161,7 +164,9 @@ public sealed partial class DevicesPage : Page
         espDashLoopHistoryByDeviceId.Clear();
         espDashHeapHistoryByDeviceId.Clear();
         espDashLastSequenceByDeviceId.Clear();
+        selectedDeviceId = null;
         suppressBrightnessSliderEvents = false;
+        suppressDeviceSelectionChanged = false;
         brightnessCommitPending = false;
         HideNewDeviceWizard();
         ClearRenderedItems();
@@ -344,7 +349,8 @@ public sealed partial class DevicesPage : Page
 
         if (ops.RemoveDevice(selected.DeviceId))
         {
-            DevicesList.SelectedItem = null;
+            selectedDeviceId = null;
+            SetListSelectedItem(null);
 
             if (isOnline)
             {
@@ -758,7 +764,7 @@ public sealed partial class DevicesPage : Page
         isApplyingDeviceList = true;
         try
         {
-            var selectedId = GetSelectedDeviceId();
+            var retainedSelectionDeviceId = selectedDeviceId;
 
             allItems.Clear();
             foreach (var device in devices)
@@ -778,7 +784,7 @@ public sealed partial class DevicesPage : Page
                 });
             }
 
-            ApplyFilter(selectedId);
+            ApplyFilter(retainedSelectionDeviceId);
             ApplySelectionDetails();
             ApplyButtonState();
         }
@@ -805,14 +811,20 @@ public sealed partial class DevicesPage : Page
     {
         var nextIds = visibleItems.Select(static item => item.DeviceId).ToList();
         var nextSignature = DeviceListRenderDiff.BuildSignature(visibleItems.Select(BuildRenderToken));
+        var retainedSelectionDeviceId = ResolveRetainedSelectionDeviceId(selectedDeviceId, nextIds);
         if (string.Equals(lastAppliedDeviceListSignature, nextSignature, StringComparison.Ordinal))
         {
-            RestoreSelection(selectedDeviceId);
+            RestoreSelection(retainedSelectionDeviceId);
             UpdateDeviceRowSelection();
             return;
         }
 
         var nextIdSet = new HashSet<string>(nextIds, StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(retainedSelectionDeviceId) && DevicesList.SelectedItem is not null)
+        {
+            SetListSelectedItem(null);
+        }
+
         foreach (var existingId in renderedOrder.ToArray())
         {
             if (nextIdSet.Contains(existingId))
@@ -825,7 +837,7 @@ public sealed partial class DevicesPage : Page
                 continue;
             }
 
-            var currentIndex = DevicesList.Items.IndexOf(removed.Container);
+            var currentIndex = DevicesList.Items.IndexOf(removed.RowControl);
             if (currentIndex >= 0)
             {
                 DevicesList.Items.RemoveAt(currentIndex);
@@ -853,17 +865,17 @@ public sealed partial class DevicesPage : Page
                 visualItem.Update(item, inlinePreviewItem, previewPlaceholderText);
             }
 
-            var currentIndex = DevicesList.Items.IndexOf(visualItem.Container);
+            var currentIndex = DevicesList.Items.IndexOf(visualItem.RowControl);
             if (currentIndex < 0)
             {
-                DevicesList.Items.Insert(Math.Min(index, DevicesList.Items.Count), visualItem.Container);
+                DevicesList.Items.Insert(Math.Min(index, DevicesList.Items.Count), visualItem.RowControl);
                 continue;
             }
 
             if (orderChanged && currentIndex != index)
             {
                 DevicesList.Items.RemoveAt(currentIndex);
-                DevicesList.Items.Insert(Math.Min(index, DevicesList.Items.Count), visualItem.Container);
+                DevicesList.Items.Insert(Math.Min(index, DevicesList.Items.Count), visualItem.RowControl);
             }
         }
 
@@ -871,34 +883,62 @@ public sealed partial class DevicesPage : Page
         renderedOrder.AddRange(nextIds);
         lastAppliedDeviceListSignature = nextSignature;
 
-        RestoreSelection(selectedDeviceId);
+        RestoreSelection(retainedSelectionDeviceId);
         UpdateDeviceRowSelection();
     }
 
     private void RestoreSelection(string? selectedDeviceId)
     {
-        if (!string.IsNullOrWhiteSpace(selectedDeviceId)
-            && renderedItemsByDeviceId.TryGetValue(selectedDeviceId, out var selectedVisual))
-        {
-            if (!ReferenceEquals(DevicesList.SelectedItem, selectedVisual.Container))
-            {
-                DevicesList.SelectedItem = selectedVisual.Container;
-            }
+        this.selectedDeviceId = selectedDeviceId;
 
+        if (!string.IsNullOrWhiteSpace(this.selectedDeviceId)
+            && renderedItemsByDeviceId.TryGetValue(this.selectedDeviceId, out var selectedVisual))
+        {
+            SetListSelectedItem(selectedVisual.RowControl);
             return;
         }
 
-        if (DevicesList.SelectedItem is ListViewItem selectedContainer
-            && selectedContainer.Tag is DeviceListVisualItem selectedVisualItem
-            && renderedItemsByDeviceId.ContainsKey(selectedVisualItem.DeviceId))
+        SetListSelectedItem(null);
+    }
+
+    private void SetListSelectedItem(object? item)
+    {
+        if (ReferenceEquals(DevicesList.SelectedItem, item))
         {
             return;
         }
 
-        if (DevicesList.SelectedItem is not null)
+        suppressDeviceSelectionChanged = true;
+        try
         {
-            DevicesList.SelectedItem = null;
+            DevicesList.SelectedItem = item;
         }
+        finally
+        {
+            suppressDeviceSelectionChanged = false;
+        }
+    }
+
+    private static string? ResolveRetainedSelectionDeviceId(string? selectedDeviceId, IReadOnlyList<string> nextIds)
+    {
+        if (string.IsNullOrWhiteSpace(selectedDeviceId))
+        {
+            return null;
+        }
+
+        return nextIds.Any(id => string.Equals(id, selectedDeviceId, StringComparison.OrdinalIgnoreCase))
+            ? selectedDeviceId
+            : null;
+    }
+
+    private static string? ResolveSelectedDeviceIdFromListSelection(object? selectedItem)
+    {
+        return selectedItem switch
+        {
+            DeviceListRowControl rowControl when rowControl.Tag is DeviceListVisualItem visual => visual.DeviceId,
+            DeviceListVisualItem visual => visual.DeviceId,
+            _ => null,
+        };
     }
 
     private static string BuildRenderToken(DeviceListItem item)
@@ -925,6 +965,8 @@ public sealed partial class DevicesPage : Page
         renderedItemsByDeviceId.Clear();
         renderedOrder.Clear();
         lastAppliedDeviceListSignature = null;
+        selectedDeviceId = null;
+        SetListSelectedItem(null);
         DevicesList.Items.Clear();
     }
 
@@ -1031,24 +1073,31 @@ public sealed partial class DevicesPage : Page
                 var offlineSignature = BuildOfflineDashboardSignature(selectionDeviceId, snapshot);
                 if (!string.Equals(lastRenderedDashboardSignature, offlineSignature, StringComparison.Ordinal))
                 {
-                    ApplyOfflineDashboardFallback(snapshot, OfflineDashboardFallbackText);
+                    LogSelectionBreadcrumb("dashboard-offline-fallback", selectionDeviceId, snapshot, metrics);
+                    ApplyOfflineDashboardFallback(hasSelection, snapshot, metrics, OfflineDashboardFallbackText);
                     lastRenderedDashboardSignature = offlineSignature;
                 }
 
                 return;
             }
 
+            if (ShouldUsePendingTelemetryFallback(hasSelection, snapshot, metrics))
+            {
+                var pendingSignature = BuildPendingTelemetryDashboardSignature(selectionDeviceId, snapshot, metrics);
+                if (!string.Equals(lastRenderedDashboardSignature, pendingSignature, StringComparison.Ordinal))
+                {
+                    LogSelectionBreadcrumb("dashboard-awaiting-telemetry", selectionDeviceId, snapshot, metrics);
+                    ApplySafeDashboardFallback(hasSelection, snapshot, metrics, PendingTelemetryFallbackText);
+                    lastRenderedDashboardSignature = pendingSignature;
+                }
+
+                return;
+            }
+
             var placeholder = ResolveDashboardPlaceholder(hasSelection, metrics);
-            var loopTrendSamples = CaptureLoopTrendSamples(selectionDeviceId, snapshot, metrics);
-            var loopTrendSignature = BuildLoopTrendSignature(loopTrendSamples);
             var brightnessValueLabel = BuildBrightnessValueLabel(snapshot);
             var brightnessStatusLabel = BuildBrightnessStatusLabel(snapshot);
             var heartbeatLabel = BuildHeartbeatLabel(snapshot);
-            UpdateEspDashHistory(selectionDeviceId, snapshot);
-            var loopChartSeries = GetEspDashLoopSeries(selectionDeviceId);
-            var heapChartSeries = GetEspDashHeapSeries(selectionDeviceId);
-            var loopChartSignature = BuildLoopTrendSignature(loopChartSeries);
-            var heapChartSignature = BuildLoopTrendSignature(heapChartSeries);
 
             var signature = BuildDashboardSignature(
                 selectionDeviceId,
@@ -1058,15 +1107,14 @@ public sealed partial class DevicesPage : Page
                 placeholder,
                 brightnessValueLabel,
                 brightnessStatusLabel,
-                heartbeatLabel,
-                loopTrendSignature,
-                loopChartSignature,
-                heapChartSignature);
+                heartbeatLabel);
 
             if (string.Equals(lastRenderedDashboardSignature, signature, StringComparison.Ordinal))
             {
                 return;
             }
+
+            LogSelectionBreadcrumb("dashboard-online-safe", selectionDeviceId, snapshot, metrics);
 
             DashboardBrightnessValueText.Text = brightnessValueLabel;
             DashboardBrightnessStatusText.Text = brightnessStatusLabel;
@@ -1121,15 +1169,13 @@ public sealed partial class DevicesPage : Page
             ApplyTileTone(DashboardPsramTile);
             ApplyTileTone(DashboardNetworkTile);
 
-            ApplyLoopTrendBars(loopTrendSamples, hasSelection);
-            ApplyEspDashSection(hasSelection, snapshot, loopChartSeries, heapChartSeries);
-            ApplyConnectivitySection(hasSelection, snapshot);
+            ApplyDashboardStatusSection(hasSelection, snapshot, metrics);
             lastRenderedDashboardSignature = signature;
         }
         catch (Exception ex)
         {
             LogRenderException("dashboard", selectionDeviceId, snapshot, ex);
-            ApplyOfflineDashboardFallback(snapshot, OfflineDashboardFallbackText);
+            ApplyOfflineDashboardFallback(hasSelection, snapshot, DeviceMetricsFormatter.Build(snapshot), OfflineDashboardFallbackText);
             lastRenderedDashboardSignature = BuildOfflineDashboardSignature(selectionDeviceId, snapshot);
         }
     }
@@ -1142,10 +1188,7 @@ public sealed partial class DevicesPage : Page
         string placeholder,
         string brightnessValueLabel,
         string brightnessStatusLabel,
-        string heartbeatLabel,
-        string loopTrendSignature,
-        string loopChartSignature,
-        string heapChartSignature)
+        string heartbeatLabel)
     {
         var loopProgressScaled = (int)Math.Round(Math.Clamp(metrics.LoopLoadProgress, 0d, 1d) * 1000d);
         var heapFragmentationScaled = metrics.HeapFragmentationProgress.HasValue
@@ -1154,10 +1197,14 @@ public sealed partial class DevicesPage : Page
         var psramFragmentationScaled = metrics.PsramFragmentationProgress.HasValue
             ? (int)Math.Round(Math.Clamp(metrics.PsramFragmentationProgress.Value, 0d, 1d) * 1000d)
             : -1;
+        var portalStateLabel = BuildProvisioningPortalLabel(snapshot);
+        var auxLedLabel = BuildAuxLedAvailabilityLabel(snapshot);
+        var streamSuccessRateLabel = BuildStreamSuccessRateLabel(snapshot);
 
         return string.Concat(
             hasSelection ? "1" : "0", "|",
             selectionDeviceId ?? "-", "|",
+            snapshot?.Status.ToString() ?? "-", "|",
             metrics.StatusLabel, "|",
             metrics.UptimeLabel, "|",
             metrics.HeapLabel, "|",
@@ -1173,22 +1220,31 @@ public sealed partial class DevicesPage : Page
             brightnessValueLabel, "|",
             brightnessStatusLabel, "|",
             heartbeatLabel, "|",
-            loopTrendSignature, "|",
-            loopChartSignature, "|",
-            heapChartSignature, "|",
             snapshot?.WifiState ?? "-", "|",
+            portalStateLabel, "|",
             snapshot?.LastWifiEvent ?? "-", "|",
+            auxLedLabel, "|",
             snapshot?.TelemetrySequence?.ToString(CultureInfo.InvariantCulture) ?? "-", "|",
+            snapshot?.LastTelemetryUtc?.UtcDateTime.Ticks.ToString(CultureInfo.InvariantCulture) ?? "-", "|",
             snapshot?.StreamFramesReceived?.ToString(CultureInfo.InvariantCulture) ?? "-", "|",
             snapshot?.StreamFramesApplied?.ToString(CultureInfo.InvariantCulture) ?? "-", "|",
             snapshot?.StreamSequenceGapCount?.ToString(CultureInfo.InvariantCulture) ?? "-", "|",
             snapshot?.StreamInvalidFrameCount?.ToString(CultureInfo.InvariantCulture) ?? "-", "|",
+            snapshot?.StreamLastSequence?.ToString(CultureInfo.InvariantCulture) ?? "-", "|",
+            streamSuccessRateLabel, "|",
             placeholder);
     }
 
     private static bool ShouldUseOfflineDashboardFallback(bool hasSelection, DeviceSnapshot? snapshot)
     {
         return hasSelection && (snapshot is null || snapshot.Status != DeviceStatus.Online);
+    }
+
+    private static bool ShouldUsePendingTelemetryFallback(bool hasSelection, DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
+    {
+        return hasSelection
+            && snapshot?.Status == DeviceStatus.Online
+            && (!snapshot.LastTelemetryUtc.HasValue || !metrics.HasMetrics);
     }
 
     private static string BuildOfflineDashboardSignature(string? selectionDeviceId, DeviceSnapshot? snapshot)
@@ -1206,7 +1262,30 @@ public sealed partial class DevicesPage : Page
             snapshot?.LastWifiEvent ?? "-");
     }
 
-    private void ApplyOfflineDashboardFallback(DeviceSnapshot? snapshot, string placeholder)
+    private static string BuildPendingTelemetryDashboardSignature(
+        string? selectionDeviceId,
+        DeviceSnapshot? snapshot,
+        DeviceMetricsPresentation metrics)
+    {
+        return string.Concat(
+            "pending-telemetry|",
+            selectionDeviceId ?? "-",
+            "|",
+            snapshot?.LastTelemetryUtc?.UtcDateTime.Ticks.ToString(CultureInfo.InvariantCulture) ?? "-",
+            "|",
+            snapshot?.LastAuthUtc?.UtcDateTime.Ticks.ToString(CultureInfo.InvariantCulture) ?? "-",
+            "|",
+            snapshot?.TelemetrySequence?.ToString(CultureInfo.InvariantCulture) ?? "-",
+            "|",
+            metrics.HasMetrics ? "1" : "0");
+    }
+
+    private void ApplyOfflineDashboardFallback(bool hasSelection, DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics, string placeholder)
+    {
+        ApplySafeDashboardFallback(hasSelection, snapshot, metrics, placeholder);
+    }
+
+    private void ApplySafeDashboardFallback(bool hasSelection, DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics, string placeholder)
     {
         DashboardBrightnessValueText.Text = BuildBrightnessValueLabel(snapshot);
         DashboardBrightnessStatusText.Text = BuildBrightnessStatusLabel(snapshot);
@@ -1231,18 +1310,108 @@ public sealed partial class DevicesPage : Page
         DashboardHeapFragmentationBar.Visibility = Visibility.Collapsed;
         DashboardPsramFragmentationBar.Visibility = Visibility.Collapsed;
 
-        DashboardNetworkText.Text = snapshot is null ? "Wi-Fi: -" : "Wi-Fi: indisponivel (offline)";
-        DashboardUptimeText.Text = snapshot?.UptimeSeconds is int uptime && uptime >= 0
-            ? $"Uptime: {FormatUptimeForEspDash(uptime)}"
-            : "Uptime: -";
-
         DashboardMetricsGrid.Visibility = Visibility.Collapsed;
         DashboardPlaceholderText.Text = placeholder;
         DashboardPlaceholderText.Visibility = Visibility.Visible;
+        ApplyDashboardStatusSection(hasSelection, snapshot, metrics);
+    }
 
-        ApplyLoopTrendBars(Array.Empty<int>(), hasSelection: false);
-        EspDashSectionBorder.Visibility = Visibility.Collapsed;
-        ConnectivitySectionBorder.Visibility = Visibility.Collapsed;
+    private void ApplyDashboardStatusSection(bool hasSelection, DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
+    {
+        DashboardStatusSectionBorder.Visibility = hasSelection ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasSelection)
+        {
+            DashboardNetworkText.Text = "Wi-Fi: -";
+            DashboardUptimeText.Text = "Uptime: -";
+            DashboardPortalStateText.Text = "Modo configuracao: -";
+            DashboardLastEventText.Text = "Ultimo evento de rede: -";
+            DashboardAuxLedText.Text = "LED auxiliar: -";
+            ApplyStreamStatus(snapshot: null);
+            return;
+        }
+
+        DashboardNetworkText.Text = snapshot is null ? "Wi-Fi: -" : metrics.NetworkLabel;
+        DashboardUptimeText.Text = snapshot is null ? "Uptime: -" : metrics.UptimeLabel;
+        DashboardPortalStateText.Text = $"Modo configuracao: {BuildProvisioningPortalLabel(snapshot)}";
+        DashboardLastEventText.Text = $"Ultimo evento de rede: {BuildCompactStatusLabel(snapshot?.LastWifiEvent)}";
+        DashboardAuxLedText.Text = $"LED auxiliar: {BuildAuxLedAvailabilityLabel(snapshot)}";
+        ApplyStreamStatus(snapshot);
+    }
+
+    private void ApplyStreamStatus(DeviceSnapshot? snapshot)
+    {
+        var primaryBrush = ResolveBrush("AppTextPrimaryBrush", Color.FromArgb(255, 255, 255, 255));
+        StreamFramesReceivedText.Foreground = primaryBrush;
+        StreamFramesAppliedText.Foreground = primaryBrush;
+        StreamSuccessRateText.Foreground = primaryBrush;
+        StreamGapCountText.Foreground = primaryBrush;
+        StreamInvalidCountText.Foreground = primaryBrush;
+        StreamLastSequenceText.Foreground = primaryBrush;
+
+        if (snapshot is null)
+        {
+            StreamFramesReceivedText.Text = "-";
+            StreamFramesAppliedText.Text = "-";
+            StreamSuccessRateText.Text = "-";
+            StreamGapCountText.Text = "-";
+            StreamInvalidCountText.Text = "-";
+            StreamLastSequenceText.Text = "-";
+            return;
+        }
+
+        StreamFramesReceivedText.Text = (snapshot.StreamFramesReceived ?? 0).ToString("N0", CultureInfo.InvariantCulture);
+        StreamFramesAppliedText.Text = (snapshot.StreamFramesApplied ?? 0).ToString("N0", CultureInfo.InvariantCulture);
+        StreamSuccessRateText.Text = BuildStreamSuccessRateLabel(snapshot);
+        StreamGapCountText.Text = (snapshot.StreamSequenceGapCount ?? 0).ToString(CultureInfo.InvariantCulture);
+        StreamInvalidCountText.Text = (snapshot.StreamInvalidFrameCount ?? 0).ToString(CultureInfo.InvariantCulture);
+        StreamLastSequenceText.Text = snapshot.StreamLastSequence?.ToString("N0", CultureInfo.InvariantCulture) ?? "-";
+    }
+
+    private static string BuildProvisioningPortalLabel(DeviceSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return "-";
+        }
+
+        return snapshot.ProvisioningPortalActive switch
+        {
+            true => "Ativo",
+            false => "Inativo",
+            _ => "-",
+        };
+    }
+
+    private static string BuildAuxLedAvailabilityLabel(DeviceSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return "-";
+        }
+
+        return snapshot.AuxLedAvailable switch
+        {
+            true => "Disponivel",
+            false => "Nao disponivel",
+            _ => "-",
+        };
+    }
+
+    private static string BuildCompactStatusLabel(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+    }
+
+    private static string BuildStreamSuccessRateLabel(DeviceSnapshot? snapshot)
+    {
+        if (snapshot?.StreamFramesReceived is not uint framesReceived || framesReceived == 0)
+        {
+            return "-";
+        }
+
+        var framesApplied = snapshot.StreamFramesApplied ?? 0;
+        var successRate = Math.Clamp((int)Math.Round((framesApplied / (double)framesReceived) * 100d), 0, 100);
+        return $"{successRate}%";
     }
 
     private static bool TryComputePercent(long? value, int baseline, out int percent)
@@ -1284,6 +1453,17 @@ public sealed partial class DevicesPage : Page
         AddLocalLog(
             $"Falha no render {stage} (device={deviceId ?? "-"}, status={snapshot?.Status.ToString() ?? "-"}, " +
             $"wifiState={snapshot?.WifiState ?? "-"}, telemetry={snapshot?.TelemetrySequence?.ToString(CultureInfo.InvariantCulture) ?? "-"}): {ex.Message}");
+    }
+
+    private static void LogSelectionBreadcrumb(
+        string stage,
+        string? deviceId,
+        DeviceSnapshot? snapshot,
+        DeviceMetricsPresentation? metrics)
+    {
+        AddLocalLog(
+            $"Breadcrumb {stage} (device={deviceId ?? "-"}, status={snapshot?.Status.ToString() ?? "-"}, " +
+            $"hasMetrics={metrics?.HasMetrics.ToString() ?? "-"}, lastTelemetry={snapshot?.LastTelemetryUtc?.ToString("O", CultureInfo.InvariantCulture) ?? "-"})");
     }
 
     private IReadOnlyList<int> CaptureLoopTrendSamples(string? deviceId, DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
@@ -1731,12 +1911,20 @@ public sealed partial class DevicesPage : Page
 
     private DeviceListVisualItem? GetSelectedVisualItem()
     {
-        return DevicesList.SelectedItem switch
+        if (!string.IsNullOrWhiteSpace(selectedDeviceId)
+            && renderedItemsByDeviceId.TryGetValue(selectedDeviceId, out var selectedVisual))
         {
-            ListViewItem container when container.Tag is DeviceListVisualItem visual => visual,
-            DeviceListVisualItem visual => visual,
-            _ => null,
-        };
+            return selectedVisual;
+        }
+
+        var selectedFromList = ResolveSelectedDeviceIdFromListSelection(DevicesList.SelectedItem);
+        if (!string.IsNullOrWhiteSpace(selectedFromList)
+            && renderedItemsByDeviceId.TryGetValue(selectedFromList, out var selectedFromControl))
+        {
+            return selectedFromControl;
+        }
+
+        return null;
     }
 
     private DeviceListItem? GetSelectedDeviceItem()
@@ -1746,7 +1934,7 @@ public sealed partial class DevicesPage : Page
 
     private string? GetSelectedDeviceId()
     {
-        return GetSelectedDeviceItem()?.DeviceId;
+        return selectedDeviceId;
     }
 
     private DeviceSnapshot? FindDeviceSnapshot(string deviceId)
@@ -1769,6 +1957,19 @@ public sealed partial class DevicesPage : Page
 
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (suppressDeviceSelectionChanged)
+        {
+            return;
+        }
+
+        selectedDeviceId = ResolveSelectedDeviceIdFromListSelection(DevicesList.SelectedItem);
+        var snapshot = !string.IsNullOrWhiteSpace(selectedDeviceId)
+            ? FindDeviceSnapshot(selectedDeviceId)
+            : null;
+        DeviceMetricsPresentation? metrics = snapshot is null
+            ? null
+            : DeviceMetricsFormatter.Build(snapshot);
+        LogSelectionBreadcrumb("selection", selectedDeviceId, snapshot, metrics);
         UpdateDeviceRowSelection();
         ApplySelectionDetails();
         ApplyButtonState();
@@ -1821,7 +2022,11 @@ public sealed partial class DevicesPage : Page
         catch (Exception ex)
         {
             LogRenderException("selection", selected.DeviceId, selectedSnapshot, ex);
-            ApplyOfflineDashboardFallback(selectedSnapshot, OfflineDashboardFallbackText);
+            ApplyOfflineDashboardFallback(
+                hasSelection: true,
+                snapshot: selectedSnapshot,
+                metrics: DeviceMetricsFormatter.Build(selectedSnapshot),
+                placeholder: OfflineDashboardFallbackText);
             lastRenderedDashboardSignature = BuildOfflineDashboardSignature(selected.DeviceId, selectedSnapshot);
         }
 
@@ -1887,13 +2092,9 @@ public sealed partial class DevicesPage : Page
         {
             Source = source;
             PreviewItem = previewItem;
-            RowControl = new DeviceListRowControl();
-            Container = new ListViewItem
+            RowControl = new DeviceListRowControl
             {
-                Content = RowControl,
                 Tag = this,
-                Padding = new Thickness(8, 4, 8, 4),
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
             };
             RowControl.Bind(source.Name, source.DeviceId, source.StatusLine, source.Presence, previewItem, previewPlaceholderText);
         }
@@ -1905,8 +2106,6 @@ public sealed partial class DevicesPage : Page
         public AppCatalogItem? PreviewItem { get; private set; }
 
         public DeviceListRowControl RowControl { get; }
-
-        public ListViewItem Container { get; }
 
         public void Update(DeviceListItem source, AppCatalogItem? previewItem, string previewPlaceholderText)
         {

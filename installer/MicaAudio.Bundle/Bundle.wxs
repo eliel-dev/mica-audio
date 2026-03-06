@@ -1,6 +1,8 @@
-﻿<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
      xmlns:netfx="http://wixtoolset.org/schemas/v4/wxs/netfx">
+  <!-- DOCS: docs/wiki/guides/release-1.0-installer.md -->
+  <!-- DOCS: README.md -->
   <Bundle Name="Mica Audio"
           Manufacturer="Mica Audio"
           Version="$(var.ProductVersion)"
@@ -13,14 +15,14 @@
 
     <netfx:DotNetCoreSearch RuntimeType="desktop"
                             Platform="x64"
-                            MajorVersion="8"
-                            Variable="DOTNET_DESKTOP_RUNTIME_8_X64" />
+                            MajorVersion="10"
+                            Variable="DOTNET_DESKTOP_RUNTIME_10_X64" />
 
     <Chain>
-      <ExePackage Id="DotNetDesktopRuntime8x64"
-                  DisplayName=".NET Desktop Runtime 8 (x64)"
+      <ExePackage Id="DotNetDesktopRuntime10x64"
+                  DisplayName=".NET Desktop Runtime 10 (x64)"
                   SourceFile="$(var.DotNetDesktopRuntimeInstaller)"
-                  DetectCondition="DOTNET_DESKTOP_RUNTIME_8_X64"
+                  DetectCondition="DOTNET_DESKTOP_RUNTIME_10_X64"
                   InstallArguments="/install /quiet /norestart"
                   RepairArguments="/repair /quiet /norestart"
                   UninstallArguments="/uninstall /quiet /norestart"

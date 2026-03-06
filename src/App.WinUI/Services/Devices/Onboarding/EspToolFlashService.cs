@@ -7,6 +7,7 @@ namespace App.WinUI.Services.Devices.Onboarding;
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
 internal sealed class EspToolFlashService : IEspToolFlashService
 {
+    private const int MaxCapturedOutputLines = 12;
     private static readonly Regex PercentRegex = new(@"(\d{1,3})\s*%", RegexOptions.Compiled);
     private readonly ILogger<EspToolFlashService> logger;
 
@@ -85,6 +86,8 @@ internal sealed class EspToolFlashService : IEspToolFlashService
         };
 
         var latestPercent = 0;
+        var capturedOutput = new Queue<string>();
+        var capturedOutputGate = new object();
         void HandleOutput(string line)
         {
             if (string.IsNullOrWhiteSpace(line))
@@ -93,6 +96,16 @@ internal sealed class EspToolFlashService : IEspToolFlashService
             }
 
             logger.LogInformation("[esptool] {Line}", line);
+
+            lock (capturedOutputGate)
+            {
+                capturedOutput.Enqueue(line.Trim());
+                while (capturedOutput.Count > MaxCapturedOutputLines)
+                {
+                    capturedOutput.Dequeue();
+                }
+            }
+
             var percent = ParseProgressPercent(line);
             if (!percent.HasValue)
             {
@@ -170,11 +183,17 @@ internal sealed class EspToolFlashService : IEspToolFlashService
 
         if (process.ExitCode != 0)
         {
+            string[] outputSnapshot;
+            lock (capturedOutputGate)
+            {
+                outputSnapshot = capturedOutput.ToArray();
+            }
+
             return new EspToolFlashResult
             {
                 Success = false,
                 ExitCode = process.ExitCode,
-                Message = $"Esptool finalizou com erro (exit code {process.ExitCode}).",
+                Message = BuildFailureMessage(process.ExitCode, outputSnapshot),
             };
         }
 
@@ -240,6 +259,39 @@ internal sealed class EspToolFlashService : IEspToolFlashService
         }
 
         return Math.Clamp(rawPercent, 0, 100);
+    }
+
+    internal static string BuildFailureMessage(int exitCode, IReadOnlyList<string> outputLines)
+    {
+        var normalizedLines = outputLines
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => line.Trim())
+            .ToArray();
+
+        if (normalizedLines.Any(line => line.Contains("No module named esptool", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Esptool indisponivel no ambiente. Python foi encontrado, mas o modulo 'esptool' nao esta instalado.";
+        }
+
+        if (exitCode == 9009 || normalizedLines.Any(IsPythonNotFoundMessage))
+        {
+            return "Esptool indisponivel no ambiente. Nem esptool.exe nem Python com esptool estao disponiveis.";
+        }
+
+        var detail = normalizedLines.LastOrDefault();
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            return $"Esptool finalizou com erro (exit code {exitCode}): {detail}";
+        }
+
+        return $"Esptool finalizou com erro (exit code {exitCode}).";
+    }
+
+    private static bool IsPythonNotFoundMessage(string line)
+    {
+        return line.Contains("python", StringComparison.OrdinalIgnoreCase)
+            && (line.Contains("is not recognized", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("nao e reconhecido", StringComparison.OrdinalIgnoreCase));
     }
 
     private sealed record EsptoolInvocation(string FileName, IReadOnlyList<string> Arguments);

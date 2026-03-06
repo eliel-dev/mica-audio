@@ -18,10 +18,18 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardBrightnessSlider", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardBrightnessStatusText", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DashboardTelemetryHeartbeatText", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("DashboardLoopTrendGrid", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("DashboardLoopTrendBars", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("EspDashSectionBorder", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("ConnectivitySectionBorder", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("DashboardStatusSectionBorder", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("DashboardNetworkText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("DashboardUptimeText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("DashboardPortalStateText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("DashboardLastEventText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("DashboardAuxLedText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("StreamFramesReceivedText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("StreamFramesAppliedText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("StreamSuccessRateText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("StreamGapCountText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("StreamInvalidCountText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("StreamLastSequenceText", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DeviceLogsTextBox", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("NewDeviceButton", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardOverlay", flags));
@@ -105,5 +113,101 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(signature);
         Assert.Contains("offline|", signature!.ToString(), StringComparison.Ordinal);
         Assert.Contains(offlineSnapshot.DeviceId, signature.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DevicesPageShouldRouteOnlineSelectionWithoutTelemetryToPendingFallbackGuard()
+    {
+        const BindingFlags staticFlags = BindingFlags.NonPublic | BindingFlags.Static;
+        const BindingFlags formatterFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+
+        var waitingSnapshot = new DeviceSnapshot
+        {
+            DeviceId = "online-device",
+            Name = "Online Device",
+            Status = DeviceStatus.Online,
+            IsRegistered = true,
+            LastSeenUtc = DateTimeOffset.UtcNow,
+            LastAuthUtc = DateTimeOffset.UtcNow,
+        };
+
+        var readySnapshot = new DeviceSnapshot
+        {
+            DeviceId = "online-device",
+            Name = "Online Device",
+            Status = DeviceStatus.Online,
+            IsRegistered = true,
+            LastSeenUtc = DateTimeOffset.UtcNow,
+            LastAuthUtc = DateTimeOffset.UtcNow,
+            LastTelemetryUtc = DateTimeOffset.UtcNow,
+            LoopLoadPercent = 14,
+            WifiConnected = true,
+        };
+
+        var formatterType = typeof(DevicesPage).Assembly.GetType("App.WinUI.Services.Devices.DeviceMetricsFormatter");
+        Assert.NotNull(formatterType);
+
+        var buildMethod = formatterType!.GetMethod("Build", formatterFlags);
+        Assert.NotNull(buildMethod);
+
+        var waitingMetrics = buildMethod!.Invoke(null, new object?[] { waitingSnapshot });
+        var readyMetrics = buildMethod.Invoke(null, new object?[] { readySnapshot });
+
+        var pendingMethod = typeof(DevicesPage).GetMethod("ShouldUsePendingTelemetryFallback", staticFlags);
+        Assert.NotNull(pendingMethod);
+
+        var waitingResult = pendingMethod!.Invoke(null, new[] { (object?)true, waitingSnapshot, waitingMetrics });
+        var readyResult = pendingMethod.Invoke(null, new[] { (object?)true, readySnapshot, readyMetrics });
+
+        Assert.IsType<bool>(waitingResult);
+        Assert.IsType<bool>(readyResult);
+        Assert.True((bool)waitingResult!);
+        Assert.False((bool)readyResult!);
+    }
+
+    [Fact]
+    public void DevicesPageShouldRetainSelectionByDeviceIdAcrossRefreshes()
+    {
+        const BindingFlags staticFlags = BindingFlags.NonPublic | BindingFlags.Static;
+
+        var retainMethod = typeof(DevicesPage).GetMethod("ResolveRetainedSelectionDeviceId", staticFlags);
+        Assert.NotNull(retainMethod);
+
+        var reordered = retainMethod!.Invoke(null, new object?[] { "device-b", new[] { "device-c", "device-b", "device-a" } });
+        var caseInsensitive = retainMethod.Invoke(null, new object?[] { "DEVICE-B", new[] { "device-b", "device-a" } });
+        var removed = retainMethod.Invoke(null, new object?[] { "device-b", new[] { "device-a", "device-c" } });
+
+        Assert.Equal("device-b", reordered);
+        Assert.Equal("DEVICE-B", caseInsensitive);
+        Assert.Null(removed);
+    }
+
+    [Fact]
+    public void DevicesPageShouldFormatSafeOnlineStatusLabels()
+    {
+        const BindingFlags staticFlags = BindingFlags.NonPublic | BindingFlags.Static;
+
+        var snapshot = new DeviceSnapshot
+        {
+            DeviceId = "safe-online-device",
+            Status = DeviceStatus.Online,
+            ProvisioningPortalActive = false,
+            AuxLedAvailable = true,
+            StreamFramesReceived = 240,
+            StreamFramesApplied = 228,
+        };
+
+        var portalMethod = typeof(DevicesPage).GetMethod("BuildProvisioningPortalLabel", staticFlags);
+        var auxLedMethod = typeof(DevicesPage).GetMethod("BuildAuxLedAvailabilityLabel", staticFlags);
+        var successRateMethod = typeof(DevicesPage).GetMethod("BuildStreamSuccessRateLabel", staticFlags);
+
+        Assert.NotNull(portalMethod);
+        Assert.NotNull(auxLedMethod);
+        Assert.NotNull(successRateMethod);
+
+        Assert.Equal("Inativo", portalMethod!.Invoke(null, new object?[] { snapshot }));
+        Assert.Equal("Disponivel", auxLedMethod!.Invoke(null, new object?[] { snapshot }));
+        Assert.Equal("95%", successRateMethod!.Invoke(null, new object?[] { snapshot }));
+        Assert.Equal("-", successRateMethod.Invoke(null, new object?[] { null }));
     }
 }

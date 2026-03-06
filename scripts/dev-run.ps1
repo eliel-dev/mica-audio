@@ -1,3 +1,5 @@
+# DOCS: docs/wiki/guides/release-1.0-installer.md
+# DOCS: docs/wiki/modules/app-winui.md
 [CmdletBinding()]
 param(
     [ValidateSet("Debug", "Release")]
@@ -19,7 +21,6 @@ function Write-Step {
     Write-Host "[dev-run] $Message" -ForegroundColor Cyan
 }
 
-
 function Invoke-DocsValidation {
     param([string]$RepoRoot)
 
@@ -34,16 +35,18 @@ function Invoke-DocsValidation {
         throw "docs-validate.ps1 falhou com exit code $LASTEXITCODE"
     }
 }
+
 function Resolve-PublishDir {
     param(
         [string]$RepoRoot,
-        [string]$Config
+        [string]$Config,
+        [string]$TargetFramework
     )
 
     $candidates = @(
         (Join-Path $RepoRoot "src\App.WinUI\.artifacts\publish\win-x64"),
-        (Join-Path $RepoRoot "src\App.WinUI\bin\$Config\net8.0-windows10.0.19041.0\win-x64\publish"),
-        (Join-Path $RepoRoot "src\App.WinUI\bin\$Config\net8.0-windows10.0.19041.0\win-x64")
+        (Join-Path $RepoRoot "src\App.WinUI\bin\$Config\$TargetFramework\win-x64\publish"),
+        (Join-Path $RepoRoot "src\App.WinUI\bin\$Config\$TargetFramework\win-x64")
     )
 
     foreach ($candidate in $candidates) {
@@ -63,12 +66,30 @@ function Resolve-PublishDir {
     return $fallbackExe.DirectoryName
 }
 
+function Get-ProjectTargetFramework {
+    param([string]$ProjectPath)
+
+    [xml]$project = Get-Content -Path $ProjectPath
+    $framework = $project.Project.PropertyGroup.TargetFramework | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($framework)) {
+        $framework = $project.Project.PropertyGroup.TargetFrameworks | Select-Object -First 1
+    }
+
+    if ([string]::IsNullOrWhiteSpace($framework)) {
+        throw "Nao foi possivel resolver o TargetFramework em $ProjectPath"
+    }
+
+    return ($framework -split ';')[0].Trim()
+}
+
 $repoRoot = Split-Path -Path $PSScriptRoot -Parent
 $appProject = Join-Path $repoRoot "src\App.WinUI\App.WinUI.csproj"
 
 if (-not (Test-Path $appProject)) {
     throw "Projeto nao encontrado: $appProject"
 }
+
+$targetFramework = Get-ProjectTargetFramework -ProjectPath $appProject
 
 if (-not $SkipDoctor) {
     Write-Step "Executando diagnostico rapido"
@@ -180,7 +201,7 @@ else {
     Write-Step "Pulando assinatura (-NoSign)"
 }
 
-$publishDir = Resolve-PublishDir -RepoRoot $repoRoot -Config $Configuration
+$publishDir = Resolve-PublishDir -RepoRoot $repoRoot -Config $Configuration -TargetFramework $targetFramework
 $appExe = Join-Path $publishDir "App.WinUI.exe"
 if (-not (Test-Path $appExe)) {
     throw "Executavel nao encontrado: $appExe"
@@ -220,6 +241,3 @@ if (Test-Path $crashLog) {
     }
 }
 Write-Step "App iniciado. Se falhar no startup, verifique: $crashLog"
-
-
-

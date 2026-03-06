@@ -44,7 +44,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 ## Consumo na DevicesPage (Entrega 3)
 
 - A `DevicesPage` usa `DeviceMetricsFormatter` para converter snapshot bruto em apresentacao.
-- O card `Dashboard ESP` exibe status, carga do loop, uptime, heap, PSRAM e rede em visual de painel NOC (chips + blocos + tendencia curta).
+- O card principal da `DevicesPage` exibe status, carga do loop, uptime, heap, PSRAM e rede em painel seguro baseado em texto, barras e grade simples.
 - Barras derivadas de fragmentacao sao exibidas apenas quando os dados sao coerentes.
 - `RSSI` deve aparecer apenas quando o `snapshot.Status` esta online; para offline a UI exibe estado de rede sem sinal numerico.
 - O card de logs usa `GetDeviceLogs(deviceId)` e exibe somente o device selecionado.
@@ -55,11 +55,12 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
   - estado canonico de Wi-Fi;
   - portal ativo/inativo;
   - idade do ultimo heartbeat;
-  - linha rolling de eventos curtos de conectividade por dispositivo.
+  - ultimo evento curto de conectividade por dispositivo;
+  - contadores de stream em tabela textual segura.
 
 ## Checklist rapido de validacao
 
-- Device online atualiza `Dashboard ESP` com status `Online`.
+- Device online atualiza o painel seguro com status `Online`.
 - Device offline exibe aviso `Offline (ultimo snapshot)` e mantem dados do ultimo snapshot.
 - Sem selecao, o dashboard mostra placeholder de selecao.
 - Logs trocam junto com a selecao do device e nao misturam eventos de outros devices.

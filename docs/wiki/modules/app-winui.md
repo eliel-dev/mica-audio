@@ -40,12 +40,12 @@
 - O slider de brilho (`30..160`) envia `set_brightness` no commit e atualiza o painel.
 - A acao `Remover` foi consolidada: online tenta `revogar/reiniciar` e depois remove do registro local; offline remove apenas localmente.
 
-## Atualizacao 2026-03 - Dashboard ESP e logs por dispositivo
+## Atualizacao 2026-03 - Dashboard seguro e logs por dispositivo
 
-- O card de logs gerais foi substituido por dois cards na `DevicesPage`: `Dashboard ESP` e `Logs do dispositivo`.
+- O card de logs gerais foi substituido por dois cards na `DevicesPage`: `Dashboard seguro` e `Logs do dispositivo`.
 - O dashboard usa `DeviceMetricsFormatter` para montar labels e barras a partir do snapshot selecionado, incluindo `Carga do loop`, heap, PSRAM e rede.
-- O dashboard segue visual de painel NOC com grade de blocos operacionais e tendencia curta de carga do loop.
-- A paleta do dashboard foi suavizada para seguir o estilo Fluent/Settings da Microsoft: superficies neutras e icones discretos em vez de blocos saturados.
+- O caminho padrao online prioriza estabilidade: bloco de brilho, grade de metricas, status textual (`Wi-Fi`, `uptime`, portal, ultimo evento, LED auxiliar), stream e logs.
+- A composicao inspirada em ESP-Dash deixou de ser o caminho padrao enquanto o fluxo online e estabilizado contra crash nativo de XAML.
 - Quando o device esta offline, a pagina exibe o ultimo snapshot conhecido com aviso explicito de offline.
 - Quando nao ha selecao, dashboard e logs exibem placeholders estaveis.
 - A linha de status da lista removeu `IP` e `RSSI`; o `RSSI` agora aparece no topo do card de resumo ao lado das acoes.
@@ -84,9 +84,7 @@
   - header do dispositivo com `RSSI` + acoes verticais (`Testar LED` e `Remover`);
   - bloco de brilho (`30..160`) com status/aplicado/heartbeat;
   - grade de metricas (CPU/RAM/PSRAM);
-  - tendencia de CPU;
-  - secao `Status em tempo real` (ESP-DASH style);
-  - linha de conectividade;
+  - secao de status textual com rede, portal, ultimo evento e stream;
   - historico de eventos (logs).
 - O wizard foi migrado para overlay custom (sem `ContentDialog`) para controlar dimensoes/padding/radius iguais ao HTML.
 - O fluxo tecnico de onboarding USB nao foi alterado: a mudanca foi de composicao visual.
@@ -98,7 +96,7 @@
   - mantem resumo do device e logs;
   - oculta renderizacao avancada (`ESP-DASH`, conectividade detalhada, charts dinamicos).
 - O caminho de render de selecao/dashboard ganhou hardening e telemetria local de erro para evitar encerramento do app por excecao de XAML.
-- O modo online continua exibindo dashboard completo.
+- O modo online agora usa o mesmo contrato seguro como padrao: sem `Canvas`, `Polyline`, `Polygon`, `Path` ou `WrapGrid` no painel principal.
 
 ## Atualizacao 2026-03 - Onboarding USB com perfil esptool fixo + progresso visual
 

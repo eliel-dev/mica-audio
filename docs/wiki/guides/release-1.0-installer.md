@@ -1,4 +1,4 @@
-﻿# Release 1.0 com instalador assinado (Windows 11)
+# Release 1.0 com instalador assinado (Windows 11)
 
 ## Objetivo
 
@@ -21,7 +21,7 @@ Documentar o fluxo oficial para gerar e publicar o instalador `Setup EXE` assina
    - assinatura final do setup EXE,
    - geracao de checksum `.sha256` e publicacao no GitHub Release.
 5. Valide em maquina limpa Windows 11:
-   - instala sem .NET Desktop Runtime 8 pre-instalado,
+   - instala sem .NET Desktop Runtime 10 pre-instalado,
    - instala com runtime ja presente,
    - abre via Menu Iniciar,
    - desinstala por Apps e Recursos.
