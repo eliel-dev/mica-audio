@@ -12,6 +12,7 @@ internal sealed class AnalyzerRuntimeProfile
         DisplayMode displayMode,
         float displayViewportWidthPx,
         float barSpace,
+        AnalyzerOutputMode outputMode,
         VisualizerRuntimeSettings settings)
     {
         RendererId = rendererId;
@@ -19,6 +20,7 @@ internal sealed class AnalyzerRuntimeProfile
         DisplayMode = displayMode;
         DisplayViewportWidthPx = displayViewportWidthPx;
         BarSpace = barSpace;
+        OutputMode = outputMode;
         Settings = settings;
     }
 
@@ -32,13 +34,16 @@ internal sealed class AnalyzerRuntimeProfile
 
     public float BarSpace { get; }
 
+    public AnalyzerOutputMode OutputMode { get; }
+
     public VisualizerRuntimeSettings Settings { get; }
 
     public static AnalyzerRuntimeProfile From(
         VisualizerRuntimeSettings settings,
         PresetDefinition preset,
         float viewportWidthPx,
-        string? rendererId = null)
+        string? rendererId = null,
+        AnalyzerOutputMode outputMode = AnalyzerOutputMode.DisplayAndOutput)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(preset);
@@ -63,6 +68,7 @@ internal sealed class AnalyzerRuntimeProfile
             cloneMode ? DisplayMode.AudioMotionMode0 : DisplayMode.FixedBands,
             cloneMode ? MathF.Max(2f, viewportWidthPx > 1f ? viewportWidthPx : 2f) : 0f,
             Math.Clamp(barSpace, 0f, 0.95f),
+            outputMode,
             settings);
     }
 
@@ -78,6 +84,7 @@ internal sealed class AnalyzerRuntimeProfile
             DisplayViewportWidthPx = DisplayViewportWidthPx,
             BarSpace = BarSpace,
             OutputBandCount = VisualizerRuntimeDefaults.OutputBandCount,
+            OutputMode = OutputMode,
             MinHz = Settings.FrequencyMinHz,
             MaxHz = Settings.FrequencyMaxHz,
             ScaleMode = ScaleMode.Linear,

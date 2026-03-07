@@ -12,10 +12,11 @@ internal static class VisualizerAnalyzerConfigFactory
         PresetDefinition preset,
         VisualizerRuntimeSettings settings,
         float viewportWidthPx,
-        string? rendererId = null)
+        string? rendererId = null,
+        AnalyzerOutputMode outputMode = AnalyzerOutputMode.DisplayAndOutput)
     {
         return AnalyzerRuntimeProfile
-            .From(settings, preset, viewportWidthPx, rendererId)
+            .From(settings, preset, viewportWidthPx, rendererId, outputMode)
             .ToAnalyzerConfig();
     }
 
@@ -28,7 +29,8 @@ internal static class VisualizerAnalyzerConfigFactory
         WeightingFilter weightingFilter,
         float frequencyMinHz,
         float frequencyMaxHz,
-        float viewportWidthPx)
+        float viewportWidthPx,
+        AnalyzerOutputMode outputMode = AnalyzerOutputMode.DisplayAndOutput)
     {
         var settings = VisualizerRuntimeSettings.From(new AppSettings
         {
@@ -42,7 +44,7 @@ internal static class VisualizerAnalyzerConfigFactory
             FrequencyMaxHz = frequencyMaxHz,
         });
 
-        return Build(preset, settings, viewportWidthPx);
+        return Build(preset, settings, viewportWidthPx, outputMode: outputMode);
     }
 }
 

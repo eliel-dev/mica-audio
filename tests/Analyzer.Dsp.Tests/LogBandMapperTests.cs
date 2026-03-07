@@ -196,6 +196,30 @@ public class LogBandMapperTests
         Assert.True(wide.Ranges.Length >= narrow.Ranges.Length);
     }
 
+    [Fact]
+    public void AggregationRanges_ShouldPreservePeakAndRmsResults()
+    {
+        var spectrum = new float[513];
+        for (var i = 0; i < spectrum.Length; i++)
+        {
+            spectrum[i] = i / (float)(spectrum.Length - 1);
+        }
+
+        var ranges = LogBandMapper.CreateRanges(38, 1024, 48_000, 30f, 16_000f, FrequencyScale.Bark);
+        var aggregationRanges = LogBandMapper.CreateAggregationRanges(ranges);
+
+        var peakFromRanges = LogBandMapper.AggregateBandsPeak(spectrum, ranges, -85f, -25f, useDb: false);
+        var rmsFromRanges = LogBandMapper.AggregateBandsRms(spectrum, ranges, -85f, -25f, useDb: false);
+        var peakFromAggregation = new float[ranges.Length];
+        var rmsFromAggregation = new float[ranges.Length];
+
+        LogBandMapper.AggregateBandsPeak(spectrum, aggregationRanges, -85f, -25f, useDb: false, useLinearAmplitude: true, linearBoost: 1f, peakFromAggregation);
+        LogBandMapper.AggregateBandsRms(spectrum, aggregationRanges, -85f, -25f, useDb: false, useLinearAmplitude: true, linearBoost: 1f, rmsFromAggregation);
+
+        Assert.Equal(peakFromRanges, peakFromAggregation);
+        Assert.Equal(rmsFromRanges, rmsFromAggregation);
+    }
+
     private static int ComputeMode0ReferenceBarCount(
         int fftSize,
         int sampleRate,

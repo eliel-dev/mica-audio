@@ -1,9 +1,12 @@
+using System.Numerics;
+
 namespace Analyzer.Dsp.Analysis;
 
 // DOCS: docs/wiki/modules/analyzer-dsp.md#fluxo-de-execucao
 internal sealed class SpectrumSampleWindow
 {
     private float[] sampleBuffer;
+    private int head;
     private int sampleCount;
 
     public SpectrumSampleWindow(int fftSize)
@@ -17,7 +20,15 @@ internal sealed class SpectrumSampleWindow
     public void Append(ReadOnlySpan<float> samples)
     {
         EnsureCapacity(sampleCount + samples.Length);
-        samples.CopyTo(sampleBuffer.AsSpan(sampleCount));
+        var writeIndex = (head + sampleCount) % sampleBuffer.Length;
+        var firstSegment = global::System.Math.Min(sampleBuffer.Length - writeIndex, samples.Length);
+        samples[..firstSegment].CopyTo(sampleBuffer.AsSpan(writeIndex, firstSegment));
+
+        if (firstSegment < samples.Length)
+        {
+            samples[firstSegment..].CopyTo(sampleBuffer);
+        }
+
         sampleCount += samples.Length;
     }
 
@@ -30,15 +41,39 @@ internal sealed class SpectrumSampleWindow
 
         for (var i = 0; i < destination.Length; i++)
         {
-            destination[i] = sampleBuffer[i] * inputGain * hannWindow[i];
+            destination[i] = GetSampleAt(i) * inputGain * hannWindow[i];
+        }
+    }
+
+    public void CopyWindowTo(Span<Complex> destination, float inputGain, ReadOnlySpan<float> hannWindow)
+    {
+        if (destination.Length > sampleCount)
+        {
+            throw new ArgumentException("Destination window exceeds buffered samples.", nameof(destination));
+        }
+
+        for (var i = 0; i < destination.Length; i++)
+        {
+            destination[i] = new Complex(GetSampleAt(i) * inputGain * hannWindow[i], 0d);
         }
     }
 
     public void Slide(int hopSize)
     {
+        Advance(hopSize);
+    }
+
+    public void Advance(int hopSize)
+    {
         var shift = global::System.Math.Min(hopSize, sampleCount);
-        Array.Copy(sampleBuffer, shift, sampleBuffer, 0, sampleCount - shift);
         sampleCount -= shift;
+        if (sampleCount == 0)
+        {
+            head = 0;
+            return;
+        }
+
+        head = (head + shift) % sampleBuffer.Length;
     }
 
     private void EnsureCapacity(int required)
@@ -55,7 +90,29 @@ internal sealed class SpectrumSampleWindow
         }
 
         var resized = new float[nextSize];
-        Array.Copy(sampleBuffer, resized, sampleCount);
+        CopyLinearizedSamplesTo(resized);
         sampleBuffer = resized;
+        head = 0;
+    }
+
+    private void CopyLinearizedSamplesTo(Span<float> destination)
+    {
+        if (sampleCount == 0)
+        {
+            return;
+        }
+
+        var firstSegment = global::System.Math.Min(sampleBuffer.Length - head, sampleCount);
+        sampleBuffer.AsSpan(head, firstSegment).CopyTo(destination);
+
+        if (firstSegment < sampleCount)
+        {
+            sampleBuffer.AsSpan(0, sampleCount - firstSegment).CopyTo(destination[firstSegment..]);
+        }
+    }
+
+    private float GetSampleAt(int offset)
+    {
+        return sampleBuffer[(head + offset) % sampleBuffer.Length];
     }
 }

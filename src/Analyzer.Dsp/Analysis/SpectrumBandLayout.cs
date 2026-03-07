@@ -9,7 +9,14 @@ internal sealed class SpectrumBandLayout
     {
         ArgumentNullException.ThrowIfNull(config);
 
-        if (config.DisplayMode == DisplayMode.AudioMotionMode0 && config.DisplayViewportWidthPx > 1f)
+        if (config.OutputMode == AnalyzerOutputMode.OutputOnly)
+        {
+            DisplayRanges = Array.Empty<BandRange>();
+            DisplayAggregationRanges = Array.Empty<BandAggregationRange>();
+            DisplayBarX = null;
+            DisplayBarWidth = null;
+        }
+        else if (config.DisplayMode == DisplayMode.AudioMotionMode0 && config.DisplayViewportWidthPx > 1f)
         {
             var mode0 = LogBandMapper.CreateMode0Ranges(
                 config.FftSize,
@@ -21,6 +28,7 @@ internal sealed class SpectrumBandLayout
                 config.BarSpace);
 
             DisplayRanges = mode0.Ranges;
+            DisplayAggregationRanges = LogBandMapper.CreateAggregationRanges(mode0.Ranges);
             DisplayBarX = mode0.BarX;
             DisplayBarWidth = mode0.BarWidth;
         }
@@ -33,6 +41,7 @@ internal sealed class SpectrumBandLayout
                 config.MinHz,
                 config.MaxHz,
                 config.FrequencyScale);
+            DisplayAggregationRanges = LogBandMapper.CreateAggregationRanges(DisplayRanges);
             DisplayBarX = null;
             DisplayBarWidth = null;
         }
@@ -44,13 +53,18 @@ internal sealed class SpectrumBandLayout
             config.MinHz,
             config.MaxHz,
             config.FrequencyScale);
+        OutputAggregationRanges = LogBandMapper.CreateAggregationRanges(OutputRanges);
     }
 
     public BandRange[] DisplayRanges { get; }
+
+    public BandAggregationRange[] DisplayAggregationRanges { get; }
 
     public float[]? DisplayBarX { get; }
 
     public float[]? DisplayBarWidth { get; }
 
     public BandRange[] OutputRanges { get; }
+
+    public BandAggregationRange[] OutputAggregationRanges { get; }
 }

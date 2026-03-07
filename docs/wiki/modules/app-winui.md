@@ -21,6 +21,7 @@
 
 - A fase 6 ampliou a arquitetura do app em tres ondas sem mudar wire/protocolo:
   - `MicaAudio.Core` passou a concentrar invariantes de analyzer e payload (`VisualizerRuntimeSettings`, `AnalyzerRuntimeProfile`, `LedPayloadFactory`);
+  - `VisualizerAnalyzerConfigFactory` e `AnalyzerRuntimeProfile` agora propagam `AnalyzerOutputMode`, mantendo `DisplayAndOutput` no modo interativo e habilitando `OutputOnly` em runtime sem display;
   - `AudioPipelineCoordinator` virou orquestrador fino e delega lifecycle/output/frame processing;
   - `MainPage` deixou de ser origem das regras de runtime e passou a consumir helpers dedicados em `MainPage.Pipeline`.
 - O pipeline de audio agora se organiza assim:

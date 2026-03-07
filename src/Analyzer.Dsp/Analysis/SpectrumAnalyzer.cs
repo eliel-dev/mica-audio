@@ -9,25 +9,43 @@ namespace Analyzer.Dsp.Analysis;
 public sealed class SpectrumAnalyzer : IAnalyzer
 {
     private readonly AnalyzerConfig config;
+    private readonly SpectrumFftBackendKind fftBackendKind;
     private readonly float[] hannWindow;
     private readonly SpectrumBandLayout bandLayout;
-    private readonly EnvelopeSmoother displaySmoother;
+    private readonly EnvelopeSmoother? displaySmoother;
     private readonly EnvelopeSmoother outputSmoother;
     private readonly SpectrumPowerProcessor powerProcessor;
-
     private readonly SpectrumSampleWindow sampleWindow;
+    private readonly Complex[] complexFftBuffer;
+    private readonly float[] realFftBuffer;
+    private readonly float[] powerSpectrum;
+    private readonly float[] displayRaw;
+    private readonly float[] outputRaw;
 
     public SpectrumAnalyzer(AnalyzerConfig config)
+        : this(config, SpectrumFftBackendKind.Complex64)
+    {
+    }
+
+    internal SpectrumAnalyzer(AnalyzerConfig config, SpectrumFftBackendKind fftBackendKind)
     {
         Validate(config);
         this.config = config;
+        this.fftBackendKind = fftBackendKind;
 
         hannWindow = FftUtility.BuildHannWindow(config.FftSize);
         bandLayout = new SpectrumBandLayout(config);
-        displaySmoother = new EnvelopeSmoother(bandLayout.DisplayRanges.Length, config.DisplaySmoothingRise, config.DisplaySmoothingFall, config.DisplayMotionDamping);
+        displaySmoother = config.OutputMode == AnalyzerOutputMode.OutputOnly
+            ? null
+            : new EnvelopeSmoother(bandLayout.DisplayAggregationRanges.Length, config.DisplaySmoothingRise, config.DisplaySmoothingFall, config.DisplayMotionDamping);
         outputSmoother = new EnvelopeSmoother(config.OutputBandCount, config.OutputSmoothingRise, config.OutputSmoothingFall, config.OutputMotionDamping);
-        powerProcessor = new SpectrumPowerProcessor(config);
+        powerProcessor = new SpectrumPowerProcessor(config, fftBackendKind);
         sampleWindow = new SpectrumSampleWindow(config.FftSize);
+        complexFftBuffer = fftBackendKind == SpectrumFftBackendKind.Complex64 ? new Complex[config.FftSize] : Array.Empty<Complex>();
+        realFftBuffer = fftBackendKind == SpectrumFftBackendKind.RealFloat ? new float[config.FftSize] : Array.Empty<float>();
+        powerSpectrum = new float[(config.FftSize / 2) + 1];
+        displayRaw = new float[bandLayout.DisplayAggregationRanges.Length];
+        outputRaw = new float[bandLayout.OutputAggregationRanges.Length];
     }
 
     public SpectrumFrame? Process(in PcmFrame frame)
@@ -44,7 +62,7 @@ public sealed class SpectrumAnalyzer : IAnalyzer
         while (sampleWindow.SampleCount >= config.FftSize)
         {
             latest = AnalyzeCurrentWindow(frame.TimestampQpc);
-            sampleWindow.Slide(config.HopSize);
+            sampleWindow.Advance(config.HopSize);
         }
 
         return latest;
@@ -52,40 +70,51 @@ public sealed class SpectrumAnalyzer : IAnalyzer
 
     private SpectrumFrame AnalyzeCurrentWindow(long timestampQpc)
     {
-        var fftBuffer = new Complex[config.FftSize];
-        var windowedSamples = new float[config.FftSize];
-        sampleWindow.CopyWindowTo(windowedSamples, config.InputGain, hannWindow);
-
-        for (var i = 0; i < config.FftSize; i++)
+        if (fftBackendKind == SpectrumFftBackendKind.RealFloat)
         {
-            fftBuffer[i] = new Complex(windowedSamples[i], 0d);
+            sampleWindow.CopyWindowTo(realFftBuffer, config.InputGain, hannWindow);
+            powerProcessor.BuildPowerSpectrum(realFftBuffer, powerSpectrum);
         }
-
-        var powerSpectrum = powerProcessor.BuildPowerSpectrum(fftBuffer);
+        else
+        {
+            sampleWindow.CopyWindowTo(complexFftBuffer, config.InputGain, hannWindow);
+            powerProcessor.BuildPowerSpectrum(complexFftBuffer, powerSpectrum);
+        }
 
         var useDb = config.ScaleMode == ScaleMode.Db;
         var minDecibels = config.MinDecibels;
         var maxDecibels = config.MaxDecibels;
-        var displayRaw = LogBandMapper.AggregateBandsPeak(
+        LogBandMapper.AggregateBandsRms(
             powerSpectrum,
-            bandLayout.DisplayRanges,
+            bandLayout.OutputAggregationRanges,
             minDecibels,
             maxDecibels,
             useDb,
             config.UseLinearAmplitude,
-            config.LinearBoost);
-        var outputRaw = LogBandMapper.AggregateBandsRms(
-            powerSpectrum,
-            bandLayout.OutputRanges,
-            minDecibels,
-            maxDecibels,
-            useDb,
-            config.UseLinearAmplitude,
-            config.LinearBoost);
+            config.LinearBoost,
+            outputRaw);
 
-        var displaySmooth = displaySmoother.Process(displayRaw);
-        var outputSmooth = outputSmoother.Process(outputRaw);
+        var outputSmooth = GC.AllocateUninitializedArray<float>(outputRaw.Length);
+        outputSmoother.Process(outputRaw, outputSmooth);
         var level = powerProcessor.ComputeLevel(powerSpectrum);
+
+        if (config.OutputMode == AnalyzerOutputMode.OutputOnly)
+        {
+            return new SpectrumFrame(Array.Empty<float>(), outputSmooth, level, timestampQpc, null, null);
+        }
+
+        LogBandMapper.AggregateBandsPeak(
+            powerSpectrum,
+            bandLayout.DisplayAggregationRanges,
+            minDecibels,
+            maxDecibels,
+            useDb,
+            config.UseLinearAmplitude,
+            config.LinearBoost,
+            displayRaw);
+
+        var displaySmooth = GC.AllocateUninitializedArray<float>(displayRaw.Length);
+        displaySmoother!.Process(displayRaw, displaySmooth);
 
         return new SpectrumFrame(displaySmooth, outputSmooth, level, timestampQpc, bandLayout.DisplayBarX, bandLayout.DisplayBarWidth);
     }

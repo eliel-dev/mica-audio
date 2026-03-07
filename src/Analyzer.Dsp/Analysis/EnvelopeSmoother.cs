@@ -20,6 +20,18 @@ public sealed class EnvelopeSmoother
 
     public float[] Process(float[] input)
     {
+        var output = new float[input.Length];
+        Process(input, output);
+        return output;
+    }
+
+    public void Process(ReadOnlySpan<float> input, Span<float> destination)
+    {
+        if (destination.Length != input.Length)
+        {
+            throw new ArgumentException("Destination length must match input length.", nameof(destination));
+        }
+
         if (smoothedState.Length != input.Length)
         {
             targetState = new float[input.Length];
@@ -38,10 +50,7 @@ public sealed class EnvelopeSmoother
             var smooth = smoothedState[i];
             smooth += (target - smooth) * motionDamping;
             smoothedState[i] = smooth;
+            destination[i] = smooth;
         }
-
-        var output = new float[smoothedState.Length];
-        Array.Copy(smoothedState, output, smoothedState.Length);
-        return output;
     }
 }

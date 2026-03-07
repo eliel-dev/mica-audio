@@ -35,4 +35,20 @@ public class SpectrumSampleWindowTests
         Assert.Equal(5, window.SampleCount);
         Assert.Equal(ExpectedShiftedSamples, output);
     }
+
+    [Fact]
+    public void AppendAndAdvance_ShouldPreserveOrderAcrossRingWrap()
+    {
+        var window = new SpectrumSampleWindow(8);
+        var output = new float[8];
+        var hann = Enumerable.Repeat(1f, 8).ToArray();
+
+        window.Append([1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f]);
+        window.Advance(5);
+        window.Append([9f, 10f, 11f, 12f, 13f]);
+        window.CopyWindowTo(output, 1f, hann);
+
+        Assert.Equal(8, window.SampleCount);
+        Assert.Equal([6f, 7f, 8f, 9f, 10f, 11f, 12f, 13f], output);
+    }
 }

@@ -2,6 +2,7 @@ using MicaAudio.Core.Audio;
 
 namespace MicaAudio.Core.Config;
 
+// DOCS: docs/wiki/modules/analyzer-dsp.md#otimizacao-2026-03---fase-dsp-1-buffers-planos-e-output-only
 public sealed class AnalyzerConfig
 {
     public int SampleRate { get; init; } = 48_000;
@@ -19,6 +20,8 @@ public sealed class AnalyzerConfig
     public float BarSpace { get; init; } = 0.1f;
 
     public int OutputBandCount { get; init; } = 64;
+
+    public AnalyzerOutputMode OutputMode { get; init; } = AnalyzerOutputMode.DisplayAndOutput;
 
     public float MinHz { get; init; } = 30f;
 

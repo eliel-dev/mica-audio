@@ -79,6 +79,10 @@ Pontos centrais do pipeline de analise e captura:
 - [SpectrumSampleWindow](../../../src/Analyzer.Dsp/Analysis/SpectrumSampleWindow.cs#L1)
 - [SpectrumPowerProcessor](../../../src/Analyzer.Dsp/Analysis/SpectrumPowerProcessor.cs#L1)
 - [SpectrumBandLayout](../../../src/Analyzer.Dsp/Analysis/SpectrumBandLayout.cs#L1)
+- [BandAggregationRange](../../../src/Analyzer.Dsp/Analysis/BandAggregationRange.cs#L1)
+- [ComplexFftPlan](../../../src/Analyzer.Dsp/Math/ComplexFftPlan.cs#L1)
+- [RealFftFloatPlan](../../../src/Analyzer.Dsp/Math/RealFftFloatPlan.cs#L1)
+- [SpectrumAnalyzerProcessBenchmark](../../../BenchmarkSuite1/SpectrumAnalyzerProcessBenchmark.cs#L1)
 - [WasapiLoopbackCaptureService](../../../src/Audio.Loopback/Capture/WasapiLoopbackCaptureService.cs#L1)
 - [LoopbackCaptureRuntimeConfig](../../../src/Audio.Loopback/Capture/LoopbackCaptureRuntimeConfig.cs#L1)
 - [LoopbackFrameFactory](../../../src/Audio.Loopback/Capture/LoopbackFrameFactory.cs#L1)
@@ -86,6 +90,7 @@ Pontos centrais do pipeline de analise e captura:
 Observacoes ativas do pipeline:
 
 - `SpectrumAnalyzer` preserva o contrato publico, mas delega janela, FFT/power/weighting e layout de bandas para colaboradores internos testaveis.
+- `Analyzer.Dsp` agora reaproveita buffers por instancia, usa `SpectrumSampleWindow` circular, agrega bandas com pesos precomputados e expõe `AnalyzerOutputMode` de forma aditiva no runtime.
 - `WasapiLoopbackCaptureService` continua sendo a fronteira publica de captura, mas a normalizacao de runtime e a criacao de `PcmFrame` agora estao isoladas para facilitar testes deterministas.
 
 Pontos centrais de runtime do visualizer e payload:
@@ -108,6 +113,7 @@ Pontos centrais do runtime de pipeline no app:
 Observacoes ativas do runtime do app:
 
 - `VisualizerRuntimeSettings` e `AnalyzerRuntimeProfile` passaram a ser a fonte unica de defaults/clamp do visualizer no `.NET 10`.
+- `VisualizerAnalyzerConfigFactory` e `AnalyzerRuntimeProfile` agora carregam `AnalyzerOutputMode`, mantendo `DisplayAndOutput` como default do modo interativo e permitindo `OutputOnly` sem mudar o wire.
 - `LedPayloadFactory` centraliza o remapeamento para `128` bins e evita montagem manual repetida de `LedPayload`.
 - `AudioPipelineCoordinator` atua como orquestrador fino; ciclo de vida, roteamento e frame processing estao separados em colaboradores internos.
 - `ShellPage` resolve abas de forma lazy e isolada; falha da `MainPage` nao derruba mais a shell inteira.
