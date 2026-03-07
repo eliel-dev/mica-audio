@@ -10,7 +10,7 @@ internal static class Hub75PreviewHelper
     public const int PanelWidth = 128;
     public const int PanelHeight = 64;
 
-    private static readonly IReadOnlyDictionary<char, string[]> Font5x7 = new Dictionary<char, string[]>
+    private static readonly Dictionary<char, string[]> Font5x7 = new()
     {
         ['0'] = ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
         ['1'] = ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],

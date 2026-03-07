@@ -23,7 +23,7 @@ using WinRT.Interop;
 namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
-public sealed partial class AppsPage : Page
+public sealed partial class AppsPage : Page, IDisposable
 {
     private const string LocalDraftScope = "__local__";
     private readonly List<AppCatalogItem> allItems = new();
@@ -50,6 +50,7 @@ public sealed partial class AppsPage : Page
     private bool pendingRuntimeAutostart;
     private bool catalogReloadInProgress;
     private RgbaColor[]? latestGifRuntimeFrame;
+    private readonly GifHub75RuntimeProvider gifRuntimeProvider;
     private readonly AppRuntimeProviderRegistry runtimeProviderRegistry;
     private IAppRuntimeProvider? activeRuntimeProvider;
 
@@ -80,7 +81,8 @@ public sealed partial class AppsPage : Page
             decoder: new Hub75GifDecoder(Hub75GifDecoder.DefaultMaxGifFrames),
             formatter: new Hub75FrameFormatter(),
             player: new Hub75GifPlayer(TimeSpan.FromMilliseconds(1000d / GifCatalogAppRuntimeService.TargetFps)));
-        runtimeProviderRegistry = new AppRuntimeProviderRegistry([new GifHub75RuntimeProvider()]);
+        gifRuntimeProvider = new GifHub75RuntimeProvider();
+        runtimeProviderRegistry = new AppRuntimeProviderRegistry([gifRuntimeProvider]);
 
         this.viewModel.ConfigureCommands(ReloadCatalogFromDiskAsyncCommandAsync, SaveSelectedModifierDraftAsync, InstallSelectedAppAsync);
 
@@ -129,6 +131,12 @@ public sealed partial class AppsPage : Page
 
         activePreviewCards.Clear();
         runtimeProviderRegistry.Dispose();
+    }
+
+    public void Dispose()
+    {
+        runtimeProviderRegistry.Dispose();
+        gifRuntimeService.Dispose();
     }
 
     // DOCS: docs/wiki/guides/add-app-catalog-item.md#passos

@@ -5,11 +5,12 @@ using MicaAudio.Core.Presets;
 namespace App.WinUI.Services.Apps.UseCases;
 
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#fluxo-de-execucao
-internal sealed class StartLocalRuntimeUseCase
+internal sealed class StartLocalRuntimeUseCase : IDisposable
 {
     private const string GifAppId = "gifhub75";
     private readonly GifCatalogAppRuntimeService gifRuntimeService;
     private CancellationTokenSource? runtimeCts;
+    private bool disposed;
 
     public StartLocalRuntimeUseCase(GifCatalogAppRuntimeService gifRuntimeService)
     {
@@ -128,6 +129,7 @@ internal sealed class StartLocalRuntimeUseCase
 
     private CancellationToken BeginRequest()
     {
+        ObjectDisposedException.ThrowIf(disposed, this);
         CancelRequest();
         runtimeCts = new CancellationTokenSource();
         return runtimeCts.Token;
@@ -153,5 +155,16 @@ internal sealed class StartLocalRuntimeUseCase
             "stretch" => GifScaleMode.Stretch,
             _ => GifScaleMode.Fit,
         };
+    }
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        CancelRequest();
     }
 }

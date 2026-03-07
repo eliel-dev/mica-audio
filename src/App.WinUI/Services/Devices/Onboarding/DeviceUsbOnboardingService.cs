@@ -12,7 +12,7 @@ internal interface IDeviceUsbOnboardingService
 }
 
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
-internal sealed class DeviceUsbOnboardingService : IDeviceUsbOnboardingService
+internal sealed partial class DeviceUsbOnboardingService : IDeviceUsbOnboardingService
 {
     private static readonly TimeSpan PairingCodeTtl = TimeSpan.FromMinutes(10);
     private readonly DeviceOperationsCoordinator deviceOps;
@@ -70,10 +70,7 @@ internal sealed class DeviceUsbOnboardingService : IDeviceUsbOnboardingService
         }
 
         var pairing = deviceOps.CreatePairingCode(PairingCodeTtl);
-        logger.LogInformation(
-            "Onboarding USB em modo AP concluido. porta={PortName} pairCode={PairCode}",
-            request.PortName,
-            pairing.Code);
+        LogUsbOnboardingReady(logger, request.PortName, pairing.Code);
 
         progress?.Report(new DeviceOnboardingProgress
         {
@@ -106,4 +103,7 @@ internal sealed class DeviceUsbOnboardingService : IDeviceUsbOnboardingService
             Message = message,
         };
     }
+
+    [LoggerMessage(EventId = 1300, Level = LogLevel.Information, Message = "Onboarding USB em modo AP concluido. porta={PortName} pairCode={PairCode}")]
+    private static partial void LogUsbOnboardingReady(ILogger logger, string portName, string pairCode);
 }

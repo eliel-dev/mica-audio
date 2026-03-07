@@ -51,5 +51,5 @@ Observacoes ativas:
 - A DevicesPage diferencia App ativo (online) de Ultimo app conhecido (offline), com acoes no card de resumo (`Testar LED` e `Remover`).
 - O botao `Remover` consolida o fluxo: online tenta revogar/reiniciar e remove local; offline remove apenas local.
 - A DevicesPage usa apenas miniatura inline da lista para preview de app; o painel da direita nao tem preview maior.
-- A DevicesPage usa dashboard ESP + logs por device selecionado, com assinatura/cache para reduzir flicker.
+- A DevicesPage usa painel seguro de status + logs por device selecionado, e nao monta mais o dashboard avancado estilo ESP-Dash no caminho padrao.
 - O DeviceServerHost aplica grace curto de detach WS (500ms) e detach por identidade de socket para reduzir flapping em reconexao rapida.

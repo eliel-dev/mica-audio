@@ -540,9 +540,9 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
     }
 
-    private static bool AreSnapshotsEquivalent(IReadOnlyList<DeviceSnapshot> current, IReadOnlyList<DeviceSnapshot> next)
+    private static bool AreSnapshotsEquivalent(List<DeviceSnapshot> current, DeviceSnapshot[] next)
     {
-        if (current.Count != next.Count)
+        if (current.Count != next.Length)
         {
             return false;
         }

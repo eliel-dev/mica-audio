@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Text.Json;
 using App.WinUI.Models.Apps;
 
@@ -7,6 +8,7 @@ namespace App.WinUI.Services.Apps.UseCases;
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#pontos-de-alteracao-frequente
 internal sealed class AppConfigValidationUseCase
 {
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como use case por instancia para preservar o fluxo atual de DI e permitir evolucao futura sem churn de construtor e chamadas.")]
     public bool TryBuildPayload(AppCatalogItem item, IReadOnlyDictionary<string, string> rawValues, out string configJson, out string error)
     {
         var data = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
@@ -68,5 +70,3 @@ internal sealed class AppConfigValidationUseCase
         }
     }
 }
-
-

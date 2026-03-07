@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -25,7 +24,6 @@ public sealed partial class DevicesPage
     private const double WizardControlHeight = 34d;
     private const double DetailHeaderPadding = 24d;
     private const double MetricsGridGap = 16d;
-    private const double TrendBoxMinHeight = 80d;
 
     // DOCS: docs/wiki/guides/setup-new-device.md#passos
     private ListView DevicesList = null!;
@@ -50,7 +48,6 @@ public sealed partial class DevicesPage
     private Border DashboardLoopTile = null!;
     private Border DashboardHeapTile = null!;
     private Border DashboardPsramTile = null!;
-    private Border DashboardNetworkTile = null!;
     private TextBlock DashboardLoopLoadText = null!;
     private ProgressBar DashboardLoopLoadBar = null!;
     private TextBlock DashboardUptimeText = null!;
@@ -65,37 +62,12 @@ public sealed partial class DevicesPage
     private TextBlock DashboardPortalStateText = null!;
     private TextBlock DashboardLastEventText = null!;
     private TextBlock DashboardAuxLedText = null!;
-    private TextBlock DashboardLoopTrendCaptionText = null!;
-    private TextBlock DashboardLoopTrendPlaceholderText = null!;
-    private Grid DashboardLoopTrendGrid = null!;
-    private readonly List<Border> DashboardLoopTrendBars = new();
-
-    private Border EspDashSectionBorder = null!;
-    private TextBlock EspDashUptimeValueText = null!;
-    private TextBlock EspDashFpsValueText = null!;
-    private TextBlock EspDashHeapValueText = null!;
-    private TextBlock EspDashHeapSubText = null!;
-    private Canvas EspDashLoopChartCanvas = null!;
-    private Polyline EspDashLoopChartLine = null!;
-    private Polygon EspDashLoopChartFill = null!;
-    private Canvas EspDashHeapChartCanvas = null!;
-    private Polyline EspDashHeapChartLine = null!;
-    private Polygon EspDashHeapChartFill = null!;
-    private TextBlock EspGaugePercentText = null!;
-    private Microsoft.UI.Xaml.Shapes.Path EspGaugeFillPath = null!;
     private TextBlock StreamFramesReceivedText = null!;
     private TextBlock StreamFramesAppliedText = null!;
     private TextBlock StreamSuccessRateText = null!;
     private TextBlock StreamGapCountText = null!;
     private TextBlock StreamInvalidCountText = null!;
     private TextBlock StreamLastSequenceText = null!;
-
-    private Border ConnectivitySectionBorder = null!;
-    private TextBlock ConnectivityWifiStateText = null!;
-    private TextBlock ConnectivityPortalStateText = null!;
-    private TextBlock ConnectivityUptimeText = null!;
-    private TextBlock ConnectivityLastEventText = null!;
-    private TextBlock ConnectivityAuxLedText = null!;
 
     private TextBox DeviceLogsTextBox = null!;
 
@@ -160,7 +132,7 @@ public sealed partial class DevicesPage
         SyncPairingFooter();
     }
 
-    private UIElement BuildDeviceListPanel()
+    private Border BuildDeviceListPanel()
     {
         var leftCard = CreatePanelBorder(new Thickness(0), cornerRadius: PanelCornerRadius, elevated: false);
 
@@ -232,7 +204,7 @@ public sealed partial class DevicesPage
         leftCard.Child = leftGrid;
         return leftCard;
     }
-    private UIElement BuildDetailsPanel()
+    private Grid BuildDetailsPanel()
     {
         DeviceDetailsGrid = new Grid
         {
@@ -272,7 +244,7 @@ public sealed partial class DevicesPage
         return DeviceDetailsGrid;
     }
 
-    private UIElement BuildDetailsHeader()
+    private Border BuildDetailsHeader()
     {
         var header = new Border
         {
@@ -358,7 +330,7 @@ public sealed partial class DevicesPage
         return header;
     }
 
-    private UIElement BuildBrightnessSection()
+    private Border BuildBrightnessSection()
     {
         var section = CreateSectionBorder();
 
@@ -436,7 +408,7 @@ public sealed partial class DevicesPage
         return section;
     }
 
-    private UIElement BuildMetricsSection()
+    private StackPanel BuildMetricsSection()
     {
         var wrapper = new StackPanel { Spacing = 0 };
 
@@ -485,13 +457,6 @@ public sealed partial class DevicesPage
         DashboardPsramFragmentationBar.Foreground = new SolidColorBrush(Color.FromArgb(255, 155, 89, 182));
         Grid.SetColumn(DashboardPsramTile, 2);
 
-        DashboardNetworkTile = CreateDashboardTile(new TextBlock
-        {
-            Text = string.Empty,
-            Visibility = Visibility.Collapsed,
-        });
-        DashboardNetworkTile.Visibility = Visibility.Collapsed;
-
         DashboardMetricsGrid.Children.Add(DashboardLoopTile);
         DashboardMetricsGrid.Children.Add(DashboardHeapTile);
         DashboardMetricsGrid.Children.Add(DashboardPsramTile);
@@ -501,7 +466,7 @@ public sealed partial class DevicesPage
     }
 
     // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-dashboard-online-seguro
-    private UIElement BuildStatusSection()
+    private Border BuildStatusSection()
     {
         DashboardStatusSectionBorder = CreateSectionBorder();
 
@@ -534,223 +499,7 @@ public sealed partial class DevicesPage
         return DashboardStatusSectionBorder;
     }
 
-    private UIElement BuildTrendSection()
-    {
-        var section = CreateSectionBorder();
-
-        var stack = new StackPanel { Spacing = 12 };
-
-        DashboardLoopTrendCaptionText = new TextBlock
-        {
-            Text = "Historico de uso do processador",
-            Opacity = 0.86,
-            FontSize = 14,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        };
-        stack.Children.Add(DashboardLoopTrendCaptionText);
-
-        var trendCard = CreateDashboardTile(null!);
-        trendCard.Padding = new Thickness(16, 12, 16, 12);
-        trendCard.MinHeight = TrendBoxMinHeight;
-
-        var trendCardContent = new StackPanel
-        {
-            Spacing = 8,
-            MinHeight = TrendBoxMinHeight - 24,
-        };
-
-        DashboardLoopTrendPlaceholderText = new TextBlock
-        {
-            Text = "Historico de uso do processador: selecione um dispositivo",
-            Opacity = 0.72,
-            FontSize = 14,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        trendCardContent.Children.Add(DashboardLoopTrendPlaceholderText);
-
-        DashboardLoopTrendGrid = new Grid
-        {
-            Height = 50,
-            VerticalAlignment = VerticalAlignment.Bottom,
-            Visibility = Visibility.Collapsed,
-        };
-
-        for (var index = 0; index < 20; index++)
-        {
-            DashboardLoopTrendGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var trendBar = new Border
-            {
-                Height = 2,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                Margin = new Thickness(1, 0, 1, 0),
-                CornerRadius = new CornerRadius(2),
-                Opacity = 0.4,
-                Background = new SolidColorBrush(Color.FromArgb(255, 123, 95, 20)),
-            };
-            Grid.SetColumn(trendBar, index);
-            DashboardLoopTrendGrid.Children.Add(trendBar);
-            DashboardLoopTrendBars.Add(trendBar);
-        }
-
-        trendCardContent.Children.Add(DashboardLoopTrendGrid);
-        trendCard.Child = trendCardContent;
-        stack.Children.Add(trendCard);
-        section.Child = stack;
-        return section;
-    }
-
-    private UIElement BuildEspDashSection()
-    {
-        EspDashSectionBorder = CreateSectionBorder();
-        EspDashSectionBorder.Padding = new Thickness(24);
-
-        var stack = new StackPanel { Spacing = 16 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Status em tempo real",
-            FontSize = 16,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        });
-
-        var statRow = new Grid { ColumnSpacing = 12 };
-        statRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        statRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        statRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var uptimeCard = CreateDashboardTile(BuildStatCard("Ligado ha", out EspDashUptimeValueText, "desde o ultimo reinicio"));
-        Grid.SetColumn(uptimeCard, 0);
-        statRow.Children.Add(uptimeCard);
-
-        var fpsCard = CreateDashboardTile(BuildStatCard("Imagens por segundo", out EspDashFpsValueText, "enviadas ao painel"));
-        Grid.SetColumn(fpsCard, 1);
-        statRow.Children.Add(fpsCard);
-
-        var heapCard = CreateDashboardTile(BuildStatCard("RAM disponivel", out EspDashHeapValueText, string.Empty, out EspDashHeapSubText));
-        Grid.SetColumn(heapCard, 2);
-        statRow.Children.Add(heapCard);
-
-        stack.Children.Add(statRow);
-
-        var chartRow = new Grid { ColumnSpacing = 12 };
-        chartRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        chartRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var loopChartCard = CreateDashboardTile(BuildChartCard("Uso do processador (historico)", out EspDashLoopChartCanvas, out EspDashLoopChartFill, out EspDashLoopChartLine));
-        Grid.SetColumn(loopChartCard, 0);
-        chartRow.Children.Add(loopChartCard);
-
-        var heapChartCard = CreateDashboardTile(BuildChartCard("RAM disponivel (historico)", out EspDashHeapChartCanvas, out EspDashHeapChartFill, out EspDashHeapChartLine));
-        Grid.SetColumn(heapChartCard, 1);
-        chartRow.Children.Add(heapChartCard);
-
-        stack.Children.Add(chartRow);
-
-        var gaugeRow = new Grid { ColumnSpacing = 8 };
-        gaugeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160) });
-        gaugeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var gaugeStack = new StackPanel { Spacing = 8 };
-        gaugeStack.Children.Add(new TextBlock
-        {
-            Text = "USO DO ESP32",
-            FontSize = 10,
-            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-            Opacity = 0.7,
-        });
-
-        var gaugeCanvas = new Canvas
-        {
-            Width = 120,
-            Height = 80,
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-
-        var gaugeTrackPath = new Microsoft.UI.Xaml.Shapes.Path
-        {
-            Data = CreateGaugeArcGeometry(),
-            Stroke = new SolidColorBrush(Color.FromArgb(32, 255, 255, 255)),
-            StrokeThickness = 10,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round,
-        };
-        gaugeCanvas.Children.Add(gaugeTrackPath);
-
-        EspGaugeFillPath = new Microsoft.UI.Xaml.Shapes.Path
-        {
-            Data = CreateGaugeArcGeometry(),
-            Stroke = new SolidColorBrush(Color.FromArgb(255, 0, 120, 212)),
-            StrokeThickness = 10,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round,
-            StrokeDashArray = new DoubleCollection { 157 },
-            StrokeDashOffset = 157,
-        };
-        gaugeCanvas.Children.Add(EspGaugeFillPath);
-
-        EspGaugePercentText = new TextBlock
-        {
-            Text = "-",
-            FontSize = 28,
-            FontWeight = Microsoft.UI.Text.FontWeights.Light,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, -2, 0, 0),
-        };
-        gaugeStack.Children.Add(gaugeCanvas);
-        gaugeStack.Children.Add(EspGaugePercentText);
-
-        var gaugeCard = CreateDashboardTile(gaugeStack);
-        gaugeCard.Padding = new Thickness(12, 12, 14, 12);
-        gaugeRow.Children.Add(gaugeCard);
-
-        var streamCard = CreateDashboardTile(BuildStreamStatsTable());
-        Grid.SetColumn(streamCard, 1);
-        gaugeRow.Children.Add(streamCard);
-
-        stack.Children.Add(gaugeRow);
-
-        EspDashSectionBorder.Child = stack;
-        EspDashSectionBorder.Visibility = Visibility.Collapsed;
-        return EspDashSectionBorder;
-    }
-
-    private UIElement BuildConnectivitySection()
-    {
-        ConnectivitySectionBorder = new Border
-        {
-            Padding = new Thickness(20, 10, 20, 10),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 1, 0, 1),
-            Background = ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32)),
-        };
-        ConnectivitySectionBorder.Visibility = Visibility.Collapsed;
-
-        var row = new WrapGrid
-        {
-            Orientation = Orientation.Horizontal,
-            MaximumRowsOrColumns = 5,
-            HorizontalChildrenAlignment = HorizontalAlignment.Left,
-            VerticalChildrenAlignment = VerticalAlignment.Center,
-            ItemWidth = 250,
-            Margin = new Thickness(0),
-        };
-
-        ConnectivityWifiStateText = BuildConnectivityItem("Rede Wi-Fi:", "-");
-        ConnectivityPortalStateText = BuildConnectivityItem("Modo configuracao:", "-");
-        ConnectivityUptimeText = BuildConnectivityItem("Ligado ha:", "-");
-        ConnectivityLastEventText = BuildConnectivityItem("Ultimo evento de rede:", "-");
-        ConnectivityAuxLedText = BuildConnectivityItem("LED auxiliar:", "-");
-
-        row.Children.Add(ConnectivityWifiStateText);
-        row.Children.Add(ConnectivityPortalStateText);
-        row.Children.Add(ConnectivityUptimeText);
-        row.Children.Add(ConnectivityLastEventText);
-        row.Children.Add(ConnectivityAuxLedText);
-
-        ConnectivitySectionBorder.Child = row;
-        return ConnectivitySectionBorder;
-    }
-
-    private UIElement BuildLogsSection()
+    private Border BuildLogsSection()
     {
         var section = new Border
         {
@@ -789,7 +538,7 @@ public sealed partial class DevicesPage
         return section;
     }
 
-    private UIElement BuildPairingFooter()
+    private Border BuildPairingFooter()
     {
         PairingFooterBorder = new Border
         {
@@ -829,7 +578,7 @@ public sealed partial class DevicesPage
         Grid.SetRow(PairingFooterBorder, 1);
         return PairingFooterBorder;
     }
-    private UIElement BuildWizardOverlay()
+    private Grid BuildWizardOverlay()
     {
         WizardOverlay = new Grid
         {
@@ -1038,30 +787,7 @@ public sealed partial class DevicesPage
         return WizardOverlay;
     }
 
-    private static Geometry CreateGaugeArcGeometry()
-    {
-        var figure = new PathFigure
-        {
-            StartPoint = new Windows.Foundation.Point(15, 70),
-            IsClosed = false,
-            Segments =
-            {
-                new ArcSegment
-                {
-                    Point = new Windows.Foundation.Point(105, 70),
-                    Size = new Windows.Foundation.Size(50, 50),
-                    SweepDirection = SweepDirection.Clockwise,
-                    IsLargeArc = false,
-                },
-            },
-        };
-
-        var geometry = new PathGeometry();
-        geometry.Figures.Add(figure);
-        return geometry;
-    }
-
-    private static UIElement BuildMetricCard(string title, out TextBlock valueText, out ProgressBar progressBar, out TextBlock subText)
+    private static StackPanel BuildMetricCard(string title, out TextBlock valueText, out ProgressBar progressBar, out TextBlock subText)
     {
         var stack = new StackPanel { Spacing = 8 };
 
@@ -1102,81 +828,7 @@ public sealed partial class DevicesPage
 
         return stack;
     }
-
-    private static UIElement BuildStatCard(string title, out TextBlock valueText, string subtitle)
-    {
-        return BuildStatCard(title, out valueText, subtitle, out _);
-    }
-
-    private static UIElement BuildStatCard(string title, out TextBlock valueText, string subtitle, out TextBlock subtitleText)
-    {
-        var stack = new StackPanel { Spacing = 8 };
-
-        stack.Children.Add(new TextBlock
-        {
-            Text = title,
-            FontSize = 12,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Opacity = 0.88,
-        });
-
-        valueText = new TextBlock
-        {
-            Text = "-",
-            FontSize = 24,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            LineHeight = 26,
-        };
-        stack.Children.Add(valueText);
-
-        subtitleText = new TextBlock
-        {
-            Text = subtitle,
-            FontSize = 12,
-            Opacity = 0.7,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        stack.Children.Add(subtitleText);
-
-        return stack;
-    }
-    private static UIElement BuildChartCard(string title, out Canvas canvas, out Polygon fill, out Polyline line)
-    {
-        var stack = new StackPanel { Spacing = 12 };
-
-        stack.Children.Add(new TextBlock
-        {
-            Text = title,
-            FontSize = 12,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Opacity = 0.88,
-        });
-
-        canvas = new Canvas
-        {
-            Height = 120,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-
-        fill = new Polygon
-        {
-            Fill = new SolidColorBrush(Color.FromArgb(48, 0, 120, 212)),
-            StrokeThickness = 0,
-        };
-        canvas.Children.Add(fill);
-
-        line = new Polyline
-        {
-            StrokeThickness = 2,
-            Stroke = new SolidColorBrush(Color.FromArgb(255, 0, 120, 212)),
-        };
-        canvas.Children.Add(line);
-
-        stack.Children.Add(canvas);
-        return stack;
-    }
-
-    private UIElement BuildStreamStatsTable()
+    private StackPanel BuildStreamStatsTable()
     {
         var host = new StackPanel { Spacing = 6 };
 
@@ -1216,7 +868,7 @@ public sealed partial class DevicesPage
         return host;
     }
 
-    private static UIElement BuildStreamRow(string key, out TextBlock valueText)
+    private static Border BuildStreamRow(string key, out TextBlock valueText)
     {
         var row = new Grid();
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -1274,7 +926,7 @@ public sealed partial class DevicesPage
         };
     }
 
-    private static UIElement BuildButtonWithGlyph(string glyph, string label)
+    private static StackPanel BuildButtonWithGlyph(string glyph, string label)
     {
         var stack = new StackPanel
         {

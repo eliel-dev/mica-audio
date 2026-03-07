@@ -10,6 +10,41 @@ trim_trailing_whitespace = true
 dotnet_sort_system_directives_first = true
 csharp_new_line_before_open_brace = all
 csharp_prefer_braces = true:suggestion
-dotnet_diagnostic.CA2000.severity = warning
-dotnet_diagnostic.CA2016.severity = warning
+dotnet_diagnostic.CA1068.severity = error
+dotnet_diagnostic.CA1716.severity = error
+dotnet_diagnostic.CA1725.severity = error
+dotnet_diagnostic.CA1805.severity = error
+dotnet_diagnostic.CA1822.severity = error
+dotnet_diagnostic.CA1826.severity = error
+dotnet_diagnostic.CA1852.severity = error
+dotnet_diagnostic.CA1865.severity = error
+dotnet_diagnostic.CA1859.severity = error
+dotnet_diagnostic.CA1861.severity = error
+dotnet_diagnostic.CA2016.severity = error
+dotnet_diagnostic.CA2263.severity = error
 dotnet_diagnostic.CA5394.severity = warning
+
+[src/**/*.cs]
+dotnet_diagnostic.CA1001.severity = error
+dotnet_diagnostic.CA1305.severity = error
+dotnet_diagnostic.CA1416.severity = error
+dotnet_diagnostic.CA1513.severity = error
+dotnet_diagnostic.CA1848.severity = error
+dotnet_diagnostic.CA1873.severity = error
+dotnet_diagnostic.CA2000.severity = error
+dotnet_diagnostic.CA2208.severity = error
+dotnet_diagnostic.CA2254.severity = error
+dotnet_diagnostic.MVVMTK0045.severity = error
+
+[tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1001.severity = error
+dotnet_diagnostic.CA1305.severity = error
+dotnet_diagnostic.CA1416.severity = error
+dotnet_diagnostic.CA1513.severity = error
+dotnet_diagnostic.CA2000.severity = error
+dotnet_diagnostic.CA2208.severity = error
+dotnet_diagnostic.xUnit1030.severity = error
+
+[BenchmarkSuite1/**.cs]
+dotnet_diagnostic.CA5394.severity = none

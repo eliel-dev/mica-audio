@@ -44,7 +44,7 @@ public sealed class DeviceOperationsCoordinatorDeviceLogsTests
                 Message = "Comando recebido no device.",
             });
 
-            await Task.Delay(10).ConfigureAwait(false);
+            await Task.Delay(10, CancellationToken.None).ConfigureAwait(false);
 
             runtime.EmitCommandProgress(new DeviceCommandProgressMessage
             {

@@ -85,7 +85,7 @@ internal sealed class AppCatalogService : IAppCatalogService
         return userDocument.Apps.Any(static app => app.Preview is null || app.Modifiers.Count == 0 || app.Runtime is null);
     }
 
-    private IReadOnlyList<AppCatalogItem> MergeWithSeed(AppCatalogDocument seed, AppCatalogDocument? userDocument)
+    private static AppCatalogItem[] MergeWithSeed(AppCatalogDocument seed, AppCatalogDocument? userDocument)
     {
         var seedById = seed.Apps
             .Where(static app => app is not null && app.IsValid())
@@ -196,7 +196,7 @@ internal sealed class AppCatalogService : IAppCatalogService
             throw new InvalidDataException($"SchemaVersion de seed nao suportada: {seed.SchemaVersion}.");
         }
 
-        if (seed.Apps.Count == 0)
+        if (seed.Apps.Length == 0)
         {
             throw new InvalidDataException("Catalogo seed nao possui apps validos.");
         }
@@ -238,6 +238,6 @@ internal sealed class AppCatalogService : IAppCatalogService
     {
         public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
-        public IReadOnlyList<AppCatalogItem> Apps { get; init; } = Array.Empty<AppCatalogItem>();
+        public AppCatalogItem[] Apps { get; init; } = [];
     }
 }

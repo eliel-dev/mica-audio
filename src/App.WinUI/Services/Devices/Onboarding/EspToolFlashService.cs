@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace App.WinUI.Services.Devices.Onboarding;
 
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
-internal sealed class EspToolFlashService : IEspToolFlashService
+internal sealed partial class EspToolFlashService : IEspToolFlashService
 {
     private const int MaxCapturedOutputLines = 12;
     private static readonly Regex PercentRegex = new(@"(\d{1,3})\s*%", RegexOptions.Compiled);
@@ -95,7 +95,7 @@ internal sealed class EspToolFlashService : IEspToolFlashService
                 return;
             }
 
-            logger.LogInformation("[esptool] {Line}", line);
+            LogEsptoolLine(logger, line);
 
             lock (capturedOutputGate)
             {
@@ -172,7 +172,7 @@ internal sealed class EspToolFlashService : IEspToolFlashService
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Falha ao executar esptool.");
+            LogEsptoolExecutionFailure(logger, ex);
             return new EspToolFlashResult
             {
                 Success = false,
@@ -295,4 +295,10 @@ internal sealed class EspToolFlashService : IEspToolFlashService
     }
 
     private sealed record EsptoolInvocation(string FileName, IReadOnlyList<string> Arguments);
+
+    [LoggerMessage(EventId = 1400, Level = LogLevel.Information, Message = "[esptool] {Line}")]
+    private static partial void LogEsptoolLine(ILogger logger, string line);
+
+    [LoggerMessage(EventId = 1401, Level = LogLevel.Error, Message = "Falha ao executar esptool.")]
+    private static partial void LogEsptoolExecutionFailure(ILogger logger, Exception exception);
 }

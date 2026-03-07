@@ -16,7 +16,7 @@ public sealed class AppConfigUseCasesTests
         var root = CreateTempRoot();
         try
         {
-            var store = new AppModifierStateStore(CreateOptions(root));
+            using var store = new AppModifierStateStore(CreateOptions(root));
             var saveUseCase = new SaveAppConfigUseCase(store);
             var validationUseCase = new AppConfigValidationUseCase();
             var fakeDeployment = new FakeAppDeploymentService();

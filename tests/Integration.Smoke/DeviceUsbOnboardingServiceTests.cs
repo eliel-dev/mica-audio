@@ -112,11 +112,23 @@ public sealed class DeviceUsbOnboardingServiceTests
 
     private sealed class FakeDeviceOperationsRuntime : IDeviceOperationsRuntime
     {
-        public event EventHandler? DevicesChanged;
+        public event EventHandler? DevicesChanged
+        {
+            add { }
+            remove { }
+        }
 
-        public event EventHandler<string>? LogMessage;
+        public event EventHandler<string>? LogMessage
+        {
+            add { }
+            remove { }
+        }
 
-        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
+        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+        {
+            add { }
+            remove { }
+        }
 
         public string GetServerBaseAddress() => "http://127.0.0.1:5272";
 

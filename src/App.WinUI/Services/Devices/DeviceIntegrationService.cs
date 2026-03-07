@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
-internal sealed class DeviceIntegrationService : IAsyncDisposable
+internal sealed partial class DeviceIntegrationService : IAsyncDisposable
 {
     private readonly IDeviceServerHost serverHost;
     private readonly IDeviceRegistryStore registryStore;
@@ -43,7 +43,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         serverHost.DevicesChanged += OnDevicesChanged;
         serverHost.LogMessage += (_, msg) =>
         {
-            this.logger.LogInformation("{Message}", msg);
+            LogServerHostMessage(this.logger, msg);
             LogMessage?.Invoke(this, msg);
         };
     }
@@ -72,7 +72,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         var settings = settingsDomainService.Migrate(await settingsRepository.LoadAsync(cancellationToken).ConfigureAwait(false));
         if (settings.AllowLegacyWebSocketQueryToken)
         {
-            logger.LogWarning("Modo legado de autenticacao WS via query-string esta ATIVO por settings.json.");
+            LogLegacyWebSocketQueryTokenEnabled(logger);
         }
 
         await serverHost.StartAsync(new ServerConfig
@@ -86,8 +86,9 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
             AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
         }, cancellationToken).ConfigureAwait(false);
 
-        logger.LogInformation("Servidor HTTP publico: {BaseAddress}", GetServerBaseAddress());
-        LogMessage?.Invoke(this, $"Servidor HTTP publico: {GetServerBaseAddress()}");
+        var baseAddress = GetServerBaseAddress();
+        LogPublicServerBaseAddress(logger, baseAddress);
+        LogMessage?.Invoke(this, $"Servidor HTTP publico: {baseAddress}");
         started = true;
     }
 
@@ -152,7 +153,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Falha ao salvar devices.json");
+            LogRegistrySaveFailed(logger, ex);
             LogMessage?.Invoke(this, $"Falha ao salvar devices.json: {ex.Message}");
         }
     }
@@ -247,4 +248,16 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
             || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
             || (bytes[0] == 192 && bytes[1] == 168);
     }
+
+    [LoggerMessage(EventId = 1200, Level = LogLevel.Information, Message = "Device server log: {Message}")]
+    private static partial void LogServerHostMessage(ILogger logger, string message);
+
+    [LoggerMessage(EventId = 1201, Level = LogLevel.Warning, Message = "Modo legado de autenticacao WS via query-string esta ATIVO por settings.json.")]
+    private static partial void LogLegacyWebSocketQueryTokenEnabled(ILogger logger);
+
+    [LoggerMessage(EventId = 1202, Level = LogLevel.Information, Message = "Servidor HTTP publico: {BaseAddress}")]
+    private static partial void LogPublicServerBaseAddress(ILogger logger, string baseAddress);
+
+    [LoggerMessage(EventId = 1203, Level = LogLevel.Error, Message = "Falha ao salvar devices.json")]
+    private static partial void LogRegistrySaveFailed(ILogger logger, Exception exception);
 }

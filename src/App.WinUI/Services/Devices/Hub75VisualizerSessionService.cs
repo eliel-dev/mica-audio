@@ -496,10 +496,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (disposed)
-        {
-            throw new ObjectDisposedException(nameof(Hub75VisualizerSessionService));
-        }
+        ObjectDisposedException.ThrowIf(disposed, this);
     }
 
     private readonly record struct DeviceCommandPlan(

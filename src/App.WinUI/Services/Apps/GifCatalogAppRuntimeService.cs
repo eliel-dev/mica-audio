@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using App.WinUI.Services.Gif;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
@@ -8,6 +9,7 @@ using Output.Led;
 namespace App.WinUI.Services.Apps;
 
 // DOCS: docs/wiki/guides/load-gif-hub75.md#gif-app-runtime-na-loja
+[SupportedOSPlatform("windows")]
 internal sealed class GifCatalogAppRuntimeService : IDisposable
 {
     public const int TargetFps = 12;

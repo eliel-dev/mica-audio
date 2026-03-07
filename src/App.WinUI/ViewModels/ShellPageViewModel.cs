@@ -5,10 +5,16 @@ namespace App.WinUI.ViewModels;
 internal sealed partial class ShellPageViewModel : ObservableObject
 {
     [ObservableProperty]
-    private string currentTag = string.Empty;
+    public partial string CurrentTag { get; set; }
 
     [ObservableProperty]
-    private string serverFooterText = "Servidor: inicializando...";
+    public partial string ServerFooterText { get; set; }
+
+    public ShellPageViewModel()
+    {
+        CurrentTag = string.Empty;
+        ServerFooterText = "Servidor: inicializando...";
+    }
 }
 
 

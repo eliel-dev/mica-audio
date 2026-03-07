@@ -85,12 +85,12 @@ public sealed class VisualizerPresetSmokeTests
 
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-bars.json"), JsonSerializer.Serialize(outdatedDefault)).ConfigureAwait(false);
-            await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-user-preset.json"), JsonSerializer.Serialize(customUserPreset)).ConfigureAwait(false);
-            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel.json"), JsonSerializer.Serialize(retiredClassic)).ConfigureAwait(false);
-            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel-shader.json"), JsonSerializer.Serialize(retiredShader)).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-bars.json"), JsonSerializer.Serialize(outdatedDefault));
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-user-preset.json"), JsonSerializer.Serialize(customUserPreset));
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel.json"), JsonSerializer.Serialize(retiredClassic));
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "spectrum-vizzy-hyper-tunnel-shader.json"), JsonSerializer.Serialize(retiredShader));
 
-            var loaded = await LoadPresetsThroughRepositoryAsync(appDataRoot).ConfigureAwait(false);
+            var loaded = await LoadPresetsThroughRepositoryAsync(appDataRoot);
 
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-blob-neon", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-orbit-rings", StringComparison.OrdinalIgnoreCase));
@@ -156,10 +156,10 @@ public sealed class VisualizerPresetSmokeTests
 
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-hyper-classic.json"), JsonSerializer.Serialize(classicCustom)).ConfigureAwait(false);
-            await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-hyper-shader.json"), JsonSerializer.Serialize(shaderCustom)).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-hyper-classic.json"), JsonSerializer.Serialize(classicCustom));
+            await File.WriteAllTextAsync(Path.Combine(presetsDir, "custom-hyper-shader.json"), JsonSerializer.Serialize(shaderCustom));
 
-            var loaded = await LoadPresetsThroughRepositoryAsync(appDataRoot).ConfigureAwait(false);
+            var loaded = await LoadPresetsThroughRepositoryAsync(appDataRoot);
 
             var migratedClassic = loaded.Single(static preset => string.Equals(preset.PresetId, "custom-hyper-classic", StringComparison.OrdinalIgnoreCase));
             var migratedShader = loaded.Single(static preset => string.Equals(preset.PresetId, "custom-hyper-shader", StringComparison.OrdinalIgnoreCase));
@@ -443,7 +443,7 @@ public sealed class VisualizerPresetSmokeTests
 
         var taskObject = loadMethod.Invoke(repository, new object?[] { CancellationToken.None })!;
         var task = (Task)taskObject;
-        await task.ConfigureAwait(false);
+        await task;
 
         var resultProperty = taskObject.GetType().GetProperty("Result", BindingFlags.Public | BindingFlags.Instance)!;
         var result = resultProperty.GetValue(taskObject)!;

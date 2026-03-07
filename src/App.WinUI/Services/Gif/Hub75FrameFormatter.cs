@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 
@@ -6,6 +7,7 @@ namespace App.WinUI.Services.Gif;
 // DOCS: docs/wiki/guides/load-gif-hub75.md#pipeline-de-formatacao-hub75
 internal sealed class Hub75FrameFormatter
 {
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido por instancia para preservar a composicao atual do runtime GIF e evitar churn desnecessario em injecao e testes.")]
     public RgbaColor[] Format(DecodedGifFrame sourceFrame, GifScaleMode scaleMode)
     {
         ArgumentNullException.ThrowIfNull(sourceFrame);

@@ -14,7 +14,7 @@ public sealed class AppModifierStateStoreTests
         try
         {
             var options = CreateOptions(root);
-            var store = new AppModifierStateStore(options);
+            using var store = new AppModifierStateStore(options);
 
             await store.SetDraftAsync(
                 "device-a",
@@ -49,7 +49,7 @@ public sealed class AppModifierStateStoreTests
         try
         {
             var options = CreateOptions(root);
-            var store = new AppModifierStateStore(options);
+            using var store = new AppModifierStateStore(options);
 
             await store.SetDraftAsync(
                 "device-x",
@@ -63,7 +63,7 @@ public sealed class AppModifierStateStoreTests
                     },
                 });
 
-            var reloaded = new AppModifierStateStore(options);
+            using var reloaded = new AppModifierStateStore(options);
             await reloaded.LoadAsync();
             var draft = await reloaded.GetDraftAsync("device-x", "analogclock");
 

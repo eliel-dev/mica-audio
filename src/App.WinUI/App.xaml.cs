@@ -347,7 +347,7 @@ public partial class App : Application
         var logger = Services?.GetService<ILogger<App>>();
         if (logger is not null)
         {
-            logger.LogCritical(ex, header);
+            LogUnhandledAppFailure(logger, ex, header);
             return;
         }
 
@@ -377,7 +377,7 @@ public partial class App : Application
         return Path.Combine(root, "crash.log");
     }
 
-    private static UIElement BuildStartupFallbackView(Exception ex)
+    private static ScrollViewer BuildStartupFallbackView(Exception ex)
     {
         var panel = new StackPanel
         {
@@ -408,6 +408,9 @@ public partial class App : Application
             Content = panel,
         };
     }
+
+    [LoggerMessage(EventId = 1001, Level = LogLevel.Critical, Message = "Unhandled app failure: {Header}")]
+    private static partial void LogUnhandledAppFailure(ILogger logger, Exception exception, string header);
 }
 
 

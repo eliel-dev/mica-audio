@@ -19,7 +19,7 @@ public sealed class DeviceIntegrationServiceLegacyWsSettingTests
         try
         {
             var settingsRepository = CreateSettingsRepository(appDataRoot);
-            var fakeHost = new FakeDeviceServerHost();
+            using var fakeHost = new FakeDeviceServerHost();
             var fakeRegistry = new FakeDeviceRegistryStore();
             var domainService = new AppSettingsDomainService();
 
@@ -53,7 +53,7 @@ public sealed class DeviceIntegrationServiceLegacyWsSettingTests
                 AllowLegacyWebSocketQueryToken = true,
             });
 
-            var fakeHost = new FakeDeviceServerHost();
+            using var fakeHost = new FakeDeviceServerHost();
             var fakeRegistry = new FakeDeviceRegistryStore();
             var domainService = new AppSettingsDomainService();
 
@@ -102,15 +102,27 @@ public sealed class DeviceIntegrationServiceLegacyWsSettingTests
             => Task.CompletedTask;
     }
 
-    private sealed class FakeDeviceServerHost : IDeviceServerHost
+    private sealed class FakeDeviceServerHost : IDeviceServerHost, IDisposable
     {
         public ServerConfig? LastStartConfig { get; private set; }
 
-#pragma warning disable CS0067
-        public event EventHandler? DevicesChanged;
-        public event EventHandler<string>? LogMessage;
-        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
-#pragma warning restore CS0067
+        public event EventHandler? DevicesChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<string>? LogMessage
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+        {
+            add { }
+            remove { }
+        }
 
         public Task StartAsync(ServerConfig config, CancellationToken cancellationToken = default)
         {
@@ -161,6 +173,10 @@ public sealed class DeviceIntegrationServiceLegacyWsSettingTests
         public bool RemoveDevice(string deviceId) => false;
 
         public void BroadcastFrame(byte[] framePayload)
+        {
+        }
+
+        public void Dispose()
         {
         }
 

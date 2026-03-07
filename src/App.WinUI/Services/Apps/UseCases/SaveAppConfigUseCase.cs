@@ -20,7 +20,14 @@ internal sealed class SaveAppConfigUseCase
             return SaveAppConfigResult.Failure("Repositorio de modificadores indisponivel.");
         }
 
-        await modifierStore.SetDraftAsync(scope, item.Id, new AppConfigDraft { Values = new Dictionary<string, string>(rawValues, StringComparer.OrdinalIgnoreCase) }).ConfigureAwait(false);
+        await modifierStore.SetDraftAsync(
+            scope,
+            item.Id,
+            new AppConfigDraft
+            {
+                Values = new Dictionary<string, string>(rawValues, StringComparer.OrdinalIgnoreCase),
+            },
+            cancellationToken).ConfigureAwait(false);
         return SaveAppConfigResult.FromSuccess(rawValues);
     }
 }

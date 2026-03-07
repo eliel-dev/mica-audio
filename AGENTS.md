@@ -14,6 +14,13 @@ Padronizar execucao de tarefas para reduzir drift e erro em um fluxo solo com IA
 4. Em mudanca estrutural, criar handoff em `docs/handoffs/YYYY-MM-DD-<slug>.md` usando template oficial.
 5. Atualizar backlinks `DOCS:` em arquivos-chave alterados.
 
+## Regra obrigatoria de qualidade para IA
+
+1. Todo codigo escrito ou alterado por IA deve seguir os padroes de qualidade e melhores praticas atuais da stack alvo.
+2. Para temas temporalmente instaveis, a IA deve consultar a data atual do ambiente antes de decidir padrao, recomendacao ou configuracao.
+3. Para .NET/C#, a IA deve se basear em documentacao oficial Microsoft/CommunityToolkit compativel com o SDK/TFM do repositorio, hoje `.NET 10` / `C# 14`.
+4. A IA nao deve introduzir `NoWarn` amplo, pacotes extras de analyzers ou supressoes locais sem justificativa tecnica objetiva e documentada.
+
 ## Acoes proibidas sem aprovacao explicita
 
 - `git reset --hard`

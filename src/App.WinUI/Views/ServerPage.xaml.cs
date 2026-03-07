@@ -1,5 +1,6 @@
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
+using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
@@ -91,7 +92,7 @@ public sealed partial class ServerPage : Page
         currentState = state;
         var refreshText = state.LastRefreshUtc == default
             ? "sem atualizacao"
-            : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss");
+            : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture);
 
         ServerInfoText.Text = $"Servidor: {state.ServerBaseAddress} | mDNS: _micaaudio._tcp | Atualizado: {refreshText}";
         UpdateLogs(state.Logs);

@@ -5,6 +5,8 @@ namespace Output.Tests;
 
 public sealed class DeviceListVisibilityPolicyTests
 {
+    private static readonly string[] ExpectedOrderedDeviceIds = ["device-a", "device-b"];
+
     [Fact]
     public void BuildVisibleList_ShouldKeepOfflineDevicesVisible()
     {
@@ -33,7 +35,7 @@ public sealed class DeviceListVisibilityPolicyTests
 
         var result = DeviceListVisibilityPolicy.BuildVisibleList(devices, DeviceLifecycleThresholds.Default, now);
 
-        Assert.Equal(new[] { "device-a", "device-b" }, result.Select(static device => device.DeviceId));
+        Assert.Equal(ExpectedOrderedDeviceIds, result.Select(static device => device.DeviceId));
     }
 
     [Fact]
@@ -64,7 +66,7 @@ public sealed class DeviceListVisibilityPolicyTests
 
         var result = DeviceListVisibilityPolicy.BuildVisibleList(devices, DeviceLifecycleThresholds.Default, now);
 
-        Assert.Equal(new[] { "device-a", "device-b" }, result.Select(static device => device.DeviceId));
+        Assert.Equal(ExpectedOrderedDeviceIds, result.Select(static device => device.DeviceId));
     }
 
     private static DeviceSnapshot CreateDevice(

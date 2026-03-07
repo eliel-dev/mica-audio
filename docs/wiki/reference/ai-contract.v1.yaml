@@ -44,6 +44,14 @@
                                       "## Riscos e rollback",
                                       "## Proximos passos"
                                   ],
+    "ai_quality_policy":  {
+                              "require_current_best_practices":  true,
+                              "require_current_date_check_for_temporal_guidance":  true,
+                              "dotnet_primary_sources":  [
+                                                             "https://learn.microsoft.com/en-us/dotnet/",
+                                                             "https://learn.microsoft.com/en-us/dotnet/communitytoolkit/"
+                                                         ]
+                          },
     "forbidden_commands":  [
                                "git reset --hard",
                                "git checkout --",

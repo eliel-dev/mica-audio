@@ -75,7 +75,7 @@ internal sealed class AudioPipelineCoordinator
         LatestFrame = null;
         ConfigureOutputs(hubPreviewEnabled, brightness);
 
-        loopTask = Task.Run(() => PipelineLoopAsync(cts.Token));
+        loopTask = Task.Run(() => PipelineLoopAsync(cts.Token), CancellationToken.None);
         running = true;
         StatusChanged?.Invoke(this, "Executando a 60 FPS");
     }

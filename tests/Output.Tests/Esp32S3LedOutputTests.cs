@@ -12,7 +12,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Send_ShouldBroadcastEncodedBins128Frame()
     {
-        var host = new FakeDeviceServerHost();
+        using var host = new FakeDeviceServerHost();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
@@ -46,7 +46,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void SetBrightness_ShouldAffectBrightnessByteInPayload()
     {
-        var host = new FakeDeviceServerHost();
+        using var host = new FakeDeviceServerHost();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig { Width = 128, Height = 64, Brightness = 1f });
@@ -65,7 +65,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Stop_ShouldPreventFurtherBroadcasts()
     {
-        var host = new FakeDeviceServerHost();
+        using var host = new FakeDeviceServerHost();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig { Width = 128, Height = 64, Brightness = 1f });
@@ -83,7 +83,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Send_WithFrame128x64_ShouldBroadcastRgb565FramePayload()
     {
-        var host = new FakeDeviceServerHost();
+        using var host = new FakeDeviceServerHost();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
@@ -123,7 +123,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Send_WithUnchangedFrame_ShouldSkipConsecutiveBroadcast()
     {
-        var host = new FakeDeviceServerHost();
+        using var host = new FakeDeviceServerHost();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
@@ -145,7 +145,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Send_WithUnchangedPixelsAndDifferentBrightness_ShouldBroadcastAgain()
     {
-        var host = new FakeDeviceServerHost();
+        using var host = new FakeDeviceServerHost();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
@@ -165,15 +165,27 @@ public class Esp32S3LedOutputTests
         Assert.Equal(2, host.BroadcastFrames.Count);
     }
 
-    private sealed class FakeDeviceServerHost : IDeviceServerHost
+    private sealed class FakeDeviceServerHost : IDeviceServerHost, IDisposable
     {
         public List<byte[]> BroadcastFrames { get; } = new();
 
-#pragma warning disable CS0067
-        public event EventHandler? DevicesChanged;
-        public event EventHandler<string>? LogMessage;
-        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
-#pragma warning restore CS0067
+        public event EventHandler? DevicesChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<string>? LogMessage
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+        {
+            add { }
+            remove { }
+        }
 
         public Task StartAsync(Device.Protocol.Contracts.ServerConfig config, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task StopAsync() => Task.CompletedTask;
@@ -188,6 +200,7 @@ public class Esp32S3LedOutputTests
             => SendCommandTrackedAsync(deviceId, commandType, timeout, cancellationToken);
         public bool RemoveDevice(string deviceId) => false;
         public void BroadcastFrame(byte[] framePayload) => BroadcastFrames.Add(framePayload);
+        public void Dispose() { }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

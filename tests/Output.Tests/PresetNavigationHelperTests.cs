@@ -6,6 +6,8 @@ namespace Output.Tests;
 
 public sealed class PresetNavigationHelperTests
 {
+    private static readonly string[] ExpectedPresetNames = ["alpha", "Bravo", "Zulu"];
+
     [Fact]
     public void BuildOrder_ShouldSortByName()
     {
@@ -18,7 +20,7 @@ public sealed class PresetNavigationHelperTests
 
         var ordered = PresetNavigationHelper.BuildOrder(presets);
 
-        Assert.Equal(new[] { "alpha", "Bravo", "Zulu" }, ordered.Select(static preset => preset.Name));
+        Assert.Equal(ExpectedPresetNames, ordered.Select(static preset => preset.Name));
     }
 
     [Fact]

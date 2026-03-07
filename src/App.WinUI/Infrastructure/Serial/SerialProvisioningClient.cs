@@ -39,7 +39,7 @@ internal sealed record SerialProvisioningResult
 }
 
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
-internal sealed class SerialProvisioningClient : ISerialProvisioningClient
+internal sealed partial class SerialProvisioningClient : ISerialProvisioningClient
 {
     private const int HelloAttemptCount = 3;
     private static readonly TimeSpan HelloTimeout = TimeSpan.FromSeconds(25);
@@ -91,7 +91,7 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
             {
                 if (attempt < HelloAttemptCount)
                 {
-                    logger.LogWarning(ex, "Falha ao abrir porta serial (tentativa {Attempt}/{Total}). porta={PortName}", attempt, HelloAttemptCount, portName);
+                    LogSerialPortOpenFailure(logger, ex, attempt, HelloAttemptCount, portName);
                     await Task.Delay(HelloRetryDelay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
@@ -118,7 +118,7 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
             {
                 if (attempt < HelloAttemptCount)
                 {
-                    logger.LogWarning("Handshake serial nao recebido (tentativa {Attempt}/{Total}). porta={PortName}", attempt, HelloAttemptCount, portName);
+                    LogSerialHelloTimeout(logger, attempt, HelloAttemptCount, portName);
                     await Task.Delay(HelloRetryDelay, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
@@ -178,7 +178,7 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
                 {
                     if (!TryParseMessage(line, out var type, out var document))
                     {
-                        logger.LogDebug("[serial hello] {Line}", line);
+                        LogSerialHelloLine(logger, line);
                         continue;
                     }
 
@@ -242,7 +242,7 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
                 {
                     if (!TryParseMessage(line, out var type, out var document))
                     {
-                        logger.LogDebug("[serial] {Line}", line);
+                        LogSerialLine(logger, line);
                         continue;
                     }
 
@@ -408,7 +408,7 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
         }
     }
 
-    private static IReadOnlyList<string> DrainLines(ref string buffer)
+    private static List<string> DrainLines(ref string buffer)
     {
         var lines = new List<string>();
 
@@ -443,4 +443,16 @@ internal sealed class SerialProvisioningClient : ISerialProvisioningClient
             WriteTimeout = 1000,
         };
     }
+
+    [LoggerMessage(EventId = 1100, Level = LogLevel.Warning, Message = "Falha ao abrir porta serial (tentativa {Attempt}/{Total}). porta={PortName}")]
+    private static partial void LogSerialPortOpenFailure(ILogger logger, Exception exception, int attempt, int total, string portName);
+
+    [LoggerMessage(EventId = 1101, Level = LogLevel.Warning, Message = "Handshake serial nao recebido (tentativa {Attempt}/{Total}). porta={PortName}")]
+    private static partial void LogSerialHelloTimeout(ILogger logger, int attempt, int total, string portName);
+
+    [LoggerMessage(EventId = 1102, Level = LogLevel.Debug, Message = "[serial hello] {Line}")]
+    private static partial void LogSerialHelloLine(ILogger logger, string line);
+
+    [LoggerMessage(EventId = 1103, Level = LogLevel.Debug, Message = "[serial] {Line}")]
+    private static partial void LogSerialLine(ILogger logger, string line);
 }

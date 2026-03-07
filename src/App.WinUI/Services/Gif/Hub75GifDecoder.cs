@@ -6,11 +6,13 @@ using FrameDimension = System.Drawing.Imaging.FrameDimension;
 using ImageLockMode = System.Drawing.Imaging.ImageLockMode;
 using PixelFormat = System.Drawing.Imaging.PixelFormat;
 using Rectangle = System.Drawing.Rectangle;
+using System.Runtime.Versioning;
 using MicaAudio.Core.Presets;
 
 namespace App.WinUI.Services.Gif;
 
 // DOCS: docs/wiki/guides/load-gif-hub75.md#passos
+[SupportedOSPlatform("windows")]
 internal sealed class Hub75GifDecoder
 {
     public const int DefaultMaxGifFrames = 720;

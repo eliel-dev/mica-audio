@@ -13,7 +13,7 @@ internal static class AppPreviewDrawHelpers
 
         try
         {
-            if (accent.StartsWith("#", StringComparison.Ordinal) && accent.Length is 7 or 9)
+            if (accent.StartsWith('#') && accent.Length is 7 or 9)
             {
                 var value = Convert.ToUInt32(accent.TrimStart('#'), 16);
                 if (accent.Length == 7)

@@ -122,7 +122,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
         deviceServerHost.BroadcastFrame(bytes);
     }
 
-    private bool ShouldSkipFrameLocked(IReadOnlyList<RgbaColor> frame, byte brightnessByte)
+    private bool ShouldSkipFrameLocked(RgbaColor[] frame, byte brightnessByte)
     {
         if (lastFrameRgb565 is null || lastFrameRgb565.Length != StreamFrameV2.PixelCount128x64)
         {

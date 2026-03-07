@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
+using System.Globalization;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Microsoft.AspNetCore.Builder;
@@ -245,7 +246,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     }
     public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
     {
-        var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
+        var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString(CultureInfo.InvariantCulture);
         var expiresAt = DateTimeOffset.UtcNow.Add(ttl);
 
         lock (gate)
@@ -274,18 +275,18 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    public void SeedDevices(IEnumerable<DeviceRecord> seed)
+    public void SeedDevices(IEnumerable<DeviceRecord> devices)
     {
         lock (gate)
         {
-            foreach (var record in seed)
+            foreach (var record in devices)
             {
                 if (string.IsNullOrWhiteSpace(record.DeviceId) || string.IsNullOrWhiteSpace(record.Token))
                 {
                     continue;
                 }
 
-                devices[record.DeviceId] = new DeviceState(record);
+                this.devices[record.DeviceId] = new DeviceState(record);
             }
         }
 
@@ -332,19 +333,25 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return false;
         }
 
-        DeviceState? removedState;
-        lock (gate)
+        DeviceState? removedState = null;
+        try
         {
-            if (!devices.Remove(deviceId, out removedState))
+            lock (gate)
             {
-                return false;
+                if (!devices.Remove(deviceId, out removedState))
+                {
+                    return false;
+                }
             }
-        }
 
-        removedState?.Dispose();
-        NotifyDevicesChanged();
-        Log($"Device removido: {deviceId}");
-        return true;
+            NotifyDevicesChanged();
+            Log($"Device removido: {deviceId}");
+            return true;
+        }
+        finally
+        {
+            removedState?.Dispose();
+        }
     }
 
     public void BroadcastFrame(byte[] framePayload)
@@ -483,7 +490,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         var sendTask = Task.Run(() => SendLoopAsync(state, ws, sendToken));
         try
         {
-            await ReceiveLoopAsync(state, ws, ctx.RequestAborted, config.MaxWebSocketMessageBytes).ConfigureAwait(false);
+            await ReceiveLoopAsync(state, ws, config.MaxWebSocketMessageBytes, ctx.RequestAborted).ConfigureAwait(false);
         }
         finally
         {
@@ -526,7 +533,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    private async Task ReceiveLoopAsync(DeviceState state, WebSocket ws, CancellationToken cancellationToken, int maxMessageSize)
+    private async Task ReceiveLoopAsync(DeviceState state, WebSocket ws, int maxMessageSize, CancellationToken cancellationToken)
     {
         var effectiveMaxMessageSize = NormalizeMaxWebSocketMessageBytes(maxMessageSize);
         var buffer = new byte[4096];

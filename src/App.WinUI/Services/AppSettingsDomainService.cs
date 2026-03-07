@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
@@ -17,6 +18,7 @@ internal sealed class AppSettingsDomainService
     private const int DefaultDeviceDormantThresholdHours = 24;
 
     // DOCS: docs/wiki/guides/change-visualizer-settings.md#passos
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como metodo de instancia para preservar o contrato do service usado por DI e acomodar evolucao stateful futura.")]
     public AppSettings Migrate(AppSettings settings)
     {
         var activePresetId = string.IsNullOrWhiteSpace(settings.ActivePresetId) ? DefaultPresetId : settings.ActivePresetId;
@@ -48,12 +50,12 @@ internal sealed class AppSettingsDomainService
             SensitivityMaxDb = DefaultMaxDecibels,
             LinearBoost = CoerceLinearBoost(settings.LinearBoost),
             BarCount = settings.BarCount <= 0 ? 38 : settings.BarCount,
-            FrequencyScale = Enum.IsDefined(typeof(FrequencyScale), settings.FrequencyScale) ? settings.FrequencyScale : FrequencyScale.Bark,
+            FrequencyScale = Enum.IsDefined(settings.FrequencyScale) ? settings.FrequencyScale : FrequencyScale.Bark,
             FrequencyMinHz = minHz,
             FrequencyMaxHz = maxHz,
             FftSize = FftSizePolicy.CoerceUiSize(settings.FftSize),
             FftSmoothing = Math.Clamp(settings.FftSmoothing, 0f, 0.99f),
-            WeightingFilter = Enum.IsDefined(typeof(WeightingFilter), settings.WeightingFilter) ? settings.WeightingFilter : WeightingFilter.Off,
+            WeightingFilter = Enum.IsDefined(settings.WeightingFilter) ? settings.WeightingFilter : WeightingFilter.Off,
             DeviceFreshThresholdSeconds = thresholds.DeviceFreshThresholdSeconds,
             DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
             DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
@@ -63,6 +65,7 @@ internal sealed class AppSettingsDomainService
         };
     }
 
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como metodo de instancia para preservar o contrato do service usado por DI e acomodar evolucao stateful futura.")]
     public AppSettings Copy(AppSettings source, Action<AppSettingsBuilder> configure)
     {
         var builder = new AppSettingsBuilder(source);

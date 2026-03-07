@@ -7,35 +7,49 @@ namespace App.WinUI.ViewModels;
 internal sealed partial class MainPageViewModel : ObservableObject
 {
     [ObservableProperty]
-    private float linearBoost = 1.6f;
+    public partial float LinearBoost { get; set; }
 
     [ObservableProperty]
-    private int barCount = 38;
+    public partial int BarCount { get; set; }
 
     [ObservableProperty]
-    private int fftSize = 1024;
+    public partial int FftSize { get; set; }
 
     [ObservableProperty]
-    private float fftSmoothing = 0.8f;
+    public partial float FftSmoothing { get; set; }
 
     [ObservableProperty]
-    private WeightingFilter weightingFilter = WeightingFilter.Off;
+    public partial WeightingFilter WeightingFilter { get; set; }
 
     [ObservableProperty]
-    private FrequencyScale frequencyScale = FrequencyScale.Logarithmic;
+    public partial FrequencyScale FrequencyScale { get; set; }
 
     [ObservableProperty]
-    private float frequencyMinHz = 30f;
+    public partial float FrequencyMinHz { get; set; }
 
     [ObservableProperty]
-    private float frequencyMaxHz = 16_000f;
+    public partial float FrequencyMaxHz { get; set; }
 
     [ObservableProperty]
-    private bool hub75PreviewEnabled;
+    public partial bool Hub75PreviewEnabled { get; set; }
 
     [ObservableProperty]
-    private string selectedRendererId = RendererIds.AudioMotionClone;
+    public partial string SelectedRendererId { get; set; }
 
     [ObservableProperty]
-    private string currentPresetId = "audiomotion-clone";
+    public partial string CurrentPresetId { get; set; }
+
+    public MainPageViewModel()
+    {
+        LinearBoost = 1.6f;
+        BarCount = 38;
+        FftSize = 1024;
+        FftSmoothing = 0.8f;
+        WeightingFilter = WeightingFilter.Off;
+        FrequencyScale = FrequencyScale.Logarithmic;
+        FrequencyMinHz = 30f;
+        FrequencyMaxHz = 16_000f;
+        SelectedRendererId = RendererIds.AudioMotionClone;
+        CurrentPresetId = "audiomotion-clone";
+    }
 }

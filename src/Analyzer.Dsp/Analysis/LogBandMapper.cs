@@ -13,15 +13,9 @@ public static class LogBandMapper
         float viewportWidthPx,
         float barSpace)
     {
-        if (fftSize < 2 || sampleRate <= 0)
-        {
-            throw new ArgumentOutOfRangeException("FFT size and sample rate must be positive.");
-        }
-
-        if (minHz <= 0f || maxHz <= minHz)
-        {
-            throw new ArgumentOutOfRangeException("Frequency range must satisfy 0 < minHz < maxHz.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(fftSize, 2, nameof(fftSize));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(sampleRate, 0, nameof(sampleRate));
+        ValidateFrequencyRange(minHz, maxHz);
 
         // `barSpace` is intentionally ignored for mode0 because audioMotion's mode 0
         // uses one-pixel bars positioned directly by bin->x mapping.
@@ -88,20 +82,10 @@ public static class LogBandMapper
         float maxHz,
         FrequencyScale frequencyScale = FrequencyScale.Logarithmic)
     {
-        if (bandCount <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(bandCount));
-        }
-
-        if (fftSize < 2 || sampleRate <= 0)
-        {
-            throw new ArgumentOutOfRangeException("FFT size and sample rate must be positive.");
-        }
-
-        if (minHz <= 0f || maxHz <= minHz)
-        {
-            throw new ArgumentOutOfRangeException("Frequency range must satisfy 0 < minHz < maxHz.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(bandCount, 0, nameof(bandCount));
+        ArgumentOutOfRangeException.ThrowIfLessThan(fftSize, 2, nameof(fftSize));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(sampleRate, 0, nameof(sampleRate));
+        ValidateFrequencyRange(minHz, maxHz);
 
         var ranges = new BandRange[bandCount];
         var nyquistBin = fftSize / 2;
@@ -283,5 +267,14 @@ public static class LogBandMapper
         var normalized = (amplitude - minAmplitude) / (maxAmplitude - minAmplitude);
         var boost = global::System.Math.Max(0f, linearBoost);
         return global::System.Math.Clamp(normalized * boost, 0f, 1f);
+    }
+
+    private static void ValidateFrequencyRange(float minHz, float maxHz)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(minHz, 0f, nameof(minHz));
+        if (maxHz <= minHz)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxHz), "Frequency range must satisfy 0 < minHz < maxHz.");
+        }
     }
 }

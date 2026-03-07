@@ -9,28 +9,28 @@ internal sealed partial class DevicesPageViewModel : ObservableObject
     private Action? generatePairingAction;
 
     [ObservableProperty]
-    private string searchText = string.Empty;
+    public partial string SearchText { get; set; }
 
     [ObservableProperty]
-    private string selectedDeviceTitle = "Nenhum dispositivo selecionado";
+    public partial string SelectedDeviceTitle { get; set; }
 
     [ObservableProperty]
-    private string selectedDeviceSubtitle = "-";
+    public partial string SelectedDeviceSubtitle { get; set; }
 
     [ObservableProperty]
-    private string selectedDeviceApp = "App ativo: -";
+    public partial string SelectedDeviceApp { get; set; }
 
     [ObservableProperty]
-    private string serverInfo = "Servidor: inicializando...";
+    public partial string ServerInfo { get; set; }
 
     [ObservableProperty]
-    private string commandStatus = "Comandos: pronto";
+    public partial string CommandStatus { get; set; }
 
     [ObservableProperty]
-    private int commandPercent;
+    public partial int CommandPercent { get; set; }
 
     [ObservableProperty]
-    private bool commandInProgress;
+    public partial bool CommandInProgress { get; set; }
 
     public IRelayCommand RefreshCommand { get; }
 
@@ -38,6 +38,13 @@ internal sealed partial class DevicesPageViewModel : ObservableObject
 
     public DevicesPageViewModel()
     {
+        SearchText = string.Empty;
+        SelectedDeviceTitle = "Nenhum dispositivo selecionado";
+        SelectedDeviceSubtitle = "-";
+        SelectedDeviceApp = "App ativo: -";
+        ServerInfo = "Servidor: inicializando...";
+        CommandStatus = "Comandos: pronto";
+
         RefreshCommand = new RelayCommand(() => refreshAction?.Invoke());
         GeneratePairingCommand = new RelayCommand(() => generatePairingAction?.Invoke());
     }

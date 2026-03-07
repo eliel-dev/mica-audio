@@ -8,7 +8,7 @@
     <OutputType>WinExe</OutputType>
     <UseWinUI>true</UseWinUI>
     <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
+    <LangVersion>preview</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>App.WinUI</RootNamespace>
     <UseRidGraph>true</UseRidGraph>

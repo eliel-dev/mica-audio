@@ -1,9 +1,11 @@
 using App.WinUI.Services.Gif;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
+using System.Runtime.Versioning;
 
 namespace Output.Tests;
 
+[SupportedOSPlatform("windows")]
 public sealed class Hub75GifServicesTests
 {
     [Fact]

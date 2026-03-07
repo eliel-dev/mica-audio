@@ -17,6 +17,8 @@ Modo de execucao:
 5) Entregue a implementacao completa: codigo, ajuste de docs afetadas e criterio de aceite atendido.
 6) Rode somente as validacoes obrigatorias para a classificacao.
 7) Antes de finalizar, reporte: o que faltava, o que foi feito, o que foi validado, e riscos.
+8) Todo codigo novo deve seguir as melhores praticas atuais da stack alvo, considerando a data atual do ambiente antes de decidir padrao ou recomendacao temporalmente instavel.
+9) Para .NET/C#, use como base primaria a documentacao oficial Microsoft/CommunityToolkit compativel com o SDK/TFM do repo, hoje `.NET 10` / `C# 14`.
 
 Formato de entrega:
 - Resumo objetivo da mudanca
@@ -44,6 +46,7 @@ Antes de procurar em toda a base, siga esta ordem:
 - [ ] Mudanca implementada de ponta a ponta no escopo pedido.
 - [ ] Sem TODO aberto no caminho principal da feature/correcao.
 - [ ] Validacao minima obrigatoria executada.
+- [ ] Codigo novo alinhado a melhores praticas atuais da stack e da data corrente.
 - [ ] Resumo final com riscos e proximos passos.
 
 ## Quando permitir varredura ampla

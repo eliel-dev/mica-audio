@@ -71,12 +71,22 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
         private IReadOnlyList<DeviceSnapshot> devices = Array.Empty<DeviceSnapshot>();
 
         public event EventHandler? DevicesChanged;
-        public event EventHandler<string>? LogMessage;
-        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
+
+        public event EventHandler<string>? LogMessage
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+        {
+            add { }
+            remove { }
+        }
 
         public string? LastDeviceId { get; private set; }
         public DeviceCommandType? LastCommandType { get; private set; }
-        public IReadOnlyDictionary<string, string>? LastParameters { get; private set; }
+        public Dictionary<string, string>? LastParameters { get; private set; }
 
         public string GetServerBaseAddress() => "http://127.0.0.1:5272";
 

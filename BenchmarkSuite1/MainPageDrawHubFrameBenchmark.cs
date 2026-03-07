@@ -12,7 +12,7 @@ public class MainPageDrawHubFrameBenchmark
 {
     private const int MatrixWidth = 64;
     private const int MatrixHeight = 32;
-    private static readonly Action<CanvasDrawingSession, float, float, IReadOnlyList<RgbaColor>, int, int> DrawHubFrameDelegate = CreateDrawHubFrameDelegate();
+    private static readonly Action<CanvasDrawingSession, float, float, RgbaColor[], int, int> DrawHubFrameDelegate = CreateDrawHubFrameDelegate();
     private readonly RgbaColor[] pixels = new RgbaColor[MatrixWidth * MatrixHeight];
     [GlobalSetup]
     public void Setup()
@@ -34,9 +34,9 @@ public class MainPageDrawHubFrameBenchmark
         DrawHubFrameDelegate(drawingSession, 640f, 320f, pixels, MatrixWidth, MatrixHeight);
     }
 
-    private static Action<CanvasDrawingSession, float, float, IReadOnlyList<RgbaColor>, int, int> CreateDrawHubFrameDelegate()
+    private static Action<CanvasDrawingSession, float, float, RgbaColor[], int, int> CreateDrawHubFrameDelegate()
     {
-        var method = typeof(MainPage).GetMethod("DrawHubFrame", BindingFlags.NonPublic | BindingFlags.Static, binder: null, [typeof(CanvasDrawingSession), typeof(float), typeof(float), typeof(IReadOnlyList<RgbaColor>), typeof(int), typeof(int)], modifiers: null) ?? throw new InvalidOperationException("MainPage.DrawHubFrame method not found.");
-        return (Action<CanvasDrawingSession, float, float, IReadOnlyList<RgbaColor>, int, int>)method.CreateDelegate(typeof(Action<CanvasDrawingSession, float, float, IReadOnlyList<RgbaColor>, int, int>));
+        var method = typeof(MainPage).GetMethod("DrawHubFrame", BindingFlags.NonPublic | BindingFlags.Static, binder: null, [typeof(CanvasDrawingSession), typeof(float), typeof(float), typeof(RgbaColor[]), typeof(int), typeof(int)], modifiers: null) ?? throw new InvalidOperationException("MainPage.DrawHubFrame method not found.");
+        return method.CreateDelegate<Action<CanvasDrawingSession, float, float, RgbaColor[], int, int>>();
     }
 }

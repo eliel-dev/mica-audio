@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.Versioning;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Gif;
 using MicaAudio.Core.Led;
@@ -10,6 +11,7 @@ using Output.Led;
 
 namespace Output.Tests;
 
+[SupportedOSPlatform("windows")]
 public sealed class GifCatalogAppRuntimeServiceTests
 {
     [Fact]
@@ -24,12 +26,13 @@ public sealed class GifCatalogAppRuntimeServiceTests
     public async Task StartFromUrlAsync_WhenDownloadExceedsLimit_ShouldThrow()
     {
         var payload = CreateSingleFrameGifBytes();
-        var client = new HttpClient(new FixedResponseHandler((_) =>
+        using var handler = new FixedResponseHandler((_) =>
         {
             var content = new ByteArrayContent(payload);
             content.Headers.ContentLength = payload.Length;
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
-        }));
+        });
+        using var client = new HttpClient(handler, disposeHandler: false);
 
         using var service = CreateService(httpClient: client, maxDownloadBytes: payload.Length - 1);
 
@@ -40,7 +43,7 @@ public sealed class GifCatalogAppRuntimeServiceTests
     [Fact]
     public async Task StartFromUrlAsync_WhenDownloadTimeout_ShouldThrow()
     {
-        var handler = new FixedResponseHandler(async (_, cancellationToken) =>
+        using var handler = new FixedResponseHandler(async (_, cancellationToken) =>
         {
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
             var content = new ByteArrayContent(CreateSingleFrameGifBytes());
@@ -48,7 +51,7 @@ public sealed class GifCatalogAppRuntimeServiceTests
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
         });
 
-        var client = new HttpClient(handler);
+        using var client = new HttpClient(handler, disposeHandler: false);
         using var service = CreateService(httpClient: client, downloadTimeoutSeconds: 1);
 
         await Assert.ThrowsAsync<TimeoutException>(() =>

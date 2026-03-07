@@ -33,7 +33,7 @@ public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
 
     public event EventHandler<CaptureStatusChangedEventArgs>? StatusChanged;
 
-    public Task StartAsync(CaptureConfig requestedConfig, CancellationToken cancellationToken = default)
+    public Task StartAsync(CaptureConfig config, CancellationToken cancellationToken = default)
     {
         // DOCS: docs/wiki/modules/audio-loopback.md#fluxo-de-execucao
         lock (gate)
@@ -44,7 +44,7 @@ public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
                 return Task.CompletedTask;
             }
 
-            config = requestedConfig;
+            this.config = config;
             channel = Channel.CreateBounded<PcmFrame>(new BoundedChannelOptions(Math.Max(2, config.ChannelCapacity))
             {
                 SingleReader = false,
@@ -273,10 +273,7 @@ public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
 
     private void ThrowIfDisposed()
     {
-        if (isDisposed)
-        {
-            throw new ObjectDisposedException(nameof(WasapiLoopbackCaptureService));
-        }
+        ObjectDisposedException.ThrowIf(isDisposed, this);
     }
 }
 

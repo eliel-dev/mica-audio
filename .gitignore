@@ -2,6 +2,7 @@
 **/bin/
 **/obj/
 .artifacts/
+BenchmarkDotNet.Artifacts/
 
 # Local temp/work folders
 .tmp-*

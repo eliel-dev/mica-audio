@@ -6,7 +6,7 @@ using MicaAudio.Core.Config;
 namespace App.WinUI.Services.Apps;
 
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
-internal sealed class AppModifierStateStore : IAppModifierStateStore
+internal sealed class AppModifierStateStore : IAppModifierStateStore, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -160,5 +160,10 @@ internal sealed class AppModifierStateStore : IAppModifierStateStore
     private static string BuildKey(string deviceId, string appId)
     {
         return string.Concat(deviceId.Trim(), "|", appId.Trim());
+    }
+
+    public void Dispose()
+    {
+        ioGate.Dispose();
     }
 }

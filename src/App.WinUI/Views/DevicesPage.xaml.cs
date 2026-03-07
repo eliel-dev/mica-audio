@@ -14,7 +14,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
 using Output.Led;
 using System.Globalization;
 using Windows.ApplicationModel.DataTransfer;
@@ -42,16 +41,8 @@ public sealed partial class DevicesPage : Page
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
     private readonly SimulatorLedOutput simulatorLedOutput;
-    private readonly Dictionary<string, Queue<int>> loopTrendByDeviceId = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, DateTimeOffset?> lastLoopTrendStampByDeviceId = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, int> lastLoopTrendValueByDeviceId = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, Queue<int>> espDashLoopHistoryByDeviceId = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, Queue<int>> espDashHeapHistoryByDeviceId = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, uint?> espDashLastSequenceByDeviceId = new(StringComparer.OrdinalIgnoreCase);
     private const int SafeBrightnessMin = 30;
     private const int SafeBrightnessMax = 160;
-    private const int DashboardTrendSampleCapacity = 20;
-    private const int EspDashHistorySampleCapacity = 30;
     private const int HeapTotalBytesBaseline = 320000;
     private const int PsramTotalBytesBaseline = 8000000;
     private const string OfflineDashboardFallbackText = "Offline: exibindo snapshot seguro";
@@ -158,12 +149,6 @@ public sealed partial class DevicesPage : Page
         lastRenderedDeviceLogTail = string.Empty;
         lastRenderedDeviceLogsHeader = null;
         lastRenderedDeviceLogsPlaceholder = null;
-        loopTrendByDeviceId.Clear();
-        lastLoopTrendStampByDeviceId.Clear();
-        lastLoopTrendValueByDeviceId.Clear();
-        espDashLoopHistoryByDeviceId.Clear();
-        espDashHeapHistoryByDeviceId.Clear();
-        espDashLastSequenceByDeviceId.Clear();
         selectedDeviceId = null;
         suppressBrightnessSliderEvents = false;
         suppressDeviceSelectionChanged = false;
@@ -629,7 +614,8 @@ public sealed partial class DevicesPage : Page
             return;
         }
 
-        var option = service.GetOptions().FirstOrDefault();
+        var options = service.GetOptions();
+        var option = options.Count > 0 ? options[0] : null;
         if (option is null)
         {
             PairingCodeText.Severity = InfoBarSeverity.Error;
@@ -746,7 +732,7 @@ public sealed partial class DevicesPage : Page
 
         var refreshText = state.LastRefreshUtc == default
             ? "sem atualizacao"
-            : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss");
+            : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture);
         ServerInfoText.Text = $"Servidor: {state.ServerBaseAddress} | mDNS: _micaaudio._tcp | Atualizado: {refreshText}";
 
         ApplySelectionDetails();
@@ -1167,7 +1153,6 @@ public sealed partial class DevicesPage : Page
             ApplyTileTone(DashboardLoopTile);
             ApplyTileTone(DashboardHeapTile);
             ApplyTileTone(DashboardPsramTile);
-            ApplyTileTone(DashboardNetworkTile);
 
             ApplyDashboardStatusSection(hasSelection, snapshot, metrics);
             lastRenderedDashboardSignature = signature;
@@ -1466,111 +1451,6 @@ public sealed partial class DevicesPage : Page
             $"hasMetrics={metrics?.HasMetrics.ToString() ?? "-"}, lastTelemetry={snapshot?.LastTelemetryUtc?.ToString("O", CultureInfo.InvariantCulture) ?? "-"})");
     }
 
-    private IReadOnlyList<int> CaptureLoopTrendSamples(string? deviceId, DeviceSnapshot? snapshot, DeviceMetricsPresentation metrics)
-    {
-        if (string.IsNullOrWhiteSpace(deviceId))
-        {
-            return Array.Empty<int>();
-        }
-
-        if (!loopTrendByDeviceId.TryGetValue(deviceId, out var samples))
-        {
-            samples = new Queue<int>(DashboardTrendSampleCapacity);
-            loopTrendByDeviceId[deviceId] = samples;
-        }
-
-        if (metrics.LoopLoadPercent.HasValue)
-        {
-            var normalized = Math.Clamp(metrics.LoopLoadPercent.Value, 0, 100);
-            var stamp = snapshot?.LastTelemetryUtc;
-
-            var hasLastValue = lastLoopTrendValueByDeviceId.TryGetValue(deviceId, out var lastValue);
-            var hasLastStamp = lastLoopTrendStampByDeviceId.TryGetValue(deviceId, out var lastStamp);
-
-            var duplicate = stamp.HasValue
-                ? hasLastStamp && lastStamp.HasValue && lastStamp.Value == stamp.Value && hasLastValue && lastValue == normalized
-                : hasLastValue && lastValue == normalized;
-
-            if (!duplicate)
-            {
-                if (samples.Count >= DashboardTrendSampleCapacity)
-                {
-                    _ = samples.Dequeue();
-                }
-
-                samples.Enqueue(normalized);
-                lastLoopTrendValueByDeviceId[deviceId] = normalized;
-                lastLoopTrendStampByDeviceId[deviceId] = stamp;
-            }
-        }
-
-        return samples.ToArray();
-    }
-
-    private void ApplyLoopTrendBars(IReadOnlyList<int> samples, bool hasSelection)
-    {
-        var hasSamples = hasSelection && samples.Count > 0;
-        DashboardLoopTrendCaptionText.Text = "Historico de uso do processador";
-        DashboardLoopTrendGrid.Visibility = hasSamples ? Visibility.Visible : Visibility.Collapsed;
-        DashboardLoopTrendPlaceholderText.Visibility = hasSamples ? Visibility.Collapsed : Visibility.Visible;
-        DashboardLoopTrendPlaceholderText.Text = !hasSelection
-            ? "Historico de uso do processador: selecione um dispositivo"
-            : "Historico de uso do processador: aguardando amostras";
-
-        var visibleCount = Math.Min(samples.Count, DashboardLoopTrendBars.Count);
-        var sourceStart = samples.Count - visibleCount;
-        var targetStart = DashboardLoopTrendBars.Count - visibleCount;
-
-        const double minHeight = 4d;
-        const double maxHeight = 58d;
-
-        for (var index = 0; index < DashboardLoopTrendBars.Count; index++)
-        {
-            var bar = DashboardLoopTrendBars[index];
-            if (!hasSamples || index < targetStart)
-            {
-                bar.Height = minHeight;
-                bar.Opacity = 0.22;
-                bar.Background = new SolidColorBrush(Color.FromArgb(255, 59, 63, 70));
-                continue;
-            }
-
-            var sample = Math.Clamp(samples[sourceStart + (index - targetStart)], 0, 100);
-            var ratio = sample / 100d;
-            bar.Height = minHeight + ((maxHeight - minHeight) * ratio);
-            bar.Opacity = index == DashboardLoopTrendBars.Count - 1 ? 1d : 0.75;
-            bar.Background = BuildTrendBarBrush(sample);
-        }
-    }
-
-    private static Brush BuildTrendBarBrush(int sample)
-    {
-        return sample > 70
-            ? new SolidColorBrush(Color.FromArgb(255, 232, 160, 0))
-            : new SolidColorBrush(Color.FromArgb(255, 150, 117, 30));
-    }
-
-    private static string BuildLoopTrendSignature(IReadOnlyList<int> samples)
-    {
-        if (samples.Count == 0)
-        {
-            return "-";
-        }
-
-        var builder = new System.Text.StringBuilder(samples.Count * 4);
-        for (var index = 0; index < samples.Count; index++)
-        {
-            if (index > 0)
-            {
-                _ = builder.Append(',');
-            }
-
-            _ = builder.Append(samples[index].ToString(CultureInfo.InvariantCulture));
-        }
-
-        return builder.ToString();
-    }
-
     private static string BuildHeapSubLabel(DeviceSnapshot? snapshot)
     {
         if (snapshot?.FreeHeapBytes is not long freeHeap || snapshot.LargestHeapBlockBytes is not long largest)
@@ -1595,239 +1475,6 @@ public sealed partial class DevicesPage : Page
         }
 
         return "Base 8 MB";
-    }
-
-    private void UpdateEspDashHistory(string? deviceId, DeviceSnapshot? snapshot)
-    {
-        if (string.IsNullOrWhiteSpace(deviceId) || snapshot is null)
-        {
-            return;
-        }
-
-        var sequence = snapshot.TelemetrySequence;
-        if (espDashLastSequenceByDeviceId.TryGetValue(deviceId, out var lastSequence) && lastSequence.HasValue && sequence.HasValue && lastSequence.Value == sequence.Value)
-        {
-            return;
-        }
-
-        espDashLastSequenceByDeviceId[deviceId] = sequence;
-
-        if (!espDashLoopHistoryByDeviceId.TryGetValue(deviceId, out var loopHistory))
-        {
-            loopHistory = new Queue<int>(EspDashHistorySampleCapacity);
-            espDashLoopHistoryByDeviceId[deviceId] = loopHistory;
-        }
-
-        if (!espDashHeapHistoryByDeviceId.TryGetValue(deviceId, out var heapHistory))
-        {
-            heapHistory = new Queue<int>(EspDashHistorySampleCapacity);
-            espDashHeapHistoryByDeviceId[deviceId] = heapHistory;
-        }
-
-        var loop = snapshot.LoopLoadPercent is int rawLoop ? Math.Clamp(rawLoop, 0, 100) : 0;
-        var heapKb = snapshot.FreeHeapBytes is long freeHeap
-            ? Math.Clamp((int)Math.Round(freeHeap / 1024d), 0, 320)
-            : 0;
-
-        if (loopHistory.Count >= EspDashHistorySampleCapacity)
-        {
-            _ = loopHistory.Dequeue();
-        }
-
-        if (heapHistory.Count >= EspDashHistorySampleCapacity)
-        {
-            _ = heapHistory.Dequeue();
-        }
-
-        loopHistory.Enqueue(loop);
-        heapHistory.Enqueue(heapKb);
-    }
-
-    private IReadOnlyList<int> GetEspDashLoopSeries(string? deviceId)
-    {
-        if (string.IsNullOrWhiteSpace(deviceId) || !espDashLoopHistoryByDeviceId.TryGetValue(deviceId, out var series))
-        {
-            return Array.Empty<int>();
-        }
-
-        return series.ToArray();
-    }
-
-    private IReadOnlyList<int> GetEspDashHeapSeries(string? deviceId)
-    {
-        if (string.IsNullOrWhiteSpace(deviceId) || !espDashHeapHistoryByDeviceId.TryGetValue(deviceId, out var series))
-        {
-            return Array.Empty<int>();
-        }
-
-        return series.ToArray();
-    }
-
-    private void ApplyEspDashSection(bool hasSelection, DeviceSnapshot? snapshot, IReadOnlyList<int> loopSeries, IReadOnlyList<int> heapSeries)
-    {
-        try
-        {
-            var show = hasSelection && snapshot is not null;
-            EspDashSectionBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            if (!show || snapshot is null)
-            {
-                return;
-            }
-
-            EspDashUptimeValueText.Text = FormatUptimeForEspDash(snapshot.UptimeSeconds);
-
-            var fps = 0;
-            if (snapshot.UptimeSeconds is int uptimeSeconds && uptimeSeconds > 0 && snapshot.StreamFramesReceived is uint streamFrames)
-            {
-                fps = Math.Clamp((int)Math.Round(streamFrames / (double)uptimeSeconds), 0, 240);
-            }
-
-            EspDashFpsValueText.Text = $"{fps} fps";
-            var heapKb = snapshot.FreeHeapBytes is long freeHeap ? Math.Clamp((int)Math.Round(freeHeap / 1024d), 0, 4096) : 0;
-            EspDashHeapValueText.Text = $"{heapKb} KB";
-            EspDashHeapSubText.Text = BuildHeapFragmentationSummary(snapshot);
-
-            var loopPercent = snapshot.LoopLoadPercent is int loopLoad ? Math.Clamp(loopLoad, 0, 100) : 0;
-            EspGaugePercentText.Text = $"{loopPercent}%";
-            const double arcLength = 157d;
-            var gaugeOffset = arcLength - Math.Round((arcLength * loopPercent) / 100d, 2, MidpointRounding.AwayFromZero);
-            EspGaugeFillPath.StrokeDashOffset = double.IsFinite(gaugeOffset) ? gaugeOffset : arcLength;
-
-            StreamFramesReceivedText.Text = (snapshot.StreamFramesReceived ?? 0).ToString("N0", CultureInfo.InvariantCulture);
-            StreamFramesAppliedText.Text = (snapshot.StreamFramesApplied ?? 0).ToString("N0", CultureInfo.InvariantCulture);
-            StreamGapCountText.Text = (snapshot.StreamSequenceGapCount ?? 0).ToString(CultureInfo.InvariantCulture);
-            StreamInvalidCountText.Text = (snapshot.StreamInvalidFrameCount ?? 0).ToString(CultureInfo.InvariantCulture);
-            StreamLastSequenceText.Text = (snapshot.StreamLastSequence ?? 0).ToString("N0", CultureInfo.InvariantCulture);
-            StreamFramesAppliedText.Foreground = new SolidColorBrush(Color.FromArgb(255, 108, 203, 95));
-            StreamSuccessRateText.Foreground = new SolidColorBrush(Color.FromArgb(255, 108, 203, 95));
-            StreamGapCountText.Foreground = new SolidColorBrush(Color.FromArgb(255, 252, 225, 0));
-            StreamInvalidCountText.Foreground = (snapshot.StreamInvalidFrameCount ?? 0) > 0
-                ? new SolidColorBrush(Color.FromArgb(255, 255, 153, 164))
-                : new SolidColorBrush(Color.FromArgb(255, 108, 203, 95));
-
-            var successRate = 0;
-            if (snapshot.StreamFramesReceived is uint rx && rx > 0 && snapshot.StreamFramesApplied is uint applied)
-            {
-                successRate = Math.Clamp((int)Math.Round((applied / (double)rx) * 100d), 0, 100);
-            }
-
-            StreamSuccessRateText.Text = $"{successRate}%";
-
-            RenderLineChart(EspDashLoopChartCanvas, EspDashLoopChartLine, EspDashLoopChartFill, loopSeries, 100);
-            RenderLineChart(EspDashHeapChartCanvas, EspDashHeapChartLine, EspDashHeapChartFill, heapSeries, 320);
-        }
-        catch (Exception ex)
-        {
-            LogRenderException("espdash", snapshot?.DeviceId, snapshot, ex);
-            EspDashSectionBorder.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void ApplyConnectivitySection(bool hasSelection, DeviceSnapshot? snapshot)
-    {
-        try
-        {
-            ConnectivitySectionBorder.Visibility = hasSelection && snapshot is not null ? Visibility.Visible : Visibility.Collapsed;
-            if (snapshot is null)
-            {
-                return;
-            }
-
-            var wifiLabel = snapshot.WifiState?.ToLowerInvariant() switch
-            {
-                "connected" => "Conectado",
-                "disconnected" => "Desconectado",
-                "portal" => "Modo configuracao",
-                "connecting" => "Conectando",
-                _ => snapshot.WifiState ?? "-",
-            };
-
-            ConnectivityWifiStateText.Text = $"Rede Wi-Fi: {wifiLabel}";
-            ConnectivityPortalStateText.Text = $"Modo configuracao: {(snapshot.ProvisioningPortalActive == true ? "Ativo" : "-")}";
-            ConnectivityUptimeText.Text = $"Ligado ha: {FormatUptimeForEspDash(snapshot.UptimeSeconds)}";
-            ConnectivityLastEventText.Text = $"Ultimo evento de rede: {snapshot.LastWifiEvent ?? "-"}";
-            ConnectivityAuxLedText.Text = $"LED auxiliar: {(snapshot.AuxLedAvailable == true ? "Disponivel" : snapshot.AuxLedAvailable == false ? "Nao disponivel" : "-")}";
-        }
-        catch (Exception ex)
-        {
-            LogRenderException("connectivity", snapshot?.DeviceId, snapshot, ex);
-            ConnectivitySectionBorder.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private static string BuildHeapFragmentationSummary(DeviceSnapshot? snapshot)
-    {
-        if (snapshot?.FreeHeapBytes is not long freeHeap || snapshot.LargestHeapBlockBytes is not long largest || freeHeap <= 0)
-        {
-            return "Fragmentacao -";
-        }
-
-        var fragmentation = Math.Clamp((int)Math.Round((1d - (largest / (double)freeHeap)) * 100d), 0, 100);
-        return $"Fragmentacao {fragmentation}%";
-    }
-
-    private static string FormatUptimeForEspDash(int? uptimeSeconds)
-    {
-        if (!uptimeSeconds.HasValue || uptimeSeconds.Value < 0)
-        {
-            return "-";
-        }
-
-        var uptime = TimeSpan.FromSeconds(uptimeSeconds.Value);
-        return $"{uptime.Hours:00}:{uptime.Minutes:00}:{uptime.Seconds:00}";
-    }
-
-    private static void RenderLineChart(Canvas canvas, Polyline line, Polygon fill, IReadOnlyList<int> values, int maxValue)
-    {
-        try
-        {
-            var width = canvas.ActualWidth > 4d && double.IsFinite(canvas.ActualWidth) ? canvas.ActualWidth : 420d;
-            var height = canvas.ActualHeight > 4d && double.IsFinite(canvas.ActualHeight) ? canvas.ActualHeight : 120d;
-            Canvas.SetLeft(line, 0);
-            Canvas.SetTop(line, 0);
-            Canvas.SetLeft(fill, 0);
-            Canvas.SetTop(fill, 0);
-
-            if (values.Count == 0)
-            {
-                line.Points = new PointCollection();
-                fill.Points = new PointCollection();
-                return;
-            }
-
-            var points = new PointCollection();
-            var fillPoints = new PointCollection
-            {
-                new Windows.Foundation.Point(0, height),
-            };
-
-            var max = Math.Max(maxValue, 1);
-            for (var index = 0; index < values.Count; index++)
-            {
-                var x = values.Count == 1
-                    ? width
-                    : (index / (double)(values.Count - 1)) * width;
-                var normalized = Math.Clamp(values[index], 0, max) / (double)max;
-                var y = height - (normalized * (height - 6d));
-                if (!double.IsFinite(x) || !double.IsFinite(y))
-                {
-                    continue;
-                }
-
-                var point = new Windows.Foundation.Point(x, y);
-                points.Add(point);
-                fillPoints.Add(point);
-            }
-
-            fillPoints.Add(new Windows.Foundation.Point(width, height));
-            line.Points = points;
-            fill.Points = fillPoints;
-        }
-        catch
-        {
-            line.Points = new PointCollection();
-            fill.Points = new PointCollection();
-        }
     }
 
     private static string ResolveDashboardPlaceholder(bool hasSelection, DeviceMetricsPresentation metrics)
@@ -1903,7 +1550,7 @@ public sealed partial class DevicesPage : Page
             : "Sinal indisponivel";
     }
 
-    private void ApplyTileTone(Border tileBorder)
+    private static void ApplyTileTone(Border tileBorder)
     {
         tileBorder.BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81));
         tileBorder.Background = ResolveBrush("AppSurfaceElevatedBrush", Color.FromArgb(255, 24, 32, 42));

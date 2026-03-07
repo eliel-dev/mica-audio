@@ -10,25 +10,25 @@ internal sealed partial class AppsPageViewModel : ObservableObject
     private Func<Task>? installAsync;
 
     [ObservableProperty]
-    private string searchText = string.Empty;
+    public partial string SearchText { get; set; }
 
     [ObservableProperty]
-    private string selectedAppName = "Selecione um app";
+    public partial string SelectedAppName { get; set; }
 
     [ObservableProperty]
-    private string selectedAppMeta = "-";
+    public partial string SelectedAppMeta { get; set; }
 
     [ObservableProperty]
-    private string selectedAppDescription = "Nenhum app selecionado.";
+    public partial string SelectedAppDescription { get; set; }
 
     [ObservableProperty]
-    private string operationStatus = "Operacoes: pronto";
+    public partial string OperationStatus { get; set; }
 
     [ObservableProperty]
-    private int operationPercent;
+    public partial int OperationPercent { get; set; }
 
     [ObservableProperty]
-    private bool operationInProgress;
+    public partial bool OperationInProgress { get; set; }
 
     public IAsyncRelayCommand ReloadCatalogCommand { get; }
 
@@ -38,6 +38,12 @@ internal sealed partial class AppsPageViewModel : ObservableObject
 
     public AppsPageViewModel()
     {
+        SearchText = string.Empty;
+        SelectedAppName = "Selecione um app";
+        SelectedAppMeta = "-";
+        SelectedAppDescription = "Nenhum app selecionado.";
+        OperationStatus = "Operacoes: pronto";
+
         ReloadCatalogCommand = new AsyncRelayCommand(async () =>
         {
             if (reloadCatalogAsync is not null)

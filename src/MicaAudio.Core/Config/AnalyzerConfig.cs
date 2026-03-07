@@ -29,7 +29,7 @@ public sealed class AnalyzerConfig
     public FrequencyScale FrequencyScale { get; init; } = FrequencyScale.Logarithmic;
 
     // Matches the behavior of WebAudio's AnalyserNode.smoothingTimeConstant (0..0.99).
-    public float FftSmoothing { get; init; } = 0f;
+    public float FftSmoothing { get; init; }
 
     public WeightingFilter WeightingFilter { get; init; } = WeightingFilter.Off;
 
@@ -45,7 +45,7 @@ public sealed class AnalyzerConfig
     public float DbFloor { get; init; } = -90f;
 
     // Keep headroom to avoid bars saturating near full scale.
-    public float DbCeiling { get; init; } = 0f;
+    public float DbCeiling { get; init; }
 
     public float DisplaySmoothingRise { get; init; } = 0.82f;
 

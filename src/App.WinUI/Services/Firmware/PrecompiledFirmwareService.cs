@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
@@ -6,7 +7,7 @@ namespace App.WinUI.Services.Firmware;
 
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
 // DOCS: docs/wiki/guides/setup-new-device.md#referencias-de-codigo
-internal sealed class PrecompiledFirmwareService
+internal sealed partial class PrecompiledFirmwareService
 {
     public const string Esp32S3DevKitC1Board = "esp32s3_devkitc1";
     public const string Hub75PanelP25_128x64_Smd2121_Scan32 = "hub75_p2_5_128x64_smd2121_scan32";
@@ -36,6 +37,7 @@ internal sealed class PrecompiledFirmwareService
 
     public event EventHandler<string>? LogMessage;
 
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "O service permanece por instancia porque outras operacoes dependem de opcoes e logging injetados, e o contrato publico deve ficar consistente.")]
     public IReadOnlyList<PrecompiledFirmwareOption> GetOptions(
         string? boardModel = null,
         string? panelType = null,
@@ -61,6 +63,7 @@ internal sealed class PrecompiledFirmwareService
         return query.ToArray();
     }
 
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "O service permanece por instancia porque outras operacoes dependem de opcoes e logging injetados, e o contrato publico deve ficar consistente.")]
     public bool TryGetOption(string boardModel, string panelType, string profile, out PrecompiledFirmwareOption option, out string error)
     {
         option = new PrecompiledFirmwareOption();
@@ -169,7 +172,10 @@ internal sealed class PrecompiledFirmwareService
 
     private void Log(string message)
     {
-        logger.LogInformation("{Message}", message);
+        LogFirmwareMessage(logger, message);
         LogMessage?.Invoke(this, message);
     }
+
+    [LoggerMessage(EventId = 1500, Level = LogLevel.Information, Message = "Firmware event: {Message}")]
+    private static partial void LogFirmwareMessage(ILogger logger, string message);
 }

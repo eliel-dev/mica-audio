@@ -6,6 +6,10 @@ namespace Integration.Smoke;
 
 public sealed class DevicesPageSmokeTests
 {
+    private static readonly string[] ReorderedSelectionDeviceIds = ["device-c", "device-b", "device-a"];
+    private static readonly string[] CaseInsensitiveSelectionDeviceIds = ["device-b", "device-a"];
+    private static readonly string[] RemovedSelectionDeviceIds = ["device-a", "device-c"];
+
     [Fact]
     public void DevicesPageShouldDeclareDashboardAndDeviceLogsFields()
     {
@@ -173,9 +177,9 @@ public sealed class DevicesPageSmokeTests
         var retainMethod = typeof(DevicesPage).GetMethod("ResolveRetainedSelectionDeviceId", staticFlags);
         Assert.NotNull(retainMethod);
 
-        var reordered = retainMethod!.Invoke(null, new object?[] { "device-b", new[] { "device-c", "device-b", "device-a" } });
-        var caseInsensitive = retainMethod.Invoke(null, new object?[] { "DEVICE-B", new[] { "device-b", "device-a" } });
-        var removed = retainMethod.Invoke(null, new object?[] { "device-b", new[] { "device-a", "device-c" } });
+        var reordered = retainMethod!.Invoke(null, [ "device-b", ReorderedSelectionDeviceIds ]);
+        var caseInsensitive = retainMethod.Invoke(null, [ "DEVICE-B", CaseInsensitiveSelectionDeviceIds ]);
+        var removed = retainMethod.Invoke(null, [ "device-b", RemovedSelectionDeviceIds ]);
 
         Assert.Equal("device-b", reordered);
         Assert.Equal("DEVICE-B", caseInsensitive);
