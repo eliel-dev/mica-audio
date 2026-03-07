@@ -20,8 +20,8 @@ Adicionar um novo app no catalogo `schemaVersion: 2` com preview animado e modif
 - [AppModifierDefinition](../../../src/App.WinUI/Models/Apps/AppModifierDefinition.cs#L3) - assinatura: `public sealed class AppModifierDefinition`
 - [AppModifierFieldType](../../../src/App.WinUI/Models/Apps/AppModifierFieldType.cs#L3) - assinatura: `public enum AppModifierFieldType`
 - [AppCatalogService.LoadCatalogAsync](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L26) - assinatura: `Task<IReadOnlyList<AppCatalogItem>> LoadCatalogAsync(...)`
-- [AppsPage.LoadCatalogAsync](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L80) - assinatura: `private async Task LoadCatalogAsync()`
-- [AppsPage.TryBuildConfigFromEditor](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L706) - assinatura: `private bool TryBuildConfigFromEditor(...)`
+- [AppsPage.LoadCatalogAsync](../../../src/App.WinUI/Views/AppsPage.Catalog.cs#L1) - assinatura: `private async Task LoadCatalogAsync()`
+- [AppsPage.TryBuildConfigFromEditor](../../../src/App.WinUI/Views/AppsPage.Modifiers.cs#L1) - assinatura: `private bool TryBuildConfigFromEditor(...)`
 
 ## Checklist rapido
 

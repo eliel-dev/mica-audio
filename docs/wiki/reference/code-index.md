@@ -28,6 +28,11 @@ Notas ativas:
 Pontos de UI para operacao de devices:
 
 - [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
+- [DevicesPage onboarding](../../../src/App.WinUI/Views/DevicesPage.Onboarding.cs#L1)
+- [DevicesPage list state](../../../src/App.WinUI/Views/DevicesPage.ListState.cs#L1)
+- [DevicesPage preview pump](../../../src/App.WinUI/Views/DevicesPage.PreviewPump.cs#L1)
+- [DevicesPage dashboard](../../../src/App.WinUI/Views/DevicesPage.Dashboard.cs#L1)
+- [DevicesPage selection](../../../src/App.WinUI/Views/DevicesPage.Selection.cs#L1)
 - [DevicesPage UI programatica](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
 - [DeviceListRowControl](../../../src/App.WinUI/Views/Controls/DeviceListRowControl.cs#L1)
 - [DevicePreviewResolver](../../../src/App.WinUI/Services/Devices/DevicePreviewResolver.cs#L1)
@@ -38,6 +43,11 @@ Pontos de UI para operacao de devices:
 Pontos de estado e visibilidade de devices:
 
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
+- [DeviceRefreshCoordinator](../../../src/App.WinUI/Services/Devices/DeviceRefreshCoordinator.cs#L1)
+- [DeviceCommandDispatcher](../../../src/App.WinUI/Services/Devices/DeviceCommandDispatcher.cs#L1)
+- [DeviceCommandTracker](../../../src/App.WinUI/Services/Devices/DeviceCommandTracker.cs#L1)
+- [DeviceLogBook](../../../src/App.WinUI/Services/Devices/DeviceLogBook.cs#L1)
+- [DeviceLifecycleThresholdProvider](../../../src/App.WinUI/Services/Devices/DeviceLifecycleThresholdProvider.cs#L1)
 - [DeviceListVisibilityPolicy](../../../src/App.WinUI/Services/Devices/DeviceListVisibilityPolicy.cs#L1)
 - [DeviceListRenderDiff](../../../src/App.WinUI/Services/Devices/DeviceListRenderDiff.cs#L1)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
@@ -104,3 +114,13 @@ Observacoes ativas do runtime do app:
 - `AppStartupDiagnostics` e `MainPage.Startup` concentram breadcrumbs, fallback de preset legado e guard de bootstrap da UI.
 - A reducao de escopo do fix de startup manteve a protecao concentrada na `MainPage`: presets sao sanitizados apenas no caminho de rebuild do analyzer.
 - O `Visualizador` agora separa runtime pendente do runtime aplicado e usa debounce unico de `150 ms` para ajustes finos antes do rebuild do analyzer.
+
+Pontos centrais de catalogo e deploy de apps:
+
+- [AppsPage](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L1)
+- [AppsPage Catalog](../../../src/App.WinUI/Views/AppsPage.Catalog.cs#L1)
+- [AppsPage RuntimePreview](../../../src/App.WinUI/Views/AppsPage.RuntimePreview.cs#L1)
+- [AppsPage Modifiers](../../../src/App.WinUI/Views/AppsPage.Modifiers.cs#L1)
+- [AppsPage Deployment](../../../src/App.WinUI/Views/AppsPage.Deployment.cs#L1)
+- [AppCatalogCardControl](../../../src/App.WinUI/Views/Controls/AppCatalogCardControl.cs#L1)
+- [AppRuntimeHost](../../../src/App.WinUI/Services/Apps/AppRuntimeHost.cs#L1)

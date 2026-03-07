@@ -214,4 +214,25 @@ public sealed class DevicesPageSmokeTests
         Assert.Equal("95%", successRateMethod!.Invoke(null, new object?[] { snapshot }));
         Assert.Equal("-", successRateMethod.Invoke(null, new object?[] { null }));
     }
+
+    [Fact]
+    public void DevicesPageShouldKeepPreviewPumpMethods()
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+
+        Assert.NotNull(typeof(DevicesPage).GetMethod("StartPreviewPump", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("StopPreviewPump", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("OnPreviewPumpTick", flags));
+    }
+
+    [Fact]
+    public void DevicesPageShouldKeepOnboardingWorkflowMethods()
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+
+        Assert.NotNull(typeof(DevicesPage).GetMethod("ShowNewDeviceWizardAsync", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("RefreshWizardPortsAsync", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("RunWizardOnboardingAsync", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("SaveFirmwareAsync", flags));
+    }
 }

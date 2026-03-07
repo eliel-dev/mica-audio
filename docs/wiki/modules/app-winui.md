@@ -93,6 +93,27 @@
 - A lista de devices agora usa atualizacao incremental por diff, sem rebuild total a cada refresh.
 - O objetivo e reduzir flicker visual e manter a lista/miniaturas inline estaveis sem rebuild desnecessario.
 
+## Atualizacao 2026-03 - Fase 9 Wave 2 e Wave 3, monolitos do app decompostos
+
+- A trilha de qualidade estrutural em `.NET 10 / C# 14` passou a tratar `DevicesPage` e `AppsPage` como bordas de UI com partials focados por responsabilidade.
+- `DevicesPage` foi quebrada em blocos estaveis sem mudar UX:
+  - `DevicesPage.Onboarding`
+  - `DevicesPage.ListState`
+  - `DevicesPage.PreviewPump`
+  - `DevicesPage.Dashboard`
+  - `DevicesPage.Selection`
+- `AppsPage` recebeu a mesma estrategia:
+  - `AppsPage.Catalog`
+  - `AppsPage.RuntimePreview`
+  - `AppsPage.Modifiers`
+  - `AppsPage.Deployment`
+- O arquivo principal de cada pagina ficou restrito a:
+  - estado/campos;
+  - composicao;
+  - lifecycle `Loaded/Unloaded`;
+  - wiring central.
+- A experiencia visivel foi preservada; a mudanca e de ownership interno e testabilidade.
+
 ## Atualizacao 2026-03 - DevicesPage Offline e Remocao Local
 
 - Devices offline continuam visiveis, mas nao exibem preview visual do app.

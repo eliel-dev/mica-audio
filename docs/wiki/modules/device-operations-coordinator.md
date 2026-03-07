@@ -74,3 +74,18 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
 - `DeviceListChanged` e a fonte principal do refresh da lista na `DevicesPage` apos a carga inicial.
 - `StateChanged` continua atualizando estado geral, mas nao deve disparar rebuild da lista de devices.
 - A UI reaproveita a arvore visual existente e aplica diff incremental para reduzir flicker.
+
+## Atualizacao 2026-03 - Fase 9 Wave 1, coordenador decomposto
+
+- O `DeviceOperationsCoordinator` continua com a mesma API publica do app, mas agora atua como fachada fina sobre colaboradores internos fixos:
+  - `DeviceRefreshCoordinator`
+  - `DeviceCommandDispatcher`
+  - `DeviceCommandTracker`
+  - `DeviceLogBook`
+  - `DeviceLifecycleThresholdProvider`
+- A separacao reduziu concentracao de estado e deixou coberturas focadas em:
+  - gate de refresh;
+  - timeout e tracking de comando por device;
+  - cap de logs;
+  - fallback lazy de thresholds.
+- O shape de `DeviceOperationsState`, os textos operacionais e o wire com `Device.Server` permaneceram inalterados.

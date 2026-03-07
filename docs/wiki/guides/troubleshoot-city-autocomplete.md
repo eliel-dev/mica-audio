@@ -15,8 +15,8 @@ Resolver problemas quando o campo de cidade (clima) nao retorna sugestoes no `Au
 ## Referencias de codigo
 
 - [CityAutocompleteService.SearchAsync](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L14) - assinatura: `Task<IReadOnlyList<CitySuggestion>> SearchAsync(...)`
-- [AppsPage.OnCitySuggestTextChanged](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L630) - assinatura: `private async void OnCitySuggestTextChanged(...)`
-- [AppsPage.OnCitySuggestionChosen](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L666) - assinatura: `private static void OnCitySuggestionChosen(...)`
+- [AppsPage.OnCitySuggestTextChanged](../../../src/App.WinUI/Views/AppsPage.Modifiers.cs#L1) - assinatura: `private async void OnCitySuggestTextChanged(...)`
+- [AppsPage.OnCitySuggestionChosen](../../../src/App.WinUI/Views/AppsPage.Modifiers.cs#L1) - assinatura: `private void OnCitySuggestionChosen(...)`
 - [CitySuggestion.ToConfigValue](../../../src/App.WinUI/Services/Apps/CitySuggestion.cs#L15) - assinatura: `string ToConfigValue()`
 
 ## Checklist rapido
