@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Output\Output.csproj" />
+    <ProjectReference Include="..\..\src\Device.Server\Device.Server.csproj" />
     <ProjectReference Include="..\..\src\MicaAudio.Core\MicaAudio.Core.csproj" />
     <ProjectReference Include="..\..\src\Analyzer.Dsp\Analyzer.Dsp.csproj" />
   </ItemGroup>

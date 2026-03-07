@@ -9,6 +9,8 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
 - WebSocket `/ws/v1/stream` para comandos e telemetria/progresso.
 - Sessao de comandos rastreados com timeout.
+- Normalizacao interna de `ServerConfig` para limites, timeouts e CIDRs.
+- Controle temporal deterministico via `TimeProvider` no pairing, snapshots e timeouts tracked.
 - Encaminhamento de comandos de operacao do device (`test_led`, `set_brightness`, `install/activate/set_app_config`).
 - Controle de acesso de rede e rate limiting por endpoint critico.
 - Persistencia de metadados de hardware (`BoardModel`, `PanelType`) por dispositivo.
@@ -21,8 +23,9 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 3. `PairDeviceRequest` pode informar `BoardModel` e `PanelType`.
 4. Telemetria WS atualiza `FirmwareVersion`, app ativo, RSSI e metadados de hardware.
 5. App envia comandos tracked (`SendCommandTrackedAsync`).
-6. `DeviceServerHost.Advanced` correlaciona ACK/progresso por `commandId`.
-7. `BroadcastFrame` distribui stream para sockets conectados.
+6. `PendingTrackedCommandStore` e `PendingTrackedCommand` correlacionam ACK/progresso por `commandId`.
+7. `DeviceSession` consolida invariantes de `DeviceRecord` e snapshot online/offline.
+8. `BroadcastFrame` distribui stream para sockets conectados.
 
 ## Politicas de seguranca
 
@@ -54,6 +57,8 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - Politica de timeout/comando e progresso.
 - Estrutura de DTOs em `Device.Protocol/Models`.
 - Politicas de seguranca em `ServerConfig`.
+- Normalizacao de runtime em `DeviceServerRuntimeConfig`.
+- Transicoes de estado em `DeviceRecordMutations` e `DeviceSession`.
 
 ## Riscos e efeitos colaterais
 
@@ -75,6 +80,10 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1) - assinatura: `public interface IDeviceServerHost`
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Advanced](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [DeviceServerHost.Routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1) - assinatura: `internal sealed class DeviceServerRuntimeConfig`
+- [DeviceSession](../../../src/Device.Server/Hosting/DeviceSession.cs#L1) - assinatura: `internal sealed class DeviceSession`
+- [PendingTrackedCommand](../../../src/Device.Server/Hosting/PendingTrackedCommand.cs#L1) - assinatura: `internal sealed class PendingTrackedCommand`
 - [PairDeviceRequest](../../../src/Device.Protocol/Models/PairDeviceRequest.cs#L1) - assinatura: `public sealed class PairDeviceRequest`
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1) - assinatura: `public sealed class DeviceTelemetryMessage`
 - [DeviceRecord](../../../src/Device.Protocol/Models/DeviceRecord.cs#L1) - assinatura: `public sealed class DeviceRecord`
@@ -85,6 +94,10 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
+- `src/Device.Server/Hosting/DeviceServerHost.Routes.cs`
+- `src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs`
+- `src/Device.Server/Hosting/DeviceSession.cs`
+- `src/Device.Server/Hosting/PendingTrackedCommand.cs`
 - `src/Device.Protocol/Models/PairDeviceRequest.cs`
 - `src/Device.Protocol/Models/DeviceTelemetryMessage.cs`
 
@@ -163,4 +176,23 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
   - `/api/v1/pair` permanece o endpoint de pareamento;
   - `/ws/v1/stream` permanece para sessao e telemetria.
 - O serial onboarding apenas automatiza o preenchimento de host/credenciais/pair code antes da sessao WS.
+
+## Atualizacao 2026-03 - Refactor core-first do host em .NET 10
+
+- `DeviceServerHost` foi reduzido para orquestracao do host ASP.NET Core e passou a mapear endpoints em route groups via `DeviceServerHost.Routes`.
+- O estado interno foi separado em colaboradores dedicados:
+  - `DeviceSessionRegistry`
+  - `DevicePairingState`
+  - `PendingTrackedCommandStore`
+  - `DeviceRecordMutations`
+- A logica temporal sensivel agora usa `TimeProvider` em:
+  - expiracao de pairing code;
+  - janela de tentativas por IP;
+  - grace period de detach;
+  - snapshots online/offline;
+  - espera de comandos tracked fora do caminho `TimeProvider.System`.
+- O wire HTTP/WS permaneceu congelado:
+  - mesmos paths;
+  - mesmos DTOs;
+  - mesmos comandos wire.
 

@@ -13,34 +13,26 @@ namespace App.WinUI.Services;
 internal sealed class AudioPipelineCoordinator
 {
     private readonly ILoopbackCapture capture;
-    private readonly ILedOutput simulatorLedOutput;
-    private readonly ILedOutput esp32s3LedOutput;
-    private readonly ILedOutput nullLedOutput;
-    private readonly Func<IAnalyzer> analyzerFactory;
+    private readonly AudioPipelineOutputRouter outputRouter;
+    private readonly AudioPipelineFrameProcessor frameProcessor;
 
     private CancellationTokenSource? cts;
     private Task? loopTask;
     private bool running;
-    private bool hubPreviewEnabled;
-    private float brightness = LedDefaults.Brightness;
-    private string currentPresetId = "audiomotion-clone";
-    private int hubTransportMode = (int)RendererHubTransportMode.Bins128;
 
     public AudioPipelineCoordinator(
         ILoopbackCapture capture,
         ILedOutput simulatorLedOutput,
         ILedOutput esp32s3LedOutput,
         ILedOutput nullLedOutput,
-        Func<IAnalyzer> analyzerFactory)
+        IAnalyzer initialAnalyzer)
     {
         this.capture = capture;
-        this.simulatorLedOutput = simulatorLedOutput;
-        this.esp32s3LedOutput = esp32s3LedOutput;
-        this.nullLedOutput = nullLedOutput;
-        this.analyzerFactory = analyzerFactory;
+        outputRouter = new AudioPipelineOutputRouter(simulatorLedOutput, esp32s3LedOutput, nullLedOutput);
+        frameProcessor = new AudioPipelineFrameProcessor(outputRouter, initialAnalyzer);
     }
 
-    public SpectrumFrame? LatestFrame { get; private set; }
+    public SpectrumFrame? LatestFrame => frameProcessor.LatestFrame;
 
     public event EventHandler<string>? StatusChanged;
 
@@ -52,28 +44,22 @@ internal sealed class AudioPipelineCoordinator
         }
 
         cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        frameProcessor.SetCurrentPreset(presetId);
+        frameProcessor.Reset();
+        outputRouter.Configure(hubPreviewEnabled, brightness);
 
         try
         {
-            await capture.StartAsync(new CaptureConfig
-            {
-                TargetSampleRate = 48_000,
-                TargetChannels = 1,
-                ChannelCapacity = 8,
-                BufferMilliseconds = 12,
-            }, cancellationToken).ConfigureAwait(false);
+            await capture.StartAsync(AudioPipelineCaptureProfile.CreateDefault(), cts.Token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             StatusChanged?.Invoke(this, $"Erro de audio: {ex.Message}");
             cts.Dispose();
             cts = null;
+            outputRouter.StopAll();
             return;
         }
-
-        currentPresetId = presetId;
-        LatestFrame = null;
-        ConfigureOutputs(hubPreviewEnabled, brightness);
 
         loopTask = Task.Run(() => PipelineLoopAsync(cts.Token), CancellationToken.None);
         running = true;
@@ -84,9 +70,7 @@ internal sealed class AudioPipelineCoordinator
     {
         if (!running)
         {
-            simulatorLedOutput.Stop();
-            esp32s3LedOutput.Stop();
-            nullLedOutput.Stop();
+            outputRouter.StopAll();
             return;
         }
 
@@ -109,9 +93,8 @@ internal sealed class AudioPipelineCoordinator
             cts = null;
             loopTask = null;
             running = false;
-            simulatorLedOutput.Stop();
-            esp32s3LedOutput.Stop();
-            nullLedOutput.Stop();
+            frameProcessor.Reset();
+            outputRouter.StopAll();
         }
 
         StatusChanged?.Invoke(this, "Parado");
@@ -119,12 +102,12 @@ internal sealed class AudioPipelineCoordinator
 
     public void SetHubPreview(bool enabled, float brightness)
     {
-        ConfigureOutputs(enabled, brightness);
+        outputRouter.Configure(enabled, brightness);
     }
 
     public void ConfigureHubOutputs(bool enableSimulator, float brightness)
     {
-        ConfigureOutputs(enableSimulator, brightness);
+        outputRouter.Configure(enableSimulator, brightness);
     }
 
     public void SendHubFrame(RgbaColor[] frame128x64, bool forceSimulator = false, string presetId = "gif-hub75")
@@ -134,136 +117,38 @@ internal sealed class AudioPipelineCoordinator
             return;
         }
 
-        var payload = new LedPayload
-        {
-            Frame128x64 = frame128x64,
-            Level = 1f,
-            PresetId = presetId,
-        };
-
-        esp32s3LedOutput.Send(payload);
-
-        if (forceSimulator || hubPreviewEnabled)
-        {
-            simulatorLedOutput.Send(payload);
-        }
-        else
-        {
-            nullLedOutput.Send(payload);
-        }
+        frameProcessor.SendHubFrame(frame128x64, forceSimulator, presetId);
     }
 
-    public void SetCurrentPreset(string presetId) => currentPresetId = presetId;
+    public void SetCurrentPreset(string presetId) => frameProcessor.SetCurrentPreset(presetId);
 
     public void SetHubTransportMode(RendererHubTransportMode mode)
     {
-        Volatile.Write(ref hubTransportMode, (int)mode);
+        frameProcessor.SetHubTransportMode(mode);
     }
 
-    private void ConfigureOutputs(bool enableSimulator, float brightness)
+    public void SetAnalyzer(IAnalyzer analyzer)
     {
-        hubPreviewEnabled = enableSimulator;
-        this.brightness = Math.Clamp(brightness, 0f, 1f);
-
-        var ledConfig = new LedOutputConfig
-        {
-            Width = LedDefaults.MatrixWidth,
-            Height = LedDefaults.MatrixHeight,
-            Brightness = this.brightness,
-        };
-
-        esp32s3LedOutput.Start(ledConfig);
-        esp32s3LedOutput.SetBrightness(this.brightness);
-
-        if (hubPreviewEnabled)
-        {
-            simulatorLedOutput.Start(ledConfig);
-            simulatorLedOutput.SetBrightness(this.brightness);
-        }
-        else
-        {
-            simulatorLedOutput.Stop();
-        }
-
-        nullLedOutput.Start(ledConfig);
-        nullLedOutput.SetBrightness(this.brightness);
+        frameProcessor.SetAnalyzer(analyzer);
     }
 
     private async Task PipelineLoopAsync(CancellationToken cancellationToken)
     {
         var reader = capture.Frames;
 
-        while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
+        try
         {
-            while (reader.TryRead(out var pcmFrame))
+            while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                var analyzer = analyzerFactory();
-                var spectrum = analyzer.Process(in pcmFrame);
-                if (spectrum is null)
+                while (reader.TryRead(out var pcmFrame))
                 {
-                    continue;
-                }
-
-                LatestFrame = spectrum;
-
-                var activeTransportMode = (RendererHubTransportMode)Volatile.Read(ref hubTransportMode);
-                if (activeTransportMode == RendererHubTransportMode.Frame128x64)
-                {
-                    continue;
-                }
-
-                var bins128 = GetOutputBins128(spectrum);
-                var payload = new LedPayload
-                {
-                    Bins128 = bins128,
-                    Level = spectrum.Level,
-                    PresetId = currentPresetId,
-                };
-
-                esp32s3LedOutput.Send(payload);
-
-                if (hubPreviewEnabled)
-                {
-                    simulatorLedOutput.Send(payload);
-                }
-                else
-                {
-                    nullLedOutput.Send(payload);
+                    frameProcessor.Process(in pcmFrame);
                 }
             }
         }
-    }
-
-    private static float[] GetOutputBins128(SpectrumFrame spectrum)
-    {
-        if (spectrum.BandsDisplay.Length == LedDefaults.MatrixWidth)
+        catch (OperationCanceledException)
         {
-            return spectrum.BandsDisplay.ToArray();
         }
-
-        var source = spectrum.BandsDisplay.Length > 0 ? spectrum.BandsDisplay : spectrum.Bands64;
-        if (source.Length == LedDefaults.MatrixWidth)
-        {
-            return source.ToArray();
-        }
-
-        var bins = new float[LedDefaults.MatrixWidth];
-        if (source.Length == 0)
-        {
-            return bins;
-        }
-
-        for (var i = 0; i < bins.Length; i++)
-        {
-            var t = bins.Length == 1 ? 0f : i / (float)(bins.Length - 1);
-            var scaled = t * (source.Length - 1);
-            var left = (int)MathF.Floor(scaled);
-            var right = Math.Min(source.Length - 1, left + 1);
-            var blend = scaled - left;
-            bins[i] = (source[left] * (1f - blend)) + (source[right] * blend);
-        }
-
-        return bins;
     }
 }
 

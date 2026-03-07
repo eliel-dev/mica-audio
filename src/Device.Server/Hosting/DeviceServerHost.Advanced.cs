@@ -9,8 +9,6 @@ public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly Dictionary<string, PendingTrackedCommand> pendingTrackedCommands = new(StringComparer.OrdinalIgnoreCase);
-
     // DOCS: docs/wiki/guides/add-device-command.md#passos
     private async Task<CommandDispatchResult> SendTrackedCommandCoreAsync(
         string deviceId,
@@ -19,7 +17,7 @@ public sealed partial class DeviceServerHost
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        DeviceState? state;
+        DeviceSession? state;
         lock (gate)
         {
             devices.TryGetValue(deviceId, out state);
@@ -45,7 +43,7 @@ public sealed partial class DeviceServerHost
 
         lock (gate)
         {
-            pendingTrackedCommands[commandId] = pending;
+            pendingTrackedCommands.Add(pending);
         }
 
         PublishCommandProgress(new DeviceCommandProgressMessage
@@ -79,7 +77,7 @@ public sealed partial class DeviceServerHost
         {
             lock (gate)
             {
-                pendingTrackedCommands.Remove(commandId);
+                pendingTrackedCommands.Remove(commandId, out _);
             }
 
             return new CommandDispatchResult
@@ -105,31 +103,27 @@ public sealed partial class DeviceServerHost
             Message = "Comando enviado ao dispositivo.",
         });
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(timeout);
-
         try
         {
-            return await pending.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+            return await pending.WaitForResultAsync(timeout, timeProvider, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            if (cancellationToken.IsCancellationRequested)
+            return new CommandDispatchResult
             {
-                return new CommandDispatchResult
-                {
-                    DeviceId = deviceId,
-                    CommandId = commandId,
-                    Accepted = true,
-                    Completed = true,
-                    Success = false,
-                    ProgressPercent = pending.LastPercent,
-                    Stage = "cancelled",
-                    Message = "Operacao cancelada.",
-                    ErrorCode = "cancelled",
-                };
-            }
-
+                DeviceId = deviceId,
+                CommandId = commandId,
+                Accepted = true,
+                Completed = true,
+                Success = false,
+                ProgressPercent = pending.LastPercent,
+                Stage = "cancelled",
+                Message = "Operacao cancelada.",
+                ErrorCode = "cancelled",
+            };
+        }
+        catch (TimeoutException)
+        {
             PublishCommandProgress(new DeviceCommandProgressMessage
             {
                 DeviceId = deviceId,
@@ -157,7 +151,7 @@ public sealed partial class DeviceServerHost
         {
             lock (gate)
             {
-                pendingTrackedCommands.Remove(commandId);
+                pendingTrackedCommands.Remove(commandId, out _);
             }
         }
     }
@@ -169,7 +163,7 @@ public sealed partial class DeviceServerHost
             return Results.Unauthorized();
         }
 
-        if (IsRequestBodyTooLarge(ctx, config.MaxJsonBodyBytes))
+        if (IsRequestBodyTooLarge(ctx))
         {
             return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
         }
@@ -225,7 +219,7 @@ public sealed partial class DeviceServerHost
         return Results.Ok(new { ok = true });
     }
 
-    private async Task<bool> HandleIncomingWsTextAsync(DeviceState state, string json)
+    private async Task<bool> HandleIncomingWsTextAsync(DeviceSession state, string json)
     {
         try
         {
@@ -352,9 +346,15 @@ public sealed partial class DeviceServerHost
 
     private void PublishCommandProgress(DeviceCommandProgressMessage progress)
     {
+        if (string.IsNullOrWhiteSpace(progress.CommandId))
+        {
+            CommandProgressChanged?.Invoke(this, progress);
+            return;
+        }
+
         lock (gate)
         {
-            if (pendingTrackedCommands.TryGetValue(progress.CommandId, out var pending))
+            if (pendingTrackedCommands.TryGetValue(progress.CommandId, out var pending) && pending is not null)
             {
                 pending.LastPercent = Math.Max(pending.LastPercent, Math.Clamp(progress.ProgressPercent, 0, 100));
             }
@@ -377,31 +377,4 @@ public sealed partial class DeviceServerHost
             _ => "unknown",
         };
     }
-
-    private sealed class PendingTrackedCommand
-    {
-        private readonly TaskCompletionSource<CommandDispatchResult> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public PendingTrackedCommand(string commandId, string deviceId, DeviceCommandType commandType)
-        {
-            CommandId = commandId;
-            DeviceId = deviceId;
-            CommandType = commandType;
-        }
-
-        public string CommandId { get; }
-
-        public string DeviceId { get; }
-
-        public DeviceCommandType CommandType { get; }
-
-        public int LastPercent { get; set; }
-
-        public Task<CommandDispatchResult> Task => tcs.Task;
-
-        public bool TrySetResult(CommandDispatchResult result) => tcs.TrySetResult(result);
-    }
 }
-
-
-

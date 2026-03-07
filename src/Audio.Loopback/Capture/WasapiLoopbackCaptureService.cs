@@ -19,7 +19,7 @@ public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
     });
 
     private readonly MMDeviceEnumerator deviceEnumerator = new();
-    private CaptureConfig config = new();
+    private LoopbackCaptureRuntimeConfig runtimeConfig = LoopbackCaptureRuntimeConfig.From(new CaptureConfig());
     private LowLatencyWasapiLoopbackCapture? capture;
     private Timer? defaultDeviceMonitor;
     private string? activeDeviceId;
@@ -44,8 +44,8 @@ public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
                 return Task.CompletedTask;
             }
 
-            this.config = config;
-            channel = Channel.CreateBounded<PcmFrame>(new BoundedChannelOptions(Math.Max(2, config.ChannelCapacity))
+            runtimeConfig = LoopbackCaptureRuntimeConfig.From(config);
+            channel = Channel.CreateBounded<PcmFrame>(new BoundedChannelOptions(runtimeConfig.ChannelCapacity)
             {
                 SingleReader = false,
                 SingleWriter = true,
@@ -143,9 +143,7 @@ public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
         var device = deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
         activeDeviceId = device.ID;
 
-        var latencyMs = global::System.Math.Clamp(config.BufferMilliseconds, 8, 20);
-
-        capture = new LowLatencyWasapiLoopbackCapture(device, latencyMs)
+        capture = new LowLatencyWasapiLoopbackCapture(device, runtimeConfig.BufferMilliseconds)
         {
             ShareMode = AudioClientShareMode.Shared,
         };
@@ -244,20 +242,16 @@ public sealed class WasapiLoopbackCaptureService : ILoopbackCapture
 
         try
         {
-            var sourceSamples = PcmConversion.DecodeToFloat(e.Buffer, e.BytesRecorded, currentCapture.WaveFormat);
-            if (sourceSamples.Length == 0)
+            var frame = LoopbackFrameFactory.TryCreateFrame(
+                e.Buffer,
+                e.BytesRecorded,
+                currentCapture.WaveFormat,
+                runtimeConfig.TargetSampleRate);
+            if (frame is null)
             {
                 return;
             }
 
-            var mono = PcmConversion.DownmixToMono(sourceSamples, currentCapture.WaveFormat.Channels);
-            var mono48k = PcmConversion.ResampleLinear(mono, currentCapture.WaveFormat.SampleRate, config.TargetSampleRate);
-            if (mono48k.Length == 0)
-            {
-                return;
-            }
-
-            var frame = new PcmFrame(mono48k, Stopwatch.GetTimestamp());
             channel.Writer.TryWrite(frame);
         }
         catch (Exception ex)

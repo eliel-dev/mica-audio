@@ -1,5 +1,6 @@
 using System.Text;
 using App.WinUI.Infrastructure.Serial;
+using App.WinUI.Infrastructure;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
@@ -33,8 +34,6 @@ public partial class App : Application
 
     internal static event Action<bool>? ShellChromeVisibilityChanged;
 
-    private static readonly object CrashLogGate = new();
-
     public App()
     {
         UnhandledException += OnUnhandledException;
@@ -52,6 +51,7 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         // DOCS: docs/wiki/architecture/02-runtime-lifecycle.md#startup
+        RecordStartupBreadcrumb("OnLaunched");
         MainWindow ??= new Window();
 
         if (MainWindow.Content is not Frame rootFrame)
@@ -66,13 +66,15 @@ public partial class App : Application
 
         ApplySystemBackdrop(rootFrame);
 
-        EnsureServicesInitialized();
-        _ = StartDeviceIntegrationAsync(Services!);
-
         try
         {
+            RecordStartupBreadcrumb("BuildServiceProvider");
+            EnsureServicesInitialized();
+            _ = StartDeviceIntegrationAsync(Services!);
+
             if (rootFrame.Content is null)
             {
+                RecordStartupBreadcrumb("Resolve ShellPage");
                 rootFrame.Content = Services!.GetRequiredService<ShellPage>();
             }
         }
@@ -87,6 +89,7 @@ public partial class App : Application
 
     internal static IServiceProvider BuildServiceProvider()
     {
+        RecordStartupBreadcrumb("BuildServiceProvider.ConfigureServices");
         var roamingRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var localRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var appDataRoot = Path.Combine(roamingRoot, "MicaAudio");
@@ -192,12 +195,19 @@ public partial class App : Application
             sp.GetRequiredService<AppConfigValidationUseCase>(),
             sp.GetRequiredService<DeviceIntegrationService>()));
 
+        services.AddTransient(sp => new ShellPageContentFactory(
+            () =>
+            {
+                RecordStartupBreadcrumb("Resolve MainPage");
+                return sp.GetRequiredService<MainPage>();
+            },
+            () => sp.GetRequiredService<DevicesPage>(),
+            () => sp.GetRequiredService<AppsPage>()));
+
         services.AddTransient<ShellPage>(sp => new ShellPage(
             sp.GetRequiredService<ShellPageViewModel>(),
             sp.GetRequiredService<DeviceOperationsCoordinator>(),
-            sp.GetRequiredService<MainPage>(),
-            sp.GetRequiredService<DevicesPage>(),
-            sp.GetRequiredService<AppsPage>()));
+            sp.GetRequiredService<ShellPageContentFactory>()));
 
         return services.BuildServiceProvider();
     }
@@ -345,24 +355,11 @@ public partial class App : Application
     private static void WriteCrashLog(string header, Exception ex)
     {
         var logger = Services?.GetService<ILogger<App>>();
-        if (logger is not null)
-        {
-            LogUnhandledAppFailure(logger, ex, header);
-            return;
-        }
-
-        var path = GetCrashLogPath();
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var log = new StringBuilder()
-            .AppendLine("=== " + header + " ===")
-            .AppendLine(DateTimeOffset.Now.ToString("O"))
-            .AppendLine(ex.ToString())
-            .AppendLine();
-
-        lock (CrashLogGate)
-        {
-            File.AppendAllText(path, log.ToString());
-        }
+        AppStartupDiagnostics.WriteCrashLog(
+            GetCrashLogPath(),
+            header,
+            ex,
+            logger is null ? null : (capturedHeader, capturedException) => LogUnhandledAppFailure(logger, capturedException, capturedHeader));
     }
 
     private static string GetCrashLogPath()
@@ -378,36 +375,19 @@ public partial class App : Application
     }
 
     private static ScrollViewer BuildStartupFallbackView(Exception ex)
-    {
-        var panel = new StackPanel
-        {
-            Padding = new Thickness(20),
-            Spacing = 10,
-        };
+        => AppFailureViewFactory.Build(
+            "Falha ao iniciar a interface principal.",
+            "Abra o log local para ver breadcrumbs de startup e a stack trace completa.",
+            ex,
+            GetCrashLogPath());
 
-        panel.Children.Add(new TextBlock
-        {
-            Text = "Falha ao iniciar a interface principal.",
-            FontSize = 20,
-        });
+    internal static void RecordStartupBreadcrumb(string stage)
+        => AppStartupDiagnostics.RecordBreadcrumb(stage);
 
-        panel.Children.Add(new TextBlock
-        {
-            Text = $"Log de erro: {GetCrashLogPath()}",
-            TextWrapping = TextWrapping.WrapWholeWords,
-        });
+    internal static void ReportStartupFailure(string header, Exception ex)
+        => WriteCrashLog(header, ex);
 
-        panel.Children.Add(new TextBlock
-        {
-            Text = $"{ex.GetType().Name}: {ex.Message}",
-            TextWrapping = TextWrapping.WrapWholeWords,
-        });
-
-        return new ScrollViewer
-        {
-            Content = panel,
-        };
-    }
+    internal static string CurrentCrashLogPath => GetCrashLogPath();
 
     [LoggerMessage(EventId = 1001, Level = LogLevel.Critical, Message = "Unhandled app failure: {Header}")]
     private static partial void LogUnhandledAppFailure(ILogger logger, Exception exception, string header);

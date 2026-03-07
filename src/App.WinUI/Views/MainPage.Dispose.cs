@@ -4,6 +4,7 @@ public partial class MainPage : IDisposable
 {
     public void Dispose()
     {
+        visualizerRuntimeDebounceTimer?.Stop();
         gifLoadCts?.Cancel();
         gifLoadCts?.Dispose();
         gifLoadCts = null;

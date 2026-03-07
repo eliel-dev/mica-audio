@@ -2,23 +2,84 @@
 
 ## Responsabilidades
 
-1. montar o analyzer ativo para a sessao de visualizacao
-2. enviar output HUB75 nativo `128x64` para simulador e device
-3. renderizar preview HUB75 local unico e nativo `128x64`
-4. integrar setup e catalogo com firmware oficial DevKitC-1
+1. consumir `VisualizerRuntimeSettings` e `AnalyzerRuntimeProfile` como fonte unica de invariantes do visualizer
+2. orquestrar captura, analyzer e output HUB75 sem concentrar toda a regra no code-behind
+3. enviar output HUB75 nativo `128x64` para simulador e device
+4. renderizar preview HUB75 local unico e nativo `128x64`
+5. integrar setup e catalogo com firmware oficial DevKitC-1
 
 ## Fluxo de execucao
 
 1. carregar `AppSettings` e presets
 2. migrar estado legado
-3. construir `AnalyzerConfig` com faixa fixa `-85/-25`
-4. iniciar `AudioPipelineCoordinator`
-5. renderizar `MainCanvas` e preview HUB75 com a mesma base `128x64`
+3. derivar `VisualizerRuntimeSettings` e `AnalyzerRuntimeProfile` a partir de `settings + preset + viewport`
+4. iniciar `AudioPipelineCoordinator` com `AudioPipelineCaptureProfile`
+5. processar `PcmFrame -> SpectrumFrame -> LedPayload` pelo runtime do pipeline
+6. renderizar `MainCanvas` e preview HUB75 com a mesma base `128x64`
+
+## Atualizacao 2026-03 - Fase 6 core, pipeline e borda de integracao
+
+- A fase 6 ampliou a arquitetura do app em tres ondas sem mudar wire/protocolo:
+  - `MicaAudio.Core` passou a concentrar invariantes de analyzer e payload (`VisualizerRuntimeSettings`, `AnalyzerRuntimeProfile`, `LedPayloadFactory`);
+  - `AudioPipelineCoordinator` virou orquestrador fino e delega lifecycle/output/frame processing;
+  - `MainPage` deixou de ser origem das regras de runtime e passou a consumir helpers dedicados em `MainPage.Pipeline`.
+- O pipeline de audio agora se organiza assim:
+  1. `AudioPipelineCaptureProfile` define a politica fixa de captura (`48 kHz`, mono, buffer leve).
+  2. `AudioPipelineCoordinator` sobe/para a sessao e publica status.
+  3. `AudioPipelineFrameProcessor` resolve analyzer, preset atual, modo de transporte e converte `SpectrumFrame` em `LedPayload`.
+  4. `AudioPipelineOutputRouter` roteia o payload entre ESP32, simulador e null output.
+- `MainPage` continua dona da UX, mas a parte tecnica central foi movida para services testaveis:
+  - rebuild do analyzer;
+  - sincronizacao preview/output HUB75;
+  - persistencia do runtime visualizer;
+  - alternancia entre audio e GIF no mesmo contrato de payload.
+
+## Atualizacao 2026-03 - Startup estavel e observabilidade real
+
+- O startup da `App.WinUI` passou a gravar `crash.log` sempre em `%LocalAppData%\MicaAudio\crash.log`, mesmo quando `ILogger<App>` tambem esta disponivel.
+- O log de crash agora inclui breadcrumbs de startup para os pontos criticos:
+  - `BuildServiceProvider`
+  - `Resolve ShellPage`
+  - `Resolve MainPage`
+  - `MainPage.InitializeAsync`
+  - `MainPage.RebuildAnalyzer`
+  - `MainPage.ActivateVisualizerSessionAsync`
+- A `ShellPage` nao recebe mais paginas prontas no construtor:
+  - as abas sao resolvidas sob demanda por `ShellPageContentFactory`;
+  - se uma pagina falhar ao resolver, a shell continua viva e mostra fallback local no `ContentFrame`.
+- A `MainPage` ganhou um guard explicito de bootstrap:
+  - hidratacao programatica de combos/toggle nao dispara persistencia nem sincronizacao de output;
+  - o bootstrap aplica apenas uma sincronizacao ordenada ao final;
+  - presets legados/parciais caem em fallback seguro sem derrubar a app.
+- O endurecimento de startup ficou intencionalmente limitado ao core do visualizador:
+  - `App` e `ShellPage` mantem apenas observabilidade real + isolamento da aba;
+  - a carga de presets permanece crua;
+  - a sanitizacao segura acontece apenas no runtime do analyzer da `MainPage`.
+
+## Atualizacao 2026-03 - Visualizador fluido com debounce
+
+- O `Visualizador` passou a separar runtime pendente do runtime realmente aplicado no analyzer.
+- Ajustes finos (`LinearBoost`, `BarCount`, `FFT`, `Smoothing`, `Weighting` e `Frequency`) agora entram em um debounce unico de `150 ms` antes do rebuild.
+- Troca de preset e renderer continua imediata, mas passa por um apply consolidado:
+  - sem cascata de `RebuildAnalyzer()`;
+  - sem persistencia redundante quando o runtime efetivo nao mudou;
+  - com render/preview HUB75 consumindo o ultimo runtime realmente aplicado.
 
 ## Referencias de codigo
 
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)
+- [MainPage startup helpers](../../../src/App.WinUI/Views/MainPage.Startup.cs#L1)
+- [MainPage Pipeline helpers](../../../src/App.WinUI/Views/MainPage.Pipeline.cs#L1)
+- [MainPage visualizer runtime helpers](../../../src/App.WinUI/Views/MainPage.VisualizerRuntime.cs#L1)
+- [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
+- [ShellPageContentFactory](../../../src/App.WinUI/Views/ShellPageContentFactory.cs#L1)
+- [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
+- [AudioPipelineFrameProcessor](../../../src/App.WinUI/Services/AudioPipelineFrameProcessor.cs#L1)
+- [AudioPipelineOutputRouter](../../../src/App.WinUI/Services/AudioPipelineOutputRouter.cs#L1)
+- [AudioPipelineCaptureProfile](../../../src/App.WinUI/Services/AudioPipelineCaptureProfile.cs#L1)
+- [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L1)
+- [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
 - [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
 - [DevicesPage code-behind](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)

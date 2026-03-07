@@ -277,13 +277,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
 
     private void SendFrame(RgbaColor[] frame)
     {
-        var payload = new LedPayload
-        {
-            Frame128x64 = frame,
-            Level = 1f,
-            PresetId = GifPresetId,
-        };
-
+        var payload = LedPayloadFactory.CreateFramePayload(frame, GifPresetId);
         matrixOutput.Send(payload);
         simulatorOutput.Send(payload);
         NotifyFrameUpdated(frame);
@@ -291,13 +285,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
 
     private void SendSimulatorFrame(RgbaColor[] frame)
     {
-        var payload = new LedPayload
-        {
-            Frame128x64 = frame,
-            Level = 1f,
-            PresetId = GifPresetId,
-        };
-
+        var payload = LedPayloadFactory.CreateFramePayload(frame, GifPresetId);
         simulatorOutput.Send(payload);
         NotifyFrameUpdated(frame);
     }
@@ -330,12 +318,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
     }
     private void SendLegacyBinsClear()
     {
-        matrixOutput.Send(new LedPayload
-        {
-            Bins128 = new float[LedDefaults.MatrixWidth],
-            Level = 0f,
-            PresetId = GifPresetId,
-        });
+        matrixOutput.Send(LedPayloadFactory.CreateBinsPayload(new float[LedDefaults.MatrixWidth], GifPresetId, 0f));
     }
 
     private void CancelPendingLoad()

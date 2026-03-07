@@ -8,61 +8,14 @@ namespace App.WinUI.Services;
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#modulo-settings-presets-e-persistencia
 internal sealed class AppSettingsDomainService
 {
-    private const string DefaultPresetId = "audiomotion-clone";
-    private const string DefaultRendererId = "audiomotion-clone";
-    private const float DefaultMinDecibels = -85f;
-    private const float DefaultMaxDecibels = -25f;
-    private const float DefaultLinearBoost = 1.6f;
-    private const int DefaultDeviceFreshThresholdSeconds = 15;
-    private const int DefaultDeviceStaleThresholdMinutes = 2;
-    private const int DefaultDeviceDormantThresholdHours = 24;
-
     // DOCS: docs/wiki/guides/change-visualizer-settings.md#passos
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como metodo de instancia para preservar o contrato do service usado por DI e acomodar evolucao stateful futura.")]
-    public AppSettings Migrate(AppSettings settings)
+    public AppSettings Migrate(AppSettings settings) => Normalize(settings);
+
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como metodo de instancia para preservar o contrato do service usado por DI e acomodar evolucao stateful futura.")]
+    public VisualizerRuntimeSettings GetVisualizerRuntimeSettings(AppSettings settings)
     {
-        var activePresetId = string.IsNullOrWhiteSpace(settings.ActivePresetId) ? DefaultPresetId : settings.ActivePresetId;
-        var selectedRendererId = string.IsNullOrWhiteSpace(settings.SelectedRendererId)
-            ? DefaultRendererId
-            : settings.SelectedRendererId;
-
-        var minHz = Math.Clamp(settings.FrequencyMinHz, 16f, 10_000f);
-        var maxHz = Math.Clamp(settings.FrequencyMaxHz, 250f, 20_000f);
-        if (maxHz <= minHz)
-        {
-            minHz = 20f;
-            maxHz = 1000f;
-        }
-
-        var thresholds = NormalizeDeviceLifecycleThresholds(
-            settings.DeviceFreshThresholdSeconds,
-            settings.DeviceStaleThresholdMinutes,
-            settings.DeviceDormantThresholdHours);
-
-        return new AppSettings
-        {
-            ActivePresetId = activePresetId,
-            SelectedRendererId = selectedRendererId,
-            Hub75PreviewEnabled = settings.Hub75PreviewEnabled,
-            Brightness = settings.Brightness,
-            Sensitivity = DefaultMaxDecibels,
-            SensitivityMinDb = DefaultMinDecibels,
-            SensitivityMaxDb = DefaultMaxDecibels,
-            LinearBoost = CoerceLinearBoost(settings.LinearBoost),
-            BarCount = settings.BarCount <= 0 ? 38 : settings.BarCount,
-            FrequencyScale = Enum.IsDefined(settings.FrequencyScale) ? settings.FrequencyScale : FrequencyScale.Bark,
-            FrequencyMinHz = minHz,
-            FrequencyMaxHz = maxHz,
-            FftSize = FftSizePolicy.CoerceUiSize(settings.FftSize),
-            FftSmoothing = Math.Clamp(settings.FftSmoothing, 0f, 0.99f),
-            WeightingFilter = Enum.IsDefined(settings.WeightingFilter) ? settings.WeightingFilter : WeightingFilter.Off,
-            DeviceFreshThresholdSeconds = thresholds.DeviceFreshThresholdSeconds,
-            DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
-            DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
-            AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
-            WindowWidth = settings.WindowWidth,
-            WindowHeight = settings.WindowHeight,
-        };
+        return VisualizerRuntimeSettings.From(settings);
     }
 
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como metodo de instancia para preservar o contrato do service usado por DI e acomodar evolucao stateful futura.")]
@@ -73,68 +26,60 @@ internal sealed class AppSettingsDomainService
         return builder.Build();
     }
 
-    private static float CoerceLinearBoost(float value)
-        => float.IsNaN(value) || float.IsInfinity(value) ? DefaultLinearBoost : Math.Clamp(value, 1f, 3f);
-
-    private static DeviceLifecycleThresholdValues NormalizeDeviceLifecycleThresholds(
-        int freshThresholdSeconds,
-        int staleThresholdMinutes,
-        int dormantThresholdHours)
+    private static AppSettings Normalize(AppSettings settings)
     {
-        var normalizedFresh = freshThresholdSeconds <= 0
-            ? DefaultDeviceFreshThresholdSeconds
-            : Math.Clamp(freshThresholdSeconds, 5, 120);
-        var normalizedStale = staleThresholdMinutes <= 0
-            ? DefaultDeviceStaleThresholdMinutes
-            : Math.Clamp(staleThresholdMinutes, 1, 240);
-        var normalizedDormant = dormantThresholdHours <= 0
-            ? DefaultDeviceDormantThresholdHours
-            : Math.Clamp(dormantThresholdHours, 1, 720);
+        ArgumentNullException.ThrowIfNull(settings);
 
-        var fresh = TimeSpan.FromSeconds(normalizedFresh);
-        var stale = TimeSpan.FromMinutes(normalizedStale);
-        var dormant = TimeSpan.FromHours(normalizedDormant);
+        var visualizer = VisualizerRuntimeSettings.From(settings);
+        var thresholds = DeviceLifecycleSettings.From(settings);
 
-        if (fresh >= stale)
+        return new AppSettings
         {
-            stale = fresh + TimeSpan.FromMinutes(1);
-            normalizedStale = Math.Clamp((int)Math.Ceiling(stale.TotalMinutes), 1, 240);
-            stale = TimeSpan.FromMinutes(normalizedStale);
-        }
-
-        if (stale >= dormant)
-        {
-            dormant = stale + TimeSpan.FromHours(1);
-            normalizedDormant = Math.Clamp((int)Math.Ceiling(dormant.TotalHours), 1, 720);
-        }
-
-        return new DeviceLifecycleThresholdValues(normalizedFresh, normalizedStale, normalizedDormant);
+            ActivePresetId = visualizer.ActivePresetId,
+            SelectedRendererId = visualizer.SelectedRendererId,
+            Hub75PreviewEnabled = settings.Hub75PreviewEnabled,
+            Brightness = settings.Brightness,
+            Sensitivity = VisualizerRuntimeDefaults.DefaultMaxDecibels,
+            SensitivityMinDb = VisualizerRuntimeDefaults.DefaultMinDecibels,
+            SensitivityMaxDb = VisualizerRuntimeDefaults.DefaultMaxDecibels,
+            LinearBoost = visualizer.LinearBoost,
+            BarCount = visualizer.DisplayBandCount,
+            FrequencyScale = visualizer.FrequencyScale,
+            FrequencyMinHz = visualizer.FrequencyMinHz,
+            FrequencyMaxHz = visualizer.FrequencyMaxHz,
+            FftSize = visualizer.FftSize,
+            FftSmoothing = visualizer.FftSmoothing,
+            WeightingFilter = visualizer.WeightingFilter,
+            DeviceFreshThresholdSeconds = thresholds.DeviceFreshThresholdSeconds,
+            DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
+            DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
+            AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
+            WindowWidth = settings.WindowWidth,
+            WindowHeight = settings.WindowHeight,
+        };
     }
-
-    private readonly record struct DeviceLifecycleThresholdValues(
-        int DeviceFreshThresholdSeconds,
-        int DeviceStaleThresholdMinutes,
-        int DeviceDormantThresholdHours);
 
     internal sealed class AppSettingsBuilder
     {
         public AppSettingsBuilder(AppSettings source)
         {
-            ActivePresetId = source.ActivePresetId;
-            SelectedRendererId = source.SelectedRendererId;
+            var visualizer = VisualizerRuntimeSettings.From(source);
+
+            ActivePresetId = visualizer.ActivePresetId;
+            SelectedRendererId = visualizer.SelectedRendererId;
             Hub75PreviewEnabled = source.Hub75PreviewEnabled;
             Brightness = source.Brightness;
-            Sensitivity = DefaultMaxDecibels;
-            SensitivityMinDb = DefaultMinDecibels;
-            SensitivityMaxDb = DefaultMaxDecibels;
-            LinearBoost = source.LinearBoost;
-            BarCount = source.BarCount;
-            FrequencyScale = source.FrequencyScale;
-            FrequencyMinHz = source.FrequencyMinHz;
-            FrequencyMaxHz = source.FrequencyMaxHz;
-            FftSize = source.FftSize;
-            FftSmoothing = source.FftSmoothing;
-            WeightingFilter = source.WeightingFilter;
+            Sensitivity = VisualizerRuntimeDefaults.DefaultMaxDecibels;
+            SensitivityMinDb = VisualizerRuntimeDefaults.DefaultMinDecibels;
+            SensitivityMaxDb = VisualizerRuntimeDefaults.DefaultMaxDecibels;
+            LinearBoost = visualizer.LinearBoost;
+            BarCount = visualizer.DisplayBandCount;
+            FrequencyScale = visualizer.FrequencyScale;
+            FrequencyMinHz = visualizer.FrequencyMinHz;
+            FrequencyMaxHz = visualizer.FrequencyMaxHz;
+            FftSize = visualizer.FftSize;
+            FftSmoothing = visualizer.FftSmoothing;
+            WeightingFilter = visualizer.WeightingFilter;
             DeviceFreshThresholdSeconds = source.DeviceFreshThresholdSeconds;
             DeviceStaleThresholdMinutes = source.DeviceStaleThresholdMinutes;
             DeviceDormantThresholdHours = source.DeviceDormantThresholdHours;
@@ -184,6 +129,22 @@ internal sealed class AppSettingsDomainService
             FrequencyMaxHz = maxHz;
         }
 
+        public void SetVisualizerRuntimeSettings(VisualizerRuntimeSettings settings)
+        {
+            ArgumentNullException.ThrowIfNull(settings);
+
+            ActivePresetId = settings.ActivePresetId;
+            SelectedRendererId = settings.SelectedRendererId;
+            LinearBoost = settings.LinearBoost;
+            BarCount = settings.DisplayBandCount;
+            FrequencyScale = settings.FrequencyScale;
+            FrequencyMinHz = settings.FrequencyMinHz;
+            FrequencyMaxHz = settings.FrequencyMaxHz;
+            FftSize = settings.FftSize;
+            FftSmoothing = settings.FftSmoothing;
+            WeightingFilter = settings.WeightingFilter;
+        }
+
         public void SetWindowSize(int width, int height)
         {
             WindowWidth = width;
@@ -192,12 +153,7 @@ internal sealed class AppSettingsDomainService
 
         public AppSettings Build()
         {
-            var thresholds = NormalizeDeviceLifecycleThresholds(
-                DeviceFreshThresholdSeconds,
-                DeviceStaleThresholdMinutes,
-                DeviceDormantThresholdHours);
-
-            return new AppSettings
+            return Normalize(new AppSettings
             {
                 ActivePresetId = ActivePresetId,
                 SelectedRendererId = SelectedRendererId,
@@ -214,13 +170,13 @@ internal sealed class AppSettingsDomainService
                 FftSize = FftSize,
                 FftSmoothing = FftSmoothing,
                 WeightingFilter = WeightingFilter,
-                DeviceFreshThresholdSeconds = thresholds.DeviceFreshThresholdSeconds,
-                DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
-                DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
+                DeviceFreshThresholdSeconds = DeviceFreshThresholdSeconds,
+                DeviceStaleThresholdMinutes = DeviceStaleThresholdMinutes,
+                DeviceDormantThresholdHours = DeviceDormantThresholdHours,
                 AllowLegacyWebSocketQueryToken = AllowLegacyWebSocketQueryToken,
                 WindowWidth = WindowWidth,
                 WindowHeight = WindowHeight,
-            };
+            });
         }
     }
 }

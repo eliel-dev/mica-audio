@@ -1,3 +1,4 @@
+using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 
 // DOCS: docs/wiki/architecture/05-device-session-and-reconnect.md#thresholds-de-lifecycle
@@ -13,11 +14,12 @@ internal readonly record struct DeviceLifecycleThresholds(TimeSpan Fresh, TimeSp
     public static DeviceLifecycleThresholds FromSettings(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        var normalized = DeviceLifecycleSettings.From(settings);
 
         return new DeviceLifecycleThresholds(
-            TimeSpan.FromSeconds(settings.DeviceFreshThresholdSeconds),
-            TimeSpan.FromMinutes(settings.DeviceStaleThresholdMinutes),
-            TimeSpan.FromHours(settings.DeviceDormantThresholdHours));
+            TimeSpan.FromSeconds(normalized.DeviceFreshThresholdSeconds),
+            TimeSpan.FromMinutes(normalized.DeviceStaleThresholdMinutes),
+            TimeSpan.FromHours(normalized.DeviceDormantThresholdHours));
     }
 }
 

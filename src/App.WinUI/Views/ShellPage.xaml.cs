@@ -14,24 +14,18 @@ public sealed partial class ShellPage : Page
 
     private readonly ShellPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;
-    private readonly MainPage mainPage;
-    private readonly DevicesPage devicesPage;
-    private readonly AppsPage appsPage;
+    private readonly ShellPageContentFactory contentFactory;
 
     private string currentTag = string.Empty;
 
     internal ShellPage(
         ShellPageViewModel viewModel,
         DeviceOperationsCoordinator deviceOps,
-        MainPage mainPage,
-        DevicesPage devicesPage,
-        AppsPage appsPage)
+        ShellPageContentFactory contentFactory)
     {
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
-        this.mainPage = mainPage;
-        this.devicesPage = devicesPage;
-        this.appsPage = appsPage;
+        this.contentFactory = contentFactory;
 
         InitializeComponent();
         DataContext = viewModel;
@@ -88,17 +82,25 @@ public sealed partial class ShellPage : Page
             return;
         }
 
+        viewModel.CurrentTag = tag;
+        App.RecordStartupBreadcrumb($"ShellPage.ShowPage({tag})");
+
+        if (!contentFactory.TryResolve(tag, out var page, out var exception))
+        {
+            App.ReportStartupFailure($"ShellPage.ShowPage({tag}) failed", exception!);
+            ContentFrame.Content = AppFailureViewFactory.Build(
+                "Falha ao carregar a pagina.",
+                "A shell permaneceu ativa. Voce pode navegar para outra aba enquanto verifica o log local.",
+                exception!,
+                App.CurrentCrashLogPath);
+            return;
+        }
+
         currentTag = tag;
         viewModel.CurrentTag = currentTag;
+        ContentFrame.Content = page;
 
-        ContentFrame.Content = tag.ToLowerInvariant() switch
-        {
-            DevicesTag => devicesPage,
-            AppsTag => appsPage,
-            _ => mainPage,
-        };
-
-        if (string.Equals(tag, AppsTag, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(tag, AppsTag, StringComparison.OrdinalIgnoreCase) && page is AppsPage appsPage)
         {
             _ = appsPage.ReloadCatalogFromDiskAsync();
         }

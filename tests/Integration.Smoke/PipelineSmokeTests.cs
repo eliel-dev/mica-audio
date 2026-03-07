@@ -25,24 +25,7 @@ public class PipelineSmokeTests
         var frame = analyzer.Process(new PcmFrame(samples, 456));
         Assert.NotNull(frame);
 
-        var bins = new float[LedDefaults.MatrixWidth];
-        var source = frame!.BandsDisplay.Length > 0 ? frame.BandsDisplay : frame.Bands64;
-        for (var i = 0; i < bins.Length; i++)
-        {
-            var t = bins.Length == 1 ? 0f : i / (float)(bins.Length - 1);
-            var scaled = t * (source.Length - 1);
-            var left = (int)MathF.Floor(scaled);
-            var right = Math.Min(source.Length - 1, left + 1);
-            var blend = scaled - left;
-            bins[i] = (source[left] * (1f - blend)) + (source[right] * blend);
-        }
-
-        simulator.Send(new LedPayload
-        {
-            Bins128 = bins,
-            Level = frame.Level,
-            PresetId = "smoke",
-        });
+        simulator.Send(LedPayloadFactory.CreateSpectrumPayload(frame!, "smoke"));
 
         var snapshot = simulator.GetFrameSnapshot();
         Assert.Equal(128 * 64, snapshot.Length);

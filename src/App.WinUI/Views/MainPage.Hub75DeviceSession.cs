@@ -6,6 +6,11 @@ public partial class MainPage
 {
     private async Task SyncHub75DeviceSessionAsync()
     {
+        if (ShouldIgnoreUiMutation())
+        {
+            return;
+        }
+
         var services = App.Services;
         if (services?.GetService(typeof(Hub75VisualizerSessionService)) is not Hub75VisualizerSessionService sessionService)
         {

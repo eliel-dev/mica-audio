@@ -17,6 +17,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
     private bool started;
     private uint sequence;
     private ushort[]? lastFrameRgb565;
+    private ushort[]? frameScratchRgb565;
     private byte lastFrameBrightness;
     private bool hasLastFrame;
 
@@ -54,6 +55,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
         float localBrightness;
         uint localSequence;
         byte localBrightnessByte;
+        ushort[]? encodedFrame;
 
         lock (gate)
         {
@@ -67,34 +69,37 @@ public sealed class Esp32S3LedOutput : ILedOutput
             level = payload.Level;
             localBrightness = brightness;
             localBrightnessByte = ToByte01(localBrightness);
+            encodedFrame = null;
 
             if (frame is { Length: StreamFrameV2.PixelCount128x64 })
             {
-                if (ShouldSkipFrameLocked(frame, localBrightnessByte))
+                EnsureFrameBuffersLocked();
+                LedFrameDeduplicator.EncodeToRgb565(frame, frameScratchRgb565!);
+                if (!LedFrameDeduplicator.ShouldBroadcast(
+                    frameScratchRgb565!,
+                    hasLastFrame,
+                    lastFrameRgb565!,
+                    localBrightnessByte,
+                    lastFrameBrightness))
                 {
                     return;
                 }
 
-                localSequence = ++sequence;
+                (lastFrameRgb565, frameScratchRgb565) = (frameScratchRgb565, lastFrameRgb565);
+                lastFrameBrightness = localBrightnessByte;
+                hasLastFrame = true;
+                encodedFrame = lastFrameRgb565;
             }
-            else
-            {
-                localSequence = ++sequence;
-            }
+
+            localSequence = ++sequence;
         }
 
-        if (frame is { Length: StreamFrameV2.PixelCount128x64 })
+        if (encodedFrame is not null)
         {
-            Span<ushort> pixels = stackalloc ushort[StreamFrameV2.PixelCount128x64];
-            for (var i = 0; i < frame.Length; i++)
-            {
-                pixels[i] = ToRgb565(frame[i]);
-            }
-
             var frameBytes = StreamFrameV2.CreateFrame128x64Rgb565(
                 sequence: localSequence,
                 timestampQpc: Stopwatch.GetTimestamp(),
-                pixels128x64Rgb565: pixels,
+                pixels128x64Rgb565: encodedFrame,
                 brightness0To255: localBrightnessByte);
 
             deviceServerHost.BroadcastFrame(frameBytes);
@@ -122,30 +127,17 @@ public sealed class Esp32S3LedOutput : ILedOutput
         deviceServerHost.BroadcastFrame(bytes);
     }
 
-    private bool ShouldSkipFrameLocked(RgbaColor[] frame, byte brightnessByte)
+    private void EnsureFrameBuffersLocked()
     {
         if (lastFrameRgb565 is null || lastFrameRgb565.Length != StreamFrameV2.PixelCount128x64)
         {
             lastFrameRgb565 = new ushort[StreamFrameV2.PixelCount128x64];
-            hasLastFrame = false;
         }
 
-        var changed = !hasLastFrame || brightnessByte != lastFrameBrightness;
-
-        for (var i = 0; i < StreamFrameV2.PixelCount128x64; i++)
+        if (frameScratchRgb565 is null || frameScratchRgb565.Length != StreamFrameV2.PixelCount128x64)
         {
-            var rgb565 = ToRgb565(frame[i]);
-            if (!changed && lastFrameRgb565[i] != rgb565)
-            {
-                changed = true;
-            }
-
-            lastFrameRgb565[i] = rgb565;
+            frameScratchRgb565 = new ushort[StreamFrameV2.PixelCount128x64];
         }
-
-        lastFrameBrightness = brightnessByte;
-        hasLastFrame = true;
-        return !changed;
     }
 
     public void SetBrightness(float value)
@@ -159,14 +151,6 @@ public sealed class Esp32S3LedOutput : ILedOutput
     private static byte ToByte01(float value)
     {
         return (byte)Math.Clamp((int)MathF.Round(Math.Clamp(value, 0f, 1f) * 255f), 0, 255);
-    }
-
-    private static ushort ToRgb565(RgbaColor color)
-    {
-        var r = (ushort)((color.R >> 3) & 0x1F);
-        var g = (ushort)((color.G >> 2) & 0x3F);
-        var b = (ushort)((color.B >> 3) & 0x1F);
-        return (ushort)((r << 11) | (g << 5) | b);
     }
 }
 

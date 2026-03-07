@@ -31,6 +31,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<DevicesPageViewModel>());
         Assert.NotNull(provider.GetService<AppsPageViewModel>());
         Assert.NotNull(provider.GetService<ShellPageViewModel>());
+        Assert.NotNull(provider.GetService<ShellPageContentFactory>());
     }
 
     [Fact]
@@ -43,6 +44,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.True(isService.IsService(typeof(DevicesPage)));
         Assert.True(isService.IsService(typeof(AppsPage)));
         Assert.True(isService.IsService(typeof(ShellPage)));
+        Assert.True(isService.IsService(typeof(ShellPageContentFactory)));
     }
 
     [Fact]

@@ -6,12 +6,18 @@ Pontos principais do cutover HUB75 128x64:
 - [LedPayload](../../../src/MicaAudio.Core/Led/LedPayload.cs#L1)
 - [StreamFrameV2](../../../src/Device.Protocol/Stream/StreamFrameV2.cs#L1)
 - [Esp32S3LedOutput](../../../src/Output/Led/Esp32S3LedOutput.cs#L1)
+- [LedFrameDeduplicator](../../../src/Output/Led/LedFrameDeduplicator.cs#L1)
 - [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)
 - [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
 - [Hub75VisualizerFrameRenderer](../../../src/App.WinUI/Services/Visualizer/Hub75VisualizerFrameRenderer.cs#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
 - [Hub75PreviewHelper](../../../src/App.WinUI/Views/Controls/Renderers/Hub75PreviewHelper.cs#L1)
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)
+- [MainPage startup helpers](../../../src/App.WinUI/Views/MainPage.Startup.cs#L1)
+- [MainPage visualizer runtime helpers](../../../src/App.WinUI/Views/MainPage.VisualizerRuntime.cs#L1)
+- [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
+- [ShellPageContentFactory](../../../src/App.WinUI/Views/ShellPageContentFactory.cs#L1)
+- [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
 
@@ -36,6 +42,9 @@ Pontos de estado e visibilidade de devices:
 - [DeviceListRenderDiff](../../../src/App.WinUI/Services/Devices/DeviceListRenderDiff.cs#L1)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1)
+- [DeviceSession](../../../src/Device.Server/Hosting/DeviceSession.cs#L1)
+- [PendingTrackedCommand](../../../src/Device.Server/Hosting/PendingTrackedCommand.cs#L1)
 
 Pontos de lifecycle leve de devices:
 
@@ -53,3 +62,45 @@ Observacoes ativas:
 - A DevicesPage usa apenas miniatura inline da lista para preview de app; o painel da direita nao tem preview maior.
 - A DevicesPage usa painel seguro de status + logs por device selecionado, e nao monta mais o dashboard avancado estilo ESP-Dash no caminho padrao.
 - O DeviceServerHost aplica grace curto de detach WS (500ms) e detach por identidade de socket para reduzir flapping em reconexao rapida.
+
+Pontos centrais do pipeline de analise e captura:
+
+- [SpectrumAnalyzer](../../../src/Analyzer.Dsp/Analysis/SpectrumAnalyzer.cs#L1)
+- [SpectrumSampleWindow](../../../src/Analyzer.Dsp/Analysis/SpectrumSampleWindow.cs#L1)
+- [SpectrumPowerProcessor](../../../src/Analyzer.Dsp/Analysis/SpectrumPowerProcessor.cs#L1)
+- [SpectrumBandLayout](../../../src/Analyzer.Dsp/Analysis/SpectrumBandLayout.cs#L1)
+- [WasapiLoopbackCaptureService](../../../src/Audio.Loopback/Capture/WasapiLoopbackCaptureService.cs#L1)
+- [LoopbackCaptureRuntimeConfig](../../../src/Audio.Loopback/Capture/LoopbackCaptureRuntimeConfig.cs#L1)
+- [LoopbackFrameFactory](../../../src/Audio.Loopback/Capture/LoopbackFrameFactory.cs#L1)
+
+Observacoes ativas do pipeline:
+
+- `SpectrumAnalyzer` preserva o contrato publico, mas delega janela, FFT/power/weighting e layout de bandas para colaboradores internos testaveis.
+- `WasapiLoopbackCaptureService` continua sendo a fronteira publica de captura, mas a normalizacao de runtime e a criacao de `PcmFrame` agora estao isoladas para facilitar testes deterministas.
+
+Pontos centrais de runtime do visualizer e payload:
+
+- [VisualizerRuntimeSettings](../../../src/MicaAudio.Core/Config/VisualizerRuntimeSettings.cs#L1)
+- [AnalyzerRuntimeProfile](../../../src/MicaAudio.Core/Config/AnalyzerRuntimeProfile.cs#L1)
+- [DeviceLifecycleSettings](../../../src/MicaAudio.Core/Config/DeviceLifecycleSettings.cs#L1)
+- [LedPayloadFactory](../../../src/MicaAudio.Core/Led/LedPayloadFactory.cs#L1)
+- [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1)
+- [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L1)
+
+Pontos centrais do runtime de pipeline no app:
+
+- [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
+- [AudioPipelineFrameProcessor](../../../src/App.WinUI/Services/AudioPipelineFrameProcessor.cs#L1)
+- [AudioPipelineOutputRouter](../../../src/App.WinUI/Services/AudioPipelineOutputRouter.cs#L1)
+- [AudioPipelineCaptureProfile](../../../src/App.WinUI/Services/AudioPipelineCaptureProfile.cs#L1)
+- [MainPage Pipeline helpers](../../../src/App.WinUI/Views/MainPage.Pipeline.cs#L1)
+
+Observacoes ativas do runtime do app:
+
+- `VisualizerRuntimeSettings` e `AnalyzerRuntimeProfile` passaram a ser a fonte unica de defaults/clamp do visualizer no `.NET 10`.
+- `LedPayloadFactory` centraliza o remapeamento para `128` bins e evita montagem manual repetida de `LedPayload`.
+- `AudioPipelineCoordinator` atua como orquestrador fino; ciclo de vida, roteamento e frame processing estao separados em colaboradores internos.
+- `ShellPage` resolve abas de forma lazy e isolada; falha da `MainPage` nao derruba mais a shell inteira.
+- `AppStartupDiagnostics` e `MainPage.Startup` concentram breadcrumbs, fallback de preset legado e guard de bootstrap da UI.
+- A reducao de escopo do fix de startup manteve a protecao concentrada na `MainPage`: presets sao sanitizados apenas no caminho de rebuild do analyzer.
+- O `Visualizador` agora separa runtime pendente do runtime aplicado e usa debounce unico de `150 ms` para ajustes finos antes do rebuild do analyzer.
