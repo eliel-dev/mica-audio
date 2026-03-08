@@ -26,12 +26,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           global-json-file: global.json
 
@@ -59,10 +59,10 @@ jobs:
       tag_name: ${{ steps.version.outputs.tag_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           global-json-file: global.json
 
@@ -96,7 +96,7 @@ jobs:
         run: dotnet publish src/App.WinUI/App.WinUI.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64 -p:SelfContained=false -p:WindowsAppSDKSelfContained=true -p:Version=${{ steps.version.outputs.release_version }} -p:FileVersion=${{ steps.version.outputs.release_version }}.0 -p:InformationalVersion=${{ steps.version.outputs.release_version }}+${{ github.sha }}
 
       - name: Upload publish artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: app-publish-win-x64
           path: src/App.WinUI/.artifacts/publish/win-x64
@@ -107,15 +107,15 @@ jobs:
     needs: publish-app
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           global-json-file: global.json
 
       - name: Download publish artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: app-publish-win-x64
           path: artifacts/publish/win-x64
@@ -177,7 +177,7 @@ jobs:
           dotnet build installer/MicaAudio.Bundle/MicaAudio.Bundle.wixproj -c Release -p:ProductVersion=${{ needs.publish-app.outputs.release_version }} -p:MsiPath="$msiPath" -p:DotNetDesktopRuntimeInstaller="$env:DOTNET_RUNTIME_PATH"
 
       - name: Upload installer artifact (unsigned bundle)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: installer-release-x64
           path: |
@@ -192,10 +192,10 @@ jobs:
       - package-installer
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Download installer artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: installer-release-x64
           path: artifacts/release
