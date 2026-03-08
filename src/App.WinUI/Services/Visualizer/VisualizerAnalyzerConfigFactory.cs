@@ -36,7 +36,7 @@ internal static class VisualizerAnalyzerConfigFactory
         {
             LinearBoost = linearBoost,
             BarCount = preset.DisplayBandCount,
-            FftSize = fftSize,
+            FftSize = VisualizerRuntimeDefaults.DefaultFftSize,
             FftSmoothing = fftSmoothing,
             WeightingFilter = weightingFilter,
             FrequencyScale = frequencyScale,

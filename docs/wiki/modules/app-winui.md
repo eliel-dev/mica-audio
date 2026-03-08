@@ -60,7 +60,7 @@
 ## Atualizacao 2026-03 - Visualizador fluido com debounce
 
 - O `Visualizador` passou a separar runtime pendente do runtime realmente aplicado no analyzer.
-- Ajustes finos (`LinearBoost`, `BarCount`, `FFT`, `Smoothing`, `Weighting` e `Frequency`) agora entram em um debounce unico de `150 ms` antes do rebuild.
+- Ajustes finos (`BarCount`, `FFT`, `Smoothing`, `Weighting` e `Frequency`) agora entram em um debounce unico de `150 ms` antes do rebuild.
 - Troca de preset e renderer continua imediata, mas passa por um apply consolidado:
   - sem cascata de `RebuildAnalyzer()`;
   - sem persistencia redundante quando o runtime efetivo nao mudou;

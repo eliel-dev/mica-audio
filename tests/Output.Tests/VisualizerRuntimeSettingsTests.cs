@@ -27,9 +27,9 @@ public sealed class VisualizerRuntimeSettingsTests
 
         Assert.Equal("audiomotion-clone", runtime.ActivePresetId);
         Assert.Equal("audiomotion-clone", runtime.SelectedRendererId);
-        Assert.Equal(1.6f, runtime.LinearBoost);
+        Assert.Equal(1.3f, runtime.LinearBoost);
         Assert.Equal(38, runtime.DisplayBandCount);
-        Assert.Equal(1024, runtime.FftSize);
+        Assert.Equal(2048, runtime.FftSize);
         Assert.Equal(0.99f, runtime.FftSmoothing);
         Assert.Equal(WeightingFilter.Off, runtime.WeightingFilter);
         Assert.Equal(FrequencyScale.Bark, runtime.FrequencyScale);
@@ -38,7 +38,7 @@ public sealed class VisualizerRuntimeSettingsTests
     }
 
     [Fact]
-    public void From_ShouldPreserveValidSettings()
+    public void From_ShouldRewriteLinearBoostToCanonicalValue()
     {
         var settings = new AppSettings
         {
@@ -58,9 +58,9 @@ public sealed class VisualizerRuntimeSettingsTests
 
         Assert.Equal("custom-preset", runtime.ActivePresetId);
         Assert.Equal("polar-arcs", runtime.SelectedRendererId);
-        Assert.Equal(2.4f, runtime.LinearBoost);
+        Assert.Equal(1.3f, runtime.LinearBoost);
         Assert.Equal(64, runtime.DisplayBandCount);
-        Assert.Equal(4096, runtime.FftSize);
+        Assert.Equal(2048, runtime.FftSize);
         Assert.Equal(0.45f, runtime.FftSmoothing);
         Assert.Equal(WeightingFilter.C, runtime.WeightingFilter);
         Assert.Equal(FrequencyScale.Logarithmic, runtime.FrequencyScale);

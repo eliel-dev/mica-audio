@@ -21,16 +21,14 @@ Explicar como uma alteracao de controle na UI vira mudanca real de analise/rende
 
 1. Garanta que o painel de configuracoes esteja fechado.
 2. Use `Left` ou `Right` para trocar o preset atual.
-3. Ajuste o controle desejado na `MainPage` (`fft`, `boost`, escala, etc).
+3. Ajuste o controle desejado na `MainPage` (escala, barras, smoothing, etc).
 4. `MainPage` atualiza estado local e recria o analyzer com `CreateAnalyzer`.
 5. `MainPage` persiste `appSettings` com `settingsDomainService.Copy`.
 6. Valide persistencia reabrindo o app e confirmando que o ultimo preset continua ativo.
 
 ## Controles configuraveis
 
-- `Linear Boost`
 - `Quantidade de barras` (quando suportado pelo renderer ativo)
-- `FFT Size`
 - `FFT Smoothing`
 - `Weighting Filter`
 - `Escala de frequencia`
@@ -40,13 +38,12 @@ Explicar como uma alteracao de controle na UI vira mudanca real de analise/rende
 
 - Aceleradores de teclado em `MainPage.xaml`.
 - Handler em `MainPage.xaml.cs`.
-- Conversao final em `CreateAnalyzer`.
+- Conversao final em `CreateAnalyzer`, com `FFT Size` canonico fixo em `2048`.
 - HUD temporario sobre o canvas com numero + nome do preset atual.
 
 ## Referencias de codigo
 
 - [MainPage.CreateAnalyzer](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1) - assinatura: `private IAnalyzer CreateAnalyzer(...)`
-- [MainPage.OnFftSizeChanged](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1) - assinatura: `private void OnFftSizeChanged(...)`
 - [MainPage.OnFrequencyScaleChanged](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1) - assinatura: `private void OnFrequencyScaleChanged(...)`
 - [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1) - assinatura: `internal static class VisualizerAnalyzerConfigFactory`
 - [PresetNavigationHelper](../../../src/App.WinUI/Services/Visualizer/PresetNavigationHelper.cs#L1) - assinatura: `internal static class PresetNavigationHelper`

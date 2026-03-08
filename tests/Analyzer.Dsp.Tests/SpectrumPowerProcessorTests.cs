@@ -11,22 +11,22 @@ public class SpectrumPowerProcessorTests
     {
         var noSmoothing = new SpectrumPowerProcessor(new AnalyzerConfig
         {
-            FftSize = 1024,
+            FftSize = 2048,
             SampleRate = 48_000,
             FftSmoothing = 0f,
         });
         var withSmoothing = new SpectrumPowerProcessor(new AnalyzerConfig
         {
-            FftSize = 1024,
+            FftSize = 2048,
             SampleRate = 48_000,
             FftSmoothing = 0.8f,
         });
 
-        _ = noSmoothing.BuildPowerSpectrum(CreateSineWindow(1024, 440f, 48_000));
-        var noSmoothingAfterStop = noSmoothing.BuildPowerSpectrum(new Complex[1024]);
+        _ = noSmoothing.BuildPowerSpectrum(CreateSineWindow(2048, 440f, 48_000));
+        var noSmoothingAfterStop = noSmoothing.BuildPowerSpectrum(new Complex[2048]);
 
-        _ = withSmoothing.BuildPowerSpectrum(CreateSineWindow(1024, 440f, 48_000));
-        var withSmoothingAfterStop = withSmoothing.BuildPowerSpectrum(new Complex[1024]);
+        _ = withSmoothing.BuildPowerSpectrum(CreateSineWindow(2048, 440f, 48_000));
+        var withSmoothingAfterStop = withSmoothing.BuildPowerSpectrum(new Complex[2048]);
 
         Assert.True(withSmoothingAfterStop.Max() > noSmoothingAfterStop.Max());
     }
@@ -36,7 +36,7 @@ public class SpectrumPowerProcessorTests
     {
         var processor = new SpectrumPowerProcessor(new AnalyzerConfig
         {
-            FftSize = 1024,
+            FftSize = 2048,
             SampleRate = 48_000,
             LevelCompression = 1f,
         });

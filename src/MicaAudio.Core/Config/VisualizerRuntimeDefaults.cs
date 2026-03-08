@@ -11,7 +11,7 @@ internal static class VisualizerRuntimeDefaults
     public const int DefaultHopSize = 256;
     public const float DefaultMinDecibels = -85f;
     public const float DefaultMaxDecibels = -25f;
-    public const float DefaultLinearBoost = 1.6f;
+    public const float DefaultLinearBoost = 1.3f;
     public const int DefaultBarCount = 38;
     public const int DefaultFftSize = 2048;
     public const float DefaultFftSmoothing = 0.75f;

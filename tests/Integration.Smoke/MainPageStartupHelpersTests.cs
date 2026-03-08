@@ -97,13 +97,11 @@ public sealed class MainPageStartupHelpersTests
 
         state.SetPending(VisualizerRuntimeSettings.From(new AppSettings
         {
-            LinearBoost = 1.9f,
             FftSmoothing = 0.82f,
         }));
 
         state.SetPending(VisualizerRuntimeSettings.From(new AppSettings
         {
-            LinearBoost = 2.3f,
             FftSmoothing = 0.65f,
             FftSize = 4096,
             FrequencyMinHz = 40f,
@@ -111,9 +109,9 @@ public sealed class MainPageStartupHelpersTests
         }));
 
         Assert.True(state.ShouldApply());
-        Assert.Equal(2.3f, state.Pending.LinearBoost);
+        Assert.Equal(1.3f, state.Pending.LinearBoost);
         Assert.Equal(0.65f, state.Pending.FftSmoothing);
-        Assert.Equal(4096, state.Pending.FftSize);
+        Assert.Equal(2048, state.Pending.FftSize);
         Assert.Equal(40f, state.Pending.FrequencyMinHz);
         Assert.Equal(4000f, state.Pending.FrequencyMaxHz);
 

@@ -113,9 +113,8 @@ internal sealed class AppSettingsDomainService
         public void SetActivePresetId(string value) => ActivePresetId = value;
         public void SetSelectedRendererId(string value) => SelectedRendererId = value;
         public void SetHub75PreviewEnabled(bool value) => Hub75PreviewEnabled = value;
-        public void SetLinearBoost(float value) => LinearBoost = value;
         public void SetBarCount(int value) => BarCount = value;
-        public void SetFftSize(int value) => FftSize = value;
+        public void SetFftSize(int value) => FftSize = VisualizerRuntimeSettings.NormalizeFftSize(value);
         public void SetFftSmoothing(float value) => FftSmoothing = value;
         public void SetWeightingFilter(WeightingFilter value) => WeightingFilter = value;
         public void SetDeviceFreshThresholdSeconds(int value) => DeviceFreshThresholdSeconds = value;

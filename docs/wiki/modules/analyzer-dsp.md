@@ -28,6 +28,7 @@ Transformar audio PCM em espectro util para visualizacao (`BandsDisplay`) e outp
   - `SpectrumSampleWindow` virou ring buffer e nao desloca mais memoria a cada hop.
   - `EnvelopeSmoother`, `LogBandMapper` e `FftUtility` ganharam caminhos baseados em `Span<T>`.
 - A FFT complexa passou a usar `ComplexFftPlan`, com cache por `FftSize` de bit-reversal e twiddles por estagio.
+- O produto passou a tratar `2048` como tamanho canonico de FFT em runtime e persistencia; variacoes de `FftSize` ficam restritas a testes tecnicos internos quando realmente necessarias.
 - O projeto ganhou `RealFftFloatPlan` para validar paridade e preparar a trilha de FFT em `float` sem trocar o default ainda.
 - `AnalyzerConfig` ganhou `AnalyzerOutputMode`:
   - `DisplayAndOutput` continua sendo o default;

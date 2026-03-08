@@ -62,15 +62,13 @@ internal sealed class VisualizerRuntimeSettings
         => string.IsNullOrWhiteSpace(rendererId) ? VisualizerRuntimeDefaults.DefaultRendererId : rendererId;
 
     public static float NormalizeLinearBoost(float value)
-        => float.IsNaN(value) || float.IsInfinity(value)
-            ? VisualizerRuntimeDefaults.DefaultLinearBoost
-            : Math.Clamp(value, 1f, 3f);
+        => VisualizerRuntimeDefaults.DefaultLinearBoost;
 
     public static int NormalizeDisplayBandCount(int value)
         => value <= 0 ? VisualizerRuntimeDefaults.DefaultBarCount : Math.Clamp(value, 8, 128);
 
     public static int NormalizeFftSize(int value)
-        => FftSizePolicy.CoerceUiSize(value);
+        => FftSizePolicy.CanonicalSize;
 
     public static float NormalizeFftSmoothing(float value)
         => Math.Clamp(value, 0f, 0.99f);

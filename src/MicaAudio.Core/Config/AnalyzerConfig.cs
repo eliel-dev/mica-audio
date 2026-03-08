@@ -7,7 +7,7 @@ public sealed class AnalyzerConfig
 {
     public int SampleRate { get; init; } = 48_000;
 
-    public int FftSize { get; init; } = 1024;
+    public int FftSize { get; init; } = VisualizerRuntimeDefaults.DefaultFftSize;
 
     public int HopSize { get; init; } = 256;
 

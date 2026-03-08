@@ -109,10 +109,10 @@ Guia operacional:
 - Pipeline com contratos estaveis:
 - `PcmFrame` (entrada de audio)
 - `SpectrumFrame` (bands display + bands64 + level)
-- FFT configuravel pela UI (`1k`, `2k`, `4k`, `8k`), hop fixo para boa responsividade.
+- FFT fixa em `2048`, com hop fixo para boa responsividade e menor carga operacional no runtime.
 - Escalas de frequencia: `Logarithmic`, `Mel`, `Bark`.
 - Weighting filter por bin: `Off`, `A`, `B`, `C`, `D`, `468`.
-- Controles de sensibilidade em dB (`Min dB` / `Max dB`) + `Linear Boost`.
+- Controles de sensibilidade em dB (`Min dB` / `Max dB`) com `Linear Boost` fixo em `1.3`.
 - Tela cheia com atalhos:
 - `F11` alterna fullscreen
 - `Esc` sai do fullscreen
@@ -312,7 +312,7 @@ Defaults relevantes atuais (primeiro run):
 - Frequency scale: `Bark`
 - Range: `20 Hz` a `1000 Hz`
 - Sensibilidade: `Min -85 dB`, `Max -25 dB`
-- Linear boost: `1.6`
+- Linear boost: `1.3` (fixo)
 
 ## Troubleshooting
 

@@ -60,7 +60,7 @@ public class SpectrumAnalyzerProcessBenchmark
     public void SetupStress()
     {
         stressAnalyzer = CreateAnalyzer(
-            fftSize: 8192,
+            fftSize: 2048,
             hopSize: 256,
             displayBandCount: 128,
             outputMode: AnalyzerOutputMode.DisplayAndOutput);
@@ -113,7 +113,7 @@ public class SpectrumAnalyzerProcessBenchmark
             FrequencyScale = FrequencyScale.Bark,
             FftSmoothing = 0.75f,
             WeightingFilter = WeightingFilter.B,
-            LinearBoost = 1.6f,
+            LinearBoost = 1.3f,
             OutputMode = outputMode,
         });
     }

@@ -104,7 +104,6 @@ public partial class MainPage
         PopulateRendererCombo();
         PopulateContentModeCombo();
         PopulateGifScaleModeCombo();
-        PopulateFftSizeCombo();
         PopulateWeightingFilterCombo();
         PopulateFrequencyScaleCombo();
         PopulateFrequencyRangeCombos();
@@ -119,14 +118,6 @@ public partial class MainPage
         ApplyVisualizerRuntimeSettings(settingsDomainService.GetVisualizerRuntimeSettings(appSettings));
         UpdateCurrentPresetIndex();
         SelectComboOption(RendererCombo, selectedRendererId);
-
-        suppressLinearBoostChanged = true;
-        LinearBoostSlider.Value = linearBoost;
-        suppressLinearBoostChanged = false;
-
-        suppressFftSizeChanged = true;
-        SelectComboOption(FftSizeCombo, FormatFftSizeId(fftSize));
-        suppressFftSizeChanged = false;
 
         suppressFftSmoothingChanged = true;
         FftSmoothingSlider.Value = fftSmoothing;
@@ -151,7 +142,6 @@ public partial class MainPage
         UpdateFftSmoothingText();
         UpdateFrequencyScaleToolTip();
         UpdateFrequencyRangeCombos();
-        UpdateLinearBoostText();
         ApplyRendererControlState();
         UpdateGifControlsVisibility();
         UpdateGifTransportState();

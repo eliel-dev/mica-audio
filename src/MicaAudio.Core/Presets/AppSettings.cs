@@ -18,7 +18,7 @@ public sealed class AppSettings
 
     public float SensitivityMaxDb { get; init; } = -25f;
 
-    public float LinearBoost { get; init; } = 1.6f;
+    public float LinearBoost { get; init; } = 1.3f;
 
     public int BarCount { get; init; } = 38;
 

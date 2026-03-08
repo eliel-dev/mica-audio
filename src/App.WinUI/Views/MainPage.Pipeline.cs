@@ -15,7 +15,7 @@ public partial class MainPage
             SelectedRendererId = selectedRendererId,
             LinearBoost = linearBoost,
             BarCount = displayBandCount,
-            FftSize = fftSize,
+            FftSize = VisualizerRuntimeDefaults.DefaultFftSize,
             FftSmoothing = fftSmoothing,
             WeightingFilter = weightingFilter,
             FrequencyScale = frequencyScale,
@@ -28,14 +28,13 @@ public partial class MainPage
     {
         linearBoost = settings.LinearBoost;
         displayBandCount = settings.DisplayBandCount;
-        fftSize = settings.FftSize;
+        fftSize = VisualizerRuntimeDefaults.DefaultFftSize;
         fftSmoothing = settings.FftSmoothing;
         weightingFilter = settings.WeightingFilter;
         frequencyScale = settings.FrequencyScale;
         frequencyMinHz = settings.FrequencyMinHz;
         frequencyMaxHz = settings.FrequencyMaxHz;
 
-        viewModel.LinearBoost = linearBoost;
         viewModel.BarCount = displayBandCount;
         viewModel.FftSize = fftSize;
         viewModel.FftSmoothing = fftSmoothing;

@@ -11,7 +11,6 @@ public sealed class AnalyzerRuntimeProfileTests
     {
         var settings = VisualizerRuntimeSettings.From(new AppSettings
         {
-            LinearBoost = 2.2f,
             BarCount = 96,
             FftSize = 4096,
             FftSmoothing = 0.33f,
@@ -38,7 +37,7 @@ public sealed class AnalyzerRuntimeProfileTests
         Assert.Equal(96, config.DisplayBandCount);
         Assert.Equal(2f, config.DisplayViewportWidthPx);
         Assert.Equal(0.2f, config.BarSpace);
-        Assert.Equal(4096, config.FftSize);
+        Assert.Equal(2048, config.FftSize);
         Assert.Equal(0.33f, config.FftSmoothing);
         Assert.Equal(20f, config.MinHz);
         Assert.Equal(1000f, config.MaxHz);

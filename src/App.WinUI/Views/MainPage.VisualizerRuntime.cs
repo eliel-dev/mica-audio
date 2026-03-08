@@ -190,7 +190,7 @@ public partial class MainPage
             SelectedRendererId = RendererIds.AudioMotionClone,
             LinearBoost = source.LinearBoost,
             BarCount = source.DisplayBandCount,
-            FftSize = source.FftSize,
+            FftSize = VisualizerRuntimeDefaults.DefaultFftSize,
             FftSmoothing = source.FftSmoothing,
             WeightingFilter = source.WeightingFilter,
             FrequencyScale = source.FrequencyScale,

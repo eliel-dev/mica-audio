@@ -10,7 +10,7 @@ public class SpectrumBandLayoutTests
     {
         var layout = new SpectrumBandLayout(new AnalyzerConfig
         {
-            FftSize = 4096,
+            FftSize = 2048,
             SampleRate = 48_000,
             DisplayBandCount = 64,
             OutputBandCount = 64,

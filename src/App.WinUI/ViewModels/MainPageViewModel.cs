@@ -1,14 +1,12 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using MicaAudio.Core.Audio;
+using MicaAudio.Core.Config;
 using Visual.Win2D.Engine;
 
 namespace App.WinUI.ViewModels;
 
 internal sealed partial class MainPageViewModel : ObservableObject
 {
-    [ObservableProperty]
-    public partial float LinearBoost { get; set; }
-
     [ObservableProperty]
     public partial int BarCount { get; set; }
 
@@ -41,9 +39,8 @@ internal sealed partial class MainPageViewModel : ObservableObject
 
     public MainPageViewModel()
     {
-        LinearBoost = 1.6f;
         BarCount = 38;
-        FftSize = 1024;
+        FftSize = VisualizerRuntimeDefaults.DefaultFftSize;
         FftSmoothing = 0.8f;
         WeightingFilter = WeightingFilter.Off;
         FrequencyScale = FrequencyScale.Logarithmic;

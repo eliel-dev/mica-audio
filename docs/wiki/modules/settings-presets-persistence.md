@@ -74,7 +74,7 @@ A regra de normalizacao garante sempre: `Fresh < Stale < Dormant`.
 ## Atualizacao 2026-03 - Runtime settings centralizados
 
 - As invariantes de visualizer sairam do code-behind e passaram a ter um caminho unico no core:
-  - `VisualizerRuntimeSettings` normaliza FFT, smoothing, weighting, faixa de frequencia e `linearBoost`;
+  - `VisualizerRuntimeSettings` normaliza FFT, smoothing, weighting e faixa de frequencia, mantendo `linearBoost` fixo em `1.3`;
   - `AnalyzerRuntimeProfile` deriva `AnalyzerConfig` de `AppSettings + PresetDefinition + viewport`;
   - `DeviceLifecycleSettings` concentra a regra `Fresh < Stale < Dormant`.
 - `AppSettingsDomainService` continua sendo a fronteira de migracao/copia do app, mas deixou de ser a origem unica dessas regras.

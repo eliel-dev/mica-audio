@@ -27,7 +27,7 @@ public sealed class AppSettingsDomainServiceTests
     }
 
     [Fact]
-    public void Migrate_ShouldPreserveNonSensitivitySettings()
+    public void Migrate_ShouldRewriteLegacyLinearBoostWhilePreservingOtherSettings()
     {
         var service = new AppSettingsDomainService();
         var source = new AppSettings
@@ -49,12 +49,12 @@ public sealed class AppSettingsDomainServiceTests
 
         Assert.Equal("custom-preset", result.ActivePresetId);
         Assert.Equal("polar-arcs", result.SelectedRendererId);
-        Assert.Equal(2.2f, result.LinearBoost);
+        Assert.Equal(1.3f, result.LinearBoost);
         Assert.Equal(64, result.BarCount);
         Assert.Equal(FrequencyScale.Logarithmic, result.FrequencyScale);
         Assert.Equal(40f, result.FrequencyMinHz);
         Assert.Equal(5000f, result.FrequencyMaxHz);
-        Assert.Equal(4096, result.FftSize);
+        Assert.Equal(2048, result.FftSize);
         Assert.Equal(0.4f, result.FftSmoothing);
         Assert.Equal(WeightingFilter.C, result.WeightingFilter);
         Assert.True(result.AllowLegacyWebSocketQueryToken);
@@ -77,11 +77,10 @@ public sealed class AppSettingsDomainServiceTests
 
         var result = service.Copy(source, builder =>
         {
-            builder.SetLinearBoost(2.0f);
             builder.SetBarCount(48);
         });
 
-        Assert.Equal(2.0f, result.LinearBoost);
+        Assert.Equal(1.3f, result.LinearBoost);
         Assert.Equal(48, result.BarCount);
         Assert.True(result.AllowLegacyWebSocketQueryToken);
         Assert.Equal(-25f, result.Sensitivity);
@@ -104,5 +103,42 @@ public sealed class AppSettingsDomainServiceTests
         });
 
         Assert.True(result.AllowLegacyWebSocketQueryToken);
+    }
+
+    [Theory]
+    [InlineData(1.0f)]
+    [InlineData(1.6f)]
+    [InlineData(2.4f)]
+    public void Migrate_ShouldRewriteAnyLinearBoostToCanonicalValue(float legacyLinearBoost)
+    {
+        var service = new AppSettingsDomainService();
+        var source = new AppSettings
+        {
+            LinearBoost = legacyLinearBoost,
+        };
+
+        var result = service.Migrate(source);
+
+        Assert.Equal(1.3f, result.LinearBoost);
+    }
+
+    [Theory]
+    [InlineData(1024)]
+    [InlineData(4096)]
+    [InlineData(8192)]
+    public void Copy_ShouldRewriteLegacyFftSizeToCanonicalValue(int legacyFftSize)
+    {
+        var service = new AppSettingsDomainService();
+        var source = new AppSettings
+        {
+            FftSize = legacyFftSize,
+        };
+
+        var result = service.Copy(source, builder =>
+        {
+            builder.SetFftSize(legacyFftSize);
+        });
+
+        Assert.Equal(2048, result.FftSize);
     }
 }

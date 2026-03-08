@@ -13,6 +13,7 @@
         <KeyboardAccelerator Key="Escape" Invoked="OnFullscreenAcceleratorInvoked" />
         <KeyboardAccelerator Key="Left" Invoked="OnPreviousPresetAcceleratorInvoked" />
         <KeyboardAccelerator Key="Right" Invoked="OnNextPresetAcceleratorInvoked" />
+        <KeyboardAccelerator Key="D" Modifiers="Control,Shift" Invoked="OnRenderDiagnosticsAcceleratorInvoked" />
     </Page.KeyboardAccelerators>
 
     <SplitView
@@ -68,16 +69,6 @@
                                 Content="Restaurar padrao"
                                 ToolTipService.ToolTip="Restaura os parametros visuais e de analise para os valores recomendados." />
 
-                            <TextBlock Text="Linear Boost" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Slider x:Name="LinearBoostSlider" Grid.Column="0" ValueChanged="OnLinearBoostChanged" />
-                                <TextBlock x:Name="LinearBoostValueText" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Text="x1.60" />
-                            </Grid>
-
                             <StackPanel x:Name="BarCountPanel" Spacing="4">
                                 <TextBlock Text="Quantidade de barras" />
                                 <Grid>
@@ -103,13 +94,6 @@
                                 Text="No modo AudioMotion Clone, a quantidade de barras e automatica pela largura da tela."
                                 TextWrapping="Wrap"
                                 Visibility="Collapsed" />
-
-                            <TextBlock Text="FFT Size" />
-                            <ComboBox
-                                x:Name="FftSizeCombo"
-                                Style="{StaticResource AppChromeComboBoxStyle}"
-                                ToolTipService.ToolTip="Define a resolucao de frequencia. Maior FFT melhora detalhe e aumenta latencia."
-                                SelectionChanged="OnFftSizeChanged" />
 
                             <TextBlock Text="FFT Smoothing" />
                             <Grid>
@@ -371,6 +355,22 @@
                                 x:Name="PresetQuickSwitchText"
                                 Style="{StaticResource AppStatusTextStyle}"
                                 Text="01. Preset" />
+                        </Border>
+                        <Border
+                            x:Name="RenderDiagnosticsHud"
+                            Margin="14"
+                            Padding="10,8"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Background="{ThemeResource AppSurfaceElevatedBrush}"
+                            BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Visibility="Collapsed">
+                            <TextBlock
+                                x:Name="RenderDiagnosticsText"
+                                Style="{StaticResource AppMutedTextStyle}"
+                                Text="FPS --" />
                         </Border>
                         <Button
                             x:Name="CanvasFullscreenButton"
