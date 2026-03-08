@@ -113,7 +113,6 @@ public sealed partial class DevicesPage
         shell.Children.Add(BuildDetailsPanel());
 
         root.Children.Add(shell);
-        root.Children.Add(BuildPairingFooter());
         root.Children.Add(BuildWizardOverlay());
 
         Content = root;
@@ -139,11 +138,10 @@ public sealed partial class DevicesPage
         var leftGrid = new Grid();
         leftGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         leftGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        leftGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         DevicesList = new ListView
         {
-            Margin = new Thickness(8),
+            Margin = new Thickness(8, 14, 8, 8),
         };
         DevicesList.SelectionChanged += OnDeviceSelectionChanged;
         Grid.SetRow(DevicesList, 0);
@@ -168,38 +166,6 @@ public sealed partial class DevicesPage
 
         Grid.SetRow(actionsHost, 1);
         leftGrid.Children.Add(actionsHost);
-
-        var panelFoot = new Grid
-        {
-            Padding = new Thickness(12, 8, 12, 8),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 1, 0, 0),
-            ColumnSpacing = 8,
-        };
-        panelFoot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        panelFoot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        PairingDot = new Ellipse
-        {
-            Width = 8,
-            Height = 8,
-            Fill = ResolveBrush("AppAccentBrush", Color.FromArgb(255, 96, 205, 255)),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        panelFoot.Children.Add(PairingDot);
-
-        PairingFooterText = new TextBlock
-        {
-            Text = "Pareamento: -",
-            Opacity = 0.88,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        Grid.SetColumn(PairingFooterText, 1);
-        panelFoot.Children.Add(PairingFooterText);
-
-        Grid.SetRow(panelFoot, 2);
-        leftGrid.Children.Add(panelFoot);
 
         leftCard.Child = leftGrid;
         return leftCard;
@@ -642,33 +608,6 @@ public sealed partial class DevicesPage
             Padding = new Thickness(WizardBodyHorizontalPadding, WizardBodyVerticalPadding, WizardBodyHorizontalPadding, WizardBodyVerticalPadding),
         };
         Grid.SetRow(body, 1);
-
-        var stepsGrid = new Grid
-        {
-            ColumnSpacing = WizardStepGap,
-            Margin = new Thickness(0, 0, 0, 4),
-        };
-        stepsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        stepsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        WizardStepOneBar = new Border
-        {
-            Height = WizardStepHeight,
-            CornerRadius = new CornerRadius(2),
-            Background = ResolveBrush("AppAccentBrush", Color.FromArgb(255, 96, 205, 255)),
-        };
-        stepsGrid.Children.Add(WizardStepOneBar);
-
-        WizardStepTwoBar = new Border
-        {
-            Height = WizardStepHeight,
-            CornerRadius = new CornerRadius(2),
-            Background = ResolveBrush("AppAccentBrush", Color.FromArgb(255, 96, 205, 255)),
-        };
-        Grid.SetColumn(WizardStepTwoBar, 1);
-        stepsGrid.Children.Add(WizardStepTwoBar);
-
-        body.Children.Add(stepsGrid);
 
         WizardPortPanel = new StackPanel
         {

@@ -435,7 +435,7 @@ public sealed partial class DevicesPage : Page
             {
                 Tag = this,
             };
-            RowControl.Bind(source.Name, source.DeviceId, source.StatusLine, source.Presence, previewItem, previewPlaceholderText);
+            RowControl.Bind(source.Name, previewItem, previewPlaceholderText);
         }
 
         public DeviceListItem Source { get; private set; }
@@ -450,7 +450,7 @@ public sealed partial class DevicesPage : Page
         {
             Source = source;
             PreviewItem = previewItem;
-            RowControl.Bind(source.Name, source.DeviceId, source.StatusLine, source.Presence, previewItem, previewPlaceholderText);
+            RowControl.Bind(source.Name, previewItem, previewPlaceholderText);
         }
 
         public void SetSelectedVisual(bool selected)

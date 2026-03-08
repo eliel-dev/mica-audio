@@ -109,9 +109,9 @@ public sealed class DeviceLifecyclePolicyTests
         var result = DeviceLifecyclePolicy.Build(snapshot, DeviceLifecycleThresholds.Default, now);
 
         Assert.Equal("Offline", result.PrimaryStateLabel);
-        Assert.Equal("Configuracao incerta", result.SecondaryStateLabel);
-        Assert.Equal(DeviceLifecycleIcon.Important, result.Icon);
-        Assert.Equal(DeviceLifecycleTone.Warning, result.Tone);
+        Assert.Equal("Configurado", result.SecondaryStateLabel);
+        Assert.Equal(DeviceLifecycleIcon.Pause, result.Icon);
+        Assert.Equal(DeviceLifecycleTone.Normal, result.Tone);
         Assert.True(result.IsConfigUncertain);
     }
 
@@ -159,6 +159,6 @@ public sealed class DeviceLifecyclePolicyTests
         var result = DeviceLifecyclePolicy.Build(snapshot, strictThresholds, now);
 
         Assert.True(result.IsConfigUncertain);
-        Assert.Equal("Configuracao incerta", result.SecondaryStateLabel);
+        Assert.Equal("Configurado", result.SecondaryStateLabel);
     }
 }

@@ -1,6 +1,5 @@
-using Device.Protocol.Models;
-using System.Collections.Generic;
 using System.Globalization;
+using Device.Protocol.Models;
 
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
 namespace App.WinUI.Services.Devices;

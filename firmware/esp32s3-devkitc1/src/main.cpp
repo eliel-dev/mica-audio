@@ -903,6 +903,19 @@ bool pairWithServer(const String& pairingCode, const String& deviceName, String&
 
     gPrefs.putString("deviceId", gDeviceId);
     gPrefs.putString("token", gToken);
+
+    // Atualiza host/port a partir do httpBase retornado pelo servidor,
+    // garantindo que o dispositivo use o IP real em vez de micaaudio.local.
+    String httpBase = resp["httpBase"] | "";
+    String parsedHost;
+    uint16_t parsedPort = 0;
+    if (httpBase.length() > 0 && tryParseServerBaseUrl(httpBase, parsedHost, parsedPort)) {
+      gServerHost = parsedHost;
+      gServerPort = parsedPort;
+      gPrefs.putString("host", gServerHost);
+      gPrefs.putString("port", String(gServerPort));
+    }
+
     setConnectivityState(kWifiStateConnected, "pair_success", true);
     http.end();
     return true;
@@ -1015,13 +1028,9 @@ bool startProvisioningPortal(const char* reason) {
   wm.setConfigPortalBlocking(true);
   wm.setConfigPortalTimeout(0);
 
-  WiFiManagerParameter pHost("host", "Servidor host", gPrefs.getString("host", "micaaudio.local").c_str(), 63);
-  WiFiManagerParameter pPort("port", "Servidor porta", gPrefs.getString("port", "5272").c_str(), 8);
   WiFiManagerParameter pPair("pair", "Codigo pareamento", "", 12);
   WiFiManagerParameter pName("name", "Nome dispositivo", gPrefs.getString("name", kBoardDisplayName).c_str(), 32);
 
-  wm.addParameter(&pHost);
-  wm.addParameter(&pPort);
   wm.addParameter(&pPair);
   wm.addParameter(&pName);
 
@@ -1038,11 +1047,7 @@ bool startProvisioningPortal(const char* reason) {
   gWifiDisconnectedSinceMs = 0;
   setConnectivityState(kWifiStateConnected, "wifi_connected", true);
 
-  gPrefs.putString("host", pHost.getValue());
-  gPrefs.putString("port", pPort.getValue());
   gPrefs.putString("name", pName.getValue());
-  gServerHost = pHost.getValue();
-  gServerPort = static_cast<uint16_t>(atoi(pPort.getValue()));
 
   String pairingCode = pPair.getValue();
   String pairErrorCode;

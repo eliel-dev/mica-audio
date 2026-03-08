@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using App.WinUI.Services.Apps;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;

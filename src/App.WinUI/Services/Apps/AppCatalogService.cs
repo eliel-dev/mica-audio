@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using App.WinUI.Models.Apps;
 using Microsoft.Extensions.Options;
@@ -201,13 +201,19 @@ internal sealed class AppCatalogService : IAppCatalogService
             throw new InvalidDataException("Catalogo seed nao possui apps validos.");
         }
 
+        var validApps = seed.Apps
+            .Where(static app => app is not null && app.IsValid())
+            .ToArray();
+
+        if (validApps.Length == 0)
+        {
+            throw new InvalidDataException("Catalogo seed nao possui apps validos apos filtragem.");
+        }
+
         return new AppCatalogDocument
         {
             SchemaVersion = CurrentSchemaVersion,
-            Apps = seed.Apps
-                .Where(static app => app is not null && app.IsValid())
-                .Select(static app => app)
-                .ToArray(),
+            Apps = validApps,
         };
     }
 
