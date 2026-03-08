@@ -167,7 +167,7 @@ internal sealed class WeatherPreviewDataService
         return location;
     }
 
-    private static IReadOnlyList<string> BuildGeocodingQueries(WeatherLocation location)
+    private static List<string> BuildGeocodingQueries(WeatherLocation location)
     {
         var ordered = new List<string>(capacity: 8);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

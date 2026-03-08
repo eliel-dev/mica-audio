@@ -1,4 +1,6 @@
 using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using App.WinUI.Services.Gif;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
@@ -7,6 +9,7 @@ using Output.Led;
 namespace App.WinUI.Services.Apps;
 
 // DOCS: docs/wiki/guides/load-gif-hub75.md#gif-app-runtime-na-loja
+[SupportedOSPlatform("windows")]
 internal sealed class GifCatalogAppRuntimeService : IDisposable
 {
     public const int TargetFps = 12;
@@ -47,7 +50,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         this.decoder = decoder;
         this.formatter = formatter;
         this.player = player;
-        this.httpClient = httpClient ?? new HttpClient();
+        this.httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         this.downloadTimeoutSeconds = Math.Max(1, downloadTimeoutSeconds);
         this.maxDownloadBytes = Math.Max(1, maxDownloadBytes);
         latestFrame = blackFrame.ToArray();
@@ -274,39 +277,48 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
 
     private void SendFrame(RgbaColor[] frame)
     {
-        var payload = new LedPayload
-        {
-            Frame64x32 = frame,
-            Level = 1f,
-            PresetId = GifPresetId,
-        };
-
+        var payload = LedPayloadFactory.CreateFramePayload(frame, GifPresetId);
         matrixOutput.Send(payload);
         simulatorOutput.Send(payload);
-        FrameUpdated?.Invoke(this, frame);
+        NotifyFrameUpdated(frame);
     }
 
     private void SendSimulatorFrame(RgbaColor[] frame)
     {
-        var payload = new LedPayload
-        {
-            Frame64x32 = frame,
-            Level = 1f,
-            PresetId = GifPresetId,
-        };
-
+        var payload = LedPayloadFactory.CreateFramePayload(frame, GifPresetId);
         simulatorOutput.Send(payload);
-        FrameUpdated?.Invoke(this, frame);
+        NotifyFrameUpdated(frame);
     }
 
+
+    private void NotifyFrameUpdated(RgbaColor[] frame)
+    {
+        var handlers = FrameUpdated;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<RgbaColor[]> callback in handlers.GetInvocationList())
+        {
+            try
+            {
+                callback(this, frame);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (InvalidCastException)
+            {
+            }
+            catch (COMException)
+            {
+            }
+        }
+    }
     private void SendLegacyBinsClear()
     {
-        matrixOutput.Send(new LedPayload
-        {
-            Bins64 = new float[LedDefaults.MatrixWidth],
-            Level = 0f,
-            PresetId = GifPresetId,
-        });
+        matrixOutput.Send(LedPayloadFactory.CreateBinsPayload(new float[LedDefaults.MatrixWidth], GifPresetId, 0f));
     }
 
     private void CancelPendingLoad()
@@ -321,3 +333,8 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
     }
 }
+
+
+
+
+

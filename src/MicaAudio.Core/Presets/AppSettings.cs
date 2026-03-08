@@ -18,7 +18,7 @@ public sealed class AppSettings
 
     public float SensitivityMaxDb { get; init; } = -25f;
 
-    public float LinearBoost { get; init; } = 1.6f;
+    public float LinearBoost { get; init; } = 1.3f;
 
     public int BarCount { get; init; } = 38;
 
@@ -33,6 +33,14 @@ public sealed class AppSettings
     public float FftSmoothing { get; init; } = 0.75f;
 
     public WeightingFilter WeightingFilter { get; init; } = WeightingFilter.B;
+
+    public int DeviceFreshThresholdSeconds { get; init; } = 15;
+
+    public int DeviceStaleThresholdMinutes { get; init; } = 2;
+
+    public int DeviceDormantThresholdHours { get; init; } = 24;
+
+    public bool AllowLegacyWebSocketQueryToken { get; init; }
 
     public int WindowWidth { get; init; }
 

@@ -1,5 +1,6 @@
-﻿using App.WinUI.Services.Devices;
+using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
+using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
@@ -13,20 +14,24 @@ namespace App.WinUI.Views;
 public sealed partial class ServerPage : Page
 {
     private readonly List<string> localLogs = new();
+    private readonly DeviceOperationsCoordinator deviceOps;
+    private readonly PrecompiledFirmwareService firmwareService;
     private DeviceOperationsState currentState = new();
     private int lastRenderedLogCount;
     private string lastRenderedLogTail = string.Empty;
 
-    public ServerPage()
+    internal ServerPage(DeviceOperationsCoordinator deviceOps, PrecompiledFirmwareService firmwareService)
     {
+        this.deviceOps = deviceOps;
+        this.firmwareService = firmwareService;
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
-    private DeviceOperationsCoordinator? DeviceOps => App.DeviceOps;
+    private DeviceOperationsCoordinator? DeviceOps => deviceOps;
 
-    private PrecompiledFirmwareService? FirmwareService => App.FirmwareService;
+    private PrecompiledFirmwareService? FirmwareService => firmwareService;
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -87,7 +92,7 @@ public sealed partial class ServerPage : Page
         currentState = state;
         var refreshText = state.LastRefreshUtc == default
             ? "sem atualizacao"
-            : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss");
+            : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture);
 
         ServerInfoText.Text = $"Servidor: {state.ServerBaseAddress} | mDNS: _micaaudio._tcp | Atualizado: {refreshText}";
         UpdateLogs(state.Logs);
@@ -121,11 +126,6 @@ public sealed partial class ServerPage : Page
         LogsTextBox.Text = string.Join("\r\n", merged) + "\r\n";
         lastRenderedLogCount = totalCount;
         lastRenderedLogTail = tail;
-    }
-
-    private async void OnDownloadStableClicked(object sender, RoutedEventArgs e)
-    {
-        await SaveFirmwareAsync("stable").ConfigureAwait(false);
     }
 
     private async void OnDownloadDmaClicked(object sender, RoutedEventArgs e)
@@ -253,3 +253,6 @@ public sealed partial class ServerPage : Page
         DeviceOps?.RequestRefresh();
     }
 }
+
+
+

@@ -1,4 +1,4 @@
-# Classificacao de mudancas
+﻿# Classificacao de mudancas
 
 ## Objetivo
 
@@ -21,11 +21,12 @@ Remover ambiguidade sobre escopo e nivel de controle necessario.
 ## Evidencia minima
 
 - Documental: `docs-validate`.
-- Funcional: `docs-validate` + `dotnet build`.
-- Estrutural: `docs-validate` + `ai-governance-check` + `dotnet build` + handoff.
+- Funcional: `docs-validate` + `mvvm-validate` (quando tocar `App.WinUI`) + `dotnet build`.
+- Estrutural: `docs-validate` + `ai-governance-check` + `mvvm-validate` + `dotnet build` + handoff.
 - Firmware/protocolo: igual estrutural + validacao de referencias em protocolo/wiki.
 
 ## Referencias de codigo
 
 - [governance workflow](../../../.github/workflows/governance.yml#L1) - assinatura: `name: governance`
 - [PR template](../../../.github/PULL_REQUEST_TEMPLATE.md#L1) - assinatura: `Resumo da mudanca`
+

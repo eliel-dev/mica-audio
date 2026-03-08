@@ -1,4 +1,6 @@
-﻿using Device.Protocol.Models;
+using App.WinUI.Services;
+using Device.Protocol.Models;
+using System.Globalization;
 
 namespace App.WinUI.Services.Devices;
 
@@ -8,31 +10,37 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
     private const int MaxLogEntries = 600;
+    private const int MaxDeviceLogEntries = 100;
+    private const int SafeBrightnessMin = 30;
+    private const int SafeBrightnessMax = 160;
 
-    private readonly DeviceIntegrationService integration;
-    private readonly object gate = new();
-    private readonly List<string> logs = new();
-    private readonly List<DeviceSnapshot> devicesSnapshot = new();
+    private readonly IDeviceOperationsRuntime integration;
+    private readonly DeviceLogBook logBook = new(MaxLogEntries, MaxDeviceLogEntries);
+    private readonly DeviceCommandTracker commandTracker = new();
+    private readonly DeviceRefreshCoordinator refreshCoordinator = new();
+    private readonly DeviceLifecycleThresholdProvider lifecycleThresholdProvider;
+    private readonly DeviceCommandDispatcher commandDispatcher;
     private readonly Timer refreshTimer;
-
-    private int refreshInFlight;
-    private bool refreshActive;
-    private bool commandInProgress;
-    private int commandPercent;
-    private string commandStatus = "Comandos: pronto";
-    private string? lastCommandDeviceId;
-    private string? activeCommandId;
-    private DateTimeOffset lastRefreshUtc;
     private bool disposed;
 
-    public DeviceOperationsCoordinator(DeviceIntegrationService integration)
+    public DeviceOperationsCoordinator(DeviceIntegrationService integration, SettingsRepository settingsRepository, AppSettingsDomainService settingsDomainService)
+        : this(new DeviceOperationsRuntime(integration), settingsRepository, settingsDomainService)
+    {
+    }
+
+    internal DeviceOperationsCoordinator(
+        IDeviceOperationsRuntime integration,
+        SettingsRepository? settingsRepository,
+        AppSettingsDomainService? settingsDomainService)
     {
         this.integration = integration;
+        lifecycleThresholdProvider = new DeviceLifecycleThresholdProvider(settingsRepository, settingsDomainService);
+        commandDispatcher = new DeviceCommandDispatcher(integration, CommandTimeout);
         refreshTimer = new Timer(OnRefreshTimerTick, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
         integration.DevicesChanged += OnDevicesChanged;
         integration.LogMessage += OnLogMessage;
-        integration.Host.CommandProgressChanged += OnHostCommandProgressChanged;
+        integration.CommandProgressChanged += OnHostCommandProgressChanged;
     }
 
     public event EventHandler? StateChanged;
@@ -41,28 +49,29 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
     public DeviceOperationsState GetStateSnapshot()
     {
-        lock (gate)
+        var commandSnapshot = commandTracker.GetSnapshot();
+        var refreshSnapshot = refreshCoordinator.GetSnapshot();
+
+        return new DeviceOperationsState
         {
-            return new DeviceOperationsState
-            {
-                CommandInProgress = commandInProgress,
-                CommandPercent = commandPercent,
-                CommandStatus = commandStatus,
-                LastCommandDeviceId = lastCommandDeviceId,
-                DeviceListSnapshot = devicesSnapshot.ToArray(),
-                LastRefreshUtc = lastRefreshUtc,
-                ServerBaseAddress = integration.GetServerBaseAddress(),
-                Logs = logs.ToArray(),
-            };
-        }
+            CommandInProgress = commandSnapshot.CommandInProgress,
+            CommandPercent = commandSnapshot.CommandPercent,
+            CommandStatus = commandSnapshot.CommandStatus,
+            LastCommandDeviceId = commandSnapshot.LastCommandDeviceId,
+            CommandByDevice = commandSnapshot.CommandByDevice,
+            DeviceListSnapshot = refreshSnapshot.Devices,
+            LastRefreshUtc = refreshSnapshot.LastRefreshUtc,
+            ServerBaseAddress = integration.GetServerBaseAddress(),
+            Logs = logBook.GetGlobalLogs(),
+        };
     }
+
+    public IReadOnlyList<string> GetDeviceLogs(string deviceId)
+        => logBook.GetDeviceLogs(deviceId);
 
     public void SetDevicesPageVisible(bool visible)
     {
-        lock (gate)
-        {
-            refreshActive = visible;
-        }
+        refreshCoordinator.SetVisible(visible);
 
         if (visible)
         {
@@ -88,6 +97,26 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         return pairing;
     }
 
+    public bool RemoveDevice(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return false;
+        }
+
+        var normalizedDeviceId = deviceId.Trim();
+        var removed = integration.RemoveDevice(normalizedDeviceId);
+        if (!removed)
+        {
+            return false;
+        }
+
+        AppendDeviceLog(normalizedDeviceId, "Dispositivo removido do registro local.");
+        AppendLog($"Dispositivo removido do registro local: {normalizedDeviceId}");
+        RequestRefresh();
+        return true;
+    }
+
     // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
     public Task<CommandDispatchResult> RunCommandAsync(
         string deviceId,
@@ -109,8 +138,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     public Task<CommandDispatchResult> InstallAppAsync(string deviceId, DeviceAppCommandPayload payload, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(payload);
-        var parameters = payload.ToParameters();
-        return RunCommandAsync(deviceId, DeviceCommandType.InstallApp, parameters, cancellationToken);
+        return RunCommandAsync(deviceId, DeviceCommandType.InstallApp, payload.ToParameters(), cancellationToken);
     }
 
     public Task<CommandDispatchResult> ActivateAppAsync(string deviceId, string appId, string? appName = null, CancellationToken cancellationToken = default)
@@ -139,6 +167,31 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         return RunCommandAsync(deviceId, DeviceCommandType.SetAppConfig, parameters, cancellationToken);
     }
 
+    public Task<CommandDispatchResult> SetBrightnessAsync(string deviceId, int brightness, CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["brightness"] = Math.Clamp(brightness, SafeBrightnessMin, SafeBrightnessMax).ToString(CultureInfo.InvariantCulture),
+        };
+
+        return RunCommandAsync(deviceId, DeviceCommandType.SetBrightness, parameters, cancellationToken);
+    }
+
+    public Task<CommandDispatchResult> TriggerTestLedAsync(string deviceId, CancellationToken cancellationToken = default)
+    {
+        return RunCommandAsync(deviceId, DeviceCommandType.TestLed, parameters: null, cancellationToken);
+    }
+
+    public Task<CommandDispatchResult> SetTestLedEnabledAsync(string deviceId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["enabled"] = enabled ? "true" : "false",
+        };
+
+        return RunCommandAsync(deviceId, DeviceCommandType.TestLed, parameters, cancellationToken);
+    }
+
     public void Dispose()
     {
         if (disposed)
@@ -148,9 +201,10 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
         disposed = true;
         refreshTimer.Dispose();
+        lifecycleThresholdProvider.Dispose();
         integration.DevicesChanged -= OnDevicesChanged;
         integration.LogMessage -= OnLogMessage;
-        integration.Host.CommandProgressChanged -= OnHostCommandProgressChanged;
+        integration.CommandProgressChanged -= OnHostCommandProgressChanged;
     }
 
     private async Task<CommandDispatchResult> RunCommandCoreAsync(
@@ -161,106 +215,39 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     {
         if (string.IsNullOrWhiteSpace(deviceId))
         {
-            return new CommandDispatchResult
-            {
-                DeviceId = string.Empty,
-                Accepted = false,
-                Completed = true,
-                Success = false,
-                ProgressPercent = 0,
-                Stage = "invalid",
-                Message = "Nenhum dispositivo selecionado.",
-                ErrorCode = "invalid_device",
-            };
+            return DeviceCommandDispatcher.CreateInvalidDeviceResult();
         }
 
-        lock (gate)
-        {
-            if (commandInProgress)
-            {
-                return new CommandDispatchResult
-                {
-                    DeviceId = deviceId,
-                    Accepted = false,
-                    Completed = true,
-                    Success = false,
-                    ProgressPercent = commandPercent,
-                    Stage = "busy",
-                    Message = "Ja existe uma operacao em andamento.",
-                    ErrorCode = "busy",
-                };
-            }
+        var normalizedDeviceId = deviceId.Trim();
+        var operationLabel = DeviceOperationsText.DescribeCommand(commandType);
 
-            commandInProgress = true;
-            commandPercent = 0;
-            commandStatus = $"Comandos: 0% ({DescribeCommand(commandType)})";
-            lastCommandDeviceId = deviceId;
-            activeCommandId = null;
+        if (!commandTracker.TryQueue(normalizedDeviceId, operationLabel, out var busyResult))
+        {
+            return busyResult!;
         }
 
         RaiseStateChanged();
-        AppendLog($"Comando iniciado ({DescribeCommand(commandType)}) para {deviceId}.");
+        AppendDeviceLog(normalizedDeviceId, $"Comando iniciado ({operationLabel}).");
+        AppendLog($"Comando iniciado ({operationLabel}) para {normalizedDeviceId}.");
 
-        CommandDispatchResult result;
-        try
-        {
-            result = await integration.Host
-                .SendCommandTrackedAsync(deviceId, commandType, parameters, CommandTimeout, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            result = new CommandDispatchResult
-            {
-                DeviceId = deviceId,
-                Accepted = true,
-                Completed = true,
-                Success = false,
-                ProgressPercent = commandPercent,
-                Stage = "cancelled",
-                Message = "Operacao cancelada.",
-                ErrorCode = "cancelled",
-            };
-        }
-        catch (Exception ex)
-        {
-            result = new CommandDispatchResult
-            {
-                DeviceId = deviceId,
-                Accepted = true,
-                Completed = true,
-                Success = false,
-                ProgressPercent = commandPercent,
-                Stage = "error",
-                Message = ex.Message,
-                ErrorCode = "exception",
-            };
-        }
+        var result = await commandDispatcher
+            .DispatchAsync(normalizedDeviceId, commandType, parameters, cancellationToken)
+            .ConfigureAwait(false);
 
-        lock (gate)
-        {
-            commandInProgress = false;
-            commandPercent = Math.Clamp(Math.Max(commandPercent, result.ProgressPercent), 0, 100);
-            commandStatus = BuildFinalCommandStatus(result);
-            if (!string.IsNullOrWhiteSpace(result.CommandId))
-            {
-                activeCommandId = result.CommandId;
-            }
-        }
-
+        commandTracker.Complete(normalizedDeviceId, result);
         RaiseStateChanged();
-        AppendLog(BuildResultLogMessage(result));
+
+        var resultMessage = DeviceOperationsText.BuildResultLogMessage(result);
+        AppendDeviceLog(normalizedDeviceId, resultMessage);
+        AppendLog(resultMessage);
         return result;
     }
 
     private void OnRefreshTimerTick(object? _)
     {
-        lock (gate)
+        if (!refreshCoordinator.IsVisible())
         {
-            if (!refreshActive)
-            {
-                return;
-            }
+            return;
         }
 
         _ = RefreshDevicesAsync(forcePublish: false);
@@ -278,80 +265,39 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
     private void OnHostCommandProgressChanged(object? sender, DeviceCommandProgressMessage progress)
     {
-        if (string.IsNullOrWhiteSpace(progress.DeviceId) || string.IsNullOrWhiteSpace(progress.CommandId))
+        if (!commandTracker.ApplyProgress(progress, out var normalizedDeviceId, out var progressMessage))
         {
             return;
         }
 
-        var shouldRaise = false;
-
-        lock (gate)
-        {
-            if (!commandInProgress || !string.Equals(lastCommandDeviceId, progress.DeviceId, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(activeCommandId))
-            {
-                activeCommandId = progress.CommandId;
-            }
-
-            if (!string.Equals(activeCommandId, progress.CommandId, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            commandPercent = Math.Clamp(Math.Max(commandPercent, progress.ProgressPercent), 0, 100);
-            commandStatus = BuildLiveCommandStatus(progress);
-            shouldRaise = true;
-        }
-
-        if (shouldRaise)
-        {
-            RaiseStateChanged();
-            if (!string.IsNullOrWhiteSpace(progress.Message))
-            {
-                AppendLog($"[{DescribeStage(progress.Stage)}] {progress.Message}");
-            }
-        }
+        AppendDeviceLog(normalizedDeviceId, progressMessage);
+        RaiseStateChanged();
+        AppendLog(progressMessage);
     }
 
     private async Task RefreshDevicesAsync(bool forcePublish)
     {
-        if (Interlocked.CompareExchange(ref refreshInFlight, 1, 0) != 0)
+        if (!refreshCoordinator.TryEnterRefresh())
         {
             return;
         }
 
         try
         {
-            var nextSnapshot = integration.GetDevices()
-                .Where(device => device.Status == DeviceStatus.Online && !string.IsNullOrWhiteSpace(device.FirmwareVersion))
-                .OrderBy(device => device.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(device => device.DeviceId, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            var lifecycleThresholds = await lifecycleThresholdProvider.EnsureLoadedAsync().ConfigureAwait(false);
+            var nextSnapshot = DeviceListVisibilityPolicy.BuildVisibleList(
+                integration.GetDevices(),
+                lifecycleThresholds,
+                DateTimeOffset.UtcNow);
 
-            var changed = false;
-
-            lock (gate)
+            var update = refreshCoordinator.Apply(nextSnapshot, forcePublish, DateTimeOffset.UtcNow);
+            if (update.Changed)
             {
-                lastRefreshUtc = DateTimeOffset.UtcNow;
-
-                if (forcePublish || !AreSnapshotsEquivalent(devicesSnapshot, nextSnapshot))
-                {
-                    devicesSnapshot.Clear();
-                    devicesSnapshot.AddRange(nextSnapshot);
-                    changed = true;
-                }
-            }
-
-            if (changed)
-            {
+                logBook.RecordLifecycleEvents(update.PreviousSnapshot, update.CurrentSnapshot, DateTimeOffset.Now);
                 DeviceListChanged?.Invoke(this, EventArgs.Empty);
             }
 
-            if (changed || forcePublish)
+            if (update.Changed || forcePublish)
             {
                 RaiseStateChanged();
             }
@@ -362,127 +308,98 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
         finally
         {
-            Interlocked.Exchange(ref refreshInFlight, 0);
+            refreshCoordinator.ExitRefresh();
         }
     }
 
-    private static bool AreSnapshotsEquivalent(IReadOnlyList<DeviceSnapshot> current, IReadOnlyList<DeviceSnapshot> next)
+    private void AppendDeviceLog(string deviceId, string message)
     {
-        if (current.Count != next.Count)
+        if (logBook.AppendDevice(deviceId, message))
         {
-            return false;
+            RaiseStateChanged();
         }
-
-        for (var i = 0; i < current.Count; i++)
-        {
-            var a = current[i];
-            var b = next[i];
-            if (!string.Equals(a.DeviceId, b.DeviceId, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(a.Name, b.Name, StringComparison.Ordinal)
-                || a.Status != b.Status
-                || !string.Equals(a.Profile, b.Profile, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(a.FirmwareVersion, b.FirmwareVersion, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(a.LastKnownIp, b.LastKnownIp, StringComparison.OrdinalIgnoreCase)
-                || a.LastKnownRssi != b.LastKnownRssi
-                || !string.Equals(a.ActiveAppId, b.ActiveAppId, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static string BuildLiveCommandStatus(DeviceCommandProgressMessage progress)
-    {
-        var stage = DescribeStage(progress.Stage);
-        return $"Comandos: {Math.Clamp(progress.ProgressPercent, 0, 100)}% ({stage})";
-    }
-
-    private static string BuildFinalCommandStatus(CommandDispatchResult result)
-    {
-        if (result.Success)
-        {
-            return "Comandos: concluido";
-        }
-
-        return result.ErrorCode switch
-        {
-            "timeout" => "Comandos: sem resposta do dispositivo",
-            "device_offline" => "Comandos: dispositivo offline",
-            "send_error" => "Comandos: erro de rede",
-            _ => "Comandos: erro",
-        };
-    }
-
-    private static string BuildResultLogMessage(CommandDispatchResult result)
-    {
-        if (result.Success)
-        {
-            return $"Comando concluido com sucesso ({result.Stage ?? "ok"}) para {result.DeviceId}.";
-        }
-
-        if (!string.IsNullOrWhiteSpace(result.Message))
-        {
-            return $"Comando falhou para {result.DeviceId}: {result.Message}";
-        }
-
-        return $"Comando falhou para {result.DeviceId}.";
-    }
-
-    private static string DescribeCommand(DeviceCommandType commandType)
-        => commandType switch
-        {
-            DeviceCommandType.EnterProvisioning => "entrar em provisioning",
-            DeviceCommandType.RevokeAndRestart => "revogar/reiniciar",
-            DeviceCommandType.TestLed => "testar LED",
-            DeviceCommandType.InstallApp => "instalar app",
-            DeviceCommandType.ActivateApp => "ativar app",
-            DeviceCommandType.SetAppConfig => "configurar app",
-            _ => "comando",
-        };
-
-    private static string DescribeStage(string? stage)
-    {
-        if (string.IsNullOrWhiteSpace(stage))
-        {
-            return "processando";
-        }
-
-        return stage;
     }
 
     private void AppendLog(string message)
     {
-        if (string.IsNullOrWhiteSpace(message))
+        if (logBook.AppendGlobal(message))
         {
-            return;
+            RaiseStateChanged();
         }
-
-        lock (gate)
-        {
-            var line = $"[{DateTimeOffset.Now:HH:mm:ss}] {message}";
-            logs.Add(line);
-            TrimToLimit(logs, MaxLogEntries);
-        }
-
-        RaiseStateChanged();
     }
 
     private void RaiseStateChanged()
     {
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
+}
 
-    private static void TrimToLimit(List<string> entries, int limit)
+internal interface IDeviceOperationsRuntime
+{
+    event EventHandler? DevicesChanged;
+
+    event EventHandler<string>? LogMessage;
+
+    event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
+
+    string GetServerBaseAddress();
+
+    PairingCodeInfo CreatePairingCode(TimeSpan ttl);
+
+    bool RemoveDevice(string deviceId);
+
+    IReadOnlyList<DeviceSnapshot> GetDevices();
+
+    Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
+}
+
+internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
+{
+    private readonly DeviceIntegrationService integration;
+
+    public DeviceOperationsRuntime(DeviceIntegrationService integration)
     {
-        if (entries.Count <= limit)
-        {
-            return;
-        }
+        this.integration = integration;
+    }
 
-        var removeCount = entries.Count - limit;
-        entries.RemoveRange(0, removeCount);
+    public event EventHandler? DevicesChanged
+    {
+        add => integration.DevicesChanged += value;
+        remove => integration.DevicesChanged -= value;
+    }
+
+    public event EventHandler<string>? LogMessage
+    {
+        add => integration.LogMessage += value;
+        remove => integration.LogMessage -= value;
+    }
+
+    public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+    {
+        add => integration.Host.CommandProgressChanged += value;
+        remove => integration.Host.CommandProgressChanged -= value;
+    }
+
+    public string GetServerBaseAddress() => integration.GetServerBaseAddress();
+
+    public PairingCodeInfo CreatePairingCode(TimeSpan ttl) => integration.CreatePairingCode(ttl);
+
+    public bool RemoveDevice(string deviceId) => integration.RemoveDevice(deviceId);
+
+    public IReadOnlyList<DeviceSnapshot> GetDevices() => integration.GetDevices();
+
+    public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        return integration.Host.SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
     }
 }

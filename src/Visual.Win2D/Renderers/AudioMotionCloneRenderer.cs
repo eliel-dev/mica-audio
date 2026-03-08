@@ -2,11 +2,34 @@ using Visual.Win2D.Engine;
 
 namespace Visual.Win2D.Renderers;
 
-public sealed class AudioMotionCloneRenderer : IRenderer
+// DOCS: docs/wiki/modules/visual-win2d.md#audiomotion-clone
+public sealed class AudioMotionCloneRenderer : IRenderer, IRendererCapabilitiesProvider
 {
+    private static readonly RendererCapabilities ExplicitCapabilities = new()
+    {
+        UsesAnalyzerPipeline = true,
+        Controls = new RendererControlSupport
+        {
+            SupportsSensitivity = true,
+            SupportsLinearBoost = true,
+            SupportsBarCount = false,
+            SupportsFftSize = true,
+            SupportsFftSmoothing = true,
+            SupportsWeightingFilter = true,
+            SupportsFrequencyScale = true,
+            SupportsFrequencyRange = true,
+        },
+        BarCountMode = RendererBarCountMode.Native,
+        IntegrationMode = RendererIntegrationMode.Explicit,
+        HubTransportMode = RendererHubTransportMode.Bins128,
+        UnsupportedControlsHint = "No modo AudioMotion Clone, a quantidade de barras e automatica pela largura da tela.",
+    };
+
     public string RendererId => RendererIds.AudioMotionClone;
 
     public string DisplayName => "AudioMotion Clone";
+
+    public RendererCapabilities Capabilities => ExplicitCapabilities;
 
     public void Render(RenderContext context)
     {

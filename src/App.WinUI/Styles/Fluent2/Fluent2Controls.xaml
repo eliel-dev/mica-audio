@@ -20,17 +20,19 @@
         <Setter Property="MinHeight" Value="36" />
     </Style>
 
-    <Style x:Key="AppChromeButtonStyle" TargetType="Button">
-        <Setter Property="MinHeight" Value="36" />
-        <Setter Property="Padding" Value="12,6" />
-        <Setter Property="CornerRadius" Value="8" />
+    <Style x:Key="AppBaseButtonStyle" TargetType="Button">
+        <Setter Property="Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />
     </Style>
 
-    <Style x:Key="AppIconButtonStyle" TargetType="Button">
+    <Style x:Key="AppChromeButtonStyle" TargetType="Button" BasedOn="{StaticResource AppBaseButtonStyle}">
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="12,6" />
+    </Style>
+
+    <Style x:Key="AppIconButtonStyle" TargetType="Button" BasedOn="{StaticResource AppBaseButtonStyle}">
         <Setter Property="MinHeight" Value="32" />
         <Setter Property="MinWidth" Value="32" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="CornerRadius" Value="8" />
     </Style>
 
     <Style x:Key="AppChromeToggleSwitchStyle" TargetType="ToggleSwitch">
@@ -57,7 +59,8 @@
         <Setter Property="Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />
     </Style>
 
-    <Style TargetType="TextBlock">
+    <!-- Make TextBlock style explicit to avoid overriding other keyed text styles -->
+    <Style x:Key="AppTextBlockStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />
     </Style>
 </ResourceDictionary>

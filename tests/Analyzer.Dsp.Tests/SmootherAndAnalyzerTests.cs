@@ -22,14 +22,14 @@ public class SmootherAndAnalyzerTests
     {
         var analyzer = new SpectrumAnalyzer(new AnalyzerConfig
         {
-            FftSize = 4096,
-            HopSize = 1024,
+            FftSize = 2048,
+            HopSize = 512,
             DisplayBandCount = 128,
             OutputBandCount = 64,
             SampleRate = 48_000,
         });
 
-        var samples = new float[4096];
+        var samples = new float[2048];
         for (var i = 0; i < samples.Length; i++)
         {
             samples[i] = MathF.Sin(2f * MathF.PI * 440f * i / 48_000f);
@@ -62,8 +62,8 @@ public class SmootherAndAnalyzerTests
     {
         var analyzer = new SpectrumAnalyzer(new AnalyzerConfig
         {
-            FftSize = 4096,
-            HopSize = 1024,
+            FftSize = 2048,
+            HopSize = 512,
             DisplayBandCount = 128,
             OutputBandCount = 64,
             SampleRate = 48_000,
@@ -73,7 +73,7 @@ public class SmootherAndAnalyzerTests
         });
 
         SpectrumFrame? latest = null;
-        var samples = new float[4096];
+        var samples = new float[2048];
         for (var repeat = 0; repeat < 4; repeat++)
         {
             for (var i = 0; i < samples.Length; i++)
@@ -123,7 +123,7 @@ public class SmootherAndAnalyzerTests
         var analyzer = new SpectrumAnalyzer(new AnalyzerConfig
         {
             SampleRate = 48_000,
-            FftSize = 1024,
+            FftSize = 2048,
             HopSize = 256,
             DisplayBandCount = 38,
             OutputBandCount = 64,
@@ -203,69 +203,43 @@ public class SmootherAndAnalyzerTests
     }
 
     [Fact]
-    public void SpectrumAnalyzer_FixedHop256_ShouldHaveSteadyCadenceFor1kAnd8k()
+    public void SpectrumAnalyzer_FixedHop256_ShouldHaveSteadyCadenceFor2k()
     {
         const int chunkSize = 256;
         const int totalChunks = 80;
-        var analyzer1k = new SpectrumAnalyzer(new AnalyzerConfig
+        var analyzer2k = new SpectrumAnalyzer(new AnalyzerConfig
         {
             SampleRate = 48_000,
-            FftSize = 1024,
-            HopSize = 256,
-            DisplayBandCount = 38,
-            OutputBandCount = 64,
-        });
-        var analyzer8k = new SpectrumAnalyzer(new AnalyzerConfig
-        {
-            SampleRate = 48_000,
-            FftSize = 8192,
+            FftSize = 2048,
             HopSize = 256,
             DisplayBandCount = 38,
             OutputBandCount = 64,
         });
 
-        var first1k = -1;
-        var first8k = -1;
-        var steady1k = 0;
-        var steady8k = 0;
+        var first2k = -1;
+        var steady2k = 0;
 
         for (var i = 0; i < totalChunks; i++)
         {
             var chunk = CreateSineBuffer(440f, 0.8f, chunkSize, 48_000);
 
-            var frame1k = analyzer1k.Process(new PcmFrame(chunk, i));
-            if (frame1k is not null)
+            var frame2k = analyzer2k.Process(new PcmFrame(chunk, i));
+            if (frame2k is not null)
             {
-                if (first1k < 0)
+                if (first2k < 0)
                 {
-                    first1k = i;
+                    first2k = i;
                 }
 
                 if (i >= 60)
                 {
-                    steady1k++;
-                }
-            }
-
-            var frame8k = analyzer8k.Process(new PcmFrame(chunk, i));
-            if (frame8k is not null)
-            {
-                if (first8k < 0)
-                {
-                    first8k = i;
-                }
-
-                if (i >= 60)
-                {
-                    steady8k++;
+                    steady2k++;
                 }
             }
         }
 
-        Assert.Equal(3, first1k);
-        Assert.Equal(31, first8k);
-        Assert.Equal(20, steady1k);
-        Assert.Equal(20, steady8k);
+        Assert.Equal(7, first2k);
+        Assert.Equal(20, steady2k);
     }
 
     [Fact]
@@ -362,8 +336,8 @@ public class SmootherAndAnalyzerTests
         return new SpectrumAnalyzer(new AnalyzerConfig
         {
             SampleRate = 48_000,
-            FftSize = 4096,
-            HopSize = 4096,
+            FftSize = 2048,
+            HopSize = 2048,
             DisplayBandCount = 64,
             OutputBandCount = 64,
             MinHz = 30f,

@@ -11,6 +11,9 @@
     <Page.KeyboardAccelerators>
         <KeyboardAccelerator Key="F11" Invoked="OnFullscreenAcceleratorInvoked" />
         <KeyboardAccelerator Key="Escape" Invoked="OnFullscreenAcceleratorInvoked" />
+        <KeyboardAccelerator Key="Left" Invoked="OnPreviousPresetAcceleratorInvoked" />
+        <KeyboardAccelerator Key="Right" Invoked="OnNextPresetAcceleratorInvoked" />
+        <KeyboardAccelerator Key="D" Modifiers="Control,Shift" Invoked="OnRenderDiagnosticsAcceleratorInvoked" />
     </Page.KeyboardAccelerators>
 
     <SplitView
@@ -66,63 +69,6 @@
                                 Content="Restaurar padrao"
                                 ToolTipService.ToolTip="Restaura os parametros visuais e de analise para os valores recomendados." />
 
-                            <TextBlock Text="Sensibilidade (dB)" />
-                            <StackPanel x:Name="DbSensitivityPanel" Spacing="6">
-                                <TextBlock Style="{StaticResource AppMutedTextStyle}" Text="Min dB (fundo):" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Slider
-                                        x:Name="SensitivityMinDbSlider"
-                                        Grid.Column="0"
-                                        Maximum="-30"
-                                        Minimum="-120"
-                                        SmallChange="1"
-                                        StepFrequency="1"
-                                        ValueChanged="OnSensitivityMinDbChanged" />
-                                    <TextBlock
-                                        x:Name="SensitivityMinDbValueText"
-                                        Grid.Column="1"
-                                        Margin="10,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Text="-85 dB" />
-                                </Grid>
-
-                                <TextBlock Style="{StaticResource AppMutedTextStyle}" Text="Max dB (topo):" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Slider
-                                        x:Name="SensitivityMaxDbSlider"
-                                        Grid.Column="0"
-                                        Maximum="0"
-                                        Minimum="-60"
-                                        SmallChange="1"
-                                        StepFrequency="1"
-                                        ValueChanged="OnSensitivityMaxDbChanged" />
-                                    <TextBlock
-                                        x:Name="SensitivityMaxDbValueText"
-                                        Grid.Column="1"
-                                        Margin="10,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Text="-25 dB" />
-                                </Grid>
-                            </StackPanel>
-
-                            <TextBlock Text="Linear Boost" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Slider x:Name="LinearBoostSlider" Grid.Column="0" ValueChanged="OnLinearBoostChanged" />
-                                <TextBlock x:Name="LinearBoostValueText" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Text="x1.60" />
-                            </Grid>
-
                             <StackPanel x:Name="BarCountPanel" Spacing="4">
                                 <TextBlock Text="Quantidade de barras" />
                                 <Grid>
@@ -148,13 +94,6 @@
                                 Text="No modo AudioMotion Clone, a quantidade de barras e automatica pela largura da tela."
                                 TextWrapping="Wrap"
                                 Visibility="Collapsed" />
-
-                            <TextBlock Text="FFT Size" />
-                            <ComboBox
-                                x:Name="FftSizeCombo"
-                                Style="{StaticResource AppChromeComboBoxStyle}"
-                                ToolTipService.ToolTip="Define a resolucao de frequencia. Maior FFT melhora detalhe e aumenta latencia."
-                                SelectionChanged="OnFftSizeChanged" />
 
                             <TextBlock Text="FFT Smoothing" />
                             <Grid>
@@ -255,14 +194,7 @@
                                     <SymbolIcon Symbol="GlobalNavigationButton" />
                                 </AppBarToggleButton.Icon>
                             </AppBarToggleButton>
-                            <AppBarElementContainer>
-                                <ComboBox
-                                    x:Name="PresetCombo"
-                                    Width="260"
-                                    PlaceholderText="Predefinicao"
-                                    IsEnabled="False"
-                                    SelectionChanged="OnPresetSelectionChanged" />
-                            </AppBarElementContainer>
+
                             <AppBarElementContainer>
                                 <ComboBox
                                     x:Name="ContentModeCombo"
@@ -408,6 +340,38 @@
                             Draw="OnMainCanvasDraw"
                             DoubleTapped="OnMainCanvasDoubleTapped"
                             SizeChanged="OnMainCanvasSizeChanged" />
+                        <Border
+                            x:Name="PresetQuickSwitchHud"
+                            Margin="0,14,0,0"
+                            Padding="10,6"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Top"
+                            Background="{ThemeResource AppSurfaceElevatedBrush}"
+                            BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Visibility="Collapsed">
+                            <TextBlock
+                                x:Name="PresetQuickSwitchText"
+                                Style="{StaticResource AppStatusTextStyle}"
+                                Text="01. Preset" />
+                        </Border>
+                        <Border
+                            x:Name="RenderDiagnosticsHud"
+                            Margin="14"
+                            Padding="10,8"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Background="{ThemeResource AppSurfaceElevatedBrush}"
+                            BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Visibility="Collapsed">
+                            <TextBlock
+                                x:Name="RenderDiagnosticsText"
+                                Style="{StaticResource AppMutedTextStyle}"
+                                Text="FPS --" />
+                        </Border>
                         <Button
                             x:Name="CanvasFullscreenButton"
                             Width="40"
@@ -447,12 +411,49 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <TextBlock Margin="0,0,0,8" Style="{StaticResource AppStatusTextStyle}" Text="Simulacao HUB75 64x32 (horizontal)" />
-                        <canvas:CanvasControl x:Name="HubCanvas" Grid.Row="1" Draw="OnHubCanvasDraw" />
+                        <TextBlock
+                            Margin="0,0,0,8"
+                            Style="{StaticResource AppStatusTextStyle}"
+                            Text="Simulacao HUB75 local (128x64 nativo)" />
+                        <Grid Grid.Row="1" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Grid.ColumnSpan="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock
+                                    Margin="0,0,0,6"
+                                    Style="{StaticResource AppMutedTextStyle}"
+                                    Text="128x64" />
+                                <canvas:CanvasControl
+                                    x:Name="HubCanvas"
+                                    Grid.Row="1"
+                                    Draw="OnHubCanvasDraw" />
+                            </Grid>
+
+                            </Grid>
                     </Grid>
                 </Border>
             </Grid>
         </SplitView.Content>
     </SplitView>
 </Page>
+
+
+
+
+
+
+
+
+
+
+
+
+
 

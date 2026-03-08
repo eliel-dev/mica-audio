@@ -2,11 +2,12 @@ using MicaAudio.Core.Audio;
 
 namespace MicaAudio.Core.Config;
 
+// DOCS: docs/wiki/modules/analyzer-dsp.md#otimizacao-2026-03---fase-dsp-1-buffers-planos-e-output-only
 public sealed class AnalyzerConfig
 {
     public int SampleRate { get; init; } = 48_000;
 
-    public int FftSize { get; init; } = 1024;
+    public int FftSize { get; init; } = VisualizerRuntimeDefaults.DefaultFftSize;
 
     public int HopSize { get; init; } = 256;
 
@@ -20,6 +21,8 @@ public sealed class AnalyzerConfig
 
     public int OutputBandCount { get; init; } = 64;
 
+    public AnalyzerOutputMode OutputMode { get; init; } = AnalyzerOutputMode.DisplayAndOutput;
+
     public float MinHz { get; init; } = 30f;
 
     public float MaxHz { get; init; } = 16_000f;
@@ -29,7 +32,7 @@ public sealed class AnalyzerConfig
     public FrequencyScale FrequencyScale { get; init; } = FrequencyScale.Logarithmic;
 
     // Matches the behavior of WebAudio's AnalyserNode.smoothingTimeConstant (0..0.99).
-    public float FftSmoothing { get; init; } = 0f;
+    public float FftSmoothing { get; init; }
 
     public WeightingFilter WeightingFilter { get; init; } = WeightingFilter.Off;
 
@@ -45,7 +48,7 @@ public sealed class AnalyzerConfig
     public float DbFloor { get; init; } = -90f;
 
     // Keep headroom to avoid bars saturating near full scale.
-    public float DbCeiling { get; init; } = 0f;
+    public float DbCeiling { get; init; }
 
     public float DisplaySmoothingRise { get; init; } = 0.82f;
 

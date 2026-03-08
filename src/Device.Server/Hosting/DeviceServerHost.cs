@@ -1,9 +1,10 @@
+using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Channels;
 using System.Threading.RateLimiting;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
@@ -26,16 +27,37 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private const string PairRatePolicy = "pairing";
     private const string CommandAckRatePolicy = "command-ack";
     private const string WebSocketHandshakeRatePolicy = "ws-handshake";
+    private static readonly TimeSpan SocketDetachGracePeriod = TimeSpan.FromMilliseconds(500);
+
+    private enum AuthContext
+    {
+        HttpApi,
+        WebSocket,
+    }
 
     private readonly object gate = new();
-    private readonly Dictionary<string, DeviceState> devices = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, DateTimeOffset> pairingCodes = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, PairingAttemptWindow> pairingAttemptsByIp = new(StringComparer.OrdinalIgnoreCase);
+    private readonly TimeProvider timeProvider;
+    private readonly DeviceSessionRegistry devices = new();
+    private readonly DevicePairingState pairingState = new();
+    private readonly PendingTrackedCommandStore pendingTrackedCommands = new();
 
-    private ServerConfig config = new();
+    private DeviceServerRuntimeConfig runtimeConfig = DeviceServerRuntimeConfig.From(new ServerConfig());
     private WebApplication? app;
     private CancellationTokenSource? appCts;
+
+    public DeviceServerHost()
+        : this(TimeProvider.System)
+    {
+    }
+
+    public DeviceServerHost(TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        this.timeProvider = timeProvider;
+    }
+
     public event EventHandler? DevicesChanged;
+
     public event EventHandler<string>? LogMessage;
 
     public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
@@ -43,6 +65,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     public async Task StartAsync(ServerConfig config, CancellationToken cancellationToken = default)
     {
         // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
+        ArgumentNullException.ThrowIfNull(config);
+
+        var localRuntimeConfig = DeviceServerRuntimeConfig.From(config);
         lock (gate)
         {
             if (app is not null)
@@ -50,15 +75,16 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 return;
             }
 
-            this.config = config;
+            runtimeConfig = localRuntimeConfig;
             appCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         }
 
-        var runtimeConfig = this.config;
-        var allowedCidrs = ParseAllowedCidrs(runtimeConfig.AllowedCidrs);
-
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://{runtimeConfig.ListenHost}:{runtimeConfig.Port}");
+        builder.WebHost.ConfigureKestrel(kestrel =>
+        {
+            kestrel.Limits.MaxRequestBodySize = localRuntimeConfig.MaxJsonBodyBytes;
+        });
+        builder.WebHost.UseUrls($"http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -68,7 +94,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                     partitionKey: BuildRateLimitPartitionKey(context.Connection.RemoteIpAddress),
                     factory: _ => new FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = Math.Max(1, runtimeConfig.PairRequestsPerMinute),
+                        PermitLimit = localRuntimeConfig.PairRequestsPerMinute,
                         Window = TimeSpan.FromMinutes(1),
                         QueueLimit = 0,
                         AutoReplenishment = true,
@@ -79,7 +105,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                     partitionKey: BuildRateLimitPartitionKey(context.Connection.RemoteIpAddress),
                     factory: _ => new FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = Math.Max(1, runtimeConfig.CommandAckRequestsPerSecond),
+                        PermitLimit = localRuntimeConfig.CommandAckRequestsPerSecond,
                         Window = TimeSpan.FromSeconds(1),
                         QueueLimit = 0,
                         AutoReplenishment = true,
@@ -90,7 +116,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                     partitionKey: BuildRateLimitPartitionKey(context.Connection.RemoteIpAddress),
                     factory: _ => new FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = Math.Max(1, runtimeConfig.WebSocketHandshakesPerMinute),
+                        PermitLimit = localRuntimeConfig.WebSocketHandshakesPerMinute,
                         Window = TimeSpan.FromMinutes(1),
                         QueueLimit = 0,
                         AutoReplenishment = true,
@@ -99,11 +125,18 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         var localApp = builder.Build();
         localApp.UseRateLimiter();
-        localApp.UseWebSockets();
-
         localApp.Use(async (ctx, next) =>
         {
-            if (!IsRequestAllowed(runtimeConfig, allowedCidrs, ctx.Connection.RemoteIpAddress))
+            ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            ctx.Response.Headers["X-Frame-Options"] = "DENY";
+            ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
+            ctx.Response.Headers["Cache-Control"] = "no-store";
+            await next().ConfigureAwait(false);
+        });
+        localApp.UseWebSockets();
+        localApp.Use(async (ctx, next) =>
+        {
+            if (!IsRequestAllowed(localRuntimeConfig, ctx.Connection.RemoteIpAddress))
             {
                 ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                 await ctx.Response.WriteAsJsonAsync(new { error = "network_not_allowed" }).ConfigureAwait(false);
@@ -113,27 +146,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             await next().ConfigureAwait(false);
         });
 
-        localApp.MapGet("/api/v1/health", () => Results.Ok(new { status = "ok", utc = DateTimeOffset.UtcNow }));
-
-        localApp.MapGet("/api/v1/server/info", (HttpContext ctx) =>
-        {
-            var host = ResolveHost(ctx);
-            return Results.Ok(new ServerInfoResponse
-            {
-                HttpBase = $"http://{host}:{this.config.Port}",
-                MdnsService = this.config.MdnsServiceName,
-                MaxDevices = this.config.MaxDevices,
-                WsPath = "/ws/v1/stream",
-            });
-        });
-
-        localApp.MapPost("/api/v1/pair", (Delegate)HandlePairAsync)
-            .RequireRateLimiting(PairRatePolicy);
-        localApp.MapGet("/api/v1/device/config", (Delegate)HandleDeviceConfig);
-        localApp.MapPost("/api/v1/device/command-ack", (Delegate)HandleCommandAckAsync)
-            .RequireRateLimiting(CommandAckRatePolicy);
-        localApp.Map("/ws/v1/stream", (RequestDelegate)HandleWebSocketAsync)
-            .RequireRateLimiting(WebSocketHandshakeRatePolicy);
+        MapRoutes(localApp);
 
         await localApp.StartAsync(appCts!.Token).ConfigureAwait(false);
         lock (gate)
@@ -143,29 +156,33 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         await Task.Delay(30, cancellationToken).ConfigureAwait(false);
 
-        if (runtimeConfig.AllowedCidrs.Length > 0 && allowedCidrs.Count == 0)
+        if (localRuntimeConfig.HasConfiguredAllowedCidrs && localRuntimeConfig.AllowedCidrs.Count == 0)
         {
             Log("Servidor iniciado sem CIDR valido em AllowedCidrs; aplicando regra padrao de rede privada.");
         }
 
-        Log($"Servidor de dispositivos ativo em http://{runtimeConfig.ListenHost}:{runtimeConfig.Port}");
+        Log($"Servidor de dispositivos ativo em http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
     }
 
     public async Task StopAsync()
     {
         WebApplication? localApp;
         CancellationTokenSource? localCts;
-        DeviceState[] statesToDispose;
         PendingTrackedCommand[] pendingToCancel;
+        DeviceSession[] sessionsToDispose;
 
         lock (gate)
         {
             localApp = app;
+            if (localApp is null)
+            {
+                return;
+            }
+
             localCts = appCts;
             app = null;
             appCts = null;
-            pendingToCancel = pendingTrackedCommands.Values.ToArray();
-            pendingTrackedCommands.Clear();
+            pendingToCancel = pendingTrackedCommands.Drain();
         }
 
         foreach (var pending in pendingToCancel)
@@ -184,11 +201,6 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             });
         }
 
-        if (localApp is null)
-        {
-            return;
-        }
-
         try
         {
             localCts?.Cancel();
@@ -201,17 +213,16 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         finally
         {
             localCts?.Dispose();
+
             lock (gate)
             {
-                statesToDispose = devices.Values.ToArray();
-                devices.Clear();
-                pairingCodes.Clear();
-                pairingAttemptsByIp.Clear();
+                sessionsToDispose = devices.Drain();
+                pairingState.Clear();
             }
 
-            foreach (var state in statesToDispose)
+            foreach (var session in sessionsToDispose)
             {
-                state.Dispose();
+                session.Dispose();
             }
 
             NotifyDevicesChanged();
@@ -219,26 +230,26 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         Log("Servidor de dispositivos parado");
     }
+
     public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
     {
-        var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
-        var expiresAt = DateTimeOffset.UtcNow.Add(ttl);
+        var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString(CultureInfo.InvariantCulture);
+        PairingCodeInfo pairingCode;
 
         lock (gate)
         {
-            CleanupPairingCodesLocked();
-            pairingCodes[code] = expiresAt;
+            pairingCode = pairingState.CreateCode(code, ttl, timeProvider);
         }
 
         Log($"Codigo de pareamento gerado (expira em {ttl.TotalSeconds:0}s).");
-        return new PairingCodeInfo { Code = code, ExpiresAtUtc = expiresAt };
+        return pairingCode;
     }
 
     public IReadOnlyList<DeviceSnapshot> GetDevicesSnapshot()
     {
         lock (gate)
         {
-            return devices.Values.Select(d => d.ToSnapshot()).OrderByDescending(d => d.LastSeenUtc).ToArray();
+            return devices.CreateSnapshots(runtimeConfig.DeviceOfflineTimeout);
         }
     }
 
@@ -246,23 +257,36 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return devices.Values.Select(d => d.Record).OrderByDescending(d => d.LastSeenUtc).ToArray();
+            return devices.CreateRecords();
         }
     }
 
-    public void SeedDevices(IEnumerable<DeviceRecord> seed)
+    public void SeedDevices(IEnumerable<DeviceRecord> devices)
     {
+        ArgumentNullException.ThrowIfNull(devices);
+
+        var replacedSessions = new List<DeviceSession>();
         lock (gate)
         {
-            foreach (var record in seed)
+            foreach (var record in devices)
             {
                 if (string.IsNullOrWhiteSpace(record.DeviceId) || string.IsNullOrWhiteSpace(record.Token))
                 {
                     continue;
                 }
 
-                devices[record.DeviceId] = new DeviceState(record);
+                var session = new DeviceSession(record, timeProvider, SocketDetachGracePeriod);
+                var replaced = this.devices.Set(session);
+                if (replaced is not null)
+                {
+                    replacedSessions.Add(replaced);
+                }
             }
+        }
+
+        foreach (var session in replacedSessions)
+        {
+            session.Dispose();
         }
 
         NotifyDevicesChanged();
@@ -308,27 +332,35 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return false;
         }
 
-        DeviceState? removedState;
-        lock (gate)
+        DeviceSession? removedSession = null;
+        try
         {
-            if (!devices.Remove(deviceId, out removedState))
+            lock (gate)
             {
-                return false;
+                if (!devices.Remove(deviceId, out removedSession))
+                {
+                    return false;
+                }
             }
-        }
 
-        removedState?.Dispose();
-        NotifyDevicesChanged();
-        Log($"Device removido: {deviceId}");
-        return true;
+            NotifyDevicesChanged();
+            Log($"Device removido: {deviceId}");
+            return true;
+        }
+        finally
+        {
+            removedSession?.Dispose();
+        }
     }
 
     public void BroadcastFrame(byte[] framePayload)
     {
-        DeviceState[] targets;
+        ArgumentNullException.ThrowIfNull(framePayload);
+
+        DeviceSession[] targets;
         lock (gate)
         {
-            targets = devices.Values.Where(d => d.Socket is { State: WebSocketState.Open }).ToArray();
+            targets = devices.GetOpenSocketSessions();
         }
 
         foreach (var target in targets)
@@ -350,39 +382,54 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return Results.Json(new { error = "pairing_rate_limited", retryAfterSeconds }, statusCode: StatusCodes.Status429TooManyRequests);
         }
 
-        var req = await JsonSerializer.DeserializeAsync<PairDeviceRequest>(ctx.Request.Body, JsonOptions).ConfigureAwait(false)
-            ?? new PairDeviceRequest();
+        if (IsRequestBodyTooLarge(ctx))
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        PairDeviceRequest req;
+        try
+        {
+            req = await JsonSerializer.DeserializeAsync<PairDeviceRequest>(ctx.Request.Body, JsonOptions, ctx.RequestAborted).ConfigureAwait(false)
+                ?? new PairDeviceRequest();
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid_json" });
+        }
 
         if (string.IsNullOrWhiteSpace(req.PairingCode) || !TryConsumePairingCode(req.PairingCode))
         {
             return Results.BadRequest(new { error = "invalid_or_expired_pairing_code" });
         }
 
-        DeviceState state;
+        DeviceSession state;
+        DeviceSession? replacedSession = null;
         lock (gate)
         {
-            if (devices.Count >= config.MaxDevices)
+            if (devices.Count >= runtimeConfig.MaxDevices)
             {
                 return Results.BadRequest(new { error = "max_devices_reached" });
             }
 
-            var id = $"mp-{Guid.NewGuid():N}";
-            var token = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(24));
-            var record = new DeviceRecord
-            {
-                DeviceId = id,
-                Token = token,
-                Name = string.IsNullOrWhiteSpace(req.DeviceName) ? "Matrix Portal S3" : req.DeviceName.Trim(),
-                Profile = string.IsNullOrWhiteSpace(req.Profile) ? "stable" : req.Profile.Trim(),
-                FirmwareVersion = req.FirmwareVersion,
-                LastKnownIp = ctx.Connection.RemoteIpAddress?.ToString(),
-                LastSeenUtc = DateTimeOffset.UtcNow,
-            };
+            var now = timeProvider.GetUtcNow();
+            var record = DeviceRecordMutations.CreatePairedRecord(
+                deviceId: $"mp-{Guid.NewGuid():N}",
+                token: WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(24)),
+                name: string.IsNullOrWhiteSpace(req.DeviceName) ? ResolveDefaultDeviceName(req.BoardModel) : req.DeviceName.Trim(),
+                profile: NormalizeFirmwareProfile(req.Profile),
+                firmwareVersion: req.FirmwareVersion,
+                ip: ctx.Connection.RemoteIpAddress?.ToString(),
+                boardModel: NormalizeOptional(req.BoardModel),
+                panelType: NormalizeOptional(req.PanelType),
+                now: now);
 
-            state = new DeviceState(record);
-            devices[id] = state;
-            pairingAttemptsByIp.Remove(remoteIpKey);
+            state = new DeviceSession(record, timeProvider, SocketDetachGracePeriod);
+            replacedSession = devices.Set(state);
+            pairingState.ResetAttempts(remoteIpKey);
         }
+
+        replacedSession?.Dispose();
 
         NotifyDevicesChanged();
         Log($"Device pareado: {state.Record.DeviceId}");
@@ -393,14 +440,14 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             DeviceId = state.Record.DeviceId,
             Token = state.Record.Token,
             WsPath = "/ws/v1/stream",
-            HttpBase = $"http://{host}:{config.Port}",
-            MdnsService = config.MdnsServiceName,
+            HttpBase = $"http://{host}:{runtimeConfig.Port}",
+            MdnsService = runtimeConfig.MdnsServiceName,
         });
     }
 
     private IResult HandleDeviceConfig(HttpContext ctx)
     {
-        if (!TryAuthenticate(ctx, out var state))
+        if (!TryAuthenticate(ctx, AuthContext.HttpApi, out var state))
         {
             return Results.Unauthorized();
         }
@@ -409,10 +456,10 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         {
             DeviceId = state.Record.DeviceId,
             Name = state.Record.Name,
-            MatrixWidth = 64,
-            MatrixHeight = 32,
-            StreamMode = "bins64",
-            MdnsService = config.MdnsServiceName,
+            MatrixWidth = 128,
+            MatrixHeight = 64,
+            StreamMode = "bins128",
+            MdnsService = runtimeConfig.MdnsServiceName,
         });
     }
 
@@ -429,47 +476,55 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return;
         }
 
-        if (!TryAuthenticate(ctx, out var state))
+        if (!TryAuthenticate(ctx, AuthContext.WebSocket, out var state))
         {
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
 
         var ws = await ctx.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+        state.MarkAuthenticated();
         state.AttachSocket(ws, ctx.Connection.RemoteIpAddress?.ToString());
         NotifyDevicesChanged();
 
-        var sendTask = Task.Run(() => SendLoopAsync(state));
-        await ReceiveLoopAsync(state, ws, ctx.RequestAborted).ConfigureAwait(false);
+        var sendTask = Task.Run(() => SendLoopAsync(state, ws, state.SendToken));
+        try
+        {
+            await ReceiveLoopAsync(state, ws, runtimeConfig.MaxWebSocketMessageBytes, ctx.RequestAborted).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (state.DetachSocket(ws))
+            {
+                NotifyDevicesChanged();
+            }
 
-        state.DetachSocket();
-        NotifyDevicesChanged();
-        await sendTask.ConfigureAwait(false);
+            await sendTask.ConfigureAwait(false);
+        }
     }
 
-    private static async Task SendLoopAsync(DeviceState state)
+    private static async Task SendLoopAsync(DeviceSession state, WebSocket ws, CancellationToken sendToken)
     {
         while (true)
         {
             byte[] payload;
             try
             {
-                payload = await state.Outgoing.Reader.ReadAsync(state.SendToken).ConfigureAwait(false);
+                payload = await state.Outgoing.Reader.ReadAsync(sendToken).ConfigureAwait(false);
             }
             catch
             {
                 break;
             }
 
-            var ws = state.Socket;
-            if (ws is null || ws.State != WebSocketState.Open)
+            if (ws.State != WebSocketState.Open)
             {
                 continue;
             }
 
             try
             {
-                await ws.SendAsync(payload, WebSocketMessageType.Binary, true, state.SendToken).ConfigureAwait(false);
+                await ws.SendAsync(payload, WebSocketMessageType.Binary, true, sendToken).ConfigureAwait(false);
             }
             catch
             {
@@ -478,41 +533,75 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    private async Task ReceiveLoopAsync(DeviceState state, WebSocket ws, CancellationToken cancellationToken)
+    private async Task ReceiveLoopAsync(DeviceSession state, WebSocket ws, int maxMessageSize, CancellationToken cancellationToken)
     {
         var buffer = new byte[4096];
         while (!cancellationToken.IsCancellationRequested && ws.State == WebSocketState.Open)
         {
-            WebSocketReceiveResult result;
-            try
-            {
-                result = await ws.ReceiveAsync(buffer, cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                break;
-            }
+            using var messageBuffer = new MemoryStream();
+            WebSocketReceiveResult? finalResult = null;
 
-            if (result.MessageType == WebSocketMessageType.Close)
+            do
             {
-                break;
-            }
-
-            if (result.MessageType == WebSocketMessageType.Text)
-            {
-                var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                var handled = await HandleIncomingWsTextAsync(state, json).ConfigureAwait(false);
-                if (!handled)
+                WebSocketReceiveResult result;
+                try
                 {
-                    Log($"Mensagem WS invalida recebida de {state.Record.DeviceId} (bytes={result.Count}).");
+                    result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    return;
                 }
 
-                NotifyDevicesChanged();
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    return;
+                }
+
+                if (result.Count > 0)
+                {
+                    messageBuffer.Write(buffer, 0, result.Count);
+                }
+
+                if (messageBuffer.Length > maxMessageSize)
+                {
+                    Log($"Mensagem WS excedeu {maxMessageSize} bytes de {state.Record.DeviceId}. Encerrando conexao.");
+                    try
+                    {
+                        if (ws.State == WebSocketState.Open)
+                        {
+                            await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "message_too_big", CancellationToken.None).ConfigureAwait(false);
+                        }
+                    }
+                    catch
+                    {
+                        // ignore close races
+                    }
+
+                    return;
+                }
+
+                finalResult = result;
             }
+            while (finalResult is not null && !finalResult.EndOfMessage);
+
+            if (finalResult is null || finalResult.MessageType != WebSocketMessageType.Text)
+            {
+                continue;
+            }
+
+            var json = Encoding.UTF8.GetString(messageBuffer.GetBuffer(), 0, (int)messageBuffer.Length);
+            var handled = await HandleIncomingWsTextAsync(state, json).ConfigureAwait(false);
+            if (!handled)
+            {
+                Log($"Mensagem WS invalida recebida de {state.Record.DeviceId} (bytes={messageBuffer.Length}).");
+            }
+
+            NotifyDevicesChanged();
         }
     }
 
-    private bool TryAuthenticate(HttpContext ctx, out DeviceState state)
+    private bool TryAuthenticate(HttpContext ctx, AuthContext authContext, out DeviceSession state)
     {
         state = null!;
 
@@ -532,10 +621,16 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             }
         }
 
-        if (string.IsNullOrWhiteSpace(token))
+        if (authContext == AuthContext.WebSocket
+            && string.IsNullOrWhiteSpace(token)
+            && runtimeConfig.AllowLegacyWebSocketQueryToken)
         {
-            // Backward compatibility with legacy query-string auth.
-            token = ctx.Request.Query["token"].ToString();
+            var legacyQueryToken = ctx.Request.Query["token"].ToString();
+            if (!string.IsNullOrWhiteSpace(legacyQueryToken))
+            {
+                token = legacyQueryToken;
+                Log($"Autenticacao WS via query-string em uso por {deviceId}. Migre para header X-Device-Token.");
+            }
         }
 
         if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(token))
@@ -551,7 +646,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             }
 
             state = foundState;
-            return string.Equals(state.Record.Token, token, StringComparison.Ordinal);
+            return TokensMatchConstantTime(state.Record.Token, token);
         }
     }
 
@@ -559,23 +654,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            CleanupPairingCodesLocked();
-            if (!pairingCodes.TryGetValue(code, out var expiresAt))
-            {
-                return false;
-            }
-
-            pairingCodes.Remove(code);
-            return expiresAt > DateTimeOffset.UtcNow;
-        }
-    }
-
-    private void CleanupPairingCodesLocked()
-    {
-        var now = DateTimeOffset.UtcNow;
-        foreach (var expired in pairingCodes.Where(kv => kv.Value <= now).ToArray())
-        {
-            pairingCodes.Remove(expired.Key);
+            return pairingState.TryConsume(code, timeProvider);
         }
     }
 
@@ -583,36 +662,59 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            var now = DateTimeOffset.UtcNow;
-            var window = TimeSpan.FromSeconds(Math.Max(10, config.PairingAttemptWindowSeconds));
-            var maxAttempts = Math.Max(1, config.PairingAttemptsPerWindow);
-            CleanupPairingAttemptsLocked(now, window);
-
-            if (!pairingAttemptsByIp.TryGetValue(remoteIpKey, out var current)
-                || (now - current.WindowStartUtc) >= window)
-            {
-                current = new PairingAttemptWindow(now, 0);
-            }
-
-            if (current.Attempts >= maxAttempts)
-            {
-                var wait = (current.WindowStartUtc + window) - now;
-                retryAfterSeconds = Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds));
-                return false;
-            }
-
-            pairingAttemptsByIp[remoteIpKey] = current with { Attempts = current.Attempts + 1 };
-            retryAfterSeconds = 0;
-            return true;
+            return pairingState.TryRegisterAttempt(remoteIpKey, runtimeConfig, timeProvider, out retryAfterSeconds);
         }
     }
 
-    private void CleanupPairingAttemptsLocked(DateTimeOffset now, TimeSpan window)
+    private bool IsRequestBodyTooLarge(HttpContext ctx)
     {
-        foreach (var stale in pairingAttemptsByIp.Where(kv => (now - kv.Value.WindowStartUtc) > window).ToArray())
+        if (!ctx.Request.ContentLength.HasValue)
         {
-            pairingAttemptsByIp.Remove(stale.Key);
+            return false;
         }
+
+        return ctx.Request.ContentLength.Value > runtimeConfig.MaxJsonBodyBytes;
+    }
+
+    private static bool TokensMatchConstantTime(string expectedToken, string providedToken)
+    {
+        if (string.IsNullOrWhiteSpace(expectedToken) || string.IsNullOrWhiteSpace(providedToken))
+        {
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(expectedToken),
+            Encoding.UTF8.GetBytes(providedToken));
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string ResolveDefaultDeviceName(string? boardModel)
+    {
+        var normalized = NormalizeOptional(boardModel);
+        if (string.Equals(normalized, "esp32s3_devkitc1", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ESP32-S3 DevKitC-1";
+        }
+
+        return "ESP32-S3 DevKitC-1";
+    }
+
+    private static string NormalizeFirmwareProfile(string? profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile))
+        {
+            return "dma_exp";
+        }
+
+        var normalized = profile.Trim();
+        return string.Equals(normalized, "stable", StringComparison.OrdinalIgnoreCase)
+            ? "dma_exp"
+            : normalized;
     }
 
     private static string BuildRateLimitPartitionKey(IPAddress? remoteIp)
@@ -630,7 +732,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         return remoteIp.ToString();
     }
 
-    private static bool IsRequestAllowed(ServerConfig runtimeConfig, IReadOnlyList<CidrRange> allowedCidrs, IPAddress? remoteIp)
+    private static bool IsRequestAllowed(DeviceServerRuntimeConfig config, IPAddress? remoteIp)
     {
         if (remoteIp is null)
         {
@@ -642,12 +744,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return true;
         }
 
-        if (allowedCidrs.Count > 0)
+        if (config.AllowedCidrs.Count > 0)
         {
-            return allowedCidrs.Any(cidr => cidr.Contains(remoteIp));
+            return config.AllowedCidrs.Any(cidr => cidr.Contains(remoteIp));
         }
 
-        if (!runtimeConfig.RestrictToPrivateNetworks)
+        if (!config.RestrictToPrivateNetworks)
         {
             return true;
         }
@@ -684,80 +786,6 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         return false;
     }
 
-    private static IReadOnlyList<CidrRange> ParseAllowedCidrs(IEnumerable<string>? cidrValues)
-    {
-        if (cidrValues is null)
-        {
-            return Array.Empty<CidrRange>();
-        }
-
-        var parsed = new List<CidrRange>();
-        foreach (var raw in cidrValues)
-        {
-            if (TryParseCidr(raw, out var cidr))
-            {
-                parsed.Add(cidr);
-            }
-        }
-
-        return parsed;
-    }
-
-    private static bool TryParseCidr(string? rawValue, out CidrRange cidr)
-    {
-        cidr = default;
-        if (string.IsNullOrWhiteSpace(rawValue))
-        {
-            return false;
-        }
-
-        var parts = rawValue.Trim().Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 0 || parts.Length > 2)
-        {
-            return false;
-        }
-
-        if (!IPAddress.TryParse(parts[0], out var address))
-        {
-            return false;
-        }
-
-        if (address.IsIPv4MappedToIPv6)
-        {
-            address = address.MapToIPv4();
-        }
-
-        if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
-        {
-            return false;
-        }
-
-        var prefixLength = 32;
-        if (parts.Length == 2 && !int.TryParse(parts[1], out prefixLength))
-        {
-            return false;
-        }
-
-        if (prefixLength < 0 || prefixLength > 32)
-        {
-            return false;
-        }
-
-        var mask = prefixLength == 0 ? 0u : uint.MaxValue << (32 - prefixLength);
-        var network = ConvertIpv4ToUInt32(address) & mask;
-        cidr = new CidrRange(network, prefixLength);
-        return true;
-    }
-
-    private static uint ConvertIpv4ToUInt32(IPAddress ipv4)
-    {
-        var bytes = ipv4.GetAddressBytes();
-        return ((uint)bytes[0] << 24)
-            | ((uint)bytes[1] << 16)
-            | ((uint)bytes[2] << 8)
-            | bytes[3];
-    }
-
     private string ResolveHost(HttpContext ctx)
     {
         var requestHost = ctx.Request.Host.Host;
@@ -768,158 +796,21 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return requestHost;
         }
 
-        if (!string.IsNullOrWhiteSpace(config.PublicHost))
+        if (!string.IsNullOrWhiteSpace(runtimeConfig.PublicHost))
         {
-            return config.PublicHost;
+            return runtimeConfig.PublicHost;
         }
 
         return ctx.Connection.LocalIpAddress?.ToString() ?? "127.0.0.1";
     }
 
-    private void NotifyDevicesChanged() => DevicesChanged?.Invoke(this, EventArgs.Empty);
-
-    private void Log(string message) => LogMessage?.Invoke(this, message);
-
-    private readonly record struct PairingAttemptWindow(DateTimeOffset WindowStartUtc, int Attempts);
-
-    private readonly struct CidrRange
+    private void NotifyDevicesChanged()
     {
-        public CidrRange(uint network, int prefixLength)
-        {
-            Network = network;
-            PrefixLength = prefixLength;
-        }
-
-        public uint Network { get; }
-
-        public int PrefixLength { get; }
-
-        public bool Contains(IPAddress address)
-        {
-            if (address.IsIPv4MappedToIPv6)
-            {
-                address = address.MapToIPv4();
-            }
-
-            if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
-            {
-                return false;
-            }
-
-            var value = ConvertIpv4ToUInt32(address);
-            var mask = PrefixLength == 0 ? 0u : uint.MaxValue << (32 - PrefixLength);
-            return (value & mask) == Network;
-        }
+        DevicesChanged?.Invoke(this, EventArgs.Empty);
     }
-    private sealed class DeviceState : IDisposable
+
+    private void Log(string message)
     {
-        private CancellationTokenSource senderCts = new();
-
-        public DeviceState(DeviceRecord record)
-        {
-            Record = record;
-            LastActivityUtc = DateTimeOffset.UtcNow;
-            Outgoing = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(1)
-            {
-                FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = true,
-            });
-        }
-
-        public DeviceRecord Record { get; private set; }
-
-        public WebSocket? Socket { get; private set; }
-
-        public Channel<byte[]> Outgoing { get; }
-
-        public DateTimeOffset LastActivityUtc { get; private set; }
-
-        public CancellationToken SendToken => senderCts.Token;
-        public void MarkSeen(string? ip, int? rssi, string? firmwareVersion, string? activeAppId = null, string? activeAppName = null)
-        {
-            LastActivityUtc = DateTimeOffset.UtcNow;
-            Record = new DeviceRecord
-            {
-                DeviceId = Record.DeviceId,
-                Name = Record.Name,
-                Profile = Record.Profile,
-                Token = Record.Token,
-                CreatedAtUtc = Record.CreatedAtUtc,
-                LastSeenUtc = DateTimeOffset.UtcNow,
-                LastKnownIp = string.IsNullOrWhiteSpace(ip) ? Record.LastKnownIp : ip,
-                LastKnownRssi = rssi ?? Record.LastKnownRssi,
-                FirmwareVersion = string.IsNullOrWhiteSpace(firmwareVersion) ? Record.FirmwareVersion : firmwareVersion,
-                ActiveAppId = string.IsNullOrWhiteSpace(activeAppId) ? Record.ActiveAppId : activeAppId,
-                ActiveAppName = string.IsNullOrWhiteSpace(activeAppName) ? Record.ActiveAppName : activeAppName,
-            };
-        }
-
-        public void Touch()
-        {
-            LastActivityUtc = DateTimeOffset.UtcNow;
-        }
-
-        public void AttachSocket(WebSocket socket, string? ip)
-        {
-            senderCts.Cancel();
-            senderCts.Dispose();
-            senderCts = new CancellationTokenSource();
-            Socket = socket;
-            MarkSeen(ip, Record.LastKnownRssi, Record.FirmwareVersion);
-        }
-
-        public void DetachSocket()
-        {
-            senderCts.Cancel();
-            Socket = null;
-        }
-
-        public void QueueFrame(byte[] frame)
-        {
-            Outgoing.Writer.TryWrite(frame);
-        }
-
-        public DeviceSnapshot ToSnapshot()
-        {
-            var staleTimeout = TimeSpan.FromSeconds(6);
-            var online = Socket is { State: WebSocketState.Open } && (DateTimeOffset.UtcNow - LastActivityUtc) <= staleTimeout;
-
-            return new DeviceSnapshot
-            {
-                DeviceId = Record.DeviceId,
-                Name = Record.Name,
-                Profile = Record.Profile,
-                Status = online ? DeviceStatus.Online : DeviceStatus.Offline,
-                LastSeenUtc = Record.LastSeenUtc,
-                LastKnownIp = Record.LastKnownIp,
-                LastKnownRssi = Record.LastKnownRssi,
-                FirmwareVersion = Record.FirmwareVersion,
-                ActiveAppId = Record.ActiveAppId,
-                ActiveAppName = Record.ActiveAppName,
-            };
-        }
-
-        public void Dispose()
-        {
-            senderCts.Cancel();
-            senderCts.Dispose();
-
-            if (Socket is not null)
-            {
-                try
-                {
-                    Socket.Abort();
-                    Socket.Dispose();
-                }
-                catch
-                {
-                    // ignore socket disposal errors
-                }
-
-                Socket = null;
-            }
-
-            Outgoing.Writer.TryComplete();
-        }
+        LogMessage?.Invoke(this, message);
     }
 }

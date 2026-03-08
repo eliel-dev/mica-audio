@@ -4,40 +4,35 @@ using MicaAudio.Core.Audio;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 using Output.Led;
+using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services;
 
 // DOCS: docs/wiki/modules/app-winui.md#responsabilidades
+// DOCS: docs/wiki/modules/output-led.md#fluxo-de-execucao
 internal sealed class AudioPipelineCoordinator
 {
     private readonly ILoopbackCapture capture;
-    private readonly ILedOutput simulatorLedOutput;
-    private readonly ILedOutput matrixPortalLedOutput;
-    private readonly ILedOutput nullLedOutput;
-    private readonly Func<IAnalyzer> analyzerFactory;
+    private readonly AudioPipelineOutputRouter outputRouter;
+    private readonly AudioPipelineFrameProcessor frameProcessor;
 
     private CancellationTokenSource? cts;
     private Task? loopTask;
     private bool running;
-    private bool hubPreviewEnabled;
-    private float brightness = LedDefaults.Brightness;
-    private string currentPresetId = "audiomotion-clone";
 
     public AudioPipelineCoordinator(
         ILoopbackCapture capture,
         ILedOutput simulatorLedOutput,
-        ILedOutput matrixPortalLedOutput,
+        ILedOutput esp32s3LedOutput,
         ILedOutput nullLedOutput,
-        Func<IAnalyzer> analyzerFactory)
+        IAnalyzer initialAnalyzer)
     {
         this.capture = capture;
-        this.simulatorLedOutput = simulatorLedOutput;
-        this.matrixPortalLedOutput = matrixPortalLedOutput;
-        this.nullLedOutput = nullLedOutput;
-        this.analyzerFactory = analyzerFactory;
+        outputRouter = new AudioPipelineOutputRouter(simulatorLedOutput, esp32s3LedOutput, nullLedOutput);
+        frameProcessor = new AudioPipelineFrameProcessor(outputRouter, initialAnalyzer);
     }
 
-    public SpectrumFrame? LatestFrame { get; private set; }
+    public SpectrumFrame? LatestFrame => frameProcessor.LatestFrame;
 
     public event EventHandler<string>? StatusChanged;
 
@@ -49,30 +44,24 @@ internal sealed class AudioPipelineCoordinator
         }
 
         cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        frameProcessor.SetCurrentPreset(presetId);
+        frameProcessor.Reset();
+        outputRouter.Configure(hubPreviewEnabled, brightness);
 
         try
         {
-            await capture.StartAsync(new CaptureConfig
-            {
-                TargetSampleRate = 48_000,
-                TargetChannels = 1,
-                ChannelCapacity = 8,
-                BufferMilliseconds = 12,
-            }, cancellationToken).ConfigureAwait(false);
+            await capture.StartAsync(AudioPipelineCaptureProfile.CreateDefault(), cts.Token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             StatusChanged?.Invoke(this, $"Erro de audio: {ex.Message}");
             cts.Dispose();
             cts = null;
+            outputRouter.StopAll();
             return;
         }
 
-        currentPresetId = presetId;
-        LatestFrame = null;
-        ConfigureOutputs(hubPreviewEnabled, brightness);
-
-        loopTask = Task.Run(() => PipelineLoopAsync(cts.Token));
+        loopTask = Task.Run(() => PipelineLoopAsync(cts.Token), CancellationToken.None);
         running = true;
         StatusChanged?.Invoke(this, "Executando a 60 FPS");
     }
@@ -81,9 +70,7 @@ internal sealed class AudioPipelineCoordinator
     {
         if (!running)
         {
-            simulatorLedOutput.Stop();
-            matrixPortalLedOutput.Stop();
-            nullLedOutput.Stop();
+            outputRouter.StopAll();
             return;
         }
 
@@ -106,9 +93,8 @@ internal sealed class AudioPipelineCoordinator
             cts = null;
             loopTask = null;
             running = false;
-            simulatorLedOutput.Stop();
-            matrixPortalLedOutput.Stop();
-            nullLedOutput.Stop();
+            frameProcessor.Reset();
+            outputRouter.StopAll();
         }
 
         StatusChanged?.Invoke(this, "Parado");
@@ -116,107 +102,52 @@ internal sealed class AudioPipelineCoordinator
 
     public void SetHubPreview(bool enabled, float brightness)
     {
-        ConfigureOutputs(enabled, brightness);
+        outputRouter.Configure(enabled, brightness);
     }
 
     public void ConfigureHubOutputs(bool enableSimulator, float brightness)
     {
-        ConfigureOutputs(enableSimulator, brightness);
+        outputRouter.Configure(enableSimulator, brightness);
     }
 
-    public void SendHubFrame(RgbaColor[] frame64x32, bool forceSimulator = false, string presetId = "gif-hub75")
+    public void SendHubFrame(RgbaColor[] frame128x64, bool forceSimulator = false, string presetId = "gif-hub75")
     {
-        if (frame64x32.Length != (LedDefaults.MatrixWidth * LedDefaults.MatrixHeight))
+        if (frame128x64.Length != (LedDefaults.MatrixWidth * LedDefaults.MatrixHeight))
         {
             return;
         }
 
-        var payload = new LedPayload
-        {
-            Frame64x32 = frame64x32,
-            Level = 1f,
-            PresetId = presetId,
-        };
-
-        matrixPortalLedOutput.Send(payload);
-
-        if (forceSimulator || hubPreviewEnabled)
-        {
-            simulatorLedOutput.Send(payload);
-        }
-        else
-        {
-            nullLedOutput.Send(payload);
-        }
+        frameProcessor.SendHubFrame(frame128x64, forceSimulator, presetId);
     }
 
-    public void SetCurrentPreset(string presetId) => currentPresetId = presetId;
+    public void SetCurrentPreset(string presetId) => frameProcessor.SetCurrentPreset(presetId);
 
-    private void ConfigureOutputs(bool enableSimulator, float brightness)
+    public void SetHubTransportMode(RendererHubTransportMode mode)
     {
-        hubPreviewEnabled = enableSimulator;
-        this.brightness = Math.Clamp(brightness, 0f, 1f);
+        frameProcessor.SetHubTransportMode(mode);
+    }
 
-        var ledConfig = new LedOutputConfig
-        {
-            Width = LedDefaults.MatrixWidth,
-            Height = LedDefaults.MatrixHeight,
-            Brightness = this.brightness,
-        };
-
-        matrixPortalLedOutput.Start(ledConfig);
-        matrixPortalLedOutput.SetBrightness(this.brightness);
-
-        if (hubPreviewEnabled)
-        {
-            simulatorLedOutput.Start(ledConfig);
-            simulatorLedOutput.SetBrightness(this.brightness);
-        }
-        else
-        {
-            simulatorLedOutput.Stop();
-        }
-
-        nullLedOutput.Start(ledConfig);
-        nullLedOutput.SetBrightness(this.brightness);
+    public void SetAnalyzer(IAnalyzer analyzer)
+    {
+        frameProcessor.SetAnalyzer(analyzer);
     }
 
     private async Task PipelineLoopAsync(CancellationToken cancellationToken)
     {
-        // DOCS: docs/wiki/architecture/01-system-overview.md#pipeline-principal
         var reader = capture.Frames;
 
-        while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
+        try
         {
-            while (reader.TryRead(out var pcmFrame))
+            while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                var analyzer = analyzerFactory();
-                var spectrum = analyzer.Process(in pcmFrame);
-                if (spectrum is null)
+                while (reader.TryRead(out var pcmFrame))
                 {
-                    continue;
-                }
-
-                LatestFrame = spectrum;
-
-                var payload = new LedPayload
-                {
-                    Bins64 = spectrum.Bands64,
-                    Level = spectrum.Level,
-                    PresetId = currentPresetId,
-                };
-
-                matrixPortalLedOutput.Send(payload);
-
-                if (hubPreviewEnabled)
-                {
-                    simulatorLedOutput.Send(payload);
-                }
-                else
-                {
-                    nullLedOutput.Send(payload);
+                    frameProcessor.Process(in pcmFrame);
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 }

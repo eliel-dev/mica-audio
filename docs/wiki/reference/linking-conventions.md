@@ -7,7 +7,7 @@ Sempre usar `arquivo#Llinha` com caminho relativo a partir da pagina atual.
 Exemplo:
 
 ```md
-[MainPage.CreateAnalyzer](../../../src/App.WinUI/Views/MainPage.xaml.cs#L912)
+[MainPage.CreateAnalyzer](../../../src/App.WinUI/Views/MainPage.xaml.cs#L97)
 ```
 
 ## Regra 2: assinatura esperada
@@ -17,7 +17,7 @@ Logo apos cada link tecnico, documentar assinatura esperada para facilitar busca
 Exemplo:
 
 ```md
-- [MainPage.CreateAnalyzer](../../../src/App.WinUI/Views/MainPage.xaml.cs#L912) - assinatura: `private IAnalyzer CreateAnalyzer(PresetDefinition preset)`
+- [MainPage.CreateAnalyzer](../../../src/App.WinUI/Views/MainPage.xaml.cs#L97) - assinatura: `private IAnalyzer CreateAnalyzer(PresetDefinition preset)`
 ```
 
 ## Regra 3: codigo -> wiki
@@ -60,3 +60,4 @@ Toda regra de governanca deve apontar para o manifesto:
 - docs/wiki/reference/ai-contract.schema.json
 
 Scripts e markdown que definem policy devem referenciar estes arquivos como fonte unica.
+

@@ -1,18 +1,51 @@
-using System.Text.Json;
+﻿using System.Text.Json;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
+using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services;
 
+// DOCS: docs/wiki/modules/settings-presets-persistence.md#pontos-de-alteracao-frequente
 internal sealed class PresetRepository
 {
+    private static readonly HashSet<string> RetiredBuiltInPresetIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "spectrum-vizzy-hyper-tunnel",
+        "spectrum-vizzy-hyper-tunnel-shader",
+    };
+
+    private static readonly HashSet<string> RetiredRendererIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "vizzy-hyper-tunnel",
+        "vizzy-hyper-tunnel-shader",
+    };
+
+    private static readonly HashSet<string> RetiredRendererParameterKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "tunnelBaseRadius",
+        "tunnelDepth",
+        "tunnelSpeed",
+        "tunnelWarp",
+        "tunnelTwist",
+        "tunnelGlowPasses",
+        "tunnelLineThickness",
+        "tunnelFogAmount",
+        "tunnelSliceCount",
+        "tunnelSegmentCount",
+    };
+
     private readonly string appDataRoot;
     private readonly string presetsDir;
     private readonly JsonSerializerOptions jsonOptions;
 
-    public PresetRepository(string appDataRoot)
+    public PresetRepository(IOptions<MicaAudioOptions> options)
     {
-        this.appDataRoot = appDataRoot;
-        presetsDir = Path.Combine(appDataRoot, "presets");
+        appDataRoot = options.Value.AppDataRoot;
+        presetsDir = string.IsNullOrWhiteSpace(options.Value.PresetsDirectory)
+            ? Path.Combine(appDataRoot, "presets")
+            : options.Value.PresetsDirectory;
+
         jsonOptions = new JsonSerializerOptions
         {
             WriteIndented = true,
@@ -24,6 +57,8 @@ internal sealed class PresetRepository
     {
         Directory.CreateDirectory(presetsDir);
         var defaults = DefaultPresets.Create();
+        var audioMotionFallback = defaults.First(static preset =>
+            string.Equals(preset.PresetId, "audiomotion-clone", StringComparison.OrdinalIgnoreCase));
 
         var files = Directory.GetFiles(presetsDir, "*.json", SearchOption.TopDirectoryOnly);
         if (files.Length == 0)
@@ -32,30 +67,52 @@ internal sealed class PresetRepository
             return defaults;
         }
 
-        var output = new List<PresetDefinition>();
+        var loaded = new List<PresetDefinition>();
+        var removedRetiredBuiltInPresets = false;
+        var migratedRetiredRenderers = false;
+
         foreach (var file in files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
-            await using var stream = File.OpenRead(file);
-            var preset = await JsonSerializer.DeserializeAsync<PresetDefinition>(stream, jsonOptions, cancellationToken).ConfigureAwait(false);
-            if (preset is not null)
+            PresetDefinition? preset;
+            await using (var stream = File.OpenRead(file))
             {
-                output.Add(preset);
+                preset = await JsonSerializer.DeserializeAsync<PresetDefinition>(stream, jsonOptions, cancellationToken).ConfigureAwait(false);
             }
+
+            if (preset is null || string.IsNullOrWhiteSpace(preset.PresetId))
+            {
+                continue;
+            }
+
+            if (RetiredBuiltInPresetIds.Contains(preset.PresetId))
+            {
+                File.Delete(file);
+                removedRetiredBuiltInPresets = true;
+                continue;
+            }
+
+            if (RetiredRendererIds.Contains(preset.RendererId))
+            {
+                preset = MigrateRetiredRendererPreset(preset, audioMotionFallback);
+                migratedRetiredRenderers = true;
+            }
+
+            loaded.Add(preset);
         }
 
-        if (output.Count == 0)
+        if (loaded.Count == 0)
         {
             await SaveAllAsync(defaults, cancellationToken).ConfigureAwait(false);
             return defaults;
         }
 
-        if (NeedsCatalogReset(output, defaults))
+        var (mergedPresets, catalogUpdated) = MergeWithDefaults(loaded, defaults);
+        if (catalogUpdated || removedRetiredBuiltInPresets || migratedRetiredRenderers)
         {
-            await ReplaceAllAsync(defaults, cancellationToken).ConfigureAwait(false);
-            return defaults;
+            await SaveAllAsync(mergedPresets, cancellationToken).ConfigureAwait(false);
         }
 
-        return output;
+        return mergedPresets;
     }
 
     public async Task SaveAllAsync(IEnumerable<PresetDefinition> presets, CancellationToken cancellationToken = default)
@@ -71,46 +128,55 @@ internal sealed class PresetRepository
         }
     }
 
-    private async Task ReplaceAllAsync(IReadOnlyList<PresetDefinition> presets, CancellationToken cancellationToken)
+    private static (IReadOnlyList<PresetDefinition> Presets, bool Updated) MergeWithDefaults(
+        IReadOnlyList<PresetDefinition> loaded,
+        IReadOnlyList<PresetDefinition> defaults)
     {
-        foreach (var file in Directory.GetFiles(presetsDir, "*.json", SearchOption.TopDirectoryOnly))
+        var updated = false;
+        var loadedById = new Dictionary<string, PresetDefinition>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var preset in loaded)
         {
-            File.Delete(file);
+            if (loadedById.TryGetValue(preset.PresetId, out _))
+            {
+                updated = true;
+            }
+
+            loadedById[preset.PresetId] = preset;
         }
-
-        await SaveAllAsync(presets, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static bool NeedsCatalogReset(IReadOnlyList<PresetDefinition> loaded, IReadOnlyList<PresetDefinition> defaults)
-    {
-        if (loaded.Count != defaults.Count)
-        {
-            return true;
-        }
-
-        var loadedById = loaded
-            .Where(p => !string.IsNullOrWhiteSpace(p.PresetId))
-            .ToDictionary(p => p.PresetId, StringComparer.OrdinalIgnoreCase);
 
         foreach (var defaultPreset in defaults)
         {
-            if (!loadedById.TryGetValue(defaultPreset.PresetId, out var loadedPreset))
+            if (!loadedById.TryGetValue(defaultPreset.PresetId, out var existing))
             {
-                return true;
+                loadedById[defaultPreset.PresetId] = defaultPreset;
+                updated = true;
+                continue;
             }
 
-            if (loadedPreset.SchemaVersion < defaultPreset.SchemaVersion)
+            if (existing.SchemaVersion < defaultPreset.SchemaVersion)
             {
-                return true;
-            }
-
-            if (!string.Equals(loadedPreset.RendererId, defaultPreset.RendererId, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
+                loadedById[defaultPreset.PresetId] = defaultPreset;
+                updated = true;
             }
         }
 
-        return false;
+        var ordered = new List<PresetDefinition>(loadedById.Count);
+
+        foreach (var defaultPreset in defaults)
+        {
+            if (loadedById.Remove(defaultPreset.PresetId, out var mergedPreset))
+            {
+                ordered.Add(mergedPreset);
+            }
+        }
+
+        foreach (var customPreset in loadedById.Values.OrderBy(static p => p.PresetId, StringComparer.OrdinalIgnoreCase))
+        {
+            ordered.Add(customPreset);
+        }
+
+        return (ordered, updated);
     }
 
     private static string SanitizeFileName(string value)
@@ -118,5 +184,41 @@ internal sealed class PresetRepository
         var invalid = Path.GetInvalidFileNameChars();
         var chars = value.Select(c => invalid.Contains(c) ? '-' : c).ToArray();
         return new string(chars);
+    }
+
+    private static PresetDefinition MigrateRetiredRendererPreset(PresetDefinition preset, PresetDefinition fallback)
+    {
+        var migratedParameters = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in preset.RendererParameters)
+        {
+            if (!RetiredRendererParameterKeys.Contains(pair.Key))
+            {
+                migratedParameters[pair.Key] = pair.Value;
+            }
+        }
+
+        foreach (var pair in fallback.RendererParameters)
+        {
+            if (!migratedParameters.ContainsKey(pair.Key))
+            {
+                migratedParameters[pair.Key] = pair.Value;
+            }
+        }
+
+        return new PresetDefinition
+        {
+            SchemaVersion = preset.SchemaVersion,
+            PresetId = preset.PresetId,
+            Name = preset.Name,
+            RendererId = RendererIds.AudioMotionClone,
+            DisplayBandCount = preset.DisplayBandCount,
+            ScaleMode = preset.ScaleMode,
+            FpsTarget = preset.FpsTarget,
+            Layout = preset.Layout,
+            EnableGlow = preset.EnableGlow,
+            RendererParameters = migratedParameters,
+            Palette = preset.Palette,
+        };
     }
 }

@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Adicionar um novo app no catalogo `schemaVersion: 2` com preview animado e modificadores dinamicos sem quebrar o fluxo de deploy.
+Adicionar um novo app no catalogo `schemaVersion: 2` com preview animado e modificadores dinamicos sem quebrar o fluxo de deploy. O serviço de catálogo lê os itens diretamente do JSON, então não é necessário alterar C# para incluir novos apps válidos.
 
 ## Passos
 
@@ -10,8 +10,9 @@ Adicionar um novo app no catalogo `schemaVersion: 2` com preview animado e modif
 2. Defina `preview.kind` (ex.: `clock`, `weather`, `scores`, `news`, `productivity`, `finance`, `decorative`).
 3. Defina `modifiers` com `key`, `label`, `type` e defaults.
 4. Valide tipos aceitos em `AppModifierFieldType`.
-5. Rode o app e clique `Recarregar` na aba `Apps`.
-6. Valide `Salvar`, `Aplicar`, `Instalar` e `Ativar` com um dispositivo online.
+5. Não altere `AppCatalogService` para cadastrar o app: inclusão/edição é feita só no JSON.
+6. Rode o app e clique `Recarregar` na aba `Apps`.
+7. Valide `Salvar`, `Aplicar`, `Instalar` e `Ativar` com um dispositivo online.
 
 ## Referencias de codigo
 
@@ -19,8 +20,8 @@ Adicionar um novo app no catalogo `schemaVersion: 2` com preview animado e modif
 - [AppModifierDefinition](../../../src/App.WinUI/Models/Apps/AppModifierDefinition.cs#L3) - assinatura: `public sealed class AppModifierDefinition`
 - [AppModifierFieldType](../../../src/App.WinUI/Models/Apps/AppModifierFieldType.cs#L3) - assinatura: `public enum AppModifierFieldType`
 - [AppCatalogService.LoadCatalogAsync](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L26) - assinatura: `Task<IReadOnlyList<AppCatalogItem>> LoadCatalogAsync(...)`
-- [AppsPage.LoadCatalogAsync](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L80) - assinatura: `private async Task LoadCatalogAsync()`
-- [AppsPage.TryBuildConfigFromEditor](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L706) - assinatura: `private bool TryBuildConfigFromEditor(...)`
+- [AppsPage.LoadCatalogAsync](../../../src/App.WinUI/Views/AppsPage.Catalog.cs#L1) - assinatura: `private async Task LoadCatalogAsync()`
+- [AppsPage.TryBuildConfigFromEditor](../../../src/App.WinUI/Views/AppsPage.Modifiers.cs#L1) - assinatura: `private bool TryBuildConfigFromEditor(...)`
 
 ## Checklist rapido
 

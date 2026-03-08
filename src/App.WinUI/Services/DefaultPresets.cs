@@ -4,9 +4,10 @@ using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services;
 
+// DOCS: docs/wiki/modules/visual-win2d.md#polar-arcs
 internal static class DefaultPresets
 {
-    private const int CurrentSchemaVersion = 6;
+    private const int CurrentSchemaVersion = 14;
 
     public static IReadOnlyList<PresetDefinition> Create()
     {
@@ -17,6 +18,91 @@ internal static class DefaultPresets
             CreateAudioMotionClonePreset("audiomotion-arctic", "AudioMotion Arctic", CreateArcticStops()),
             CreateAudioMotionClonePreset("audiomotion-neon", "AudioMotion Neon", CreateNeonStops()),
 
+            CreateRendererPreset(
+                id: "spectrum-vizzy-blob-neon",
+                name: "Blob Neon",
+                rendererId: RendererIds.VizzyBlobNeon,
+                paletteStops: CreateVizzyBlobStops(),
+                glow: true,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["blobBaseRadius"] = 0.28f,
+                    ["blobAudioDepth"] = 0.11f,
+                    ["blobLfoDepth"] = 0.03f,
+                    ["blobLfoSpeed"] = 1.20f,
+                    ["blobPointCount"] = 96f,
+                    ["blobGlowPasses"] = 3f,
+                    ["blobStrokeWidth"] = 2.0f,
+                    ["blobCoreAlpha"] = 0.92f,
+                    ["blobGlowAlpha"] = 0.24f,
+                    ["blobRotationSpeed"] = 0.18f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-vizzy-orbit-rings",
+                name: "Orbit Rings",
+                rendererId: RendererIds.VizzyOrbitRings,
+                paletteStops: CreateVizzyOrbitStops(),
+                glow: true,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["orbitRingCount"] = 4f,
+                    ["orbitBaseRadius"] = 0.24f,
+                    ["orbitRingSpacing"] = 0.03f,
+                    ["orbitAudioDepth"] = 0.07f,
+                    ["orbitLfoDepth"] = 0.02f,
+                    ["orbitRotationSpeed"] = 0.35f,
+                    ["orbitPointCount"] = 96f,
+                    ["orbitGlowPasses"] = 2f,
+                    ["orbitLineThickness"] = 2.2f,
+                    ["orbitCoreCircleAlpha"] = 0.90f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-polar-arcs",
+                name: "Polar Arcs",
+                rendererId: RendererIds.PolarArcs,
+                paletteStops: CreateRainbowStops(),
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["polarArcsOuterRadius"] = 1.00f,
+                    ["polarArcsInnerHoleRadius"] = 0.18f,
+                    ["polarArcsCenterDotRadius"] = 0.018f,
+                    ["polarArcsBarsStart"] = 0.28f,
+                    ["polarArcsBarsEnd"] = 0.92f,
+                    ["polarArcsMaxSweepDegrees"] = 34f,
+                    ["polarArcsJitter"] = 0.01f,
+                    ["polarArcsBandThicknessFactor"] = 0.14f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-aurora-ribbon",
+                name: "Aurora Ribbon",
+                rendererId: RendererIds.AuroraRibbon,
+                paletteStops: CreateAuroraStops(),
+                glow: true,
+                displayBandCount: 64,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["auroraThickness"] = 0.14f,
+                    ["auroraWaveDepth"] = 0.16f,
+                    ["auroraAudioDepth"] = 0.24f,
+                    ["auroraGlowAlpha"] = 0.22f,
+                    ["auroraDriftSpeed"] = 0.78f,
+                    ["auroraBassBloom"] = 0.19f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-plasma-pulse",
+                name: "Plasma Pulse",
+                rendererId: RendererIds.PlasmaPulse,
+                paletteStops: CreatePlasmaStops(),
+                glow: true,
+                displayBandCount: 72,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["plasmaCellsX"] = 56f,
+                    ["plasmaSpeed"] = 0.92f,
+                    ["plasmaWarp"] = 0.72f,
+                    ["plasmaBassPulse"] = 0.32f,
+                    ["plasmaContrast"] = 1.34f,
+                }),
             CreateRendererPreset(
                 id: "spectrum-bars",
                 name: "Bars Arco-iris",
@@ -287,4 +373,64 @@ internal static class DefaultPresets
             new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 120, 64) },
         ];
     }
+
+    private static IReadOnlyList<PaletteStop> CreateMonochromeStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 255, 255) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 255, 255) },
+        ];
+    }
+    private static IReadOnlyList<PaletteStop> CreateVizzyBlobStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(220, 232, 255) },
+            new PaletteStop { Offset = 0.50f, Color = new RgbaColor(242, 246, 255) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 255, 255) },
+        ];
+    }
+
+    private static IReadOnlyList<PaletteStop> CreateVizzyOrbitStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 255, 255) },
+            new PaletteStop { Offset = 0.45f, Color = new RgbaColor(255, 188, 188) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 110, 110) },
+        ];
+    }
+
+    private static IReadOnlyList<PaletteStop> CreateAuroraStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(48, 255, 170) },
+            new PaletteStop { Offset = 0.28f, Color = new RgbaColor(0, 222, 255) },
+            new PaletteStop { Offset = 0.58f, Color = new RgbaColor(88, 124, 255) },
+            new PaletteStop { Offset = 0.82f, Color = new RgbaColor(198, 84, 255) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 170, 226) },
+        ];
+    }
+
+    private static IReadOnlyList<PaletteStop> CreatePlasmaStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(255, 82, 46) },
+            new PaletteStop { Offset = 0.22f, Color = new RgbaColor(255, 162, 28) },
+            new PaletteStop { Offset = 0.48f, Color = new RgbaColor(255, 58, 168) },
+            new PaletteStop { Offset = 0.76f, Color = new RgbaColor(64, 108, 255) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(72, 244, 255) },
+        ];
+    }
 }
+
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-namespace Device.Protocol.Models;
+﻿namespace Device.Protocol.Models;
 
 public sealed class DeviceConfigResponse
 {
@@ -6,11 +6,11 @@ public sealed class DeviceConfigResponse
 
     public string Name { get; init; } = string.Empty;
 
-    public int MatrixWidth { get; init; } = 64;
+    public int MatrixWidth { get; init; } = 128;
 
-    public int MatrixHeight { get; init; } = 32;
+    public int MatrixHeight { get; init; } = 64;
 
-    public string StreamMode { get; init; } = "bins64";
+    public string StreamMode { get; init; } = "bins128";
 
     public string MdnsService { get; init; } = "_micaaudio._tcp";
 }

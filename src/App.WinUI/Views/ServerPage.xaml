@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="App.WinUI.Views.ServerPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -24,8 +24,7 @@
             CornerRadius="12"
             Padding="4">
             <CommandBar Background="Transparent" DefaultLabelPosition="Right">
-                <AppBarButton Icon="Download" Label="Baixar stable" Click="OnDownloadStableClicked" />
-                <AppBarButton Icon="Download" Label="Baixar dma_exp" Click="OnDownloadDmaClicked" />
+                <AppBarButton Icon="Download" Label="Baixar firmware" Click="OnDownloadDmaClicked" />
                 <AppBarSeparator />
                 <AppBarButton Icon="Copy" Label="Copiar host" Click="OnCopyHostClicked" />
                 <AppBarButton Icon="Refresh" Label="Atualizar" Click="OnRefreshClicked" />

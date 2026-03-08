@@ -14,3 +14,12 @@ Esta pasta registra Decisoes de Arquitetura (ADR) para governanca tecnica e cont
 1. [0001 - Governanca de documentacao e CI](0001-governanca-documentacao-e-ci.md)
 2. [0002 - Politica PR docs estrutural](0002-politica-pr-docs-estrutural.md)
 3. [0003 - MCP viabilidade e estrategia solo IA](0003-mcp-viabilidade-e-estrategia-solo-ai.md)
+4. [0004 - Padrao App Module para apps de catalogo](0004-app-module-pattern.md)
+5. [0005 - DI explicita, options centralizadas e logging estruturado no App.WinUI](0005-di-options-logging-canonical.md)
+6. [0006 - Hardening de autenticacao de device e limites de input](0006-device-auth-hardening-and-input-limits.md)
+
+7. [0007 - Bridge de reatividade e capacidades de UI para renderers](0007-renderer-reactivity-and-ui-capability-bridge.md)
+8. [0008 - Visualizacoes 2D-only para HUB75](0008-visualizacoes-2d-only-para-hub75.md)
+
+
+- [0009 - HUB75 128x64 hard cutover DevKitC-1 only](0009-hub75-128x64-hard-cutover-devkitc1-only.md)

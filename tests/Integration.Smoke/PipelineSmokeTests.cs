@@ -10,11 +10,11 @@ namespace Integration.Smoke;
 public class PipelineSmokeTests
 {
     [Fact]
-    public void AnalyzerToOutput_ShouldPass64Bands()
+    public void AnalyzerToOutput_ShouldPass128Bands()
     {
         var analyzer = new SpectrumAnalyzer(new AnalyzerConfig());
         var simulator = new SimulatorLedOutput();
-        simulator.Start(new LedOutputConfig { Width = 64, Height = 32, Brightness = 0.8f });
+        simulator.Start(new LedOutputConfig { Width = LedDefaults.MatrixWidth, Height = LedDefaults.MatrixHeight, Brightness = 0.8f });
 
         var samples = new float[4096];
         for (var i = 0; i < samples.Length; i++)
@@ -25,15 +25,10 @@ public class PipelineSmokeTests
         var frame = analyzer.Process(new PcmFrame(samples, 456));
         Assert.NotNull(frame);
 
-        simulator.Send(new LedPayload
-        {
-            Bins64 = frame!.Bands64,
-            Level = frame.Level,
-            PresetId = "smoke",
-        });
+        simulator.Send(LedPayloadFactory.CreateSpectrumPayload(frame!, "smoke"));
 
         var snapshot = simulator.GetFrameSnapshot();
-        Assert.Equal(64 * 32, snapshot.Length);
+        Assert.Equal(128 * 64, snapshot.Length);
     }
 
     [Fact(Skip = "Manual validation for real WASAPI loopback session.")]

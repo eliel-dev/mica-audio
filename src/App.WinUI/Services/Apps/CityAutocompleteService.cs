@@ -1,4 +1,5 @@
-﻿using System.Net.Http.Json;
+using System.Diagnostics.CodeAnalysis;
+using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
 namespace App.WinUI.Services.Apps;
@@ -11,6 +12,7 @@ internal sealed class CityAutocompleteService
         Timeout = TimeSpan.FromSeconds(5),
     };
 
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como service por instancia para preservar o registro em DI e permitir evolucao futura sem churn de contrato.")]
     public async Task<IReadOnlyList<CitySuggestion>> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2)

@@ -1,8 +1,11 @@
-using System.Text.Json;
+﻿using System.Text.Json;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 
 namespace App.WinUI.Services;
 
+// DOCS: docs/wiki/modules/settings-presets-persistence.md#settingsjson
 internal sealed class SettingsRepository
 {
     private readonly string settingsFile;
@@ -12,10 +15,14 @@ internal sealed class SettingsRepository
         PropertyNameCaseInsensitive = true,
     };
 
-    public SettingsRepository(string appDataRoot)
+    public SettingsRepository(IOptions<MicaAudioOptions> options)
     {
+        var appDataRoot = options.Value.AppDataRoot;
         Directory.CreateDirectory(appDataRoot);
-        settingsFile = Path.Combine(appDataRoot, "settings.json");
+
+        settingsFile = string.IsNullOrWhiteSpace(options.Value.SettingsFilePath)
+            ? Path.Combine(appDataRoot, "settings.json")
+            : options.Value.SettingsFilePath;
     }
 
     public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default)
@@ -36,3 +43,5 @@ internal sealed class SettingsRepository
         await JsonSerializer.SerializeAsync(stream, settings, jsonOptions, cancellationToken).ConfigureAwait(false);
     }
 }
+
+

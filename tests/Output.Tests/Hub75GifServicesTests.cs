@@ -1,9 +1,11 @@
 using App.WinUI.Services.Gif;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
+using System.Runtime.Versioning;
 
 namespace Output.Tests;
 
+[SupportedOSPlatform("windows")]
 public sealed class Hub75GifServicesTests
 {
     [Fact]
@@ -16,11 +18,11 @@ public sealed class Hub75GifServicesTests
 
         var output = formatter.Format(frame, GifScaleMode.Fit);
 
-        Assert.Equal(64 * 32, output.Length);
-        Assert.Equal(new RgbaColor(0, 0, 0, 255), output[(16 * 64) + 0]);
-        Assert.Equal(new RgbaColor(255, 0, 0, 255), output[(16 * 64) + 16]);
-        Assert.Equal(new RgbaColor(255, 0, 0, 255), output[(16 * 64) + 47]);
-        Assert.Equal(new RgbaColor(0, 0, 0, 255), output[(16 * 64) + 63]);
+        Assert.Equal(128 * 64, output.Length);
+        Assert.Equal(new RgbaColor(0, 0, 0, 255), output[(32 * 128) + 0]);
+        Assert.Equal(new RgbaColor(255, 0, 0, 255), output[(32 * 128) + 32]);
+        Assert.Equal(new RgbaColor(255, 0, 0, 255), output[(32 * 128) + 95]);
+        Assert.Equal(new RgbaColor(0, 0, 0, 255), output[(32 * 128) + 127]);
     }
 
     [Fact]
@@ -38,9 +40,9 @@ public sealed class Hub75GifServicesTests
 
         var output = formatter.Format(frame, GifScaleMode.Fill);
 
-        Assert.Equal(64 * 32, output.Length);
+        Assert.Equal(128 * 64, output.Length);
         Assert.Equal(new RgbaColor(0, 255, 0, 255), output[0]);
-        Assert.Equal(new RgbaColor(0, 0, 255, 255), output[(31 * 64) + 63]);
+        Assert.Equal(new RgbaColor(0, 0, 255, 255), output[(63 * 128) + 127]);
     }
 
     [Fact]
@@ -56,8 +58,8 @@ public sealed class Hub75GifServicesTests
 
         var output = formatter.Format(frame, GifScaleMode.Stretch);
 
-        Assert.Equal(new RgbaColor(255, 0, 0, 255), output[(10 * 64) + 10]);
-        Assert.Equal(new RgbaColor(0, 0, 255, 255), output[(10 * 64) + 50]);
+        Assert.Equal(new RgbaColor(255, 0, 0, 255), output[(20 * 128) + 20]);
+        Assert.Equal(new RgbaColor(0, 0, 255, 255), output[(20 * 128) + 100]);
     }
 
     [Fact]

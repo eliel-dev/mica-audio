@@ -12,7 +12,7 @@ Documentar o ciclo de vida da app, trocas de secao e sessao do visualizador.
 
 ## Navegacao
 
-- `ShellPage` mantem instancias cacheadas de `MainPage`, `DevicesPage`, `AppsPage`, `ServerPage`.
+- `ShellPage` mantem instancias cacheadas de `MainPage`, `DevicesPage` e `AppsPage`.
 - `ShowPage(tag)` troca apenas o conteudo do frame interno.
 
 ## Sessao do visualizador
@@ -33,10 +33,11 @@ Documentar o ciclo de vida da app, trocas de secao e sessao do visualizador.
 - [ShellPage (classe)](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L8) - assinatura esperada: `public sealed partial class ShellPage : Page`
 - [ShellPage.ShowPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L81) - assinatura esperada: `private void ShowPage(string tag)`
 - [MainPage.OnLoaded](../../../src/App.WinUI/Views/MainPage.xaml.cs#L140) - assinatura esperada: `private async void OnLoaded(...)`
-- [MainPage.ActivateVisualizerSessionAsync](../../../src/App.WinUI/Views/MainPage.xaml.cs#L149) - assinatura esperada: `private async Task ActivateVisualizerSessionAsync()`
+- [MainPage.ActivateVisualizerSessionAsync](../../../src/App.WinUI/Views/MainPage.xaml.cs#L39) - assinatura esperada: `private async Task ActivateVisualizerSessionAsync()`
 
 ## Backlinks no codigo
 
 - `src/App.WinUI/App.xaml.cs`
 - `src/App.WinUI/Views/ShellPage.xaml.cs`
 - `src/App.WinUI/Views/MainPage.xaml.cs`
+

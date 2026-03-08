@@ -11,6 +11,7 @@ Objetivo: concentrar o contrato operacional para qualquer LLM/Agente no modo sol
 - [Playbooks de incidente](incident-playbooks.md)
 - [Viabilidade MCP](mcp-viability.md)
 - [Consistência Codex](consistencia-codex.md)
+- [Setup OpenCode + ECC (local)](opencode-ecc-setup.md)
 
 ## Referencias
 

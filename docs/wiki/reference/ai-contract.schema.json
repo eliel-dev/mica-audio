@@ -10,6 +10,7 @@
     "docs_evidence_paths",
     "required_checks_by_scope",
     "required_handoff_sections",
+    "ai_quality_policy",
     "forbidden_commands",
     "module_entrypoints",
     "decision_sources"
@@ -78,6 +79,30 @@
         "type": "string"
       },
       "minItems": 3
+    },
+    "ai_quality_policy": {
+      "type": "object",
+      "required": [
+        "require_current_best_practices",
+        "require_current_date_check_for_temporal_guidance",
+        "dotnet_primary_sources"
+      ],
+      "properties": {
+        "require_current_best_practices": {
+          "type": "boolean"
+        },
+        "require_current_date_check_for_temporal_guidance": {
+          "type": "boolean"
+        },
+        "dotnet_primary_sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
     },
     "forbidden_commands": {
       "type": "array",

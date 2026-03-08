@@ -1,4 +1,4 @@
-﻿# Mica Audio
+# Mica Audio
 
 Visualizador de audio para Windows (WinUI 3 + Win2D) com captura WASAPI loopback em tempo real, foco em visual "bonito na tela" e caminho pronto para output LED futuro sem refatoracao grande.
 
@@ -35,7 +35,8 @@ Fluxo recomendado antes de commit relevante:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
-dotnet build MicaAudio.sln -c Debug
+powershell -ExecutionPolicy Bypass -File .\scripts\mvvm-validate.ps1
+dotnet build src/App.WinUI/App.WinUI.csproj -c Debug
 ```
 ### Governanca de documentacao (Fase 3)
 
@@ -47,7 +48,7 @@ dotnet build MicaAudio.sln -c Debug
 
 Politica resumida:
 
-1. Mudanca estrutural (`src/`, `firmware/`, `matrixportal-s3/`, `scripts/`, `installer/`, `MicaAudio.sln`, `global.json`) exige update de docs (`docs/wiki/`, `docs/adr/`, `docs/handoffs/` ou `README.md`).
+1. Mudanca estrutural (`src/`, `firmware/`, `scripts/`, `installer/`, `MicaAudio.sln`, `global.json`) exige update de docs (`docs/wiki/`, `docs/adr/`, `docs/handoffs/` ou `README.md`).
 2. Em PR, a label `docs-exempt` permite bypass controlado (com justificativa).
 3. Em push para `main`, o gate estrutural nao aceita bypass por label.
 
@@ -78,7 +79,8 @@ Validacao completa recomendada antes de push:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
-dotnet build MicaAudio.sln -c Debug
+powershell -ExecutionPolicy Bypass -File .\scripts\mvvm-validate.ps1
+dotnet build src/App.WinUI/App.WinUI.csproj -c Debug
 ```
 ### Seguranca e qualidade (security-first)
 
@@ -107,10 +109,10 @@ Guia operacional:
 - Pipeline com contratos estaveis:
 - `PcmFrame` (entrada de audio)
 - `SpectrumFrame` (bands display + bands64 + level)
-- FFT configuravel pela UI (`1k`, `2k`, `4k`, `8k`), hop fixo para boa responsividade.
+- FFT fixa em `2048`, com hop fixo para boa responsividade e menor carga operacional no runtime.
 - Escalas de frequencia: `Logarithmic`, `Mel`, `Bark`.
 - Weighting filter por bin: `Off`, `A`, `B`, `C`, `D`, `468`.
-- Controles de sensibilidade em dB (`Min dB` / `Max dB`) + `Linear Boost`.
+- Controles de sensibilidade em dB (`Min dB` / `Max dB`) com `Linear Boost` fixo em `1.3`.
 - Tela cheia com atalhos:
 - `F11` alterna fullscreen
 - `Esc` sai do fullscreen
@@ -178,7 +180,7 @@ scripts/
 - `float[]? DisplayBarX` (opcional)
 - `float[]? DisplayBarWidth` (opcional)
 
-Regra importante: `Bands64` Ã© derivado do mesmo espectro calculado no frame (sem segunda FFT).
+Regra importante: `Bands64` ÃƒÂ© derivado do mesmo espectro calculado no frame (sem segunda FFT).
 
 ### Output
 
@@ -192,14 +194,15 @@ Regra importante: `Bands64` Ã© derivado do mesmo espectro calculado no frame (
 
 - Windows 10/11 x64.
 - .NET SDK conforme `global.json`:
-- `10.0.102`
-- Target da app: `net8.0-windows10.0.19041.0`.
-- Nota: o SDK 10.x e usado como toolchain para build/restore, enquanto o runtime alvo da aplicacao continua sendo .NET 8 (`net8.0-windows...`).
+- `10.0.103`
+- Target principal da app: `net10.0-windows10.0.22621.0`.
+- Bibliotecas e testes sem dependencia de Windows: `net10.0`.
+- Visual Studio local: usar versao compativel com `net10.0` (baseline `18.0+`) ou CLI `dotnet` 10.
+- Release bundle: instala/verifica `.NET Desktop Runtime 10 x64`.
 - UI: WinUI 3 (`Microsoft.WindowsAppSDK` 1.8.x).
 - Render: Win2D.
 - Captura de audio: NAudio (WASAPI loopback).
 - Scripts auxiliares: PowerShell.
-
 ## Instalacao para usuario final (Windows 11)
 
 Para usuarios finais (sem scripts PowerShell), a distribuicao oficial do 1.0 e feita por setup assinado no GitHub Releases.
@@ -210,7 +213,12 @@ Para usuarios finais (sem scripts PowerShell), a distribuicao oficial do 1.0 e f
 4. Abra pelo Menu Iniciar (`Mica Audio`).
 
 Atualizacao no 1.0: manual (baixar e executar a versao mais recente do setup).
-## Como executar (quick start)
+### Visual Studio Community (fluxo local leve)
+
+- Abra `MicaAudio.Dev.slnf` para desenvolvimento diario.
+- O filtro remove `tests/Integration.Smoke` do build local para evitar APPX3217 em maquinas sem SDK UAP.
+- O CI continua validando `MicaAudio.sln` completo, sem relaxamento de gate.
+
 
 ### 1) Restore e build
 
@@ -304,7 +312,7 @@ Defaults relevantes atuais (primeiro run):
 - Frequency scale: `Bark`
 - Range: `20 Hz` a `1000 Hz`
 - Sensibilidade: `Min -85 dB`, `Max -25 dB`
-- Linear boost: `1.6`
+- Linear boost: `1.3` (fixo)
 
 ## Troubleshooting
 
@@ -400,10 +408,3 @@ Implementacao deste projeto segue arquitetura propria (sem port direto de codigo
 ## Licenca
 
 Ainda nao definida neste repositorio. Recomendado adicionar `LICENSE` antes da publicacao oficial no GitHub.
-
-
-
-
-
-
-

@@ -1,5 +1,4 @@
 #!/usr/bin/env sh
 set -e
 
-powershell -ExecutionPolicy Bypass -File ./scripts/ai-governance-check.ps1
-dotnet build MicaAudio.sln -c Debug
+powershell -ExecutionPolicy Bypass -File ./scripts/local-prepush-gate.ps1

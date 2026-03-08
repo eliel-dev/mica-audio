@@ -15,9 +15,10 @@ Explicar ciclo de sessao dos dispositivos (pareamento, online, heartbeat, reconn
 
 ## Regras de estado
 
-- Presenca online depende de atividade recente.
+- Firmware continua enviando telemetria a cada 2s.
+- Presenca online depende de atividade recente (timeout atual de 15s).
 - Snapshot exposto para UI contem ultimo visto e status.
-- Lista operacional prioriza `Online` com firmware identificado.
+- Lista operacional prioriza `Online`, mas mantem devices `Offline` visiveis para reduzir flapping e preservar o cadastro.
 
 ## Referencias de codigo
 
@@ -31,3 +32,16 @@ Explicar ciclo de sessao dos dispositivos (pareamento, online, heartbeat, reconn
 
 - `src/App.WinUI/Services/Devices/DeviceIntegrationService.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
+
+## Atualizacao 2026-03 - Lifecycle de Device Leve
+
+- `DeviceStatus` continua representando conectividade operacional.
+- `Pairing` e tratado apenas como compatibilidade legada e mapeado para `Aguardando provisionamento` na UI.
+- Os thresholds de lifecycle agora sao configuraveis via `AppSettings`:
+  - `DeviceFreshThresholdSeconds`
+  - `DeviceStaleThresholdMinutes`
+  - `DeviceDormantThresholdHours`
+- A coerção de config garante `Fresh < Stale < Dormant`.
+- O limiar de `Fresh` continua sendo a base do timeout operacional `Online -> Offline` no servidor.
+- `Dormant` nao afirma perda de configuracao; ele apenas eleva o estado para `Configuracao incerta`.
+

@@ -27,4 +27,14 @@ public sealed class ServerConfig
     public int PairingAttemptsPerWindow { get; init; } = 12;
 
     public int PairingAttemptWindowSeconds { get; init; } = 60;
+
+    public int DeviceFreshThresholdSeconds { get; init; } = 15;
+
+    // Transitional compatibility for firmware that still sends token via query string on WebSocket handshake.
+    public bool AllowLegacyWebSocketQueryToken { get; init; }
+
+    // Hard limits for incoming request/message payloads.
+    public long MaxJsonBodyBytes { get; init; } = 64L * 1024L;
+
+    public int MaxWebSocketMessageBytes { get; init; } = 64 * 1024;
 }

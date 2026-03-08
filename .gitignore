@@ -1,13 +1,15 @@
-﻿# Build outputs
+# Build outputs
 **/bin/
 **/obj/
 .artifacts/
+BenchmarkDotNet.Artifacts/
 
 # Local temp/work folders
 .tmp-*
 .tmp-*/
 .dotnet-home/
 **/.pio/
+firmware/esp32s3-devkitc1/src/firmware_version.auto.h
 
 # Logs and diagnostics
 publish-*.log
@@ -24,5 +26,5 @@ TestResults/
 *.suo
 *.userosscache
 *.sln.docstates
-
-
+# NuGet lock files permanecem versionados (reproducibilidade/supply chain)
+!**/packages.lock.json

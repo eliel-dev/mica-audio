@@ -13,15 +13,9 @@ public static class LogBandMapper
         float viewportWidthPx,
         float barSpace)
     {
-        if (fftSize < 2 || sampleRate <= 0)
-        {
-            throw new ArgumentOutOfRangeException("FFT size and sample rate must be positive.");
-        }
-
-        if (minHz <= 0f || maxHz <= minHz)
-        {
-            throw new ArgumentOutOfRangeException("Frequency range must satisfy 0 < minHz < maxHz.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(fftSize, 2, nameof(fftSize));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(sampleRate, 0, nameof(sampleRate));
+        ValidateFrequencyRange(minHz, maxHz);
 
         // `barSpace` is intentionally ignored for mode0 because audioMotion's mode 0
         // uses one-pixel bars positioned directly by bin->x mapping.
@@ -88,20 +82,10 @@ public static class LogBandMapper
         float maxHz,
         FrequencyScale frequencyScale = FrequencyScale.Logarithmic)
     {
-        if (bandCount <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(bandCount));
-        }
-
-        if (fftSize < 2 || sampleRate <= 0)
-        {
-            throw new ArgumentOutOfRangeException("FFT size and sample rate must be positive.");
-        }
-
-        if (minHz <= 0f || maxHz <= minHz)
-        {
-            throw new ArgumentOutOfRangeException("Frequency range must satisfy 0 < minHz < maxHz.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(bandCount, 0, nameof(bandCount));
+        ArgumentOutOfRangeException.ThrowIfLessThan(fftSize, 2, nameof(fftSize));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(sampleRate, 0, nameof(sampleRate));
+        ValidateFrequencyRange(minHz, maxHz);
 
         var ranges = new BandRange[bandCount];
         var nyquistBin = fftSize / 2;
@@ -181,34 +165,7 @@ public static class LogBandMapper
         float linearBoost = 1f)
     {
         var output = new float[ranges.Length];
-
-        for (var i = 0; i < ranges.Length; i++)
-        {
-            var range = ranges[i];
-            var start = range.StartBin;
-            var end = global::System.Math.Min(range.EndBin, powerSpectrum.Length);
-
-            var weightedSum = 0f;
-            var totalWeight = 0f;
-
-            for (var bin = start; bin < end; bin++)
-            {
-                var binStart = MathF.Max(bin, range.StartBinExact);
-                var binEnd = MathF.Min(bin + 1f, range.EndBinExact);
-                var weight = MathF.Max(0f, binEnd - binStart);
-                if (weight <= 0f)
-                {
-                    continue;
-                }
-
-                weightedSum += powerSpectrum[bin] * weight;
-                totalWeight += weight;
-            }
-
-            var avgPower = totalWeight > 0f ? weightedSum / totalWeight : 0f;
-            output[i] = NormalizePower(avgPower, dbFloor, dbCeiling, useDb, useLinearAmplitude, linearBoost);
-        }
-
+        AggregateBandsRms(powerSpectrum, CreateAggregationRanges(ranges), dbFloor, dbCeiling, useDb, useLinearAmplitude, linearBoost, output);
         return output;
     }
 
@@ -222,31 +179,155 @@ public static class LogBandMapper
         float linearBoost = 1f)
     {
         var output = new float[ranges.Length];
+        AggregateBandsPeak(powerSpectrum, CreateAggregationRanges(ranges), dbFloor, dbCeiling, useDb, useLinearAmplitude, linearBoost, output);
+        return output;
+    }
 
+    internal static BandAggregationRange[] CreateAggregationRanges(ReadOnlySpan<BandRange> ranges)
+    {
+        var output = new BandAggregationRange[ranges.Length];
         for (var i = 0; i < ranges.Length; i++)
         {
             var range = ranges[i];
-            var start = range.StartBin;
-            var end = global::System.Math.Min(range.EndBin, powerSpectrum.Length);
+            var startBin = range.StartBin;
+            var endBinExclusive = range.EndBin;
+            var firstWeight = MathF.Max(0f, MathF.Min(startBin + 1f, range.EndBinExact) - range.StartBinExact);
 
-            var peakPower = 0f;
-            for (var bin = start; bin < end; bin++)
+            if (endBinExclusive == (startBin + 1))
             {
-                var binStart = MathF.Max(bin, range.StartBinExact);
-                var binEnd = MathF.Min(bin + 1f, range.EndBinExact);
-                var weight = MathF.Max(0f, binEnd - binStart);
-                if (weight <= 0f)
-                {
-                    continue;
-                }
-
-                peakPower = MathF.Max(peakPower, powerSpectrum[bin]);
+                output[i] = new BandAggregationRange(startBin, endBinExclusive, firstWeight, firstWeight, firstWeight);
+                continue;
             }
 
-            output[i] = NormalizePower(peakPower, dbFloor, dbCeiling, useDb, useLinearAmplitude, linearBoost);
+            var lastBin = endBinExclusive - 1;
+            var lastWeight = MathF.Max(0f, range.EndBinExact - global::System.Math.Max(lastBin, range.StartBinExact));
+            var interiorCount = global::System.Math.Max(0, endBinExclusive - startBin - 2);
+            var totalWeight = firstWeight + interiorCount + lastWeight;
+            output[i] = new BandAggregationRange(startBin, endBinExclusive, firstWeight, lastWeight, totalWeight);
         }
 
         return output;
+    }
+
+    internal static void AggregateBandsRms(
+        ReadOnlySpan<float> powerSpectrum,
+        ReadOnlySpan<BandAggregationRange> ranges,
+        float dbFloor,
+        float dbCeiling,
+        bool useDb,
+        bool useLinearAmplitude,
+        float linearBoost,
+        Span<float> destination)
+    {
+        AggregateBands(powerSpectrum, ranges, dbFloor, dbCeiling, useDb, useLinearAmplitude, linearBoost, Span<float>.Empty, destination);
+    }
+
+    internal static void AggregateBandsPeak(
+        ReadOnlySpan<float> powerSpectrum,
+        ReadOnlySpan<BandAggregationRange> ranges,
+        float dbFloor,
+        float dbCeiling,
+        bool useDb,
+        bool useLinearAmplitude,
+        float linearBoost,
+        Span<float> destination)
+    {
+        AggregateBands(powerSpectrum, ranges, dbFloor, dbCeiling, useDb, useLinearAmplitude, linearBoost, destination, Span<float>.Empty);
+    }
+
+    internal static void AggregateBands(
+        ReadOnlySpan<float> powerSpectrum,
+        ReadOnlySpan<BandAggregationRange> ranges,
+        float dbFloor,
+        float dbCeiling,
+        bool useDb,
+        bool useLinearAmplitude,
+        float linearBoost,
+        Span<float> peakDestination,
+        Span<float> rmsDestination)
+    {
+        var writePeak = !peakDestination.IsEmpty;
+        var writeRms = !rmsDestination.IsEmpty;
+
+        if (!writePeak && !writeRms)
+        {
+            throw new ArgumentException("At least one aggregation destination must be provided.");
+        }
+
+        if (writePeak && peakDestination.Length != ranges.Length)
+        {
+            throw new ArgumentException("Peak destination length must match the number of ranges.", nameof(peakDestination));
+        }
+
+        if (writeRms && rmsDestination.Length != ranges.Length)
+        {
+            throw new ArgumentException("Rms destination length must match the number of ranges.", nameof(rmsDestination));
+        }
+
+        for (var index = 0; index < ranges.Length; index++)
+        {
+            var range = ranges[index];
+            var endExclusive = global::System.Math.Min(range.EndBinExclusive, powerSpectrum.Length);
+            if (range.TotalWeight <= 0f || range.StartBin >= endExclusive)
+            {
+                if (writePeak)
+                {
+                    peakDestination[index] = 0f;
+                }
+
+                if (writeRms)
+                {
+                    rmsDestination[index] = 0f;
+                }
+
+                continue;
+            }
+
+            var peak = 0f;
+            var weightedSum = 0f;
+
+            if (range.IsSingleBin)
+            {
+                var value = powerSpectrum[range.StartBin];
+                peak = value;
+                weightedSum = value * range.TotalWeight;
+            }
+            else
+            {
+                for (var bin = range.StartBin; bin < endExclusive; bin++)
+                {
+                    var weight = 1f;
+                    if (bin == range.StartBin)
+                    {
+                        weight = range.FirstBinWeight;
+                    }
+                    else if (bin == (range.EndBinExclusive - 1))
+                    {
+                        weight = range.LastBinWeight;
+                    }
+
+                    if (weight <= 0f)
+                    {
+                        continue;
+                    }
+
+                    var value = powerSpectrum[bin];
+                    peak = MathF.Max(peak, value);
+                    weightedSum += value * weight;
+                }
+            }
+
+            if (writePeak)
+            {
+                peakDestination[index] = NormalizePower(peak, dbFloor, dbCeiling, useDb, useLinearAmplitude, linearBoost);
+            }
+
+            if (writeRms)
+            {
+                var averagePower = weightedSum / range.TotalWeight;
+                rmsDestination[index] = NormalizePower(averagePower, dbFloor, dbCeiling, useDb, useLinearAmplitude, linearBoost);
+            }
+        }
     }
 
     private static float NormalizePower(
@@ -283,5 +364,14 @@ public static class LogBandMapper
         var normalized = (amplitude - minAmplitude) / (maxAmplitude - minAmplitude);
         var boost = global::System.Math.Max(0f, linearBoost);
         return global::System.Math.Clamp(normalized * boost, 0f, 1f);
+    }
+
+    private static void ValidateFrequencyRange(float minHz, float maxHz)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(minHz, 0f, nameof(minHz));
+        if (maxHz <= minHz)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxHz), "Frequency range must satisfy 0 < minHz < maxHz.");
+        }
     }
 }

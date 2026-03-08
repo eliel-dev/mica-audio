@@ -1,3 +1,5 @@
+# DOCS: docs/wiki/guides/release-1.0-installer.md
+# DOCS: docs/wiki/modules/app-winui.md
 [CmdletBinding()]
 param(
     [string]$AppProject = "src\App.WinUI\App.WinUI.csproj",
@@ -77,14 +79,15 @@ function Resolve-PublishDir {
     param(
         [string]$ProjectPath,
         [string]$Config,
-        [string]$Rid
+        [string]$Rid,
+        [string]$TargetFramework
     )
 
     $projectDir = Split-Path -Path $ProjectPath -Parent
     $candidates = @(
         (Join-Path $projectDir ".artifacts\publish\$Rid"),
-        (Join-Path $projectDir "bin\$Config\net8.0-windows10.0.19041.0\$Rid\publish"),
-        (Join-Path $projectDir "bin\$Config\net8.0-windows10.0.19041.0\$Rid")
+        (Join-Path $projectDir "bin\$Config\$TargetFramework\$Rid\publish"),
+        (Join-Path $projectDir "bin\$Config\$TargetFramework\$Rid")
     )
 
     foreach ($candidate in $candidates) {
@@ -102,6 +105,22 @@ function Resolve-PublishDir {
     }
 
     return $foundExe.DirectoryName
+}
+
+function Get-ProjectTargetFramework {
+    param([string]$ProjectPath)
+
+    [xml]$project = Get-Content -Path $ProjectPath
+    $framework = $project.Project.PropertyGroup.TargetFramework | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($framework)) {
+        $framework = $project.Project.PropertyGroup.TargetFrameworks | Select-Object -First 1
+    }
+
+    if ([string]::IsNullOrWhiteSpace($framework)) {
+        throw "Could not resolve TargetFramework from '$ProjectPath'."
+    }
+
+    return ($framework -split ';')[0].Trim()
 }
 
 function Get-FilesToSign {
@@ -168,6 +187,7 @@ else {
 $resolvedProject = (Resolve-Path $projectPathCandidate).Path
 $rid = "win-$Platform"
 $profile = if ([string]::IsNullOrWhiteSpace($PublishProfile)) { "win-$Platform" } else { $PublishProfile }
+$targetFramework = Get-ProjectTargetFramework -ProjectPath $resolvedProject
 
 $certificate = Get-OrCreateDevCertificate -Subject $CertSubject -Years $CertYears
 Write-Step "Ensuring certificate trust in CurrentUser stores"
@@ -192,7 +212,7 @@ else {
     Write-Step "Skipping publish because -SkipPublish was specified"
 }
 
-$publishDir = Resolve-PublishDir -ProjectPath $resolvedProject -Config $Configuration -Rid $rid
+$publishDir = Resolve-PublishDir -ProjectPath $resolvedProject -Config $Configuration -Rid $rid -TargetFramework $targetFramework
 Write-Step "Publish directory: $publishDir"
 
 $filesToSign = @(Get-FilesToSign -PublishDir $publishDir)

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="App.WinUI.Views.DevicesPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -27,6 +27,7 @@
                 Background="Transparent"
                 DefaultLabelPosition="Right"
                 OverflowButtonVisibility="Auto">
+                <AppBarButton Icon="Download" Label="Baixar firmware" Click="OnDownloadFirmwareClicked" />
                 <AppBarButton Icon="Add" Label="Parear" Click="OnGeneratePairingCodeClicked" />
                 <AppBarButton Icon="Refresh" Label="Atualizar" Click="OnRefreshClicked" />
                 <AppBarButton Icon="Copy" Label="Copiar host" Click="OnCopyHostClicked" />
@@ -199,5 +200,4 @@
             Severity="Informational" />
     </Grid>
 </Page>
-
 

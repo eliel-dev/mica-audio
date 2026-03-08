@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -32,16 +32,13 @@ public sealed partial class ServerPage
             DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
         };
 
-        var downloadStable = new AppBarButton { Label = "Baixar stable", Icon = new SymbolIcon(Symbol.Download) };
-        downloadStable.Click += OnDownloadStableClicked;
-        var downloadDma = new AppBarButton { Label = "Baixar dma_exp", Icon = new SymbolIcon(Symbol.Download) };
+        var downloadDma = new AppBarButton { Label = "Baixar firmware", Icon = new SymbolIcon(Symbol.Download) };
         downloadDma.Click += OnDownloadDmaClicked;
         var copyHost = new AppBarButton { Label = "Copiar host", Icon = new SymbolIcon(Symbol.Copy) };
         copyHost.Click += OnCopyHostClicked;
         var refresh = new AppBarButton { Label = "Atualizar", Icon = new SymbolIcon(Symbol.Refresh) };
         refresh.Click += OnRefreshClicked;
 
-        topBar.PrimaryCommands.Add(downloadStable);
         topBar.PrimaryCommands.Add(downloadDma);
         topBar.PrimaryCommands.Add(new AppBarSeparator());
         topBar.PrimaryCommands.Add(copyHost);

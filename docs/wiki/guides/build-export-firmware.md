@@ -1,27 +1,29 @@
-﻿# Guia - Download de firmware pre-compilado
+# Guia - Download de firmware pre-compilado
 
 ## Objetivo
 
-Baixar no app um dos BINs pre-compilados (`stable` ou `dma_exp`) e salvar no local escolhido pelo usuario para flash manual externo.
+Baixar um BIN pre-compilado na aba `Dispositivos` e salvar no local escolhido para flash manual externo.
 
 ## Passos
 
-1. Abrir aba `Servidor` no app.
-2. Clicar em `Baixar stable` ou `Baixar dma_exp`.
-3. Escolher pasta/arquivo no dialogo de salvar.
-4. Confirmar status `Download: concluido`.
-5. Fazer flash manual com ferramenta externa.
+1. Abrir a aba `Dispositivos`.
+2. Clicar em `Novo dispositivo`.
+3. Escolher `Placa`, `Painel` e `Firmware` no wizard.
+4. Clicar em `Baixar firmware`.
+5. Escolher o destino no `FileSavePicker` e confirmar.
+6. Validar no log da tela que o download foi concluido.
 
 ## Referencias de codigo
 
-- [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1) - assinatura: `internal sealed class PrecompiledFirmwareService`
-- [PrecompiledFirmwareService.CopyToAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1) - assinatura: `Task CopyToAsync(string optionId, string destinationPath, CancellationToken)`
-- [ServerPage.SaveFirmwareAsync](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1) - assinatura: `private async Task SaveFirmwareAsync(string optionId)`
-- [ServerPage FileSavePicker](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1) - assinatura: `private static async Task<StorageFile?> PickDestinationFileAsync(...)`
+- [DevicesPage.ShowNewDeviceSetupDialogAsync](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L163) - assinatura: `private async Task ShowNewDeviceSetupDialogAsync()`
+- [DevicesPage.DownloadFirmwareFromSelectionAsync](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L349) - assinatura: `private async Task DownloadFirmwareFromSelectionAsync(...)`
+- [PrecompiledFirmwareService.GetOptions](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L73) - assinatura: `IReadOnlyList<PrecompiledFirmwareOption> GetOptions(...)`
+- [PrecompiledFirmwareService.CopyToAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L144) - assinatura: `Task CopyToAsync(string optionId, string destinationPath, CancellationToken)`
 
 ## Checklist rapido
 
-- [ ] Botao abre dialogo de salvar.
-- [ ] Nome sugerido vem correto (`matrixportal-s3-stable_merged.bin` ou `matrixportal-s3-dma_exp_merged.bin`).
-- [ ] Cancelar nao gera erro.
-- [ ] Arquivo salvo fica com tamanho > 0.
+- [ ] O wizard abre pela aba `Dispositivos`.
+- [ ] A selecao placa/painel/perfil retorna o BIN esperado.
+- [ ] Cancelar o FileSavePicker nao gera erro.
+- [ ] O arquivo salvo possui tamanho maior que zero.
+- [ ] O log informa caminho final salvo.

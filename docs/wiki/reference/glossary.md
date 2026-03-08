@@ -1,14 +1,6 @@
-﻿# Glossario
+# Referencia - Glossary
 
-- `PcmFrame`: frame de audio normalizado (mono float) com timestamp QPC.
-- `SpectrumFrame`: frame de espectro com bandas de display, `bands64` e `level`.
-- `BandsDisplay`: bandas usadas pela renderizacao principal.
-- `Bands64`: bandas de output para HUB75/device stream.
-- `QPC`: QueryPerformanceCounter (clock de alta resolucao no Windows).
-- `Mode0`: layout de barras inspirado em audioMotion para distribuicao por largura.
-- `ILedOutput`: contrato unico de saida para simulador/servidor.
-- `StreamFrameV1`: payload binario enviado para firmware via servidor.
-- `Tracked command`: comando com `commandId`, progresso e timeout.
-- `Firmware pre-compilado`: BIN embarcado no app para download local (`stable` e `dma_exp`).
-- `HUB75 preview`: simulacao local de matriz 64x32 no app.
-- `DOCS:`: marcador no codigo apontando para pagina da wiki.
+- `StreamFrameV1`: contrato legado para devices 64x32.
+- `StreamFrameV2`: contrato binario ativo para stream HUB75 128x64.
+- `HUB75 preview`: simulacao local nativa do painel 128x64 no app.
+- `PanelType`: identificador tecnico do painel. Valor canonico: `hub75_p2_5_128x64_smd2121_scan32`.

@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.Versioning;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Gif;
 using MicaAudio.Core.Led;
@@ -10,6 +11,7 @@ using Output.Led;
 
 namespace Output.Tests;
 
+[SupportedOSPlatform("windows")]
 public sealed class GifCatalogAppRuntimeServiceTests
 {
     [Fact]
@@ -24,12 +26,13 @@ public sealed class GifCatalogAppRuntimeServiceTests
     public async Task StartFromUrlAsync_WhenDownloadExceedsLimit_ShouldThrow()
     {
         var payload = CreateSingleFrameGifBytes();
-        var client = new HttpClient(new FixedResponseHandler((_) =>
+        using var handler = new FixedResponseHandler((_) =>
         {
             var content = new ByteArrayContent(payload);
             content.Headers.ContentLength = payload.Length;
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
-        }));
+        });
+        using var client = new HttpClient(handler, disposeHandler: false);
 
         using var service = CreateService(httpClient: client, maxDownloadBytes: payload.Length - 1);
 
@@ -40,7 +43,7 @@ public sealed class GifCatalogAppRuntimeServiceTests
     [Fact]
     public async Task StartFromUrlAsync_WhenDownloadTimeout_ShouldThrow()
     {
-        var handler = new FixedResponseHandler(async (_, cancellationToken) =>
+        using var handler = new FixedResponseHandler(async (_, cancellationToken) =>
         {
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
             var content = new ByteArrayContent(CreateSingleFrameGifBytes());
@@ -48,7 +51,7 @@ public sealed class GifCatalogAppRuntimeServiceTests
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
         });
 
-        var client = new HttpClient(handler);
+        using var client = new HttpClient(handler, disposeHandler: false);
         using var service = CreateService(httpClient: client, downloadTimeoutSeconds: 1);
 
         await Assert.ThrowsAsync<TimeoutException>(() =>
@@ -98,16 +101,16 @@ public sealed class GifCatalogAppRuntimeServiceTests
             service.Stop();
 
             Assert.True(matrix.Sent.Count >= 2);
-            Assert.Contains(matrix.Sent, static payload => payload.Frame64x32 is { Length: > 0 });
+            Assert.Contains(matrix.Sent, static payload => payload.Frame128x64 is { Length: > 0 });
 
             var binsPayload = matrix.Sent[^1];
-            Assert.NotNull(binsPayload.Bins64);
-            Assert.All(binsPayload.Bins64!, value => Assert.Equal(0f, value));
-            Assert.Null(binsPayload.Frame64x32);
+            Assert.NotNull(binsPayload.Bins128);
+            Assert.All(binsPayload.Bins128!, value => Assert.Equal(0f, value));
+            Assert.Null(binsPayload.Frame128x64);
 
             var simulatorLast = simulator.Sent[^1];
-            Assert.NotNull(simulatorLast.Frame64x32);
-            Assert.All(simulatorLast.Frame64x32!, px => Assert.Equal(new RgbaColor(0, 0, 0, 255), px));
+            Assert.NotNull(simulatorLast.Frame128x64);
+            Assert.All(simulatorLast.Frame128x64!, px => Assert.Equal(new RgbaColor(0, 0, 0, 255), px));
         }
         finally
         {
@@ -115,6 +118,26 @@ public sealed class GifCatalogAppRuntimeServiceTests
         }
     }
 
+
+    [Fact]
+    public async Task Stop_ShouldNotThrow_WhenFrameUpdatedSubscriberThrows()
+    {
+        using var service = CreateService();
+
+        var path = WriteTempGifFile(CreateSingleFrameGifBytes());
+        try
+        {
+            await service.StartFromFileAsync(path, GifScaleMode.Fit);
+            service.FrameUpdated += static (_, _) => throw new InvalidCastException("simulated callback failure");
+
+            var ex = Record.Exception(service.Stop);
+            Assert.Null(ex);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
     private static GifCatalogAppRuntimeService CreateService(
         HttpClient? httpClient = null,
         int downloadTimeoutSeconds = GifCatalogAppRuntimeService.DownloadTimeoutSeconds,
@@ -195,8 +218,8 @@ public sealed class GifCatalogAppRuntimeServiceTests
         {
             Sent.Add(new LedPayload
             {
-                Bins64 = payload.Bins64?.ToArray(),
-                Frame64x32 = payload.Frame64x32?.ToArray(),
+                Bins128 = payload.Bins128?.ToArray(),
+                Frame128x64 = payload.Frame128x64?.ToArray(),
                 Level = payload.Level,
                 PresetId = payload.PresetId,
             });
@@ -227,3 +250,5 @@ public sealed class GifCatalogAppRuntimeServiceTests
         }
     }
 }
+
+

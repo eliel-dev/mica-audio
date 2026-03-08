@@ -1,4 +1,4 @@
-using Microsoft.Graphics.Canvas;
+﻿using Microsoft.Graphics.Canvas;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Presets;
 using Visual.Win2D.Renderers;
@@ -30,6 +30,11 @@ public sealed class VisualizerEngine
             [RendererIds.Waterfall] = new WaterfallRenderer(),
             [RendererIds.NeonGlow] = new NeonGlowBarsRenderer(),
             [RendererIds.AudioMotionClone] = new AudioMotionCloneRenderer(),
+            [RendererIds.VizzyBlobNeon] = new VizzyBlobNeonRenderer(),
+            [RendererIds.VizzyOrbitRings] = new VizzyOrbitRingsRenderer(),
+            [RendererIds.PolarArcs] = new PolarArcsRenderer(),
+            [RendererIds.AuroraRibbon] = new AuroraRibbonRenderer(),
+            [RendererIds.PlasmaPulse] = new PlasmaPulseRenderer(),
         };
     }
 
@@ -65,6 +70,17 @@ public sealed class VisualizerEngine
         });
     }
 
+    public RendererCapabilities GetCapabilities(string rendererId)
+    {
+        var renderer = ResolveRenderer(rendererId);
+        if (renderer is IRendererCapabilitiesProvider provider)
+        {
+            return provider.Capabilities;
+        }
+
+        return RendererCapabilities.CreateLegacyAssumed();
+    }
+
     public bool TrySetRenderer(string rendererId, out string normalizedRendererId)
     {
         if (renderers.ContainsKey(rendererId))
@@ -87,5 +103,3 @@ public sealed class VisualizerEngine
         return renderers[Engine.RendererIds.Bars];
     }
 }
-
-

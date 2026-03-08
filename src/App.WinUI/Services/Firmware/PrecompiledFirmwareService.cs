@@ -1,31 +1,106 @@
-﻿namespace App.WinUI.Services.Firmware;
+using System.Diagnostics.CodeAnalysis;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
+
+namespace App.WinUI.Services.Firmware;
 
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
-internal sealed class PrecompiledFirmwareService
+// DOCS: docs/wiki/guides/setup-new-device.md#referencias-de-codigo
+internal sealed partial class PrecompiledFirmwareService
 {
+    public const string Esp32S3DevKitC1Board = "esp32s3_devkitc1";
+    public const string Hub75PanelP25_128x64_Smd2121_Scan32 = "hub75_p2_5_128x64_smd2121_scan32";
+
     private static readonly IReadOnlyList<PrecompiledFirmwareOption> Options =
     [
         new PrecompiledFirmwareOption
         {
-            Id = "stable",
-            DisplayName = "Firmware Stable",
-            Description = "Perfil estavel (Protomatter).",
-            FileName = "matrixportal-s3-stable_merged.bin",
-        },
-        new PrecompiledFirmwareOption
-        {
-            Id = "dma_exp",
-            DisplayName = "Firmware DMA Experimental",
-            Description = "Perfil experimental com DMA.",
-            FileName = "matrixportal-s3-dma_exp_merged.bin",
+            Id = "esp32s3_devkitc1_128x64_dma_exp",
+            DisplayName = "ESP32-S3 DevKitC-1 128x64 - DMA",
+            Description = "Perfil oficial unico em DMA para ESP32-S3 DevKitC-1/WROOM-1 no painel P2.5 128x64 1/32.",
+            FileName = "esp32s3-devkitc1-128x64-dma_exp_merged.bin",
+            BoardModel = Esp32S3DevKitC1Board,
+            PanelType = Hub75PanelP25_128x64_Smd2121_Scan32,
+            Profile = "dma_exp",
         },
     ];
 
+    private readonly MicaAudioOptions options;
+    private readonly ILogger<PrecompiledFirmwareService> logger;
+
+    public PrecompiledFirmwareService(IOptions<MicaAudioOptions> options, ILogger<PrecompiledFirmwareService> logger)
+    {
+        this.options = options.Value;
+        this.logger = logger;
+    }
+
     public event EventHandler<string>? LogMessage;
 
-    public IReadOnlyList<PrecompiledFirmwareOption> GetOptions() => Options;
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "O service permanece por instancia porque outras operacoes dependem de opcoes e logging injetados, e o contrato publico deve ficar consistente.")]
+    public IReadOnlyList<PrecompiledFirmwareOption> GetOptions(
+        string? boardModel = null,
+        string? panelType = null,
+        string? profile = null)
+    {
+        IEnumerable<PrecompiledFirmwareOption> query = Options;
 
-    // DOCS: docs/wiki/guides/build-export-firmware.md#passos
+        if (!string.IsNullOrWhiteSpace(boardModel))
+        {
+            query = query.Where(item => string.Equals(item.BoardModel, boardModel, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(panelType))
+        {
+            query = query.Where(item => string.Equals(item.PanelType, panelType, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(profile))
+        {
+            query = query.Where(item => string.Equals(item.Profile, profile, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.ToArray();
+    }
+
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "O service permanece por instancia porque outras operacoes dependem de opcoes e logging injetados, e o contrato publico deve ficar consistente.")]
+    public bool TryGetOption(string boardModel, string panelType, string profile, out PrecompiledFirmwareOption option, out string error)
+    {
+        option = new PrecompiledFirmwareOption();
+        error = string.Empty;
+
+        var match = Options.FirstOrDefault(item =>
+            string.Equals(item.BoardModel, boardModel, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(item.PanelType, panelType, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(item.Profile, profile, StringComparison.OrdinalIgnoreCase));
+
+        if (match is null)
+        {
+            error = $"Nao existe firmware precompilado para board='{boardModel}', painel='{panelType}', perfil='{profile}'.";
+            return false;
+        }
+
+        option = match;
+        return true;
+    }
+
+    public bool TryResolveSource(string boardModel, string panelType, string profile, out PrecompiledFirmwareOption option, out string sourcePath, out string error)
+    {
+        sourcePath = string.Empty;
+        if (!TryGetOption(boardModel, panelType, profile, out option, out error))
+        {
+            return false;
+        }
+
+        if (TryResolveSource(option.Id, out sourcePath, out error))
+        {
+            return true;
+        }
+
+        error = $"{error} (board='{boardModel}', painel='{panelType}', perfil='{profile}').";
+        return false;
+    }
+
     public bool TryResolveSource(string optionId, out string sourcePath, out string error)
     {
         sourcePath = string.Empty;
@@ -38,17 +113,24 @@ internal sealed class PrecompiledFirmwareService
             return false;
         }
 
-        var candidates = new[]
+        var configuredFirmwareDirectory = options.PrecompiledFirmwareDirectory;
+        var candidates = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(configuredFirmwareDirectory))
         {
+            candidates.Add(Path.Combine(configuredFirmwareDirectory, option.FileName));
+        }
+
+        candidates.AddRange(
+        [
             Path.Combine(AppContext.BaseDirectory, "AppData", "Firmware", option.FileName),
             Path.Combine(Environment.CurrentDirectory, "AppData", "Firmware", option.FileName),
             Path.Combine(Environment.CurrentDirectory, "src", "App.WinUI", "AppData", "Firmware", option.FileName),
-        }
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        ]);
 
-        foreach (var candidate in candidates)
+        foreach (var candidate in candidates
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (File.Exists(candidate))
             {
@@ -90,6 +172,10 @@ internal sealed class PrecompiledFirmwareService
 
     private void Log(string message)
     {
+        LogFirmwareMessage(logger, message);
         LogMessage?.Invoke(this, message);
     }
+
+    [LoggerMessage(EventId = 1500, Level = LogLevel.Information, Message = "Firmware event: {Message}")]
+    private static partial void LogFirmwareMessage(ILogger logger, string message);
 }

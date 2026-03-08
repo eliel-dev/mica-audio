@@ -1,10 +1,12 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using App.WinUI.Models.Apps;
+using Microsoft.Extensions.Options;
+using MicaAudio.Core.Config;
 
 namespace App.WinUI.Services.Apps;
 
 // DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
-internal sealed class AppModifierStateStore
+internal sealed class AppModifierStateStore : IAppModifierStateStore, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -17,9 +19,12 @@ internal sealed class AppModifierStateStore
     private readonly string path;
     private bool loaded;
 
-    public AppModifierStateStore(string appDataRoot)
+    public AppModifierStateStore(IOptions<MicaAudioOptions> options)
     {
-        path = Path.Combine(appDataRoot, "apps", "modifiers.json");
+        var configuredPath = options.Value.AppsModifierStatePath;
+        path = string.IsNullOrWhiteSpace(configuredPath)
+            ? Path.Combine(options.Value.AppDataRoot, "apps", "modifiers.json")
+            : configuredPath;
     }
 
     public async Task LoadAsync(CancellationToken cancellationToken = default)
@@ -155,5 +160,10 @@ internal sealed class AppModifierStateStore
     private static string BuildKey(string deviceId, string appId)
     {
         return string.Concat(deviceId.Trim(), "|", appId.Trim());
+    }
+
+    public void Dispose()
+    {
+        ioGate.Dispose();
     }
 }

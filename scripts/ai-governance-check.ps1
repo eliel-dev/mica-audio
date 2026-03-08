@@ -184,6 +184,7 @@ if ([string]::IsNullOrWhiteSpace($versionValue)) {
 $structuralPaths = @(Ensure-Array -Value $manifest.structural_paths | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 $docsEvidencePaths = @(Ensure-Array -Value $manifest.docs_evidence_paths | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 $requiredHandoffSections = @(Ensure-Array -Value $manifest.required_handoff_sections | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+$aiQualityPolicy = $manifest.ai_quality_policy
 $moduleEntrypoints = @(Ensure-Array -Value $manifest.module_entrypoints)
 $decisionSources = @(Ensure-Array -Value $manifest.decision_sources | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 $forbiddenCommands = @(Ensure-Array -Value $manifest.forbidden_commands | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -191,9 +192,45 @@ $forbiddenCommands = @(Ensure-Array -Value $manifest.forbidden_commands | ForEac
 if ($structuralPaths.Count -eq 0) { $errors.Add('Manifesto IA sem `structural_paths`.') }
 if ($docsEvidencePaths.Count -eq 0) { $errors.Add('Manifesto IA sem `docs_evidence_paths`.') }
 if ($requiredHandoffSections.Count -eq 0) { $errors.Add('Manifesto IA sem `required_handoff_sections`.') }
+if ($null -eq $aiQualityPolicy) { $errors.Add('Manifesto IA sem `ai_quality_policy`.') }
 if ($moduleEntrypoints.Count -eq 0) { $errors.Add('Manifesto IA sem `module_entrypoints`.') }
 if ($decisionSources.Count -eq 0) { $errors.Add('Manifesto IA sem `decision_sources`.') }
 if ($forbiddenCommands.Count -eq 0) { $errors.Add('Manifesto IA sem `forbidden_commands`.') }
+
+if ($null -ne $aiQualityPolicy) {
+    if (-not [bool]$aiQualityPolicy.require_current_best_practices) {
+        $errors.Add('Manifesto IA exige `ai_quality_policy.require_current_best_practices = true`.')
+    }
+
+    if (-not [bool]$aiQualityPolicy.require_current_date_check_for_temporal_guidance) {
+        $errors.Add('Manifesto IA exige `ai_quality_policy.require_current_date_check_for_temporal_guidance = true`.')
+    }
+
+    $dotnetPrimarySources = @(Ensure-Array -Value $aiQualityPolicy.dotnet_primary_sources | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($dotnetPrimarySources.Count -eq 0) {
+        $errors.Add('Manifesto IA sem `ai_quality_policy.dotnet_primary_sources`.')
+    }
+}
+
+if (Test-Path -LiteralPath $agentsPath) {
+    $agentsRaw = Get-Content -LiteralPath $agentsPath -Raw
+
+    if ($agentsRaw -notmatch 'Regra obrigatoria de qualidade para IA') {
+        $errors.Add('AGENTS.md sem secao "Regra obrigatoria de qualidade para IA".')
+    }
+
+    if ($agentsRaw -notmatch 'melhores praticas atuais da stack alvo') {
+        $errors.Add('AGENTS.md sem regra sobre melhores praticas atuais da stack alvo.')
+    }
+
+    if ($agentsRaw -notmatch 'data atual do ambiente') {
+        $errors.Add('AGENTS.md sem regra sobre consulta da data atual do ambiente.')
+    }
+
+    if ($agentsRaw -notmatch 'Microsoft/CommunityToolkit') {
+        $errors.Add('AGENTS.md sem regra sobre fonte primaria Microsoft/CommunityToolkit para .NET/C#.')
+    }
+}
 
 foreach ($source in $decisionSources) {
     $sourcePath = Join-Path $repoRoot (Normalize-RepoPath -Path $source)

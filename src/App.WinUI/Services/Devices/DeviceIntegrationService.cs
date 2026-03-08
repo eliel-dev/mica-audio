@@ -1,17 +1,22 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using App.WinUI.Services;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
-internal sealed class DeviceIntegrationService : IAsyncDisposable
+internal sealed partial class DeviceIntegrationService : IAsyncDisposable
 {
     private readonly IDeviceServerHost serverHost;
     private readonly IDeviceRegistryStore registryStore;
+    private readonly SettingsRepository settingsRepository;
+    private readonly AppSettingsDomainService settingsDomainService;
+    private readonly ILogger<DeviceIntegrationService> logger;
 
     private const int ServerPort = 5272;
     private static readonly TimeSpan RegistrySaveMinInterval = TimeSpan.FromSeconds(10);
@@ -22,13 +27,25 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
     private string publicHost = "127.0.0.1";
     private DateTimeOffset lastRegistrySaveUtc = DateTimeOffset.MinValue;
 
-    public DeviceIntegrationService(IDeviceServerHost serverHost, IDeviceRegistryStore registryStore)
+    public DeviceIntegrationService(
+        IDeviceServerHost serverHost,
+        IDeviceRegistryStore registryStore,
+        SettingsRepository settingsRepository,
+        AppSettingsDomainService settingsDomainService,
+        ILogger<DeviceIntegrationService> logger)
     {
         this.serverHost = serverHost;
         this.registryStore = registryStore;
+        this.settingsRepository = settingsRepository;
+        this.settingsDomainService = settingsDomainService;
+        this.logger = logger;
 
         serverHost.DevicesChanged += OnDevicesChanged;
-        serverHost.LogMessage += (_, msg) => LogMessage?.Invoke(this, msg);
+        serverHost.LogMessage += (_, msg) =>
+        {
+            LogServerHostMessage(this.logger, msg);
+            LogMessage?.Invoke(this, msg);
+        };
     }
 
     public IDeviceServerHost Host => serverHost;
@@ -52,6 +69,12 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
 
         publicHost = ResolvePublicHost();
 
+        var settings = settingsDomainService.Migrate(await settingsRepository.LoadAsync(cancellationToken).ConfigureAwait(false));
+        if (settings.AllowLegacyWebSocketQueryToken)
+        {
+            LogLegacyWebSocketQueryTokenEnabled(logger);
+        }
+
         await serverHost.StartAsync(new ServerConfig
         {
             ListenHost = "0.0.0.0",
@@ -59,9 +82,13 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
             MaxDevices = 5,
             MdnsServiceName = "_micaaudio._tcp",
             PublicHost = publicHost,
+            DeviceFreshThresholdSeconds = settings.DeviceFreshThresholdSeconds,
+            AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
         }, cancellationToken).ConfigureAwait(false);
 
-        LogMessage?.Invoke(this, $"Servidor HTTP publico: {GetServerBaseAddress()}");
+        var baseAddress = GetServerBaseAddress();
+        LogPublicServerBaseAddress(logger, baseAddress);
+        LogMessage?.Invoke(this, $"Servidor HTTP publico: {baseAddress}");
         started = true;
     }
 
@@ -126,6 +153,7 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         }
         catch (Exception ex)
         {
+            LogRegistrySaveFailed(logger, ex);
             LogMessage?.Invoke(this, $"Falha ao salvar devices.json: {ex.Message}");
         }
     }
@@ -207,21 +235,29 @@ internal sealed class DeviceIntegrationService : IAsyncDisposable
         var descriptor = $"{nic.Name} {nic.Description}";
         return VirtualAdapterKeywords.Any(keyword => descriptor.Contains(keyword, StringComparison.OrdinalIgnoreCase));
     }
-    private static bool IsPrivateIpv4(string ipString)
+
+    private static bool IsPrivateIpv4(string candidate)
     {
-        if (!IPAddress.TryParse(ipString, out var address))
+        if (!IPAddress.TryParse(candidate, out var address))
         {
             return false;
         }
 
         var bytes = address.GetAddressBytes();
-        if (bytes.Length != 4)
-        {
-            return false;
-        }
-
         return bytes[0] == 10
             || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
             || (bytes[0] == 192 && bytes[1] == 168);
     }
+
+    [LoggerMessage(EventId = 1200, Level = LogLevel.Information, Message = "Device server log: {Message}")]
+    private static partial void LogServerHostMessage(ILogger logger, string message);
+
+    [LoggerMessage(EventId = 1201, Level = LogLevel.Warning, Message = "Modo legado de autenticacao WS via query-string esta ATIVO por settings.json.")]
+    private static partial void LogLegacyWebSocketQueryTokenEnabled(ILogger logger);
+
+    [LoggerMessage(EventId = 1202, Level = LogLevel.Information, Message = "Servidor HTTP publico: {BaseAddress}")]
+    private static partial void LogPublicServerBaseAddress(ILogger logger, string baseAddress);
+
+    [LoggerMessage(EventId = 1203, Level = LogLevel.Error, Message = "Falha ao salvar devices.json")]
+    private static partial void LogRegistrySaveFailed(ILogger logger, Exception exception);
 }

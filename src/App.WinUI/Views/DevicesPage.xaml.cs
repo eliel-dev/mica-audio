@@ -1,38 +1,113 @@
-﻿using App.WinUI.Models.Apps;
+using App.WinUI.Infrastructure.Serial;
+using App.WinUI.Models.Apps;
+using App.WinUI.Services;
+using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
+using App.WinUI.Services.Devices.Onboarding;
+using App.WinUI.Services.Firmware;
+using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
+using Output.Led;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
+// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03---fase-9-wave-2-e-wave-3-monolitos-do-app-decompostos
 public sealed partial class DevicesPage : Page
 {
     private readonly List<DeviceListItem> allItems = new();
     private readonly List<DeviceListItem> visibleItems = new();
-    private readonly List<DeviceListVisualItem> renderedItems = new();
+    private readonly Dictionary<string, DeviceListVisualItem> renderedItemsByDeviceId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> renderedOrder = new();
+    private readonly Dictionary<string, AppCatalogItem> appCatalogById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly DevicesPageViewModel viewModel;
+    private readonly DeviceOperationsCoordinator deviceOps;
+    private readonly PrecompiledFirmwareService firmwareService;
+    private readonly ISerialPortCatalogService serialPortCatalogService;
+    private readonly IDeviceUsbOnboardingService onboardingService;
+    private readonly IAppCatalogService appCatalogService;
+    private readonly SettingsRepository settingsRepository;
+    private readonly AppSettingsDomainService settingsDomainService;
+    private readonly SimulatorLedOutput simulatorLedOutput;
+    private const int SafeBrightnessMin = 30;
+    private const int SafeBrightnessMax = 160;
+    private const int HeapTotalBytesBaseline = 320000;
+    private const int PsramTotalBytesBaseline = 8000000;
+    private const string OfflineDashboardFallbackText = "Offline: exibindo snapshot seguro";
+    private const string PendingTelemetryFallbackText = "Online: aguardando primeira telemetria do dispositivo";
 
-    private int lastRenderedLogCount;
-    private string lastRenderedLogTail = string.Empty;
+    private string? lastRenderedDashboardSignature;
+    private string? lastRenderedDeviceLogsDeviceId;
+    private int lastRenderedDeviceLogCount;
+    private string lastRenderedDeviceLogTail = string.Empty;
+    private string? lastRenderedDeviceLogsHeader;
+    private string? lastRenderedDeviceLogsPlaceholder;
     private DeviceOperationsState currentState = new();
+    private bool appCatalogLoadAttempted;
+    private DeviceLifecycleThresholds lifecycleThresholds = DeviceLifecycleThresholds.Default;
+    private bool isApplyingDeviceList;
+    private IReadOnlyList<DeviceSnapshot>? pendingDeviceListSnapshot;
+    private string? lastAppliedDeviceListSignature;
+    private string? selectedDeviceId;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? previewPumpTimer;
+    private bool suppressBrightnessSliderEvents;
+    private bool suppressDeviceSelectionChanged;
+    private bool brightnessCommitPending;
+    private bool wizardBindingsInitialized;
+    private bool wizardOperationInFlight;
 
-    public DevicesPage()
+    internal DevicesPage(
+        DevicesPageViewModel viewModel,
+        DeviceOperationsCoordinator deviceOps,
+        PrecompiledFirmwareService firmwareService,
+        ISerialPortCatalogService serialPortCatalogService,
+        IDeviceUsbOnboardingService onboardingService,
+        IAppCatalogService appCatalogService,
+        SettingsRepository settingsRepository,
+        AppSettingsDomainService settingsDomainService,
+        SimulatorLedOutput simulatorLedOutput)
     {
+        this.viewModel = viewModel;
+        this.deviceOps = deviceOps;
+        this.firmwareService = firmwareService;
+        this.serialPortCatalogService = serialPortCatalogService;
+        this.onboardingService = onboardingService;
+        this.appCatalogService = appCatalogService;
+        this.settingsRepository = settingsRepository;
+        this.settingsDomainService = settingsDomainService;
+        this.simulatorLedOutput = simulatorLedOutput;
+        this.viewModel.ConfigureCommands(
+            refresh: () => DeviceOps?.RequestRefresh(),
+            generatePairing: GeneratePairingCodeCore);
+
         InitializeComponent();
+        DataContext = viewModel;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
-    private DeviceOperationsCoordinator? DeviceOps => App.DeviceOps;
+    private DeviceOperationsCoordinator? DeviceOps => deviceOps;
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private PrecompiledFirmwareService? FirmwareService => firmwareService;
+
+    private ISerialPortCatalogService? SerialPortCatalogService => serialPortCatalogService;
+
+    private IDeviceUsbOnboardingService? OnboardingService => onboardingService;
+
+    private IAppCatalogService? AppCatalogService => appCatalogService;
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (DeviceOps is null)
         {
-            LogsTextBox.Text = "Serviço de dispositivos indisponível.";
+            ApplyDashboard(selectionDeviceId: null, hasSelection: false, snapshot: null, DeviceMetricsFormatter.Build(null));
+            UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Servico de dispositivos indisponivel.");
             return;
         }
 
@@ -41,11 +116,20 @@ public sealed partial class DevicesPage : Page
         DeviceOps.SetDevicesPageVisible(true);
         DeviceOps.RequestRefresh();
 
-        ApplyState(DeviceOps.GetStateSnapshot());
+        await EnsureAppCatalogLoadedAsync().ConfigureAwait(true);
+        await EnsureLifecycleThresholdsLoadedAsync().ConfigureAwait(true);
+
+        var initialState = DeviceOps.GetStateSnapshot();
+        ApplyDevices(initialState.DeviceListSnapshot);
+        ApplyState(initialState);
+
+        StartPreviewPump();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        StopPreviewPump();
+
         if (DeviceOps is not null)
         {
             DeviceOps.StateChanged -= OnDeviceOpsStateChanged;
@@ -53,7 +137,62 @@ public sealed partial class DevicesPage : Page
             DeviceOps.SetDevicesPageVisible(false);
         }
 
+        lastRenderedDashboardSignature = null;
+        lastRenderedDeviceLogsDeviceId = null;
+        lastRenderedDeviceLogCount = 0;
+        lastRenderedDeviceLogTail = string.Empty;
+        lastRenderedDeviceLogsHeader = null;
+        lastRenderedDeviceLogsPlaceholder = null;
+        selectedDeviceId = null;
+        suppressBrightnessSliderEvents = false;
+        suppressDeviceSelectionChanged = false;
+        brightnessCommitPending = false;
+        HideNewDeviceWizard();
         ClearRenderedItems();
+    }
+
+    private async Task EnsureAppCatalogLoadedAsync()
+    {
+        if (appCatalogLoadAttempted)
+        {
+            return;
+        }
+
+        appCatalogLoadAttempted = true;
+
+        var service = AppCatalogService;
+        if (service is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var catalog = await service.LoadCatalogAsync().ConfigureAwait(true);
+            appCatalogById.Clear();
+            foreach (var item in catalog)
+            {
+                appCatalogById[item.Id] = item;
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLocalLog($"Falha ao carregar catalogo de apps para preview: {ex.Message}");
+        }
+    }
+
+    private async Task EnsureLifecycleThresholdsLoadedAsync()
+    {
+        try
+        {
+            var settings = settingsDomainService.Migrate(await settingsRepository.LoadAsync().ConfigureAwait(true));
+            lifecycleThresholds = DeviceLifecycleThresholds.FromSettings(settings);
+        }
+        catch (Exception ex)
+        {
+            lifecycleThresholds = DeviceLifecycleThresholds.Default;
+            AddLocalLog($"Falha ao carregar thresholds de presence: {ex.Message}");
+        }
     }
 
     private void OnDeviceOpsStateChanged(object? sender, EventArgs e)
@@ -82,10 +221,15 @@ public sealed partial class DevicesPage : Page
 
     private void OnRefreshClicked(object sender, RoutedEventArgs e)
     {
-        DeviceOps?.RequestRefresh();
+        viewModel.RefreshCommand.Execute(null);
     }
 
     private void OnGeneratePairingCodeClicked(object sender, RoutedEventArgs e)
+    {
+        viewModel.GeneratePairingCommand.Execute(null);
+    }
+
+    private void GeneratePairingCodeCore()
     {
         if (DeviceOps is null)
         {
@@ -93,22 +237,130 @@ public sealed partial class DevicesPage : Page
         }
 
         var code = DeviceOps.CreatePairingCode(TimeSpan.FromMinutes(10));
+        PairingCodeText.Severity = InfoBarSeverity.Informational;
         PairingCodeText.Message = $"Pareamento: {code.Code} (expira {code.ExpiresAtUtc:HH:mm:ss} UTC)";
-    }
-
-    private async void OnEnterProvisioningClicked(object sender, RoutedEventArgs e)
-    {
-        await RunSelectedCommandAsync(DeviceCommandType.EnterProvisioning).ConfigureAwait(false);
-    }
-
-    private async void OnRevokeClicked(object sender, RoutedEventArgs e)
-    {
-        await RunSelectedCommandAsync(DeviceCommandType.RevokeAndRestart).ConfigureAwait(false);
+        AddLocalLog($"Codigo de pareamento gerado: {code.Code}.");
     }
 
     private async void OnTestLedClicked(object sender, RoutedEventArgs e)
     {
-        await RunSelectedCommandAsync(DeviceCommandType.TestLed).ConfigureAwait(false);
+        var selected = GetSelectedDeviceItem();
+        var ops = DeviceOps;
+        if (selected is null || ops is null)
+        {
+            return;
+        }
+
+        var result = await ops.TriggerTestLedAsync(selected.DeviceId).ConfigureAwait(false);
+        if (result.Accepted && result.Completed && result.Success)
+        {
+            return;
+        }
+
+        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
+        AddLocalLog($"Falha ao acionar teste de LED em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
+    }
+
+    private void OnBrightnessSliderValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (suppressBrightnessSliderEvents)
+        {
+            return;
+        }
+
+        var normalized = Math.Clamp((int)Math.Round(e.NewValue), SafeBrightnessMin, SafeBrightnessMax);
+        DashboardBrightnessValueText.Text = $"{normalized}/160";
+        brightnessCommitPending = true;
+    }
+
+    private async void OnBrightnessSliderPointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
+    }
+
+    private async void OnBrightnessSliderLostFocus(object sender, RoutedEventArgs e)
+    {
+        await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
+    }
+
+    private async void OnRemoveDeviceClicked(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedDeviceItem();
+        var ops = DeviceOps;
+        if (selected is null || ops is null)
+        {
+            return;
+        }
+
+        var isOnline = selected.Status == DeviceStatus.Online;
+        var removePrompt = isOnline
+            ? "O dispositivo esta online: o app tentara revogar/reiniciar e depois remover o registro local."
+            : "O dispositivo esta offline: sera removido apenas do registro local.";
+
+        var dialog = new ContentDialog
+        {
+            Title = "Remover dispositivo",
+            PrimaryButtonText = "Remover",
+            CloseButtonText = "Cancelar",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+            Content = removePrompt,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var revokeSucceeded = false;
+        string? revokeFailureMessage = null;
+        if (isOnline)
+        {
+            var revokeResult = await ops.RunCommandAsync(selected.DeviceId, DeviceCommandType.RevokeAndRestart);
+            revokeSucceeded = revokeResult.Accepted && revokeResult.Completed && revokeResult.Success;
+            if (!revokeSucceeded)
+            {
+                revokeFailureMessage = string.IsNullOrWhiteSpace(revokeResult.Message)
+                    ? revokeResult.ErrorCode
+                    : revokeResult.Message;
+            }
+        }
+
+        if (ops.RemoveDevice(selected.DeviceId))
+        {
+            selectedDeviceId = null;
+            SetListSelectedItem(null);
+
+            if (isOnline)
+            {
+                if (revokeSucceeded)
+                {
+                    PairingCodeText.Severity = InfoBarSeverity.Success;
+                    PairingCodeText.Message = $"Dispositivo revogado e removido: {selected.DeviceId}";
+                    AddLocalLog($"Dispositivo revogado e removido localmente: {selected.DeviceId}");
+                }
+                else
+                {
+                    PairingCodeText.Severity = InfoBarSeverity.Warning;
+                    PairingCodeText.Message = $"Dispositivo removido localmente; revogacao nao concluida: {selected.DeviceId}";
+                    AddLocalLog($"Dispositivo removido localmente, mas revogacao falhou: {selected.DeviceId} ({revokeFailureMessage ?? "erro desconhecido"})");
+                }
+            }
+            else
+            {
+                PairingCodeText.Severity = InfoBarSeverity.Success;
+                PairingCodeText.Message = $"Dispositivo removido: {selected.DeviceId}";
+                AddLocalLog($"Dispositivo removido localmente: {selected.DeviceId}");
+            }
+
+            ApplySelectionDetails();
+            ApplyButtonState();
+            return;
+        }
+
+        PairingCodeText.Severity = InfoBarSeverity.Error;
+        PairingCodeText.Message = "Falha ao remover dispositivo.";
+        AddLocalLog($"Falha ao remover dispositivo: {selected.DeviceId}");
     }
 
     private void OnCopyHostClicked(object sender, RoutedEventArgs e)
@@ -129,226 +381,31 @@ public sealed partial class DevicesPage : Page
         await DeviceOps.RunCommandAsync(selected.DeviceId, commandType).ConfigureAwait(false);
     }
 
-    // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
-    private void ApplyState(DeviceOperationsState state)
+    private async Task CommitBrightnessIfPendingAsync()
     {
-        currentState = state;
-
-        ApplyDevices(state.DeviceListSnapshot);
-        UpdateLogs(state.Logs);
-
-        CommandProgressRing.IsActive = state.CommandInProgress;
-        CommandProgressRing.Visibility = state.CommandInProgress ? Visibility.Visible : Visibility.Collapsed;
-        CommandStatusText.Text = state.CommandStatus;
-        CommandPercentText.Text = $"{Math.Clamp(state.CommandPercent, 0, 100)}%";
-
-        var refreshText = state.LastRefreshUtc == default
-            ? "sem atualização"
-            : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss");
-        ServerInfoText.Text = $"Servidor: {state.ServerBaseAddress} | mDNS: _micaaudio._tcp | Atualizado: {refreshText}";
-
-        ApplySelectionDetails();
-        ApplyButtonState();
-    }
-
-    private void ApplyDevices(IReadOnlyList<DeviceSnapshot> devices)
-    {
-        var selectedId = GetSelectedDeviceId();
-
-        allItems.Clear();
-        foreach (var device in devices.Where(static d => d.Status == DeviceStatus.Online))
-        {
-            allItems.Add(new DeviceListItem
-            {
-                DeviceId = device.DeviceId,
-                Name = device.Name,
-                StatusLine = $"{device.Status} | Perfil {device.Profile} | IP {device.LastKnownIp ?? "-"} | RSSI {device.LastKnownRssi?.ToString() ?? "-"}",
-                AppId = string.IsNullOrWhiteSpace(device.ActiveAppId) ? string.Empty : device.ActiveAppId!,
-                AppName = string.IsNullOrWhiteSpace(device.ActiveAppName) ? "-" : device.ActiveAppName!,
-            });
-        }
-
-        ApplyFilter(selectedId);
-        ApplySelectionDetails();
-        ApplyButtonState();
-    }
-
-    private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
-    {
-        ApplyFilter(GetSelectedDeviceId());
-    }
-
-    private void ApplyFilter(string? selectedDeviceId)
-    {
-        var query = SearchBox.Text?.Trim() ?? string.Empty;
-        visibleItems.Clear();
-
-        IEnumerable<DeviceListItem> source = allItems;
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            source = source.Where(item =>
-                item.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || item.DeviceId.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || item.StatusLine.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || item.AppName.Contains(query, StringComparison.OrdinalIgnoreCase));
-        }
-
-        visibleItems.AddRange(source);
-        RebuildRenderedItems(selectedDeviceId);
-    }
-
-    private void RebuildRenderedItems(string? selectedDeviceId)
-    {
-        ClearRenderedItems();
-
-        foreach (var item in visibleItems)
-        {
-            var previewModel = BuildPreviewModel(item);
-            var visualItem = new DeviceListVisualItem(item, previewModel);
-            renderedItems.Add(visualItem);
-        }
-
-        DevicesList.ItemsSource = null;
-        DevicesList.ItemsSource = renderedItems;
-
-        if (!string.IsNullOrWhiteSpace(selectedDeviceId))
-        {
-            var selectedVisual = renderedItems.FirstOrDefault(item => string.Equals(item.DeviceId, selectedDeviceId, StringComparison.OrdinalIgnoreCase));
-            if (selectedVisual is not null)
-            {
-                DevicesList.SelectedItem = selectedVisual;
-            }
-        }
-
-        UpdateDeviceRowSelection();
-    }
-
-    private void ClearRenderedItems()
-    {
-        foreach (var item in renderedItems)
-        {
-            item.StopPreview();
-        }
-
-        renderedItems.Clear();
-    }
-
-    private static AppCatalogItem BuildPreviewModel(DeviceListItem item)
-    {
-        var kind = ResolvePreviewKind(item.AppId, item.AppName);
-        var category = kind switch
-        {
-            "clock" => "relógio",
-            "weather" => "clima",
-            _ => "geral",
-        };
-
-        return new AppCatalogItem
-        {
-            Id = string.IsNullOrWhiteSpace(item.AppId) ? "device-preview" : item.AppId,
-            Name = item.AppName,
-            Category = category,
-            Preview = new AppPreviewDefinition
-            {
-                Kind = kind,
-                Speed = 1f,
-            },
-        };
-    }
-
-    private static string ResolvePreviewKind(string appId, string appName)
-    {
-        var id = appId.Trim().ToLowerInvariant();
-        var name = appName.Trim().ToLowerInvariant();
-
-        if (id.Contains("weather") || id.Contains("clima") || name.Contains("weather") || name.Contains("clima") || id.Contains("accuweather"))
-        {
-            return "weather";
-        }
-
-        if (id.Contains("clock") || id.Contains("relog") || id.Contains("relóg") || name.Contains("clock") || name.Contains("relog") || name.Contains("relóg") || id.Contains("analogclock"))
-        {
-            return "clock";
-        }
-
-        return "decorative";
-    }
-
-    private void UpdateLogs(IReadOnlyList<string> entries)
-    {
-        if (entries.Count == 0)
-        {
-            if (lastRenderedLogCount != 0)
-            {
-                LogsTextBox.Text = string.Empty;
-                lastRenderedLogCount = 0;
-                lastRenderedLogTail = string.Empty;
-            }
-
-            return;
-        }
-
-        var tail = entries[^1];
-        if (lastRenderedLogCount == entries.Count && string.Equals(lastRenderedLogTail, tail, StringComparison.Ordinal))
+        if (!brightnessCommitPending || suppressBrightnessSliderEvents)
         {
             return;
         }
 
-        LogsTextBox.Text = string.Join("\r\n", entries) + "\r\n";
-        lastRenderedLogCount = entries.Count;
-        lastRenderedLogTail = tail;
-    }
-
-    private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        UpdateDeviceRowSelection();
-        ApplySelectionDetails();
-        ApplyButtonState();
-    }
-
-    private void UpdateDeviceRowSelection()
-    {
-        var selectedId = GetSelectedDeviceId();
-        foreach (var item in renderedItems)
-        {
-            item.SetSelected(string.Equals(item.DeviceId, selectedId, StringComparison.OrdinalIgnoreCase));
-        }
-    }
-
-    private void ApplySelectionDetails()
-    {
         var selected = GetSelectedDeviceItem();
-        if (selected is null)
+        var ops = DeviceOps;
+        if (selected is null || ops is null || selected.Status != DeviceStatus.Online)
         {
-            SelectedDeviceTitleText.Text = "Nenhum dispositivo selecionado";
-            SelectedDeviceSubtitleText.Text = "-";
-            SelectedDeviceAppText.Text = "App ativo: -";
+            brightnessCommitPending = false;
             return;
         }
 
-        SelectedDeviceTitleText.Text = selected.Name;
-        SelectedDeviceSubtitleText.Text = $"{selected.DeviceId} | {selected.StatusLine}";
-        SelectedDeviceAppText.Text = $"App ativo: {selected.AppName}";
-    }
+        brightnessCommitPending = false;
+        var brightness = Math.Clamp((int)Math.Round(DashboardBrightnessSlider.Value), SafeBrightnessMin, SafeBrightnessMax);
+        var result = await ops.SetBrightnessAsync(selected.DeviceId, brightness).ConfigureAwait(false);
+        if (result.Accepted && result.Completed && result.Success)
+        {
+            return;
+        }
 
-    private void ApplyButtonState()
-    {
-        var selected = GetSelectedDeviceItem();
-        var commandEnabled = selected is not null && !currentState.CommandInProgress;
-
-        EnterProvisioningButton.IsEnabled = commandEnabled;
-        RevokeButton.IsEnabled = commandEnabled;
-        TestLedButton.IsEnabled = commandEnabled;
-    }
-
-    private DeviceListItem? GetSelectedDeviceItem()
-    {
-        return (DevicesList.SelectedItem as DeviceListVisualItem)?.Item;
-    }
-
-    private string? GetSelectedDeviceId()
-    {
-        return (DevicesList.SelectedItem as DeviceListVisualItem)?.DeviceId;
+        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
+        AddLocalLog($"Falha ao ajustar brilho em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
     }
 
     private sealed class DeviceListItem
@@ -357,105 +414,58 @@ public sealed partial class DevicesPage : Page
 
         public string Name { get; init; } = string.Empty;
 
+        public DeviceStatus Status { get; init; }
+
         public string StatusLine { get; init; } = string.Empty;
 
         public string AppId { get; init; } = string.Empty;
 
-        public string AppName { get; init; } = "-";
+        public string AppName { get; init; } = string.Empty;
+
+        public DeviceLifecyclePresentation Presence { get; init; }
     }
 
-    private sealed class DeviceListVisualItem : Grid
+    private sealed class DeviceListVisualItem
     {
-        private readonly Border frame;
-
-        public DeviceListVisualItem(DeviceListItem item, AppCatalogItem previewModel)
+        public DeviceListVisualItem(DeviceListItem source, AppCatalogItem? previewItem, string previewPlaceholderText)
         {
-            Item = item;
-            DeviceId = item.DeviceId;
-            Margin = new Thickness(0, 0, 0, 6);
-
-            frame = new Border
+            Source = source;
+            PreviewItem = previewItem;
+            RowControl = new DeviceListRowControl
             {
-                CornerRadius = new CornerRadius(10),
-                BorderThickness = new Thickness(1),
-                BorderBrush = UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Windows.UI.Color.FromArgb(255, 49, 62, 81)),
-                Background = UiResourceResolver.ResolveBrush("AppSurfaceElevatedBrush", Windows.UI.Color.FromArgb(255, 20, 27, 37)),
-                Padding = new Thickness(8),
+                Tag = this,
             };
-
-            var layout = new Grid
-            {
-                ColumnSpacing = 8,
-            };
-            layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            Preview = new AppPreviewThumbnailControl
-            {
-                Width = 142,
-                Height = 72,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            Preview.Bind(previewModel);
-            Preview.Start();
-            layout.Children.Add(Preview);
-
-            var textStack = new StackPanel
-            {
-                Spacing = 2,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            Grid.SetColumn(textStack, 1);
-
-            textStack.Children.Add(new TextBlock
-            {
-                Text = item.Name,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            textStack.Children.Add(new TextBlock
-            {
-                Text = item.DeviceId,
-                Opacity = 0.78,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            textStack.Children.Add(new TextBlock
-            {
-                Text = $"App: {item.AppName}",
-                Opacity = 0.9,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-            textStack.Children.Add(new TextBlock
-            {
-                Text = item.StatusLine,
-                Opacity = 0.72,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            });
-
-            layout.Children.Add(textStack);
-            frame.Child = layout;
-            Children.Add(frame);
+            RowControl.Bind(source.Name, source.DeviceId, source.StatusLine, source.Presence, previewItem, previewPlaceholderText);
         }
 
-        public string DeviceId { get; }
+        public DeviceListItem Source { get; private set; }
 
-        public DeviceListItem Item { get; }
+        public string DeviceId => Source.DeviceId;
 
-        public AppPreviewThumbnailControl Preview { get; }
+        public AppCatalogItem? PreviewItem { get; private set; }
+
+        public DeviceListRowControl RowControl { get; }
+
+        public void Update(DeviceListItem source, AppCatalogItem? previewItem, string previewPlaceholderText)
+        {
+            Source = source;
+            PreviewItem = previewItem;
+            RowControl.Bind(source.Name, source.DeviceId, source.StatusLine, source.Presence, previewItem, previewPlaceholderText);
+        }
+
+        public void SetSelectedVisual(bool selected)
+        {
+            RowControl.SetSelected(selected);
+        }
 
         public void StopPreview()
         {
-            Preview.Stop();
+            RowControl.StopPreview();
         }
 
-        public void SetSelected(bool selected)
+        public void SetRuntimeFrame(MicaAudio.Core.Presets.RgbaColor[]? frame)
         {
-            frame.BorderBrush = selected
-                ? UiResourceResolver.ResolveBrush("AppAccentBrush", Windows.UI.Color.FromArgb(255, 40, 170, 125))
-                : UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Windows.UI.Color.FromArgb(255, 49, 62, 81));
+            RowControl.SetRuntimeFrame(frame);
         }
     }
 }
-
-

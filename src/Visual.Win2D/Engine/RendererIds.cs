@@ -1,4 +1,4 @@
-namespace Visual.Win2D.Engine;
+﻿namespace Visual.Win2D.Engine;
 
 public static class RendererIds
 {
@@ -16,4 +16,9 @@ public static class RendererIds
     public const string Waterfall = "waterfall";
     public const string NeonGlow = "neon-glow";
     public const string AudioMotionClone = "audiomotion-clone";
+    public const string VizzyBlobNeon = "vizzy-blob-neon";
+    public const string VizzyOrbitRings = "vizzy-orbit-rings";
+    public const string PolarArcs = "polar-arcs";
+    public const string AuroraRibbon = "aurora-ribbon";
+    public const string PlasmaPulse = "plasma-pulse";
 }

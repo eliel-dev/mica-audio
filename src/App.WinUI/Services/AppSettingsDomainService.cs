@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
@@ -7,72 +8,17 @@ namespace App.WinUI.Services;
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#modulo-settings-presets-e-persistencia
 internal sealed class AppSettingsDomainService
 {
-    private const string DefaultPresetId = "audiomotion-clone";
-    private const string DefaultRendererId = "audiomotion-clone";
-    private const float DefaultMinDecibels = -85f;
-    private const float DefaultMaxDecibels = -25f;
-    private const float DefaultLinearBoost = 1.6f;
-
     // DOCS: docs/wiki/guides/change-visualizer-settings.md#passos
-    public AppSettings Migrate(AppSettings settings)
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como metodo de instancia para preservar o contrato do service usado por DI e acomodar evolucao stateful futura.")]
+    public AppSettings Migrate(AppSettings settings) => Normalize(settings);
+
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como metodo de instancia para preservar o contrato do service usado por DI e acomodar evolucao stateful futura.")]
+    public VisualizerRuntimeSettings GetVisualizerRuntimeSettings(AppSettings settings)
     {
-        var minDb = CoerceSensitivityMinDb(settings.SensitivityMinDb);
-        var maxDb = CoerceSensitivityMaxDb(settings.SensitivityMaxDb);
-        var legacyMaxDb = CoerceSensitivityMaxDb(settings.Sensitivity);
-
-        var likelyLegacyOnlySensitivity = AreClose(settings.SensitivityMinDb, DefaultMinDecibels)
-            && AreClose(settings.SensitivityMaxDb, DefaultMaxDecibels)
-            && !AreClose(settings.Sensitivity, DefaultMaxDecibels);
-
-        if (likelyLegacyOnlySensitivity)
-        {
-            maxDb = legacyMaxDb;
-        }
-
-        if (maxDb <= minDb + 3f)
-        {
-            maxDb = Math.Clamp(minDb + 3f, -60f, 0f);
-            if (maxDb <= minDb)
-            {
-                minDb = Math.Clamp(maxDb - 3f, -120f, -30f);
-            }
-        }
-
-        var activePresetId = string.IsNullOrWhiteSpace(settings.ActivePresetId) ? DefaultPresetId : settings.ActivePresetId;
-        var selectedRendererId = string.IsNullOrWhiteSpace(settings.SelectedRendererId)
-            ? DefaultRendererId
-            : settings.SelectedRendererId;
-
-        var minHz = Math.Clamp(settings.FrequencyMinHz, 16f, 10_000f);
-        var maxHz = Math.Clamp(settings.FrequencyMaxHz, 250f, 20_000f);
-        if (maxHz <= minHz)
-        {
-            minHz = 20f;
-            maxHz = 1000f;
-        }
-
-        return new AppSettings
-        {
-            ActivePresetId = activePresetId,
-            SelectedRendererId = selectedRendererId,
-            Hub75PreviewEnabled = settings.Hub75PreviewEnabled,
-            Brightness = settings.Brightness,
-            Sensitivity = maxDb,
-            SensitivityMinDb = minDb,
-            SensitivityMaxDb = maxDb,
-            LinearBoost = CoerceLinearBoost(settings.LinearBoost),
-            BarCount = settings.BarCount <= 0 ? 38 : settings.BarCount,
-            FrequencyScale = Enum.IsDefined(typeof(FrequencyScale), settings.FrequencyScale) ? settings.FrequencyScale : FrequencyScale.Bark,
-            FrequencyMinHz = minHz,
-            FrequencyMaxHz = maxHz,
-            FftSize = FftSizePolicy.CoerceUiSize(settings.FftSize),
-            FftSmoothing = Math.Clamp(settings.FftSmoothing, 0f, 0.99f),
-            WeightingFilter = Enum.IsDefined(typeof(WeightingFilter), settings.WeightingFilter) ? settings.WeightingFilter : WeightingFilter.Off,
-            WindowWidth = settings.WindowWidth,
-            WindowHeight = settings.WindowHeight,
-        };
+        return VisualizerRuntimeSettings.From(settings);
     }
 
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como metodo de instancia para preservar o contrato do service usado por DI e acomodar evolucao stateful futura.")]
     public AppSettings Copy(AppSettings source, Action<AppSettingsBuilder> configure)
     {
         var builder = new AppSettingsBuilder(source);
@@ -80,36 +26,64 @@ internal sealed class AppSettingsDomainService
         return builder.Build();
     }
 
-    private static float CoerceLinearBoost(float value)
-        => float.IsNaN(value) || float.IsInfinity(value) ? DefaultLinearBoost : Math.Clamp(value, 1f, 3f);
+    private static AppSettings Normalize(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
 
-    private static float CoerceSensitivityMinDb(float value)
-        => float.IsNaN(value) || float.IsInfinity(value) ? DefaultMinDecibels : Math.Clamp(value, -120f, -30f);
+        var visualizer = VisualizerRuntimeSettings.From(settings);
+        var thresholds = DeviceLifecycleSettings.From(settings);
 
-    private static float CoerceSensitivityMaxDb(float value)
-        => float.IsNaN(value) || float.IsInfinity(value) ? DefaultMaxDecibels : Math.Clamp(value, -60f, 0f);
-
-    private static bool AreClose(float a, float b) => MathF.Abs(a - b) < 0.001f;
+        return new AppSettings
+        {
+            ActivePresetId = visualizer.ActivePresetId,
+            SelectedRendererId = visualizer.SelectedRendererId,
+            Hub75PreviewEnabled = settings.Hub75PreviewEnabled,
+            Brightness = settings.Brightness,
+            Sensitivity = VisualizerRuntimeDefaults.DefaultMaxDecibels,
+            SensitivityMinDb = VisualizerRuntimeDefaults.DefaultMinDecibels,
+            SensitivityMaxDb = VisualizerRuntimeDefaults.DefaultMaxDecibels,
+            LinearBoost = visualizer.LinearBoost,
+            BarCount = visualizer.DisplayBandCount,
+            FrequencyScale = visualizer.FrequencyScale,
+            FrequencyMinHz = visualizer.FrequencyMinHz,
+            FrequencyMaxHz = visualizer.FrequencyMaxHz,
+            FftSize = visualizer.FftSize,
+            FftSmoothing = visualizer.FftSmoothing,
+            WeightingFilter = visualizer.WeightingFilter,
+            DeviceFreshThresholdSeconds = thresholds.DeviceFreshThresholdSeconds,
+            DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
+            DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
+            AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
+            WindowWidth = settings.WindowWidth,
+            WindowHeight = settings.WindowHeight,
+        };
+    }
 
     internal sealed class AppSettingsBuilder
     {
         public AppSettingsBuilder(AppSettings source)
         {
-            ActivePresetId = source.ActivePresetId;
-            SelectedRendererId = source.SelectedRendererId;
+            var visualizer = VisualizerRuntimeSettings.From(source);
+
+            ActivePresetId = visualizer.ActivePresetId;
+            SelectedRendererId = visualizer.SelectedRendererId;
             Hub75PreviewEnabled = source.Hub75PreviewEnabled;
             Brightness = source.Brightness;
-            Sensitivity = source.Sensitivity;
-            SensitivityMinDb = source.SensitivityMinDb;
-            SensitivityMaxDb = source.SensitivityMaxDb;
-            LinearBoost = source.LinearBoost;
-            BarCount = source.BarCount;
-            FrequencyScale = source.FrequencyScale;
-            FrequencyMinHz = source.FrequencyMinHz;
-            FrequencyMaxHz = source.FrequencyMaxHz;
-            FftSize = source.FftSize;
-            FftSmoothing = source.FftSmoothing;
-            WeightingFilter = source.WeightingFilter;
+            Sensitivity = VisualizerRuntimeDefaults.DefaultMaxDecibels;
+            SensitivityMinDb = VisualizerRuntimeDefaults.DefaultMinDecibels;
+            SensitivityMaxDb = VisualizerRuntimeDefaults.DefaultMaxDecibels;
+            LinearBoost = visualizer.LinearBoost;
+            BarCount = visualizer.DisplayBandCount;
+            FrequencyScale = visualizer.FrequencyScale;
+            FrequencyMinHz = visualizer.FrequencyMinHz;
+            FrequencyMaxHz = visualizer.FrequencyMaxHz;
+            FftSize = visualizer.FftSize;
+            FftSmoothing = visualizer.FftSmoothing;
+            WeightingFilter = visualizer.WeightingFilter;
+            DeviceFreshThresholdSeconds = source.DeviceFreshThresholdSeconds;
+            DeviceStaleThresholdMinutes = source.DeviceStaleThresholdMinutes;
+            DeviceDormantThresholdHours = source.DeviceDormantThresholdHours;
+            AllowLegacyWebSocketQueryToken = source.AllowLegacyWebSocketQueryToken;
             WindowWidth = source.WindowWidth;
             WindowHeight = source.WindowHeight;
         }
@@ -129,29 +103,45 @@ internal sealed class AppSettingsDomainService
         public int FftSize { get; private set; }
         public float FftSmoothing { get; private set; }
         public WeightingFilter WeightingFilter { get; private set; }
+        public int DeviceFreshThresholdSeconds { get; private set; }
+        public int DeviceStaleThresholdMinutes { get; private set; }
+        public int DeviceDormantThresholdHours { get; private set; }
+        public bool AllowLegacyWebSocketQueryToken { get; private set; }
         public int WindowWidth { get; private set; }
         public int WindowHeight { get; private set; }
 
         public void SetActivePresetId(string value) => ActivePresetId = value;
         public void SetSelectedRendererId(string value) => SelectedRendererId = value;
         public void SetHub75PreviewEnabled(bool value) => Hub75PreviewEnabled = value;
-        public void SetSensitivity(float minDb, float maxDb)
-        {
-            SensitivityMinDb = minDb;
-            SensitivityMaxDb = maxDb;
-            Sensitivity = maxDb;
-        }
-
-        public void SetLinearBoost(float value) => LinearBoost = value;
         public void SetBarCount(int value) => BarCount = value;
-        public void SetFftSize(int value) => FftSize = value;
+        public void SetFftSize(int value) => FftSize = VisualizerRuntimeSettings.NormalizeFftSize(value);
         public void SetFftSmoothing(float value) => FftSmoothing = value;
         public void SetWeightingFilter(WeightingFilter value) => WeightingFilter = value;
+        public void SetDeviceFreshThresholdSeconds(int value) => DeviceFreshThresholdSeconds = value;
+        public void SetDeviceStaleThresholdMinutes(int value) => DeviceStaleThresholdMinutes = value;
+        public void SetDeviceDormantThresholdHours(int value) => DeviceDormantThresholdHours = value;
+        public void SetAllowLegacyWebSocketQueryToken(bool value) => AllowLegacyWebSocketQueryToken = value;
         public void SetFrequencyScale(FrequencyScale value) => FrequencyScale = value;
         public void SetFrequencyRange(float minHz, float maxHz)
         {
             FrequencyMinHz = minHz;
             FrequencyMaxHz = maxHz;
+        }
+
+        public void SetVisualizerRuntimeSettings(VisualizerRuntimeSettings settings)
+        {
+            ArgumentNullException.ThrowIfNull(settings);
+
+            ActivePresetId = settings.ActivePresetId;
+            SelectedRendererId = settings.SelectedRendererId;
+            LinearBoost = settings.LinearBoost;
+            BarCount = settings.DisplayBandCount;
+            FrequencyScale = settings.FrequencyScale;
+            FrequencyMinHz = settings.FrequencyMinHz;
+            FrequencyMaxHz = settings.FrequencyMaxHz;
+            FftSize = settings.FftSize;
+            FftSmoothing = settings.FftSmoothing;
+            WeightingFilter = settings.WeightingFilter;
         }
 
         public void SetWindowSize(int width, int height)
@@ -160,25 +150,32 @@ internal sealed class AppSettingsDomainService
             WindowHeight = height;
         }
 
-        public AppSettings Build() => new()
+        public AppSettings Build()
         {
-            ActivePresetId = ActivePresetId,
-            SelectedRendererId = SelectedRendererId,
-            Hub75PreviewEnabled = Hub75PreviewEnabled,
-            Brightness = Brightness,
-            Sensitivity = Sensitivity,
-            SensitivityMinDb = SensitivityMinDb,
-            SensitivityMaxDb = SensitivityMaxDb,
-            LinearBoost = LinearBoost,
-            BarCount = BarCount,
-            FrequencyScale = FrequencyScale,
-            FrequencyMinHz = FrequencyMinHz,
-            FrequencyMaxHz = FrequencyMaxHz,
-            FftSize = FftSize,
-            FftSmoothing = FftSmoothing,
-            WeightingFilter = WeightingFilter,
-            WindowWidth = WindowWidth,
-            WindowHeight = WindowHeight,
-        };
+            return Normalize(new AppSettings
+            {
+                ActivePresetId = ActivePresetId,
+                SelectedRendererId = SelectedRendererId,
+                Hub75PreviewEnabled = Hub75PreviewEnabled,
+                Brightness = Brightness,
+                Sensitivity = Sensitivity,
+                SensitivityMinDb = SensitivityMinDb,
+                SensitivityMaxDb = SensitivityMaxDb,
+                LinearBoost = LinearBoost,
+                BarCount = BarCount,
+                FrequencyScale = FrequencyScale,
+                FrequencyMinHz = FrequencyMinHz,
+                FrequencyMaxHz = FrequencyMaxHz,
+                FftSize = FftSize,
+                FftSmoothing = FftSmoothing,
+                WeightingFilter = WeightingFilter,
+                DeviceFreshThresholdSeconds = DeviceFreshThresholdSeconds,
+                DeviceStaleThresholdMinutes = DeviceStaleThresholdMinutes,
+                DeviceDormantThresholdHours = DeviceDormantThresholdHours,
+                AllowLegacyWebSocketQueryToken = AllowLegacyWebSocketQueryToken,
+                WindowWidth = WindowWidth,
+                WindowHeight = WindowHeight,
+            });
+        }
     }
 }

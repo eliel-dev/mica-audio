@@ -1,4 +1,4 @@
-﻿# Wiki Tecnica do Mica Audio
+# Wiki Tecnica do Mica Audio
 
 Documentacao tecnica versionada junto com o codigo para acelerar manutencao, onboarding e continuidade por humanos e IA.
 
@@ -19,17 +19,21 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 ## Navegacao rapida por tarefa
 
 - Quero mexer em captura/analise/render: [architecture/01-system-overview.md](architecture/01-system-overview.md)
-- Quero operar dispositivos e servidor: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
+- Quero operar dispositivos e setup de firmware: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
+- Quero configurar novo dispositivo: [guides/setup-new-device.md](guides/setup-new-device.md)
 - Quero baixar firmware pre-compilado: [guides/build-export-firmware.md](guides/build-export-firmware.md)
 - Quero debugar falha de download/salvamento de firmware: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
 - Quero adicionar app no catalogo: [guides/add-app-catalog-item.md](guides/add-app-catalog-item.md)
 - Quero configurar modificadores dinamicos de app: [guides/configure-app-modifiers.md](guides/configure-app-modifiers.md)
+- Quero auditar codigo legado com Context7: [guides/context7-legacy-review.md](guides/context7-legacy-review.md)
+- Quero auditar criticidade do projeto com Context7: [guides/criticality-context7-audit.md](guides/criticality-context7-audit.md)
 - Quero resolver busca de cidade no clima: [guides/troubleshoot-city-autocomplete.md](guides/troubleshoot-city-autocomplete.md)
 - Quero ver status da documentacao: [reference/docs-health.md](reference/docs-health.md)
 - Quero aplicar hardening security-first: [guides/security-quality-hardening.md](guides/security-quality-hardening.md)
 - Quero operar release 1.0 com setup assinado: [guides/release-1.0-installer.md](guides/release-1.0-installer.md)
 - Quero carregar GIF para HUB75 por URL/arquivo: [guides/load-gif-hub75.md](guides/load-gif-hub75.md)
 - Quero operar no modo solo + IA: [ai/README.md](ai/README.md)
+- Quero usar OpenCode + ECC neste repo: [ai/opencode-ecc-setup.md](ai/opencode-ecc-setup.md)
 
 ## Indice
 
@@ -48,17 +52,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Visual.Win2D](modules/visual-win2d.md)
 - [Output (LED)](modules/output-led.md)
 - [Device.Server + Device.Protocol](modules/device-server-protocol.md)
-- [Firmware Matrix Portal S3](modules/firmware-matrixportal-s3.md)
+- [Firmware HUB75 128x64 (DevKitC-1)](modules/firmware-esp32s3-devkitc1.md)
 - [Settings + Presets + Persistencia](modules/settings-presets-persistence.md)
 - [DeviceOperationsCoordinator](modules/device-operations-coordinator.md)
 - [Apps catalog + deployment](modules/apps-catalog-deployment.md)
-- [Server build + artifacts](modules/server-build-and-artifacts.md)
+- [Server setup + firmware artifacts](modules/server-build-and-artifacts.md)
 
 ### Guias
 - [Mudar configuracao do visualizador](guides/change-visualizer-settings.md)
 - [Adicionar novo renderer](guides/add-new-renderer.md)
 - [Adicionar novo comando de dispositivo](guides/add-device-command.md)
+- [Setup de novo dispositivo](guides/setup-new-device.md)
 - [Download de firmware pre-compilado](guides/build-export-firmware.md)
+- [Context7 para revisao de legado](guides/context7-legacy-review.md)
+- [Auditoria de criticidade + Context7](guides/criticality-context7-audit.md)
 - [Debug: visualizacao nao aparece](guides/debug-no-visualization.md)
 - [Adicionar item no catalogo de apps](guides/add-app-catalog-item.md)
 - [Configurar modificadores de apps](guides/configure-app-modifiers.md)
@@ -78,13 +85,15 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Matriz de validacao](ai/validation-matrix.md)
 - [Playbooks de incidente](ai/incident-playbooks.md)
 - [Viabilidade MCP](ai/mcp-viability.md)
-- [Consistência com Codex](ai/consistencia-codex.md)
+- [Consistencia com Codex](ai/consistencia-codex.md)
+- [Setup OpenCode + ECC + Context7 (local)](ai/opencode-ecc-setup.md)
 
 ### Referencia
 - [Code index](reference/code-index.md)
 - [Convencoes de links wiki<->codigo](reference/linking-conventions.md)
 - [HTTP API v1](reference/http-api-v1.md)
 - [WS protocol v1](reference/ws-protocol-v1.md)
+- [Device telemetry v2 fields](reference/device-telemetry-v2-fields.md)
 - [Troubleshooting matrix](reference/troubleshooting-matrix.md)
 - [Docs health](reference/docs-health.md)
 - [Glossario](reference/glossary.md)
@@ -120,4 +129,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Cada mudanca tecnica relevante deve atualizar wiki e backlinks.
 - Politica canonica: `docs/wiki/reference/ai-contract.v1.yaml`.
 
-
+- [WS protocol v2](reference/ws-protocol-v2.md)
+- [App module pattern](ai/app-module-pattern.md)

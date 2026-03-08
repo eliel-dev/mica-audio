@@ -55,7 +55,6 @@ if ($changedFiles.Count -eq 0) {
 $structuralPatterns = @(
     '^src/',
     '^firmware/',
-    '^matrixportal-s3/',
     '^scripts/',
     '^installer/',
     '^MicaAudio\.sln$',

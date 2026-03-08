@@ -2,7 +2,7 @@
 
 ## Contexto
 
-Mudancas em `src/`, `firmware/`, `matrixportal-s3/` e `scripts/` alteram comportamento e operacao do projeto. Sem regra automatica, existe risco alto de drift entre codigo e documentacao.
+Mudancas em `src/`, `firmware/` e `scripts/` alteram comportamento e operacao do projeto. Sem regra automatica, existe risco alto de drift entre codigo e documentacao.
 
 ## Decisao
 
