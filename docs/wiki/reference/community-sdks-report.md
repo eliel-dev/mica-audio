@@ -131,7 +131,7 @@ foreach (var item in feed.Items.Take(5))
 
 > Não possui SDK .NET oficial, mas oferece API REST gratuita para cotações da B3 (bolsa brasileira).
 
-```
+```http
 GET https://brapi.dev/api/quote/{ticker}
 ```
 
