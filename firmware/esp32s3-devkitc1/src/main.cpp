@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
+#include <PubSubClient.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -30,11 +31,15 @@ constexpr uint8_t kStreamVersion = 2;
 constexpr uint8_t kStreamBinsMessageType = 1;
 constexpr uint8_t kStreamFrame128x64Rgb565MessageType = 2;
 constexpr unsigned long kWifiDisconnectProvisioningFallbackMs = 20000;
+constexpr unsigned long kMqttReconnectRetryMs = 5000;
 constexpr unsigned long kWsReconnectRetryMs = 60000;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
 constexpr unsigned long kSerialHelloIntervalMs = 3000;
 constexpr size_t kSerialInputMaxLength = 1024;
 constexpr unsigned long kWifiConnectAttemptTimeoutMs = 20000;
+constexpr uint16_t kDefaultMqttPort = 5273;
+constexpr const char* kDefaultMqttRootTopic = "mica/v1/devices";
+constexpr uint16_t kMqttPacketBufferBytes = 32768;
 constexpr uint8_t kMatrixWidth = MICA_MATRIX_WIDTH;
 constexpr uint8_t kMatrixHeight = MICA_MATRIX_HEIGHT;
 constexpr uint8_t kMatrixHalfHeight = kMatrixHeight / 2;
@@ -89,8 +94,13 @@ constexpr const char* kSecurityProfile = "dev";
 
 Preferences gPrefs;
 WebSocketsClient gWs;
+WiFiClient gMqttNetClient;
+PubSubClient gMqtt(gMqttNetClient);
 String gServerHost;
 uint16_t gServerPort = 5272;
+String gMqttHost;
+uint16_t gMqttPort = kDefaultMqttPort;
+String gMqttRootTopic = kDefaultMqttRootTopic;
 String gDeviceId;
 String gToken;
 String gActiveAppId;
@@ -103,6 +113,7 @@ uint8_t gBrightnessCap = kBrightnessDefaultCap;
 uint16_t gFrameRgb565[kMatrixPixelCount] = {0};
 unsigned long gLastFrameMs = 0;
 unsigned long gWsDisconnectedSinceMs = 0;
+unsigned long gMqttDisconnectedSinceMs = 0;
 unsigned long gWifiDisconnectedSinceMs = 0;
 unsigned long gLastTelemetryMs = 0;
 unsigned long gTestLedUntilMs = 0;
@@ -135,6 +146,8 @@ String gSerialInputBuffer;
 unsigned long gLastSerialHelloMs = 0;
 
 void connectWebSocket();
+void connectMqtt();
+void handleControlCommandMessage(const JsonDocument& control);
 
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
@@ -490,18 +503,89 @@ bool postJsonWithAuth(const String& path, JsonDocument& doc) {
   return code >= 200 && code < 300;
 }
 
+void normalizeMqttConfig() {
+  if (gMqttHost.isEmpty()) {
+    gMqttHost = gServerHost;
+  }
+
+  if (gMqttPort == 0) {
+    gMqttPort = kDefaultMqttPort;
+  }
+
+  if (gMqttRootTopic.isEmpty()) {
+    gMqttRootTopic = kDefaultMqttRootTopic;
+  }
+}
+
+void persistMqttConfig() {
+  normalizeMqttConfig();
+  gPrefs.putString("mqttHost", gMqttHost);
+  gPrefs.putString("mqttPort", String(gMqttPort));
+  gPrefs.putString("mqttRootTopic", gMqttRootTopic);
+}
+
+String buildDeviceMqttTopic(const char* suffix) {
+  normalizeMqttConfig();
+  return gMqttRootTopic + "/" + gDeviceId + "/" + String(suffix == nullptr ? "" : suffix);
+}
+
+bool publishMqttDocument(const String& topic, JsonDocument& doc, bool retained) {
+  if (!gMqtt.connected()) {
+    return false;
+  }
+
+  String payload;
+  serializeJson(doc, payload);
+  return gMqtt.publish(topic.c_str(), payload.c_str(), retained);
+}
+
+String buildPresencePayload(const char* state) {
+  JsonDocument presence;
+  presence["deviceId"] = gDeviceId;
+  presence["state"] = state == nullptr ? "offline" : state;
+
+  String payload;
+  serializeJson(presence, payload);
+  return payload;
+}
+
+bool publishPresence(const char* state) {
+  if (gDeviceId.isEmpty() || !gMqtt.connected()) {
+    return false;
+  }
+
+  JsonDocument presence;
+  presence["deviceId"] = gDeviceId;
+  presence["state"] = state == nullptr ? "offline" : state;
+  return publishMqttDocument(buildDeviceMqttTopic("presence"), presence, true);
+}
+
+void disconnectMqtt(bool publishOffline) {
+  if (!gMqtt.connected()) {
+    return;
+  }
+
+  if (publishOffline) {
+    (void)publishPresence("offline");
+    delay(20);
+  }
+
+  gMqtt.disconnect();
+  gLastTelemetryMs = 0;
+  gMqttDisconnectedSinceMs = millis();
+}
+
 void sendCommandProgress(
     const String& commandId,
     uint8_t progressPercent,
     const char* stage,
     const String& message,
     int successFlag = -1) {
-  if (commandId.isEmpty() || !gWs.isConnected()) {
+  if (commandId.isEmpty() || !gMqtt.connected()) {
     return;
   }
 
   JsonDocument progress;
-  progress["type"] = "command_progress";
   progress["deviceId"] = gDeviceId;
   progress["commandId"] = commandId;
   progress["progressPercent"] = progressPercent;
@@ -515,9 +599,7 @@ void sendCommandProgress(
     progress["success"] = successFlag == 1;
   }
 
-  String payload;
-  serializeJson(progress, payload);
-  gWs.sendTXT(payload);
+  (void)publishMqttDocument(buildDeviceMqttTopic("command-events"), progress, false);
 }
 
 void postCommandAck(
@@ -597,7 +679,7 @@ void updateLoopLoadPercent(uint32_t loopStartUs) {
 }
 
 void sendTelemetry(bool force) {
-  if (!gWs.isConnected() || gDeviceId.isEmpty()) {
+  if (!gMqtt.connected() || gDeviceId.isEmpty()) {
     return;
   }
 
@@ -613,7 +695,6 @@ void sendTelemetry(bool force) {
   const uint32_t uptimeSeconds = millis() / 1000UL;
   const uint32_t freeHeapBytes = ESP.getFreeHeap();
 
-  telemetry["type"] = "telemetry";
   telemetry["deviceId"] = gDeviceId;
   telemetry["wifiConnected"] = wifiConnected;
   telemetry["wifiState"] = gWifiState;
@@ -669,9 +750,7 @@ void sendTelemetry(bool force) {
     telemetry["activeAppName"] = gActiveAppName;
   }
 
-  String payload;
-  serializeJson(telemetry, payload);
-  gWs.sendTXT(payload);
+  (void)publishMqttDocument(buildDeviceMqttTopic("status"), telemetry, true);
 }
 
 void clearTestLed() {
@@ -837,6 +916,84 @@ bool tryParseServerBaseUrl(const String& rawBaseUrl, String& host, uint16_t& por
   return host.length() > 0;
 }
 
+String buildServerBaseUrl(const String& host, uint16_t port) {
+  if (host.length() == 0) {
+    return "";
+  }
+
+  const uint16_t resolvedPort = port == 0 ? 5272 : port;
+  return "http://" + host + ":" + String(resolvedPort);
+}
+
+bool tryApplyProvisioningPortalServer(
+    const String& rawServerBaseUrl,
+    const String& savedHost,
+    uint16_t savedPort,
+    String& errorCode,
+    String& errorMessage) {
+  String normalizedServerBaseUrl = rawServerBaseUrl;
+  normalizedServerBaseUrl.trim();
+
+  if (normalizedServerBaseUrl.length() == 0) {
+    if (savedHost.length() > 0 && savedPort != 0) {
+      gServerHost = savedHost;
+      gServerPort = savedPort;
+      gMqttHost = gServerHost;
+      gMqttPort = kDefaultMqttPort;
+      gMqttRootTopic = kDefaultMqttRootTopic;
+      persistMqttConfig();
+      setConnectivityState(kWifiStateConnected, "portal_server_empty_kept_saved", true);
+      Serial.printf("[provisioning] campo Servidor vazio; mantendo configuracao salva %s.\n",
+          buildServerBaseUrl(gServerHost, gServerPort).c_str());
+      return true;
+    }
+
+    errorCode = "portal_server_missing";
+    errorMessage = "Campo Servidor vazio e sem configuracao salva.";
+    setConnectivityState(kWifiStateConnected, "portal_server_missing", true);
+    Serial.println("[provisioning] campo Servidor vazio e sem configuracao salva.");
+    return false;
+  }
+
+  String parsedHost;
+  uint16_t parsedPort = 0;
+  if (!tryParseServerBaseUrl(normalizedServerBaseUrl, parsedHost, parsedPort)) {
+    if (savedHost.length() > 0 && savedPort != 0) {
+      gServerHost = savedHost;
+      gServerPort = savedPort;
+      gMqttHost = gServerHost;
+      gMqttPort = kDefaultMqttPort;
+      gMqttRootTopic = kDefaultMqttRootTopic;
+      persistMqttConfig();
+      errorCode = "portal_server_invalid_kept_saved";
+      errorMessage = "Campo Servidor invalido; mantendo configuracao salva.";
+      setConnectivityState(kWifiStateConnected, "portal_server_invalid_kept_saved", true);
+      Serial.printf("[provisioning] campo Servidor invalido '%s'; mantendo configuracao salva %s.\n",
+          normalizedServerBaseUrl.c_str(),
+          buildServerBaseUrl(gServerHost, gServerPort).c_str());
+      return true;
+    }
+
+    errorCode = "portal_server_invalid";
+    errorMessage = "Campo Servidor invalido no portal.";
+    setConnectivityState(kWifiStateConnected, "portal_server_invalid", true);
+    Serial.printf("[provisioning] campo Servidor invalido '%s' e sem configuracao salva.\n", normalizedServerBaseUrl.c_str());
+    return false;
+  }
+
+  gServerHost = parsedHost;
+  gServerPort = parsedPort;
+  gPrefs.putString("host", gServerHost);
+  gPrefs.putString("port", String(gServerPort));
+  gMqttHost = gServerHost;
+  gMqttPort = kDefaultMqttPort;
+  gMqttRootTopic = kDefaultMqttRootTopic;
+  persistMqttConfig();
+  setConnectivityState(kWifiStateConnected, "portal_server_configured", true);
+  Serial.printf("[provisioning] servidor configurado manualmente: %s.\n", buildServerBaseUrl(gServerHost, gServerPort).c_str());
+  return true;
+}
+
 bool connectWifiWithTimeout(const String& ssid, const String& password, unsigned long timeoutMs) {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid.c_str(), password.c_str());
@@ -916,6 +1073,14 @@ bool pairWithServer(const String& pairingCode, const String& deviceName, String&
       gPrefs.putString("port", String(gServerPort));
     }
 
+    String mqttHost = resp["mqttHost"] | "";
+    int mqttPort = resp["mqttPort"] | 0;
+    String mqttRootTopic = resp["mqttRootTopic"] | "";
+    gMqttHost = mqttHost.length() > 0 ? mqttHost : gServerHost;
+    gMqttPort = mqttPort > 0 ? static_cast<uint16_t>(mqttPort) : kDefaultMqttPort;
+    gMqttRootTopic = mqttRootTopic.length() > 0 ? mqttRootTopic : kDefaultMqttRootTopic;
+    persistMqttConfig();
+
     setConnectivityState(kWifiStateConnected, "pair_success", true);
     http.end();
     return true;
@@ -971,6 +1136,10 @@ void handleSerialProvisioningLine(const String& line) {
   gServerPort = parsedPort;
   gPrefs.putString("host", gServerHost);
   gPrefs.putString("port", String(gServerPort));
+  gMqttHost = gServerHost;
+  gMqttPort = kDefaultMqttPort;
+  gMqttRootTopic = kDefaultMqttRootTopic;
+  persistMqttConfig();
   sendSerialProgress(requestId, "wifi_connected", "Wi-Fi conectado.");
 
   String deviceName = gPrefs.getString("name", kBoardDisplayName);
@@ -982,6 +1151,7 @@ void handleSerialProvisioningLine(const String& line) {
     return;
   }
 
+  connectMqtt();
   connectWebSocket();
   sendTelemetry(true);
   sendSerialProgress(requestId, "done", "Provisionamento concluido.");
@@ -1018,7 +1188,9 @@ void processSerialProvisioning() {
   }
 }
 
+// DOCS: docs/wiki/guides/setup-new-device.md#passos
 bool startProvisioningPortal(const char* reason) {
+  disconnectMqtt(true);
   gWs.disconnect();
   gLastTelemetryMs = 0;
   setProvisioningPortalActive(true, reason);
@@ -1028,9 +1200,15 @@ bool startProvisioningPortal(const char* reason) {
   wm.setConfigPortalBlocking(true);
   wm.setConfigPortalTimeout(0);
 
+  String savedHost = gPrefs.getString("host", "");
+  uint16_t savedPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
+  String savedServerBaseUrl = buildServerBaseUrl(savedHost, savedPort);
+
+  WiFiManagerParameter pServer("server", "Servidor", savedServerBaseUrl.c_str(), 96);
   WiFiManagerParameter pPair("pair", "Codigo pareamento", "", 12);
   WiFiManagerParameter pName("name", "Nome dispositivo", gPrefs.getString("name", kBoardDisplayName).c_str(), 32);
 
+  wm.addParameter(&pServer);
   wm.addParameter(&pPair);
   wm.addParameter(&pName);
 
@@ -1048,6 +1226,15 @@ bool startProvisioningPortal(const char* reason) {
   setConnectivityState(kWifiStateConnected, "wifi_connected", true);
 
   gPrefs.putString("name", pName.getValue());
+
+  String serverConfigErrorCode;
+  String serverConfigErrorMessage;
+  if (!tryApplyProvisioningPortalServer(pServer.getValue(), savedHost, savedPort, serverConfigErrorCode, serverConfigErrorMessage)) {
+    Serial.printf("[provisioning] falha ao aplicar Servidor do portal: %s (%s)\n",
+        serverConfigErrorMessage.c_str(),
+        serverConfigErrorCode.c_str());
+    return false;
+  }
 
   String pairingCode = pPair.getValue();
   String pairErrorCode;
@@ -1068,6 +1255,182 @@ void enterProvisioningMode(bool clearDeviceCredentials, const char* reason) {
   }
 
   (void)startProvisioningPortal(reason);
+}
+
+void handleControlCommandMessage(const JsonDocument& control) {
+  const char *command = control["command"] | "";
+  String commandId = control["commandId"] | "";
+  JsonObjectConst parameters = control["parameters"].as<JsonObjectConst>();
+
+  if (strcmp(command, "enter_provisioning") == 0) {
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    sendCommandProgress(commandId, 100, "enter-provisioning", "Entrando em provisioning.", 1);
+    enterProvisioningMode(true, "command_enter_provisioning");
+    return;
+  }
+
+  if (strcmp(command, "revoke_and_restart") == 0) {
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    sendCommandProgress(commandId, 100, "revoke-restart", "Reiniciando dispositivo.", 1);
+    (void)publishPresence("offline");
+    delay(50);
+    gPrefs.remove("deviceId");
+    gPrefs.remove("token");
+    delay(200);
+    ESP.restart();
+    return;
+  }
+
+  if (strcmp(command, "test_led") == 0) {
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+
+    JsonVariantConst enabledValue = parameters["enabled"];
+    if (!enabledValue.isNull()) {
+      bool enabled = false;
+      if (!tryParseBooleanParameter(enabledValue, enabled)) {
+        sendCommandProgress(commandId, 100, "invalid", "Parametro enabled invalido.", 0);
+        return;
+      }
+
+      Serial.printf("[led] parametro legado enabled recebido: %s\n", enabled ? "true" : "false");
+      if (gAuxLedAvailable) {
+        gTestLedEnabled = enabled;
+        gPrefs.putBool("testLedEnabled", gTestLedEnabled);
+      } else {
+        gTestLedEnabled = false;
+        gPrefs.putBool("testLedEnabled", false);
+      }
+
+      updateTestLedDutyFromBrightness(resolveAppliedBrightness());
+      clearTestLed();
+      applyTestLedState();
+      sendTelemetry(true);
+      const char* message = gAuxLedAvailable
+          ? (gTestLedEnabled ? "Compat legado: LED auxiliar habilitado." : "Compat legado: LED auxiliar desabilitado.")
+          : "Compat legado: sem LED auxiliar, parametro enabled ignorado.";
+      sendCommandProgress(commandId, 100, "set-test-led-compat", message, 1);
+      return;
+    }
+
+    if (!isTestLedAvailable()) {
+      sendCommandProgress(commandId, 100, "test-led-unavailable", "Nenhum LED de teste disponivel neste hardware.", 0);
+      return;
+    }
+
+    triggerTestLed();
+    sendCommandProgress(commandId, 100, "test-led", "Teste de LED acionado.", 1);
+    return;
+  }
+
+  if (strcmp(command, "set_brightness") == 0) {
+    String brightnessRaw = parameters["brightness"] | "";
+
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    if (brightnessRaw.length() == 0) {
+      sendCommandProgress(commandId, 100, "invalid", "brightness ausente.", 0);
+      return;
+    }
+
+    const int brightnessValue = brightnessRaw.toInt();
+    if (brightnessValue == 0 && brightnessRaw != "0") {
+      sendCommandProgress(commandId, 100, "invalid", "brightness invalido.", 0);
+      return;
+    }
+
+    gBrightnessCap = clampBrightnessToSafeRange(brightnessValue);
+    gPrefs.putUChar("brightnessCap", gBrightnessCap);
+    setMatrixBrightness(resolveAppliedBrightness());
+    updateTestLedDutyFromBrightness(gAppliedBrightness);
+    applyTestLedState();
+    sendTelemetry(true);
+
+    sendCommandProgress(commandId, 100, "set-brightness", "Brilho atualizado.", 1);
+    return;
+  }
+
+  if (strcmp(command, "install_app") == 0) {
+    String appId = parameters["appId"] | "";
+    String appName = parameters["displayName"] | "";
+    String configJson = parameters["configJson"] | "";
+
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    if (appId.length() == 0) {
+      sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
+      return;
+    }
+
+    sendCommandProgress(commandId, 70, "install-app", "Salvando app...");
+    gActiveAppId = appId;
+    gActiveAppName = appName.length() > 0 ? appName : appId;
+    gActiveAppConfig = configJson;
+    gPrefs.putString("activeAppId", gActiveAppId);
+    gPrefs.putString("activeAppName", gActiveAppName);
+    gPrefs.putString("activeAppConfig", gActiveAppConfig);
+    sendTelemetry(true);
+
+    sendCommandProgress(commandId, 100, "install-app", "App instalado.", 1);
+    return;
+  }
+
+  if (strcmp(command, "activate_app") == 0) {
+    String appId = parameters["appId"] | "";
+    String appName = parameters["displayName"] | "";
+
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    if (appId.length() == 0) {
+      sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
+      return;
+    }
+
+    gActiveAppId = appId;
+    gActiveAppName = appName.length() > 0 ? appName : appId;
+    gPrefs.putString("activeAppId", gActiveAppId);
+    gPrefs.putString("activeAppName", gActiveAppName);
+    sendTelemetry(true);
+
+    sendCommandProgress(commandId, 100, "activate-app", "App ativado.", 1);
+    return;
+  }
+
+  if (strcmp(command, "set_app_config") == 0) {
+    String appId = parameters["appId"] | "";
+    String configJson = parameters["configJson"] | "";
+
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    if (appId.length() == 0) {
+      sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
+      return;
+    }
+
+    gActiveAppId = appId;
+    gActiveAppConfig = configJson;
+    gPrefs.putString("activeAppId", gActiveAppId);
+    gPrefs.putString("activeAppConfig", gActiveAppConfig);
+    sendTelemetry(true);
+
+    sendCommandProgress(commandId, 100, "set-app-config", "Configuracao aplicada.", 1);
+    return;
+  }
+
+  sendCommandProgress(commandId, 100, "unknown", "Comando desconhecido.", 0);
+}
+
+void onMqttMessage(char* topic, uint8_t* payload, unsigned int length) {
+  if (topic == nullptr || payload == nullptr || length == 0 || gDeviceId.isEmpty()) {
+    return;
+  }
+
+  String expectedTopic = buildDeviceMqttTopic("commands");
+  if (!expectedTopic.equals(topic)) {
+    return;
+  }
+
+  JsonDocument control;
+  if (deserializeJson(control, payload, length) != DeserializationError::Ok) {
+    return;
+  }
+
+  handleControlCommandMessage(control);
 }
 
 // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
@@ -1176,172 +1539,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
   if (deserializeJson(control, payload, len) != DeserializationError::Ok) {
     return;
   }
-
-  const char *command = control["command"] | "";
-  String commandId = control["commandId"] | "";
-  JsonObjectConst parameters = control["parameters"].as<JsonObjectConst>();
-
-  if (strcmp(command, "enter_provisioning") == 0) {
-    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
-    postCommandAck(commandId, true, "Entrando em provisioning.", 100, "enter-provisioning");
-    sendCommandProgress(commandId, 100, "enter-provisioning", "Entrando em provisioning.", 1);
-    enterProvisioningMode(true, "command_enter_provisioning");
-    return;
-  }
-
-  if (strcmp(command, "revoke_and_restart") == 0) {
-    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
-    postCommandAck(commandId, true, "Revogando e reiniciando.", 100, "revoke-restart");
-    sendCommandProgress(commandId, 100, "revoke-restart", "Reiniciando dispositivo.", 1);
-    gPrefs.remove("deviceId");
-    gPrefs.remove("token");
-    delay(200);
-    ESP.restart();
-    return;
-  }
-
-  if (strcmp(command, "test_led") == 0) {
-    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
-
-    JsonVariantConst enabledValue = parameters["enabled"];
-    if (!enabledValue.isNull()) {
-      bool enabled = false;
-      if (!tryParseBooleanParameter(enabledValue, enabled)) {
-        postCommandAck(commandId, false, "Parametro enabled invalido.", 100, "invalid", "param_invalid");
-        sendCommandProgress(commandId, 100, "invalid", "Parametro enabled invalido.", 0);
-        return;
-      }
-
-      Serial.printf("[led] parametro legado enabled recebido: %s\n", enabled ? "true" : "false");
-      if (gAuxLedAvailable) {
-        gTestLedEnabled = enabled;
-        gPrefs.putBool("testLedEnabled", gTestLedEnabled);
-      } else {
-        gTestLedEnabled = false;
-        gPrefs.putBool("testLedEnabled", false);
-      }
-
-      updateTestLedDutyFromBrightness(resolveAppliedBrightness());
-      clearTestLed();
-      applyTestLedState();
-      sendTelemetry(true);
-      const char* message = gAuxLedAvailable
-          ? (gTestLedEnabled ? "Compat legado: LED auxiliar habilitado." : "Compat legado: LED auxiliar desabilitado.")
-          : "Compat legado: sem LED auxiliar, parametro enabled ignorado.";
-      postCommandAck(commandId, true, message, 100, "set-test-led-compat");
-      sendCommandProgress(commandId, 100, "set-test-led-compat", message, 1);
-      return;
-    }
-
-    if (!isTestLedAvailable()) {
-      postCommandAck(commandId, false, "Nenhum LED de teste disponivel neste hardware.", 100, "test-led-unavailable", "test_led_unavailable");
-      sendCommandProgress(commandId, 100, "test-led-unavailable", "Nenhum LED de teste disponivel neste hardware.", 0);
-      return;
-    }
-
-    triggerTestLed();
-    postCommandAck(commandId, true, "Teste de LED acionado.", 100, "test-led");
-    sendCommandProgress(commandId, 100, "test-led", "Teste de LED acionado.", 1);
-    return;
-  }
-
-  if (strcmp(command, "set_brightness") == 0) {
-    String brightnessRaw = parameters["brightness"] | "";
-
-    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
-    if (brightnessRaw.length() == 0) {
-      postCommandAck(commandId, false, "brightness ausente.", 100, "invalid", "brightness_invalid");
-      sendCommandProgress(commandId, 100, "invalid", "brightness ausente.", 0);
-      return;
-    }
-
-    const int brightnessValue = brightnessRaw.toInt();
-    if (brightnessValue == 0 && brightnessRaw != "0") {
-      postCommandAck(commandId, false, "brightness invalido.", 100, "invalid", "brightness_invalid");
-      sendCommandProgress(commandId, 100, "invalid", "brightness invalido.", 0);
-      return;
-    }
-
-    gBrightnessCap = clampBrightnessToSafeRange(brightnessValue);
-    gPrefs.putUChar("brightnessCap", gBrightnessCap);
-    setMatrixBrightness(resolveAppliedBrightness());
-    updateTestLedDutyFromBrightness(gAppliedBrightness);
-    applyTestLedState();
-    sendTelemetry(true);
-
-    postCommandAck(commandId, true, "Brilho atualizado.", 100, "set-brightness");
-    sendCommandProgress(commandId, 100, "set-brightness", "Brilho atualizado.", 1);
-    return;
-  }
-  if (strcmp(command, "install_app") == 0) {
-    String appId = parameters["appId"] | "";
-    String appName = parameters["displayName"] | "";
-    String configJson = parameters["configJson"] | "";
-
-    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
-    if (appId.length() == 0) {
-      postCommandAck(commandId, false, "appId ausente.", 100, "invalid", "app_invalid");
-      sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
-      return;
-    }
-
-    sendCommandProgress(commandId, 70, "install-app", "Salvando app...");
-    gActiveAppId = appId;
-    gActiveAppName = appName.length() > 0 ? appName : appId;
-    gActiveAppConfig = configJson;
-    gPrefs.putString("activeAppId", gActiveAppId);
-    gPrefs.putString("activeAppName", gActiveAppName);
-    gPrefs.putString("activeAppConfig", gActiveAppConfig);
-
-    postCommandAck(commandId, true, "App instalado.", 100, "install-app");
-    sendCommandProgress(commandId, 100, "install-app", "App instalado.", 1);
-    return;
-  }
-
-  if (strcmp(command, "activate_app") == 0) {
-    String appId = parameters["appId"] | "";
-    String appName = parameters["displayName"] | "";
-
-    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
-    if (appId.length() == 0) {
-      postCommandAck(commandId, false, "appId ausente.", 100, "invalid", "app_invalid");
-      sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
-      return;
-    }
-
-    gActiveAppId = appId;
-    gActiveAppName = appName.length() > 0 ? appName : appId;
-    gPrefs.putString("activeAppId", gActiveAppId);
-    gPrefs.putString("activeAppName", gActiveAppName);
-
-    postCommandAck(commandId, true, "App ativado.", 100, "activate-app");
-    sendCommandProgress(commandId, 100, "activate-app", "App ativado.", 1);
-    return;
-  }
-
-  if (strcmp(command, "set_app_config") == 0) {
-    String appId = parameters["appId"] | "";
-    String configJson = parameters["configJson"] | "";
-
-    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
-    if (appId.length() == 0) {
-      postCommandAck(commandId, false, "appId ausente.", 100, "invalid", "app_invalid");
-      sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
-      return;
-    }
-
-    gActiveAppId = appId;
-    gActiveAppConfig = configJson;
-    gPrefs.putString("activeAppId", gActiveAppId);
-    gPrefs.putString("activeAppConfig", gActiveAppConfig);
-
-    postCommandAck(commandId, true, "Configuracao de app aplicada.", 100, "set-app-config");
-    sendCommandProgress(commandId, 100, "set-app-config", "Configuracao aplicada.", 1);
-    return;
-  }
-
-  postCommandAck(commandId, false, "Comando desconhecido.", 100, "unknown", "unknown_command");
-  sendCommandProgress(commandId, 100, "unknown", "Comando desconhecido.", 0);
+  handleControlCommandMessage(control);
 }
 
 void connectWebSocket() {
@@ -1363,6 +1561,48 @@ void connectWebSocket() {
   gWs.begin(gServerHost.c_str(), gServerPort, path.c_str());
   gWs.onEvent(onWsEvent);
   gWs.setReconnectInterval(2000);
+}
+
+void connectMqtt() {
+  normalizeMqttConfig();
+  if (gDeviceId.isEmpty() || gToken.isEmpty() || gMqttHost.isEmpty()) {
+    return;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  if (gMqtt.connected()) {
+    return;
+  }
+
+  gMqtt.setServer(gMqttHost.c_str(), gMqttPort);
+  gMqtt.setCallback(onMqttMessage);
+  gMqtt.setBufferSize(kMqttPacketBufferBytes);
+
+  String presenceTopic = buildDeviceMqttTopic("presence");
+  String offlinePayload = buildPresencePayload("offline");
+  Serial.printf("[mqtt] conectando em mqtt://%s:%u (%s)\n", gMqttHost.c_str(), gMqttPort, gMqttRootTopic.c_str());
+
+  const bool connected = gMqtt.connect(
+      gDeviceId.c_str(),
+      gDeviceId.c_str(),
+      gToken.c_str(),
+      presenceTopic.c_str(),
+      1,
+      true,
+      offlinePayload.c_str());
+
+  if (!connected) {
+    gMqttDisconnectedSinceMs = millis();
+    return;
+  }
+
+  gMqttDisconnectedSinceMs = 0;
+  (void)gMqtt.subscribe(buildDeviceMqttTopic("commands").c_str(), 1);
+  (void)publishPresence("online");
+  sendTelemetry(true);
 }
 
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
@@ -1449,6 +1689,10 @@ void setup() {
 
   gServerHost = gPrefs.getString("host", "");
   gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
+  gMqttHost = gPrefs.getString("mqttHost", "");
+  gMqttPort = static_cast<uint16_t>(atoi(gPrefs.getString("mqttPort", "5273").c_str()));
+  gMqttRootTopic = gPrefs.getString("mqttRootTopic", kDefaultMqttRootTopic);
+  normalizeMqttConfig();
   gDeviceId = gPrefs.getString("deviceId", "");
   gToken = gPrefs.getString("token", "");
   gActiveAppId = gPrefs.getString("activeAppId", "");
@@ -1466,6 +1710,10 @@ void setup() {
 
     gServerHost = gPrefs.getString("host", "");
     gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
+    gMqttHost = gPrefs.getString("mqttHost", "");
+    gMqttPort = static_cast<uint16_t>(atoi(gPrefs.getString("mqttPort", "5273").c_str()));
+    gMqttRootTopic = gPrefs.getString("mqttRootTopic", kDefaultMqttRootTopic);
+    normalizeMqttConfig();
     gDeviceId = gPrefs.getString("deviceId", "");
     gToken = gPrefs.getString("token", "");
   }
@@ -1491,6 +1739,7 @@ void setup() {
   } else if (bootWifiConnected) {
     Serial.println("[wifi_connected] Wi-Fi conectado no boot.");
     setConnectivityState(kWifiStateConnected, "wifi_connected", true);
+    connectMqtt();
     connectWebSocket();
   } else {
     Serial.println("[wifi_connecting] sem Wi-Fi no boot, aguardando reconexao.");
@@ -1518,6 +1767,7 @@ void loop() {
       Serial.println("[wifi] fallback para provisioning apos queda prolongada.");
       (void)startProvisioningPortal("wifi_disconnected_fallback");
       gWifiDisconnectedSinceMs = 0;
+      connectMqtt();
       connectWebSocket();
     } else {
       delay(120);
@@ -1538,7 +1788,22 @@ void loop() {
   }
 
   setConnectivityState(kWifiStateConnected, "wifi_connected");
+  gMqtt.loop();
   gWs.loop();
+
+  if (!gMqtt.connected()) {
+    if (gMqttDisconnectedSinceMs == 0) {
+      gMqttDisconnectedSinceMs = millis();
+    }
+
+    if (millis() - gMqttDisconnectedSinceMs >= kMqttReconnectRetryMs) {
+      connectMqtt();
+      gMqttDisconnectedSinceMs = millis();
+    }
+  } else {
+    gMqttDisconnectedSinceMs = 0;
+    sendTelemetry(false);
+  }
 
   if (!gWs.isConnected()) {
     if (gWsDisconnectedSinceMs == 0) {
@@ -1553,7 +1818,6 @@ void loop() {
     }
   } else {
     gWsDisconnectedSinceMs = 0;
-    sendTelemetry(false);
   }
 
   if (millis() - gLastFrameMs > 15000) {

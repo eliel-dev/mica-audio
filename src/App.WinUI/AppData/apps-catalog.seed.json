@@ -2,34 +2,15 @@
   "schemaVersion": 2,
   "apps": [
     {
-      "id": "accuweather",
-      "name": "Clima",
-      "summary": "Previsão do tempo",
-      "description": "Mostra temperatura e condição atual de Timbó, SC em formato HUB75.",
-      "author": "Mica Audio",
-      "packageName": "accuweather",
-      "fileName": "accuweather.star",
-      "recommendedIntervalMinutes": 5,
-      "category": "clima",
-      "preview": {
-        "kind": "weather",
-        "speed": 1
-      },
-      "modifiers": [],
-      "runtime": {
-        "kind": "none"
-      }
-    },
-    {
       "id": "analogclock",
-      "name": "Relógio",
-      "summary": "Relógio digital HUB75",
-      "description": "Exibe a hora de Brasília com watchfaces inspiradas em mostradores de smartwatch.",
+      "name": "Relogio",
+      "summary": "Relogio digital HUB75",
+      "description": "Exibe a hora de Brasilia com watchfaces inspiradas em mostradores de smartwatch.",
       "author": "Mica Audio",
       "packageName": "analogclock",
       "fileName": "analogclock.star",
       "recommendedIntervalMinutes": 0,
-      "category": "relógio",
+      "category": "relogio",
       "preview": {
         "kind": "clock",
         "speed": 1
@@ -47,7 +28,7 @@
           "key": "watchfaceStyle",
           "label": "Estilo da watchface",
           "type": "Select",
-          "description": "Define o estilo visual dos dígitos.",
+          "description": "Define o estilo visual dos digitos.",
           "defaultValue": "pixel",
           "required": true,
           "options": [
@@ -69,7 +50,7 @@
           "key": "fontColor",
           "label": "Cor da fonte",
           "type": "Select",
-          "description": "Paleta pronta para os dígitos no painel.",
+          "description": "Paleta pronta para os digitos no painel.",
           "defaultValue": "cyan",
           "required": true,
           "options": [
@@ -123,16 +104,16 @@
           "key": "sourceType",
           "label": "Tipo",
           "type": "Select",
-          "description": "Arquivo único ou apresentação de slides.",
+          "description": "Arquivo unico ou apresentacao de slides.",
           "defaultValue": "file",
           "required": true,
           "options": [
             {
-              "label": "Arquivo único",
+              "label": "Arquivo unico",
               "value": "file"
             },
             {
-              "label": "Apresentação de slides",
+              "label": "Apresentacao de slides",
               "value": "slideshow"
             }
           ]
@@ -141,7 +122,7 @@
           "key": "scaleMode",
           "label": "Ajuste de imagem",
           "type": "Select",
-          "description": "Como a imagem é redimensionada para os 128×64 pixels do painel.",
+          "description": "Como a imagem e redimensionada para os 128x64 pixels do painel.",
           "defaultValue": "fit",
           "required": true,
           "options": [
@@ -163,7 +144,7 @@
           "key": "slideshowInterval",
           "label": "Intervalo",
           "type": "Select",
-          "description": "Tempo antes de trocar para a próxima imagem.",
+          "description": "Tempo antes de trocar para a proxima imagem.",
           "defaultValue": "10s",
           "required": false,
           "options": [
@@ -190,4 +171,3 @@
     }
   ]
 }
-

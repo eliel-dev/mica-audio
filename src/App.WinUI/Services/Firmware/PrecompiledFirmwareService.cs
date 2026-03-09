@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
@@ -9,8 +10,14 @@ namespace App.WinUI.Services.Firmware;
 // DOCS: docs/wiki/guides/setup-new-device.md#referencias-de-codigo
 internal sealed partial class PrecompiledFirmwareService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public const string Esp32S3DevKitC1Board = "esp32s3_devkitc1";
     public const string Hub75PanelP25_128x64_Smd2121_Scan32 = "hub75_p2_5_128x64_smd2121_scan32";
+    public const string RequiredControlPlane = "mqtt";
 
     private static readonly IReadOnlyList<PrecompiledFirmwareOption> Options =
     [
@@ -101,6 +108,72 @@ internal sealed partial class PrecompiledFirmwareService
         return false;
     }
 
+    public bool TryResolveArtifact(string boardModel, string panelType, string profile, out ResolvedFirmwareArtifact artifact, out string error)
+    {
+        artifact = null!;
+        error = string.Empty;
+
+        if (!TryGetOption(boardModel, panelType, profile, out var option, out error))
+        {
+            return false;
+        }
+
+        return TryResolveArtifact(option.Id, out artifact, out error);
+    }
+
+    public bool TryResolveArtifact(string optionId, out ResolvedFirmwareArtifact artifact, out string error)
+    {
+        artifact = null!;
+        error = string.Empty;
+
+        if (!TryResolveSource(optionId, out var sourcePath, out error))
+        {
+            return false;
+        }
+
+        var option = Options.First(item => string.Equals(item.Id, optionId, StringComparison.OrdinalIgnoreCase));
+        var manifestPath = Path.Combine(Path.GetDirectoryName(sourcePath)!, GetManifestFileName(option.FileName));
+        if (!File.Exists(manifestPath))
+        {
+            error = $"Manifesto do firmware nao encontrado para '{option.DisplayName}' ({Path.GetFileName(manifestPath)}).";
+            return false;
+        }
+
+        FirmwareArtifactManifest? manifest;
+        try
+        {
+            using var stream = File.OpenRead(manifestPath);
+            manifest = JsonSerializer.Deserialize<FirmwareArtifactManifest>(stream, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            error = $"Manifesto do firmware invalido para '{option.DisplayName}' ({Path.GetFileName(manifestPath)}).";
+            return false;
+        }
+        catch (IOException ex)
+        {
+            error = $"Falha ao abrir manifesto do firmware: {ex.Message}";
+            return false;
+        }
+
+        if (manifest is null)
+        {
+            error = $"Manifesto do firmware vazio para '{option.DisplayName}'.";
+            return false;
+        }
+
+        if (!string.Equals(manifest.Profile, option.Profile, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(manifest.BoardModel, option.BoardModel, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(manifest.PanelType, option.PanelType, StringComparison.OrdinalIgnoreCase))
+        {
+            error = $"Manifesto do firmware nao corresponde ao pacote esperado para '{option.DisplayName}'.";
+            return false;
+        }
+
+        artifact = new ResolvedFirmwareArtifact(option, sourcePath, manifestPath, manifest);
+        return true;
+    }
+
     public bool TryResolveSource(string optionId, out string sourcePath, out string error)
     {
         sourcePath = string.Empty;
@@ -141,6 +214,16 @@ internal sealed partial class PrecompiledFirmwareService
 
         error = $"Arquivo de firmware nao encontrado para '{option.DisplayName}' ({option.FileName}).";
         return false;
+    }
+
+    public static string GetManifestFileName(string firmwareFileName)
+    {
+        if (string.IsNullOrWhiteSpace(firmwareFileName))
+        {
+            throw new ArgumentException("Nome do firmware invalido.", nameof(firmwareFileName));
+        }
+
+        return Path.ChangeExtension(firmwareFileName, "manifest.json");
     }
 
     public async Task CopyToAsync(string optionId, string destinationPath, CancellationToken cancellationToken = default)

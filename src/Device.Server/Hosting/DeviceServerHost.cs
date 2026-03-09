@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
+using MQTTnet.Server;
 
 namespace Device.Server.Hosting;
 
@@ -43,6 +44,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     private DeviceServerRuntimeConfig runtimeConfig = DeviceServerRuntimeConfig.From(new ServerConfig());
     private WebApplication? app;
+    private MqttServer? mqttServer;
     private CancellationTokenSource? appCts;
 
     public DeviceServerHost()
@@ -80,6 +82,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         var builder = WebApplication.CreateSlimBuilder();
+        DeviceServerObservability.ConfigureLogging(builder.Logging);
+        DeviceServerObservability.ConfigureOpenTelemetry(builder.Services);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
             kestrel.Limits.MaxRequestBodySize = localRuntimeConfig.MaxJsonBodyBytes;
@@ -148,10 +152,36 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         MapRoutes(localApp);
 
-        await localApp.StartAsync(appCts!.Token).ConfigureAwait(false);
+        MqttServer? localMqttServer = null;
+        try
+        {
+            localMqttServer = CreateMqttServer(localRuntimeConfig);
+            await localMqttServer.StartAsync().ConfigureAwait(false);
+            await localApp.StartAsync(appCts!.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (localMqttServer is not null)
+            {
+                await StopMqttServerAsync(localMqttServer).ConfigureAwait(false);
+            }
+
+            try
+            {
+                await localApp.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore startup cleanup races
+            }
+
+            throw;
+        }
+
         lock (gate)
         {
             app = localApp;
+            mqttServer = localMqttServer;
         }
 
         await Task.Delay(30, cancellationToken).ConfigureAwait(false);
@@ -162,11 +192,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         Log($"Servidor de dispositivos ativo em http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
+        Log($"Broker MQTT ativo em mqtt://{ResolveAdvertisedMqttHost(localRuntimeConfig)}:{localRuntimeConfig.MqttPort} ({localRuntimeConfig.MqttRootTopic}/{{deviceId}})");
     }
 
     public async Task StopAsync()
     {
         WebApplication? localApp;
+        MqttServer? localMqttServer;
         CancellationTokenSource? localCts;
         PendingTrackedCommand[] pendingToCancel;
         DeviceSession[] sessionsToDispose;
@@ -181,6 +213,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
             localCts = appCts;
             app = null;
+            localMqttServer = mqttServer;
+            mqttServer = null;
             appCts = null;
             pendingToCancel = pendingTrackedCommands.Drain();
         }
@@ -205,6 +239,10 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         {
             localCts?.Cancel();
             await localApp.StopAsync().ConfigureAwait(false);
+            if (localMqttServer is not null)
+            {
+                await StopMqttServerAsync(localMqttServer).ConfigureAwait(false);
+            }
         }
         catch
         {
@@ -333,6 +371,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         DeviceSession? removedSession = null;
+        MqttServer? localMqttServer;
         try
         {
             lock (gate)
@@ -341,6 +380,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 {
                     return false;
                 }
+
+                localMqttServer = mqttServer;
+            }
+
+            if (localMqttServer is not null)
+            {
+                ScheduleRetainedDeviceStateCleanup(localMqttServer, deviceId);
             }
 
             NotifyDevicesChanged();
@@ -441,6 +487,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             Token = state.Record.Token,
             WsPath = "/ws/v1/stream",
             HttpBase = $"http://{host}:{runtimeConfig.Port}",
+            MqttHost = host,
+            MqttPort = runtimeConfig.MqttPort,
+            MqttRootTopic = runtimeConfig.MqttRootTopic,
             MdnsService = runtimeConfig.MdnsServiceName,
         });
     }
@@ -485,6 +534,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         var ws = await ctx.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
         state.MarkAuthenticated();
         state.AttachSocket(ws, ctx.Connection.RemoteIpAddress?.ToString());
+        if (!state.IsControlPlaneOnline)
+        {
+            Log($"Stream WS conectado sem control plane MQTT para {state.Record.DeviceId}; firmware legado nao suportado para comandos.");
+        }
+
         NotifyDevicesChanged();
 
         var sendTask = Task.Run(() => SendLoopAsync(state, ws, state.SendToken));
@@ -804,6 +858,14 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         return ctx.Connection.LocalIpAddress?.ToString() ?? "127.0.0.1";
     }
 
+    private static string ResolveAdvertisedMqttHost(DeviceServerRuntimeConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        return string.IsNullOrWhiteSpace(config.PublicHost)
+            ? config.ListenHost
+            : config.PublicHost;
+    }
+
     private void NotifyDevicesChanged()
     {
         DevicesChanged?.Invoke(this, EventArgs.Empty);
@@ -811,6 +873,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     private void Log(string message)
     {
+        DeviceServerObservability.LogHostMessage(message);
         LogMessage?.Invoke(this, message);
     }
 }

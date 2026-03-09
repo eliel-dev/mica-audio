@@ -19,6 +19,24 @@ Documentar o fluxo oficial e estavel de onboarding:
 6. Conectar no AP `MicaAudio-Setup-xxxx`.
 7. No portal do ESP32, informar Wi-Fi/servidor e o codigo de pareamento.
 
+## Campo Servidor no portal AP
+
+1. O portal AP voltou a expor um campo editavel `Servidor`.
+2. Formatos aceitos:
+   - `http://192.168.1.16:5272`
+   - `192.168.1.16:5272`
+   - `192.168.1.16`
+3. Quando a porta nao for informada, o firmware assume `5272`.
+4. Se ja existir host salvo no ESP, o campo abre preenchido com esse valor.
+5. Se o valor digitado for invalido, o firmware nao apaga um host valido ja salvo; ele registra o erro em serial e reaproveita a configuracao anterior quando possivel.
+
+## Observacao de protocolo
+
+1. O pareamento HTTP continua igual para o usuario final.
+2. A resposta de pareamento agora tambem entrega `mqttHost`, `mqttPort` e `mqttRootTopic`.
+3. O firmware persiste esses campos automaticamente e usa MQTT como control plane apos concluir o onboarding.
+4. O WS permanece reservado ao stream visual binario; nao ha passo extra de configuracao na UI para MQTT nesta fase.
+
 ## Contrato visual do wizard
 
 1. Fonte canonica: `C:\Users\eliels\Pictures\nice\mica-dashboard.html`.
@@ -35,10 +53,14 @@ Documentar o fluxo oficial e estavel de onboarding:
 ### Pipeline executado pelo app
 
 1. Resolve firmware oficial `esp32s3-devkitc1-128x64-dma_exp_merged.bin`.
-2. Flasha o ESP32-S3 via `esptool`.
-3. Gera `pair code` e mostra em modal.
-4. Finaliza wizard e orienta provisioning via AP.
-5. O device fica online no dashboard apos configuracao no portal.
+2. Valida manifesto sidecar `esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json`.
+3. So prossegue com flash quando o manifesto declarar `controlPlane = mqtt`.
+4. Flasha o ESP32-S3 via `esptool`.
+5. Gera `pair code` e mostra em modal.
+6. Finaliza wizard e orienta provisioning via AP.
+7. O portal AP permite confirmar ou editar manualmente o campo `Servidor` antes do pareamento.
+8. O device fica online no dashboard apos configuracao no portal.
+9. O status `Online` agora depende do control plane MQTT estar conectado.
 
 ## Perfil oficial do comando de flash
 
@@ -77,8 +99,15 @@ Se onboarding USB falhar:
 
 1. Validar porta COM e cabo.
 2. Atualizar lista de portas.
-3. Repetir onboarding.
-4. Provisionar manualmente pelo AP e repetir somente pareamento.
+3. Se a mensagem citar manifesto/compatibilidade, atualizar o pacote de firmware do app antes de repetir.
+4. Repetir onboarding.
+5. Provisionar manualmente pelo AP e repetir somente pareamento.
+
+## Diagnostico de firmware legado
+
+1. Se o card do device mostrar `Firmware legado`, o device ainda esta falando pelo caminho passivo de WS-texto/HTTP sem control plane MQTT.
+2. Nessa situacao o stream visual pode continuar funcionando, mas comandos e o status `Online` nao serao ativados.
+3. A correcao oficial e regravar o firmware precompilado atual pelo wizard USB.
 
 ## Checklist rapido
 
@@ -86,7 +115,10 @@ Se onboarding USB falhar:
 2. Wizard abre com selecao de porta COM + progresso de flash.
 3. Porta COM detectada automaticamente (ou via `Atualizar portas`).
 4. Ao fim do flash, app mostra codigo de pareamento.
-5. Device entra online apos provisioning via AP.
+5. Portal AP mostra o campo `Servidor`, aceitando URL completa ou `host[:porta]`.
+6. Device conecta MQTT + WS automaticamente apos provisioning via AP.
+7. Device entra online apos subir o control plane MQTT.
+8. Device novo nao deve aparecer como `Firmware legado`; se aparecer, refazer o flash com o pacote atualizado.
 
 ## Referencias de codigo
 

@@ -100,6 +100,20 @@ internal sealed class DeviceLogBook
                 var deviceId = current.DeviceId;
                 seenIds.Add(deviceId);
                 previousById.TryGetValue(deviceId, out var previousSnapshot);
+                var previousControlPlaneState = previousSnapshot?.ControlPlaneState ?? DeviceControlPlaneState.Offline;
+                var currentControlPlaneState = current.ControlPlaneState;
+
+                if (previousControlPlaneState != DeviceControlPlaneState.LegacyOnly
+                    && currentControlPlaneState == DeviceControlPlaneState.LegacyOnly)
+                {
+                    AppendDeviceLocked(deviceId, "Firmware legado detectado; regrave para ativar controle MQTT.", now);
+                }
+
+                if (previousControlPlaneState == DeviceControlPlaneState.LegacyOnly
+                    && currentControlPlaneState == DeviceControlPlaneState.MqttOnline)
+                {
+                    AppendDeviceLocked(deviceId, "Control plane MQTT ativo; firmware compativel confirmado.", now);
+                }
 
                 var isOnline = current.Status == DeviceStatus.Online;
                 if (previousSnapshot is null)

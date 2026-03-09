@@ -1,19 +1,28 @@
+using App.WinUI.Infrastructure.Http;
+using App.WinUI.Infrastructure.Observability;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace App.WinUI.Services.Apps;
 
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md#integracoes-http-externas
 // DOCS: docs/wiki/guides/troubleshoot-city-autocomplete.md#passos
-internal sealed class CityAutocompleteService
+internal sealed partial class CityAutocompleteService
 {
     internal const int MinQueryLength = 2;
     internal static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
 
-    private static readonly HttpClient DefaultClient = CreateDefaultClient();
-    private readonly HttpClient client;
+    private readonly HttpClient? client;
+    private readonly IHttpClientFactory? clientFactory;
+    private readonly string? clientName;
+    private readonly ILogger<CityAutocompleteService>? logger;
 
     internal enum CitySearchFailureKind
     {
@@ -57,15 +66,26 @@ internal sealed class CityAutocompleteService
         public bool HasFailure => FailureKind is not CitySearchFailureKind.None and not CitySearchFailureKind.Cancelled;
     }
 
-    public CityAutocompleteService()
-        : this(DefaultClient)
+    public CityAutocompleteService(IHttpClientFactory clientFactory, ILogger<CityAutocompleteService> logger)
+        : this(clientFactory, ExternalHttpClients.OpenMeteoGeocodingClientName, logger)
     {
     }
 
-    public CityAutocompleteService(HttpClient client)
+    internal CityAutocompleteService(IHttpClientFactory clientFactory, string clientName, ILogger<CityAutocompleteService>? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(clientFactory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientName);
+
+        this.clientFactory = clientFactory;
+        this.clientName = clientName;
+        this.logger = logger;
+    }
+
+    internal CityAutocompleteService(HttpClient client, ILogger<CityAutocompleteService>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         this.client = client;
+        this.logger = logger;
     }
 
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como service por instancia para preservar o registro em DI e permitir evolucao futura sem churn de contrato.")]
@@ -82,11 +102,23 @@ internal sealed class CityAutocompleteService
         }
 
         var encoded = Uri.EscapeDataString(trimmedQuery);
-        var url = $"https://geocoding-api.open-meteo.com/v1/search?name={encoded}&count=20&language=pt&format=json&countryCode=BR";
+        var url = $"v1/search?name={encoded}&count=20&language=pt&format=json&countryCode=BR";
+        using var activity = AppObservability.StartActivity("city-autocomplete.search", AppObservability.AppComponent);
+        activity?.SetTag(AppObservability.FeatureKey, "autocomplete");
+        activity?.SetTag(AppObservability.HttpClientNameKey, ResolveClientNameForTelemetry());
+        activity?.SetTag("query.length", trimmedQuery.Length);
+        using var scope = AppObservability.BeginScope(
+            logger,
+            activity,
+            (AppObservability.ComponentKey, AppObservability.AppComponent),
+            (AppObservability.MicaComponentKey, AppObservability.AppComponent),
+            (AppObservability.OperationKey, "city-autocomplete.search"),
+            (AppObservability.FeatureKey, "autocomplete"),
+            (AppObservability.HttpClientNameKey, ResolveClientNameForTelemetry()));
 
         try
         {
-            using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            using var response = await ResolveClient().GetAsync(url, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
             var payload = await response.Content.ReadFromJsonAsync<OpenMeteoResponse>(cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -104,53 +136,114 @@ internal sealed class CityAutocompleteService
                 })
                 .ToArray();
 
-            return new CitySearchResult(
+            var result = new CitySearchResult(
                 suggestions,
                 rawResults.Length,
                 suggestions.Length,
                 CitySearchFailureKind.None,
                 string.Empty);
+            activity?.SetTag("results.raw", rawResults.Length);
+            activity?.SetTag("results.filtered", suggestions.Length);
+            if (logger is not null)
+            {
+                LogAutocompleteSuccess(logger, suggestions.Length);
+            }
+
+            return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            activity?.SetTag("cancelled", true);
             return new CitySearchResult(Array.Empty<CitySuggestion>(), 0, 0, CitySearchFailureKind.Cancelled, string.Empty);
         }
-        catch (OperationCanceledException)
+        catch (TimeoutRejectedException)
         {
-            return new CitySearchResult(
+            var result = new CitySearchResult(
                 Array.Empty<CitySuggestion>(),
                 0,
                 0,
                 CitySearchFailureKind.Timeout,
                 $"A busca demorou mais que {RequestTimeout.TotalSeconds:0} segundos.");
+            activity?.SetStatus(ActivityStatusCode.Error, result.FailureMessage);
+            if (logger is not null)
+            {
+                LogAutocompleteTimeout(logger);
+            }
+
+            return result;
         }
-        catch (HttpRequestException ex)
+        catch (OperationCanceledException)
         {
-            return new CitySearchResult(
+            var result = new CitySearchResult(
+                Array.Empty<CitySuggestion>(),
+                0,
+                0,
+                CitySearchFailureKind.Timeout,
+                $"A busca demorou mais que {RequestTimeout.TotalSeconds:0} segundos.");
+            activity?.SetStatus(ActivityStatusCode.Error, result.FailureMessage);
+            if (logger is not null)
+            {
+                LogAutocompleteTimeout(logger);
+            }
+
+            return result;
+        }
+        catch (BrokenCircuitException ex)
+        {
+            var result = new CitySearchResult(
                 Array.Empty<CitySuggestion>(),
                 0,
                 0,
                 CitySearchFailureKind.Http,
                 $"Falha HTTP ao consultar o Open-Meteo: {ex.Message}");
+            AppObservability.SetException(activity, ex);
+            if (logger is not null)
+            {
+                LogAutocompleteCircuitOpen(logger, ex);
+            }
+
+            return result;
+        }
+        catch (HttpRequestException ex)
+        {
+            var result = new CitySearchResult(
+                Array.Empty<CitySuggestion>(),
+                0,
+                0,
+                CitySearchFailureKind.Http,
+                $"Falha HTTP ao consultar o Open-Meteo: {ex.Message}");
+            AppObservability.SetException(activity, ex);
+            if (logger is not null)
+            {
+                LogAutocompleteHttpFailure(logger, ex);
+            }
+
+            return result;
         }
         catch (JsonException ex)
         {
-            return new CitySearchResult(
+            var result = new CitySearchResult(
                 Array.Empty<CitySuggestion>(),
                 0,
                 0,
                 CitySearchFailureKind.InvalidResponse,
                 $"Resposta invalida do Open-Meteo: {ex.Message}");
+            AppObservability.SetException(activity, ex);
+            if (logger is not null)
+            {
+                LogAutocompleteInvalidPayload(logger, ex);
+            }
+
+            return result;
         }
     }
 
-    private static HttpClient CreateDefaultClient()
+    private HttpClient ResolveClient()
     {
-        return new HttpClient
-        {
-            Timeout = RequestTimeout,
-        };
+        return client ?? clientFactory!.CreateClient(clientName!);
     }
+
+    private string ResolveClientNameForTelemetry() => clientName ?? "custom-http-client";
 
     private static string NormalizeCountry(string? value)
     {
@@ -193,4 +286,19 @@ internal sealed class CityAutocompleteService
         [JsonPropertyName("longitude")]
         public double? Longitude { get; init; }
     }
+
+    [LoggerMessage(EventId = 1500, Level = LogLevel.Information, Message = "Autocomplete retornou {SuggestionCount} sugestoes.")]
+    private static partial void LogAutocompleteSuccess(ILogger logger, int suggestionCount);
+
+    [LoggerMessage(EventId = 1501, Level = LogLevel.Warning, Message = "Autocomplete falhou por timeout.")]
+    private static partial void LogAutocompleteTimeout(ILogger logger);
+
+    [LoggerMessage(EventId = 1502, Level = LogLevel.Warning, Message = "Autocomplete falhou com circuit breaker aberto.")]
+    private static partial void LogAutocompleteCircuitOpen(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 1503, Level = LogLevel.Warning, Message = "Autocomplete falhou com erro HTTP.")]
+    private static partial void LogAutocompleteHttpFailure(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 1504, Level = LogLevel.Warning, Message = "Autocomplete recebeu payload invalido.")]
+    private static partial void LogAutocompleteInvalidPayload(ILogger logger, Exception exception);
 }

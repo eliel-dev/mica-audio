@@ -5,7 +5,8 @@
 1. conecta ao servidor local
 2. recebe `StreamFrameV2` tipo `1` (`bins128`) ou tipo `2` (`frame 128x64 RGB565`)
 3. renderiza `drawBars` ou `drawFrame128x64`
-4. reporta `boardModel = esp32s3_devkitc1` e `panelType = hub75_p2_5_128x64_smd2121_scan32`
+4. conecta o control plane MQTT para `presence`, `status` e `commands`
+5. reporta `boardModel = esp32s3_devkitc1` e `panelType = hub75_p2_5_128x64_smd2121_scan32`
 
 ## Perfil oficial
 
@@ -16,12 +17,32 @@
 
 1. `platformio.ini` para largura, altura e o unico env oficial
 2. `main.cpp` para parsing do stream e desenho
-3. artefato BIN embarcado no app
+3. pacote precompilado `BIN + manifesto` embarcado no app
 
 ## Atualizacao 2026-03 - Buffer WS para frame 128x64
 
 - O build do firmware define `WEBSOCKETS_MAX_DATA_SIZE=32768` em `platformio.ini`.
 - O objetivo e suportar com margem payloads binarios grandes do stream `frame 128x64 RGB565` sem queda de conexao por limite de frame no cliente WS.
+
+## Atualizacao 2026-03 - MQTT cutover do control plane
+
+- O firmware passou a usar MQTT para controle e telemetria:
+  - `mica/v1/devices/{deviceId}/commands`
+  - `mica/v1/devices/{deviceId}/command-events`
+  - `mica/v1/devices/{deviceId}/status`
+  - `mica/v1/devices/{deviceId}/presence`
+- `presence` publica `online` no birth e `offline` no will/saida graciosa.
+- `status` continua no heartbeat de `2s`, agora como mensagem MQTT retained.
+- `WStype_BIN` foi preservado intacto como hot path visual; WS-texto virou apenas compatibilidade passiva.
+- O firmware persiste `mqttHost`, `mqttPort` e `mqttRootTopic` em `Preferences`.
+- O pacote oficial entregue pelo app agora inclui:
+  - `esp32s3-devkitc1-128x64-dma_exp_merged.bin`
+  - `esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json`
+- O onboarding valida esse manifesto antes do flash e rejeita pacotes sem `controlPlane = mqtt`.
+- Quando o servidor de pareamento ainda nao informar campos MQTT, o firmware faz fallback para:
+  - `mqttHost = host`
+  - `mqttPort = 5273`
+  - `mqttRootTopic = mica/v1/devices`
 
 ## Atualizacao 2026-03 - Auth WS por header (RSK-002)
 
@@ -48,6 +69,7 @@
 - Fallback estatico: `src/firmware_version.h`.
 - Build precompilado gera `src/firmware_version.auto.h` com carimbo `UTC date + tag + short commit`.
 - O arquivo auto-gerado e temporario (limpo ao final do script de build).
+- O fallback empacotado atual esta em `v2026.03.09-ap-server-field-66c4289`.
 
 ## Atualizacao 2026-03 - Hotfix P0 Wi-Fi/AP + LED auxiliar seguro
 
@@ -75,6 +97,8 @@
   - app faz somente `COM -> flash -> exibe pair code`;
   - provisioning de rede/pair ocorre no portal AP do firmware.
 - O firmware abre AP de setup imediatamente no boot quando detectar configuracao incompleta.
+- O portal AP voltou a expor um campo editavel `Servidor`, aceitando `http://host:porta`, `host:porta` ou `host`.
+- Quando o campo `Servidor` vier vazio ou invalido, o firmware preserva um host salvo valido e registra o motivo em serial/`lastWifiEvent`.
 - O contrato serial `mica.serial.v1` permanece no codigo apenas para compatibilidade futura e diagnostico.
 
 ## Referencias de codigo

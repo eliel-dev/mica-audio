@@ -1,0 +1,358 @@
+using System.Buffers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Device.Protocol.Contracts;
+using Device.Protocol.Models;
+using Device.Server.Hosting;
+using MQTTnet;
+
+namespace Output.Tests;
+
+// DOCS: docs/wiki/modules/device-server-protocol.md#contrato-mqtt-de-controle
+public sealed class DeviceServerHostMqttTests
+{
+    [Fact]
+    public async Task PairingAndServerInfo_ShouldExposeMqttControlPlaneSettings()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            MqttRootTopic = DeviceServerTestHarness.DefaultMqttRootTopic,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-contract");
+        var serverInfo = await client.GetFromJsonAsync<ServerInfoResponse>("/api/v1/server/info");
+
+        Assert.Equal("127.0.0.1", paired.MqttHost);
+        Assert.Equal(mqttPort, paired.MqttPort);
+        Assert.Equal(DeviceServerTestHarness.DefaultMqttRootTopic, paired.MqttRootTopic);
+        Assert.NotNull(serverInfo);
+        Assert.Equal("127.0.0.1", serverInfo!.MqttHost);
+        Assert.Equal(mqttPort, serverInfo.MqttPort);
+        Assert.Equal(DeviceServerTestHarness.DefaultMqttRootTopic, serverInfo.MqttRootTopic);
+    }
+
+    [Fact]
+    public async Task MqttAuthentication_ShouldAcceptValidCredentials_AndRejectInvalidCredentials()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-auth");
+
+        using var validClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+
+        using var invalidClient = new MqttClientFactory().CreateMqttClient();
+        var invalidResult = await invalidClient.ConnectAsync(
+            new MqttClientOptionsBuilder()
+                .WithTcpServer("127.0.0.1", mqttPort)
+                .WithClientId(paired.DeviceId)
+                .WithCredentials(paired.DeviceId, "wrong-token")
+                .WithCleanSession(true)
+                .Build(),
+            CancellationToken.None);
+
+        Assert.Equal(MqttClientConnectResultCode.BadUserNameOrPassword, invalidResult.ResultCode);
+    }
+
+    [Fact]
+    public async Task MqttDisconnect_ShouldRespectGracePeriod_BeforeMarkingDeviceOffline()
+    {
+        var timeProvider = new ManualTimeProvider(new DateTimeOffset(2026, 3, 9, 12, 0, 0, TimeSpan.Zero));
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost(timeProvider);
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-grace");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+
+        var becameOnline = await DeviceServerTestHarness.WaitForConditionAsync(
+            () => DeviceServerTestHarness.GetDeviceStatus(host, paired.DeviceId) == DeviceStatus.Online,
+            TimeSpan.FromSeconds(5));
+        Assert.True(becameOnline, "Device nao entrou em online apos conectar o control plane MQTT.");
+
+        await mqttClient.DisconnectAsync();
+
+        Assert.Equal(DeviceStatus.Online, DeviceServerTestHarness.GetDeviceStatus(host, paired.DeviceId));
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(600));
+        var becameOffline = await DeviceServerTestHarness.WaitForConditionAsync(
+            () => DeviceServerTestHarness.GetDeviceStatus(host, paired.DeviceId) == DeviceStatus.Offline,
+            TimeSpan.FromSeconds(5));
+        Assert.True(becameOffline, "Device nao transitou para offline apos o grace period do control plane MQTT.");
+    }
+
+    [Fact]
+    public async Task MqttStatusPublish_ShouldUpdateSnapshot()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-status");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.PublishTelemetryAsync(mqttClient, paired.DeviceId, new
+        {
+            deviceId = paired.DeviceId,
+            firmwareVersion = "9.9.9",
+            ipAddress = "192.168.1.77",
+            uptimeSeconds = 123,
+            brightnessApplied = 99,
+        });
+
+        var updated = await DeviceServerTestHarness.WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            return snapshot is not null
+                && snapshot.Status == DeviceStatus.Online
+                && snapshot.ControlPlaneState == DeviceControlPlaneState.MqttOnline
+                && snapshot.UptimeSeconds == 123
+                && snapshot.BrightnessApplied == 99
+                && string.Equals(snapshot.FirmwareVersion, "9.9.9", StringComparison.Ordinal)
+                && string.Equals(snapshot.LastKnownIp, "192.168.1.77", StringComparison.Ordinal);
+        }, TimeSpan.FromSeconds(5));
+
+        Assert.True(updated, "Snapshot nao refletiu o status MQTT publicado no timeout esperado.");
+    }
+
+    [Fact]
+    public async Task SendTrackedCommandAsync_ShouldTimeout_WhenDeviceStaysSilent()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+        using var activityCapture = new ActivityCapture(DeviceServerObservability.ActivitySourceName);
+        using var metricCapture = new MetricCapture(DeviceServerObservability.MeterName);
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-timeout");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+
+        var result = await host.SendCommandTrackedAsync(
+            paired.DeviceId,
+            DeviceCommandType.TestLed,
+            timeout: TimeSpan.FromMilliseconds(200));
+
+        Assert.True(result.Accepted);
+        Assert.True(result.Completed);
+        Assert.False(result.Success);
+        Assert.Equal("timeout", result.Stage);
+        Assert.Equal("timeout", result.ErrorCode);
+
+        var activity = Assert.Single(activityCapture.CompletedActivities, item => item.OperationName == "device.command.tracked");
+        Assert.Equal(paired.DeviceId, activity.GetTagItem(DeviceServerObservability.DeviceIdKey));
+        Assert.Equal(result.CommandId, activity.GetTagItem(DeviceServerObservability.CommandIdKey));
+        Assert.Equal(DeviceCommandType.TestLed.ToString(), activity.GetTagItem(DeviceServerObservability.CommandTypeKey));
+        Assert.Equal("timeout", activity.GetTagItem("command.stage"));
+
+        Assert.Contains(metricCapture.Measurements, item =>
+            item.InstrumentName == "mica.device.command.timeout.count"
+            && Equals(item.Tags[DeviceServerObservability.DeviceIdKey], paired.DeviceId));
+        Assert.Contains(metricCapture.Measurements, item =>
+            item.InstrumentName == "mica.device.command.duration"
+            && Equals(item.Tags["stage"], "timeout"));
+    }
+
+    [Fact]
+    public async Task SendTrackedCommandAsync_ShouldPreserveCorrelation_WhenAckArrivesOverMqtt()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+        using var activityCapture = new ActivityCapture(DeviceServerObservability.ActivitySourceName);
+        using var metricCapture = new MetricCapture(DeviceServerObservability.MeterName);
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-success");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.SubscribeAsync(mqttClient, DeviceServerTestHarness.GetCommandsTopic(paired.DeviceId));
+
+        var seenCommandId = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        mqttClient.ApplicationMessageReceivedAsync += async args =>
+        {
+            if (!string.Equals(args.ApplicationMessage.Topic, DeviceServerTestHarness.GetCommandsTopic(paired.DeviceId), StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(args.ApplicationMessage.Payload.ToArray());
+            var commandId = doc.RootElement.GetProperty("commandId").GetString();
+            if (!string.IsNullOrWhiteSpace(commandId) && seenCommandId.TrySetResult(commandId))
+            {
+                await DeviceServerTestHarness.PublishCommandEventAsync(mqttClient, paired.DeviceId, commandId, success: true, progressPercent: 100, stage: "ack", message: "ok");
+            }
+        };
+
+        var result = await host.SendCommandTrackedAsync(
+            paired.DeviceId,
+            DeviceCommandType.TestLed,
+            timeout: TimeSpan.FromSeconds(2));
+        var observedCommandId = await seenCommandId.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(result.Accepted);
+        Assert.True(result.Completed);
+        Assert.True(result.Success);
+        Assert.Equal(observedCommandId, result.CommandId);
+
+        var activity = Assert.Single(activityCapture.CompletedActivities, item => item.OperationName == "device.command.tracked");
+        Assert.Equal(paired.DeviceId, activity.GetTagItem(DeviceServerObservability.DeviceIdKey));
+        Assert.Equal(observedCommandId, activity.GetTagItem(DeviceServerObservability.CommandIdKey));
+        Assert.Equal("ack", activity.GetTagItem("command.stage"));
+        Assert.Contains(activity.Events, item => item.Name == "command.completed");
+
+        Assert.Contains(metricCapture.Measurements, item =>
+            item.InstrumentName == "mica.device.command.duration"
+            && Equals(item.Tags["stage"], "ack")
+            && Equals(item.Tags["success"], true));
+    }
+
+    [Fact]
+    public async Task RemoveDevice_ShouldClearRetainedStatusAndPresence()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var target = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-retained-target");
+        var inspector = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-retained-inspector");
+
+        using var targetClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            target.DeviceId,
+            target.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(targetClient, target.DeviceId, "online");
+        await DeviceServerTestHarness.PublishTelemetryAsync(targetClient, target.DeviceId, new
+        {
+            deviceId = target.DeviceId,
+            uptimeSeconds = 55,
+        });
+
+        var retainedReady = await DeviceServerTestHarness.WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, target.DeviceId, StringComparison.OrdinalIgnoreCase));
+            return snapshot is not null && snapshot.UptimeSeconds == 55;
+        }, TimeSpan.FromSeconds(5));
+        Assert.True(retainedReady, "Snapshot nao recebeu o estado MQTT antes da remocao.");
+
+        Assert.True(host.RemoveDevice(target.DeviceId));
+
+        using var inspectorClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            inspector.DeviceId,
+            inspector.Token);
+
+        var retainedMessages = new List<(string Topic, string Payload)>();
+        inspectorClient.ApplicationMessageReceivedAsync += args =>
+        {
+            retainedMessages.Add((args.ApplicationMessage.Topic, DeviceServerTestHarness.DecodePayload(args)));
+            return Task.CompletedTask;
+        };
+
+        await DeviceServerTestHarness.SubscribeAsync(inspectorClient, DeviceServerTestHarness.GetPresenceTopic(target.DeviceId));
+        await DeviceServerTestHarness.SubscribeAsync(inspectorClient, DeviceServerTestHarness.GetStatusTopic(target.DeviceId));
+        await Task.Delay(500);
+
+        Assert.Empty(retainedMessages);
+    }
+}

@@ -1,5 +1,7 @@
 using System.Text;
 using App.WinUI.Infrastructure.Serial;
+using App.WinUI.Infrastructure.Http;
+using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Infrastructure;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
@@ -12,6 +14,7 @@ using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Audio.Loopback.Capture;
 using Device.Server.Hosting;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -109,12 +112,16 @@ public partial class App : Application
             PrecompiledFirmwareDirectory = Path.Combine(AppContext.BaseDirectory, "AppData", "Firmware"),
         };
 
+        var observability = AppObservability.ConfigureGlobalLogger(options);
         var services = new ServiceCollection();
 
-        services.AddLogging(builder =>
-        {
-            builder.AddDebug();
-        });
+        services.AddLogging(AppObservability.ConfigureLogging);
+        // DOCS: docs/wiki/modules/app-winui.md#observabilidade-tecnica
+        AppObservability.ConfigureOpenTelemetry(services, observability);
+        // DOCS: docs/wiki/modules/app-winui.md#cache-compartilhado
+        services.AddHybridCache();
+        // DOCS: docs/wiki/modules/app-winui.md#integracoes-http-externas
+        services.AddExternalHttpClients();
 
         services.Configure<MicaAudioOptions>(configured =>
         {
@@ -142,7 +149,8 @@ public partial class App : Application
             var coordinator = new DeviceOperationsCoordinator(
                 sp.GetRequiredService<DeviceIntegrationService>(),
                 sp.GetRequiredService<SettingsRepository>(),
-                sp.GetRequiredService<AppSettingsDomainService>());
+                sp.GetRequiredService<AppSettingsDomainService>(),
+                sp.GetRequiredService<ILogger<DeviceOperationsCoordinator>>());
             coordinator.CentralLogStore = sp.GetRequiredService<AppLogStore>();
             return coordinator;
         });
@@ -154,7 +162,10 @@ public partial class App : Application
 
         services.AddSingleton<IAppCatalogService, AppCatalogService>();
         services.AddSingleton<IAppModifierStateStore, AppModifierStateStore>();
-        services.AddSingleton<CityAutocompleteService>();
+        services.AddSingleton(sp => new CityAutocompleteService(
+            sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetRequiredService<ILogger<CityAutocompleteService>>()));
+        services.AddSingleton<WeatherPreviewDataService.IWeatherForecastClient, OpenMeteoForecastClient>();
         services.AddSingleton<WeatherPreviewDataService>();
         services.AddSingleton<IAppDeploymentService, AppDeploymentService>();
         services.AddSingleton<AppConfigValidationUseCase>();
@@ -294,6 +305,7 @@ public partial class App : Application
                 disposable.Dispose();
             }
 
+            Serilog.Log.CloseAndFlush();
             Services = null;
         }
         catch (Exception ex)
@@ -419,7 +431,22 @@ public partial class App : Application
 
     private static void WriteCrashLog(string header, Exception ex)
     {
+        var activity = AppObservability.StartActivity("ui.error", AppObservability.AppComponent);
+        AppObservability.RecordUiError(header);
+        if (activity is not null)
+        {
+            activity.SetTag("error.header", header);
+            AppObservability.SetException(activity, ex);
+        }
+
         var logger = Services?.GetService<ILogger<App>>();
+        using var scope = AppObservability.BeginScope(
+            logger,
+            activity,
+            (AppObservability.ComponentKey, AppObservability.AppComponent),
+            (AppObservability.MicaComponentKey, AppObservability.AppComponent),
+            (AppObservability.OperationKey, "ui.error"),
+            ("error.header", header));
         AppStartupDiagnostics.WriteCrashLog(
             GetCrashLogPath(),
             header,
@@ -428,6 +455,7 @@ public partial class App : Application
 
         var centralLog = Services?.GetService<AppLogStore>();
         centralLog?.Append(LogCategory.System, LogSeverity.Error, $"{header}: {ex.Message}");
+        activity?.Dispose();
     }
 
     private static string GetCrashLogPath()

@@ -227,7 +227,7 @@ internal static class DeviceRecordMutations
         };
     }
 
-    public static DeviceSnapshot ToSnapshot(DeviceRecord source, DeviceStatus status)
+    public static DeviceSnapshot ToSnapshot(DeviceRecord source, DeviceStatus status, DeviceControlPlaneState controlPlaneState)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -237,6 +237,7 @@ internal static class DeviceRecordMutations
             Name = source.Name,
             Profile = source.Profile,
             Status = status,
+            ControlPlaneState = controlPlaneState,
             IsRegistered = source.IsRegistered,
             LastSeenUtc = source.LastSeenUtc,
             FirstSeenUtc = source.FirstSeenUtc,

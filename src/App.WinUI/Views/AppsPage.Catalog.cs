@@ -187,7 +187,14 @@ public sealed partial class AppsPage
         catalogReloadInProgress = true;
         try
         {
-            await LoadCatalogAsync().ConfigureAwait(false);
+            var catalog = await catalogService.ReloadCatalogAsync().ConfigureAwait(false);
+            _ = DispatcherQueue.TryEnqueue(() =>
+            {
+                allItems.Clear();
+                allItems.AddRange(catalog);
+                ApplyFilter();
+                AppendLog($"Catalogo recarregado do disco: {allItems.Count} apps.");
+            });
         }
         finally
         {

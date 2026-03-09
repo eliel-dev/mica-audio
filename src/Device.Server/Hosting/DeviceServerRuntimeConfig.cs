@@ -9,9 +9,11 @@ internal sealed class DeviceServerRuntimeConfig
     private DeviceServerRuntimeConfig(
         string listenHost,
         int port,
+        int mqttPort,
         int maxDevices,
         string mdnsServiceName,
         string publicHost,
+        string mqttRootTopic,
         bool restrictToPrivateNetworks,
         IReadOnlyList<CidrRange> allowedCidrs,
         int configuredAllowedCidrsCount,
@@ -27,9 +29,11 @@ internal sealed class DeviceServerRuntimeConfig
     {
         ListenHost = listenHost;
         Port = port;
+        MqttPort = mqttPort;
         MaxDevices = maxDevices;
         MdnsServiceName = mdnsServiceName;
         PublicHost = publicHost;
+        MqttRootTopic = mqttRootTopic;
         RestrictToPrivateNetworks = restrictToPrivateNetworks;
         AllowedCidrs = allowedCidrs;
         ConfiguredAllowedCidrsCount = configuredAllowedCidrsCount;
@@ -48,11 +52,15 @@ internal sealed class DeviceServerRuntimeConfig
 
     public int Port { get; }
 
+    public int MqttPort { get; }
+
     public int MaxDevices { get; }
 
     public string MdnsServiceName { get; }
 
     public string PublicHost { get; }
+
+    public string MqttRootTopic { get; }
 
     public bool RestrictToPrivateNetworks { get; }
 
@@ -90,9 +98,11 @@ internal sealed class DeviceServerRuntimeConfig
         return new DeviceServerRuntimeConfig(
             listenHost: config.ListenHost,
             port: config.Port,
+            mqttPort: Math.Clamp(config.MqttPort, 1, 65535),
             maxDevices: config.MaxDevices,
             mdnsServiceName: config.MdnsServiceName,
             publicHost: config.PublicHost,
+            mqttRootTopic: NormalizeRootTopic(config.MqttRootTopic),
             restrictToPrivateNetworks: config.RestrictToPrivateNetworks,
             allowedCidrs: allowedCidrs,
             configuredAllowedCidrsCount: configuredAllowedCidrsCount,
@@ -105,6 +115,19 @@ internal sealed class DeviceServerRuntimeConfig
             allowLegacyWebSocketQueryToken: config.AllowLegacyWebSocketQueryToken,
             maxJsonBodyBytes: Math.Clamp(config.MaxJsonBodyBytes, 1024L, 1024L * 1024L),
             maxWebSocketMessageBytes: Math.Clamp(config.MaxWebSocketMessageBytes, 1024, 1024 * 1024));
+    }
+
+    private static string NormalizeRootTopic(string? rawRootTopic)
+    {
+        if (string.IsNullOrWhiteSpace(rawRootTopic))
+        {
+            return "mica/v1/devices";
+        }
+
+        var normalized = rawRootTopic.Trim().Trim('/');
+        return string.IsNullOrWhiteSpace(normalized)
+            ? "mica/v1/devices"
+            : normalized;
     }
 
     private static IReadOnlyList<CidrRange> ParseAllowedCidrs(IEnumerable<string>? cidrValues)

@@ -1,3 +1,4 @@
+using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Services.Devices;
 using Device.Protocol.Models;
 
@@ -49,6 +50,24 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
         Assert.Equal("device-1", runtime.LastDeviceId);
         Assert.Equal(DeviceCommandType.TestLed, runtime.LastCommandType);
         Assert.Null(runtime.LastParameters);
+    }
+
+    [Fact]
+    public async Task ActivateAppAsync_ShouldEmitDeviceCommandActivity()
+    {
+        var runtime = new CaptureRuntime();
+        runtime.SetDevices([CreateOnlineSnapshot("device-1")]);
+        using var capture = new ActivityCapture(AppObservability.ActivitySourceName);
+
+        using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
+        var result = await coordinator.ActivateAppAsync("device-1", "weather-app", "Clima");
+
+        Assert.True(result.Success);
+        var activity = Assert.Single(capture.CompletedActivities, item => item.OperationName == "device.command");
+        Assert.Equal(AppObservability.DeviceIntegrationComponent, activity.GetTagItem(AppObservability.ComponentKey));
+        Assert.Equal("device-1", activity.GetTagItem(AppObservability.DeviceIdKey));
+        Assert.Equal("weather-app", activity.GetTagItem(AppObservability.AppIdKey));
+        Assert.Equal("cmd-capture", activity.GetTagItem(AppObservability.CommandIdKey));
     }
 
     private static DeviceSnapshot CreateOnlineSnapshot(string deviceId)

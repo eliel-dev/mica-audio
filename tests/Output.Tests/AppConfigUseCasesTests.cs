@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Models.Apps;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
@@ -48,6 +49,46 @@ public sealed class AppConfigUseCasesTests
             Assert.NotNull(persisted);
             Assert.Equal(WeatherAppFixedLocation.FixedCityConfigValue, persisted!.Values["city"]);
             Assert.Equal(WeatherAppFixedLocation.FixedUnitsValue, persisted.Values["units"]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldEmitDeployAndSaveActivities()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            using var capture = new ActivityCapture(AppObservability.ActivitySourceName);
+            using var store = new AppModifierStateStore(CreateOptions(root));
+            var saveUseCase = new SaveAppConfigUseCase(store);
+            var validationUseCase = new AppConfigValidationUseCase();
+            var fakeDeployment = new FakeAppDeploymentService();
+            var deployUseCase = new DeployAppUseCase(fakeDeployment, saveUseCase, validationUseCase);
+            var app = CreateWeatherApp();
+
+            var result = await deployUseCase.ExecuteAsync(
+                "device-a",
+                "device-a",
+                app,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["refreshMinutes"] = "5",
+                    ["showIcon"] = "true",
+                });
+
+            Assert.True(result.Success);
+
+            var deployActivity = Assert.Single(capture.CompletedActivities, item => item.OperationName == "app.deploy.install");
+            Assert.Equal("device-a", deployActivity.GetTagItem(AppObservability.DeviceIdKey));
+            Assert.Equal("accuweather", deployActivity.GetTagItem(AppObservability.AppIdKey));
+            Assert.Equal(result.CommandResult!.CommandId, deployActivity.GetTagItem(AppObservability.CommandIdKey));
+
+            var saveActivity = Assert.Single(capture.CompletedActivities, item => item.OperationName == "app-config.save-draft");
+            Assert.Equal("accuweather", saveActivity.GetTagItem(AppObservability.AppIdKey));
         }
         finally
         {

@@ -65,6 +65,7 @@ public class DeviceSessionTests
         using var session = new DeviceSession(CreateRecord(timeProvider.GetUtcNow()), timeProvider, TimeSpan.FromMilliseconds(500));
         using var socket = new TestWebSocket();
 
+        session.MarkControlPlaneConnected("192.168.0.11");
         session.AttachSocket(socket, "192.168.0.11");
         Assert.Equal(DeviceStatus.Online, session.ToSnapshot(TimeSpan.FromSeconds(15)).Status);
 
@@ -72,7 +73,53 @@ public class DeviceSessionTests
         Assert.Equal(DeviceStatus.Online, session.ToSnapshot(TimeSpan.FromSeconds(15)).Status);
 
         timeProvider.Advance(TimeSpan.FromMilliseconds(600));
+        Assert.Equal(DeviceStatus.Online, session.ToSnapshot(TimeSpan.FromSeconds(15)).Status);
+    }
+
+    [Fact]
+    public void MarkControlPlaneDisconnected_ShouldRespectGracePeriodWithControlledTime()
+    {
+        var timeProvider = new ManualTimeProvider(new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero));
+        using var session = new DeviceSession(CreateRecord(timeProvider.GetUtcNow()), timeProvider, TimeSpan.FromMilliseconds(500));
+
+        session.MarkControlPlaneConnected("192.168.0.11");
+        Assert.Equal(DeviceStatus.Online, session.ToSnapshot(TimeSpan.FromSeconds(15)).Status);
+
+        session.MarkControlPlaneDisconnected();
+        Assert.Equal(DeviceStatus.Online, session.ToSnapshot(TimeSpan.FromSeconds(15)).Status);
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(600));
         Assert.Equal(DeviceStatus.Offline, session.ToSnapshot(TimeSpan.FromSeconds(15)).Status);
+    }
+
+    [Fact]
+    public void LegacyControlPlaneTraffic_ShouldExposeLegacyOnlyUntilFreshnessExpires()
+    {
+        var timeProvider = new ManualTimeProvider(new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero));
+        using var session = new DeviceSession(CreateRecord(timeProvider.GetUtcNow()), timeProvider, TimeSpan.FromMilliseconds(500));
+
+        Assert.True(session.MarkLegacyControlPlaneTraffic());
+
+        var legacySnapshot = session.ToSnapshot(TimeSpan.FromSeconds(15));
+        Assert.Equal(DeviceStatus.Offline, legacySnapshot.Status);
+        Assert.Equal(DeviceControlPlaneState.LegacyOnly, legacySnapshot.ControlPlaneState);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(16));
+        var expiredSnapshot = session.ToSnapshot(TimeSpan.FromSeconds(15));
+        Assert.Equal(DeviceControlPlaneState.Offline, expiredSnapshot.ControlPlaneState);
+    }
+
+    [Fact]
+    public void MqttReconnect_ShouldClearLegacyControlPlaneState()
+    {
+        var timeProvider = new ManualTimeProvider(new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero));
+        using var session = new DeviceSession(CreateRecord(timeProvider.GetUtcNow()), timeProvider, TimeSpan.FromMilliseconds(500));
+
+        session.MarkLegacyControlPlaneTraffic();
+        Assert.Equal(DeviceControlPlaneState.LegacyOnly, session.ToSnapshot(TimeSpan.FromSeconds(15)).ControlPlaneState);
+
+        session.MarkControlPlaneConnected("192.168.0.12");
+        Assert.Equal(DeviceControlPlaneState.MqttOnline, session.ToSnapshot(TimeSpan.FromSeconds(15)).ControlPlaneState);
     }
 
     private static DeviceRecord CreateRecord(DateTimeOffset now)

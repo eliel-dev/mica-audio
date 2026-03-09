@@ -1,5 +1,7 @@
 using System.Text.Json;
 using App.WinUI.Services.Apps;
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
 
@@ -51,15 +53,15 @@ public sealed class AppCatalogServiceTests
 
             await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(document));
 
-            var service = new AppCatalogService(CreateOptions(root));
+            using var harness = CreateService(root);
+            var service = harness.Service;
             var items = await service.LoadCatalogAsync();
 
-            Assert.Equal(3, items.Count);
+            Assert.Equal(2, items.Count);
             Assert.DoesNotContain(items, item => string.Equals(item.Id, "newapp", StringComparison.OrdinalIgnoreCase));
-            var weather = Assert.Single(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(items, item => string.Equals(item.Id, "analogclock", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(items, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
-            Assert.Empty(weather.Modifiers);
         }
         finally
         {
@@ -93,11 +95,12 @@ public sealed class AppCatalogServiceTests
 
             await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(document));
 
-            var service = new AppCatalogService(CreateOptions(root));
+            using var harness = CreateService(root);
+            var service = harness.Service;
             var items = await service.LoadCatalogAsync();
 
-            Assert.Equal(3, items.Count);
-            Assert.Contains(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(2, items.Count);
+            Assert.DoesNotContain(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(items, item => string.Equals(item.Id, "analogclock", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(items, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
         }
@@ -119,13 +122,178 @@ public sealed class AppCatalogServiceTests
             var catalogPath = Path.Combine(appsDir, "catalog.json");
             await File.WriteAllTextAsync(catalogPath, "{ invalid json }");
 
-            var service = new AppCatalogService(CreateOptions(root));
+            using var harness = CreateService(root);
+            var service = harness.Service;
             var items = await service.LoadCatalogAsync();
 
-            Assert.Equal(3, items.Count);
-            Assert.Contains(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(2, items.Count);
+            Assert.DoesNotContain(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(items, item => string.Equals(item.Id, "analogclock", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(items, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task LoadCatalogAsync_ShouldReturnCachedResult_UntilExplicitReload()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var catalogPath = await WriteCatalogAsync(root, "analogclock");
+            using var harness = CreateService(root);
+            var service = harness.Service;
+
+            var initialItems = await service.LoadCatalogAsync();
+
+            await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 2,
+                apps = new object[]
+                {
+                    new
+                    {
+                        id = "gifhub75",
+                        name = "GIF",
+                        summary = "midia",
+                        description = "midia",
+                        author = "tests",
+                        packageName = "gifhub75",
+                        fileName = "gifhub75.star",
+                        recommendedIntervalMinutes = 0,
+                        category = "midia",
+                    },
+                },
+            }));
+
+            var cachedItems = await service.LoadCatalogAsync();
+
+            Assert.Equal(initialItems.Select(static item => item.Id), cachedItems.Select(static item => item.Id));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ReloadCatalogAsync_ShouldBypassCachedResult_AndObserveDiskChanges()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var catalogPath = await WriteCatalogAsync(root, "analogclock");
+            using var harness = CreateService(root);
+            var service = harness.Service;
+
+            _ = await service.LoadCatalogAsync();
+
+            await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 2,
+                apps = new object[]
+                {
+                    new
+                    {
+                        id = "gifhub75",
+                        name = "GIF",
+                        summary = "midia",
+                        description = "midia",
+                        author = "tests",
+                        packageName = "gifhub75",
+                        fileName = "gifhub75.star",
+                        recommendedIntervalMinutes = 0,
+                        category = "midia",
+                    },
+                },
+            }));
+
+            var reloadedItems = await service.ReloadCatalogAsync();
+            await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 2,
+                apps = new object[]
+                {
+                    new
+                    {
+                        id = "analogclock",
+                        name = "Relogio",
+                        summary = "tempo",
+                        description = "tempo",
+                        author = "tests",
+                        packageName = "analogclock",
+                        fileName = "analogclock.star",
+                        recommendedIntervalMinutes = 0,
+                        category = "geral",
+                    },
+                },
+            }));
+
+            var cachedAfterReload = await service.LoadCatalogAsync();
+
+            Assert.Contains(reloadedItems, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(cachedAfterReload, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ReloadCatalogAsync_ShouldInvalidateAfterNormalizationWrite()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var appsDir = Path.Combine(root, "apps");
+            Directory.CreateDirectory(appsDir);
+
+            var catalogPath = Path.Combine(appsDir, "catalog.json");
+            await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 999,
+                apps = new object[]
+                {
+                    new
+                    {
+                        id = "analogclock",
+                        name = "Relogio",
+                        packageName = "analogclock",
+                    },
+                },
+            }));
+
+            using var harness = CreateService(root);
+            var service = harness.Service;
+
+            _ = await service.LoadCatalogAsync();
+            await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 2,
+                apps = new object[]
+                {
+                    new
+                    {
+                        id = "gifhub75",
+                        name = "GIF",
+                        summary = "midia",
+                        description = "midia",
+                        author = "tests",
+                        packageName = "gifhub75",
+                        fileName = "gifhub75.star",
+                        recommendedIntervalMinutes = 0,
+                        category = "midia",
+                    },
+                },
+            }));
+
+            var reloadedItems = await service.ReloadCatalogAsync();
+
+            Assert.Contains(reloadedItems, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
@@ -147,5 +315,62 @@ public sealed class AppCatalogServiceTests
             AppDataRoot = root,
             AppsCatalogPath = Path.Combine(root, "apps", "catalog.json"),
         });
+    }
+
+    private static CatalogServiceHarness CreateService(string root)
+    {
+        var services = new ServiceCollection();
+        services.AddHybridCache();
+        var provider = services.BuildServiceProvider();
+        return new CatalogServiceHarness(
+            new AppCatalogService(CreateOptions(root), provider.GetRequiredService<HybridCache>()),
+            provider);
+    }
+
+    private static async Task<string> WriteCatalogAsync(string root, string appId)
+    {
+        var appsDir = Path.Combine(root, "apps");
+        Directory.CreateDirectory(appsDir);
+
+        var catalogPath = Path.Combine(appsDir, "catalog.json");
+        await File.WriteAllTextAsync(catalogPath, JsonSerializer.Serialize(new
+        {
+            schemaVersion = 2,
+            apps = new object[]
+            {
+                new
+                {
+                    id = appId,
+                    name = appId,
+                    summary = "summary",
+                    description = "description",
+                    author = "tests",
+                    packageName = appId,
+                    fileName = appId + ".star",
+                    recommendedIntervalMinutes = 0,
+                    category = "geral",
+                },
+            },
+        }));
+
+        return catalogPath;
+    }
+
+    private sealed class CatalogServiceHarness : IDisposable
+    {
+        private readonly ServiceProvider provider;
+
+        public CatalogServiceHarness(AppCatalogService service, ServiceProvider provider)
+        {
+            Service = service;
+            this.provider = provider;
+        }
+
+        public AppCatalogService Service { get; }
+
+        public void Dispose()
+        {
+            provider.Dispose();
+        }
     }
 }

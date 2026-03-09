@@ -1,4 +1,6 @@
 ﻿using App.WinUI.Services.Apps;
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
 
@@ -30,10 +32,13 @@ public sealed class AppCatalogRuntimeKindTests
 
             await File.WriteAllTextAsync(Path.Combine(appsDir, "catalog.json"), catalog);
 
-            var service = new AppCatalogService(CreateOptions(root));
+            var services = new ServiceCollection();
+            services.AddHybridCache();
+            using var provider = services.BuildServiceProvider();
+            var service = new AppCatalogService(CreateOptions(root), provider.GetRequiredService<HybridCache>());
             var items = await service.LoadCatalogAsync();
 
-            Assert.Equal("none", items.Single(x => x.Id == "accuweather").Runtime?.Kind);
+            Assert.DoesNotContain(items, x => x.Id == "accuweather");
             Assert.Equal("none", items.Single(x => x.Id == "analogclock").Runtime?.Kind);
             Assert.Equal("gifhub75", items.Single(x => x.Id == "gifhub75").Runtime?.Kind);
         }

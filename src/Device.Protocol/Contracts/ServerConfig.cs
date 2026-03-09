@@ -7,11 +7,15 @@ public sealed class ServerConfig
 
     public int Port { get; init; } = 5272;
 
+    public int MqttPort { get; init; } = 5273;
+
     public int MaxDevices { get; init; } = 5;
 
     public string MdnsServiceName { get; init; } = "_micaaudio._tcp";
 
     public string PublicHost { get; init; } = "micaaudio.local";
+
+    public string MqttRootTopic { get; init; } = "mica/v1/devices";
 
     // Security-first defaults for local network usage.
     public bool RestrictToPrivateNetworks { get; init; } = true;

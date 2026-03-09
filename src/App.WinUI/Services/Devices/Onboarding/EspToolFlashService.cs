@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using App.WinUI.Infrastructure.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace App.WinUI.Services.Devices.Onboarding;
@@ -22,8 +23,19 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
         IProgress<DeviceOnboardingProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var stopwatch = Stopwatch.StartNew();
+        using var activity = AppObservability.StartActivity("device-onboarding.flash", AppObservability.AppComponent);
+        using var scope = AppObservability.BeginScope(
+            logger,
+            activity,
+            (AppObservability.ComponentKey, AppObservability.AppComponent),
+            (AppObservability.MicaComponentKey, AppObservability.AppComponent),
+            (AppObservability.OperationKey, "device-onboarding.flash"),
+            (AppObservability.PortNameKey, portName));
         if (string.IsNullOrWhiteSpace(portName))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "invalid-port");
+            AppObservability.RecordOnboardingFlashDuration(stopwatch.Elapsed, portName, success: false);
             return new EspToolFlashResult
             {
                 Success = false,
@@ -34,6 +46,8 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
 
         if (!File.Exists(firmwarePath))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "firmware-missing");
+            AppObservability.RecordOnboardingFlashDuration(stopwatch.Elapsed, portName, success: false);
             return new EspToolFlashResult
             {
                 Success = false,
@@ -45,6 +59,8 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
         var invocation = ResolveEsptoolInvocation();
         if (invocation is null)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "esptool-missing");
+            AppObservability.RecordOnboardingFlashDuration(stopwatch.Elapsed, portName, success: false);
             return new EspToolFlashResult
             {
                 Success = false,
@@ -133,6 +149,8 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
         {
             if (!process.Start())
             {
+                activity?.SetStatus(ActivityStatusCode.Error, "start-failed");
+                AppObservability.RecordOnboardingFlashDuration(stopwatch.Elapsed, portName, success: false);
                 return new EspToolFlashResult
                 {
                     Success = false,
@@ -163,6 +181,8 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
         }
         catch (OperationCanceledException)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "cancelled");
+            AppObservability.RecordOnboardingFlashDuration(stopwatch.Elapsed, portName, success: false);
             return new EspToolFlashResult
             {
                 Success = false,
@@ -172,7 +192,9 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
         }
         catch (Exception ex)
         {
+            AppObservability.SetException(activity, ex);
             LogEsptoolExecutionFailure(logger, ex);
+            AppObservability.RecordOnboardingFlashDuration(stopwatch.Elapsed, portName, success: false);
             return new EspToolFlashResult
             {
                 Success = false,
@@ -189,6 +211,8 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
                 outputSnapshot = capturedOutput.ToArray();
             }
 
+            activity?.SetStatus(ActivityStatusCode.Error, $"exit-code-{process.ExitCode}");
+            AppObservability.RecordOnboardingFlashDuration(stopwatch.Elapsed, portName, success: false);
             return new EspToolFlashResult
             {
                 Success = false,
@@ -204,6 +228,7 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
             Percent = 100,
         });
 
+        AppObservability.RecordOnboardingFlashDuration(stopwatch.Elapsed, portName, success: true);
         return new EspToolFlashResult
         {
             Success = true,

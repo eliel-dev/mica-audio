@@ -463,6 +463,7 @@ public sealed partial class DevicesPage
         return DashboardStatusSectionBorder;
     }
 
+    // DOCS: docs/wiki/guides/setup-new-device.md#tela-dispositivos
     private Border BuildLogsSection()
     {
         var section = new Border
@@ -488,6 +489,7 @@ public sealed partial class DevicesPage
             FontFamily = new FontFamily("Consolas"),
             FontSize = 11.5,
             MinHeight = 260,
+            MaxHeight = 320,
             Text = "Selecione um dispositivo para ver o historico de eventos.",
             BorderThickness = new Thickness(0),
             Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),

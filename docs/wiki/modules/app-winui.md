@@ -113,6 +113,56 @@
   - apenas entradas `Error` passam a ser persistidas em disco;
   - `Info` e `Warning` deixam de ser gravados em `app-logs.json`.
 
+## Integracoes HTTP externas
+
+- As chamadas HTTP de internet do app passaram a ter registro centralizado em `AddExternalHttpClients`, sem aplicar politicas globais ao HTTP local/in-process.
+- O app hoje registra dois named clients externos:
+  - `open-meteo-geocoding` para autocomplete de cidades;
+  - `open-meteo-forecast` para preview do clima.
+- Os perfis internos de timeout/resiliencia seguem o tipo de endpoint:
+  - `Short = 8s total / 3s attempt`;
+  - `Medium = 15s total / 5s attempt`;
+  - `Long = 30s total / 10s attempt` para futuros catalogos/integracoes mais lentas.
+- A pipeline usa `Microsoft.Extensions.Http.Resilience` com:
+  - retry apenas para metodos seguros;
+  - circuit breaker ajustado para desktop de baixo volume;
+  - `HttpClient.Timeout = InfiniteTimeSpan`, deixando o budget de tempo sob a pipeline.
+- `CityAutocompleteService` e `OpenMeteoForecastClient` consomem `IHttpClientFactory`; o renderer do clima nao cria fallback de rede fora do DI.
+
+## Cache compartilhado
+
+- O app passou a registrar `AddHybridCache()` no bootstrap como baseline oficial de cache compartilhado.
+- Nesta etapa, o uso concreto ficou restrito ao catalogo de apps:
+  - `AppCatalogService.LoadCatalogAsync()` usa cache;
+  - `AppCatalogService.ReloadCatalogAsync()` invalida a chave e recarrega do disco/seed.
+- O catalogo efetivo cacheado e o resultado final mergeado/normalizado, nao os arquivos brutos.
+- A politica atual do catalogo usa TTL de `10 minutos`, reduzindo reparse/disco em navegacao repetida sem esconder reload manual.
+- O fluxo de clima ficou explicitamente fora deste item:
+  - `WeatherPreviewDataService` continua com o cache manual atual;
+  - o futuro refactor do clima deve nascer com cidades fixas em codigo, começando por `Timbó-SC`;
+  - `CityAutocompleteService` nao recebeu cache novo nesta etapa para evitar churn em um fluxo que deve ser substituido.
+
+## Observabilidade tecnica
+
+- O bootstrap da `App.WinUI` agora centraliza logs tecnicos em `Serilog` e usa `OpenTelemetry` apenas para `traces` e `metrics`.
+- O arquivo local de engenharia fica em `%LocalAppData%\MicaAudio\logs\engineering-.clef`, com rolling diario e retencao de 7 arquivos.
+- O export OTLP fica desligado por default e so sobe quando `OTEL_EXPORTER_OTLP_ENDPOINT` esta presente; os env vars padrao suportados nesta etapa sao `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_PROTOCOL` e `OTEL_SERVICE_NAME`.
+- A infraestrutura comum do app fica em `AppObservability` e `ObservabilityOptions`, cobrindo `ActivitySource`, `Meter`, parsing de env vars, scopes estruturados e metricas customizadas.
+- Fluxos instrumentados nesta baseline:
+  - `CityAutocompleteService`
+  - `OpenMeteoForecastClient`
+  - `WeatherPreviewDataService`
+  - `DeployAppUseCase`
+  - `SaveAppConfigUseCase`
+  - `DeviceUsbOnboardingService`
+  - `EspToolFlashService`
+  - `App.WriteCrashLog`
+- Metricas customizadas do app:
+  - `mica.app.deploy.duration`
+  - `mica.onboarding.flash.duration`
+  - `mica.ui.error.count`
+- `AppLogStore` e `crash.log` continuam sendo a superficie local para o usuario; a nova trilha estruturada serve diagnostico tecnico e correlacao.
+
 ## Referencias de codigo
 
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)
@@ -127,8 +177,19 @@
 - [ShellPageContentFactory](../../../src/App.WinUI/Views/ShellPageContentFactory.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
+- [AppCacheKeys](../../../src/App.WinUI/Infrastructure/Cache/AppCacheKeys.cs#L1)
+- [AppObservability](../../../src/App.WinUI/Infrastructure/Observability/AppObservability.cs#L1)
+- [ObservabilityOptions](../../../src/App.WinUI/Infrastructure/Observability/ObservabilityOptions.cs#L1)
+- [ExternalHttpClients](../../../src/App.WinUI/Infrastructure/Http/ExternalHttpClients.cs#L1)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
+- [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
+- [CityAutocompleteService](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L1)
+- [OpenMeteoForecastClient](../../../src/App.WinUI/Services/Apps/OpenMeteoForecastClient.cs#L1)
+- [WeatherPreviewDataService](../../../src/App.WinUI/Services/Apps/WeatherPreviewDataService.cs#L1)
+- [DeployAppUseCase](../../../src/App.WinUI/Services/Apps/UseCases/DeployAppUseCase.cs#L1)
+- [SaveAppConfigUseCase](../../../src/App.WinUI/Services/Apps/UseCases/SaveAppConfigUseCase.cs#L1)
+- [WeatherPreviewRenderer](../../../src/App.WinUI/Views/Controls/Renderers/WeatherPreviewRenderer.cs#L1)
 - [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
 - [AudioPipelineFrameProcessor](../../../src/App.WinUI/Services/AudioPipelineFrameProcessor.cs#L1)
 - [AudioPipelineOutputRouter](../../../src/App.WinUI/Services/AudioPipelineOutputRouter.cs#L1)
@@ -136,6 +197,8 @@
 - [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L1)
 - [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
+- [DeviceUsbOnboardingService](../../../src/App.WinUI/Services/Devices/Onboarding/DeviceUsbOnboardingService.cs#L1)
+- [EspToolFlashService](../../../src/App.WinUI/Services/Devices/Onboarding/EspToolFlashService.cs#L1)
 - [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
 - [DevicesPage code-behind](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
 - [DeviceMetricsFormatter](../../../src/App.WinUI/Services/Devices/DeviceMetricsFormatter.cs#L1)

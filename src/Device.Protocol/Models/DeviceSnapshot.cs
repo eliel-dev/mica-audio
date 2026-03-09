@@ -10,6 +10,8 @@ public sealed class DeviceSnapshot
 
     public DeviceStatus Status { get; init; }
 
+    public DeviceControlPlaneState ControlPlaneState { get; init; }
+
     public bool IsRegistered { get; init; }
 
     public DateTimeOffset LastSeenUtc { get; init; }
@@ -84,5 +86,5 @@ public sealed class DeviceSnapshot
 
     public string? PanelType { get; init; }
 
-    public bool IsConnected => Status == DeviceStatus.Online;
+    public bool IsConnected => ControlPlaneState == DeviceControlPlaneState.MqttOnline;
 }

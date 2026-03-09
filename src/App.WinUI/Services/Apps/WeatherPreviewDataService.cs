@@ -1,14 +1,20 @@
+using System.Diagnostics;
+using System.Text.Json;
+using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Services.Logging;
-using OpenMeteo;
-using OpenMeteo.Weather.Forecast.Options;
+using Microsoft.Extensions.Logging;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace App.WinUI.Services.Apps;
 
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md#integracoes-http-externas
 // DOCS: docs/wiki/guides/configure-app-modifiers.md#apps-clima
-internal sealed class WeatherPreviewDataService
+internal sealed partial class WeatherPreviewDataService
 {
     private readonly IWeatherForecastClient forecastClient;
     private readonly AppLogStore? appLogStore;
+    private readonly ILogger<WeatherPreviewDataService>? logger;
     private readonly Func<DateTimeOffset> nowProvider;
     private readonly TimeSpan refreshInterval;
     private readonly TimeSpan failureRetryInterval;
@@ -21,25 +27,22 @@ internal sealed class WeatherPreviewDataService
         },
     };
 
-    internal WeatherPreviewDataService()
-        : this(new OpenMeteoSdkWeatherForecastClient(), appLogStore: null)
-    {
-    }
-
-    public WeatherPreviewDataService(AppLogStore appLogStore)
-        : this(new OpenMeteoSdkWeatherForecastClient(), appLogStore)
+    public WeatherPreviewDataService(IWeatherForecastClient forecastClient, AppLogStore appLogStore, ILogger<WeatherPreviewDataService> logger)
+        : this(forecastClient, appLogStore, logger, nowProvider: null, refreshInterval: null, failureRetryInterval: null)
     {
     }
 
     internal WeatherPreviewDataService(
         IWeatherForecastClient forecastClient,
         AppLogStore? appLogStore,
+        ILogger<WeatherPreviewDataService>? logger = null,
         Func<DateTimeOffset>? nowProvider = null,
         TimeSpan? refreshInterval = null,
         TimeSpan? failureRetryInterval = null)
     {
         this.forecastClient = forecastClient;
         this.appLogStore = appLogStore;
+        this.logger = logger;
         this.nowProvider = nowProvider ?? (() => DateTimeOffset.UtcNow);
         this.refreshInterval = refreshInterval ?? TimeSpan.FromMinutes(5);
         this.failureRetryInterval = failureRetryInterval ?? TimeSpan.FromSeconds(30);
@@ -62,6 +65,18 @@ internal sealed class WeatherPreviewDataService
 
     private async Task RefreshAsync(CacheEntry entry)
     {
+        using var activity = AppObservability.StartActivity("weather-preview.refresh", AppObservability.AppComponent);
+        activity?.SetTag(AppObservability.FeatureKey, "weather-preview");
+        activity?.SetTag(AppObservability.AppIdKey, WeatherAppFixedLocation.AppId);
+        using var scope = AppObservability.BeginScope(
+            logger,
+            activity,
+            (AppObservability.ComponentKey, AppObservability.AppComponent),
+            (AppObservability.MicaComponentKey, AppObservability.AppComponent),
+            (AppObservability.OperationKey, "weather-preview.refresh"),
+            (AppObservability.FeatureKey, "weather-preview"),
+            (AppObservability.AppIdKey, WeatherAppFixedLocation.AppId));
+
         try
         {
             var currentWeather = await forecastClient.GetCurrentAsync(
@@ -71,7 +86,13 @@ internal sealed class WeatherPreviewDataService
 
             if (currentWeather.Temperature is null || currentWeather.WeatherCode is null)
             {
-                UpdateFailure(entry, "Open-Meteo nao retornou temperatura atual para Timbó.");
+                UpdateFailure(entry, "Open-Meteo nao retornou temperatura atual para Timbo.");
+                activity?.SetStatus(ActivityStatusCode.Error, "missing-current-weather");
+                if (logger is not null)
+                {
+                    LogWeatherPreviewMissingCurrent(logger);
+                }
+
                 return;
             }
 
@@ -87,9 +108,21 @@ internal sealed class WeatherPreviewDataService
             entry.LastRefreshUtc = refreshedAt;
             entry.LastLoggedFailureMessage = string.Empty;
             entry.LastLoggedFailureAtUtc = DateTimeOffset.MinValue;
+            activity?.SetTag("weather.temperature", currentWeather.Temperature.Value);
+            activity?.SetTag("weather.code", currentWeather.WeatherCode.Value);
+            if (logger is not null)
+            {
+                LogWeatherPreviewUpdated(logger);
+            }
         }
         catch (Exception ex)
         {
+            AppObservability.SetException(activity, ex);
+            if (logger is not null)
+            {
+                LogWeatherPreviewRefreshFailure(logger, ex);
+            }
+
             UpdateFailure(entry, BuildFailureMessage(ex));
         }
         finally
@@ -142,11 +175,12 @@ internal sealed class WeatherPreviewDataService
         return exception switch
         {
             TaskCanceledException => "tempo limite ao consultar o Open-Meteo.",
-            OpenMeteoClientException openMeteoException when !string.IsNullOrWhiteSpace(openMeteoException.Message)
-                => openMeteoException.Message.Trim().TrimEnd('.').ToLowerInvariant() + ".",
+            TimeoutRejectedException => "tempo limite ao consultar o Open-Meteo.",
+            BrokenCircuitException => "servico Open-Meteo temporariamente indisponivel apos falhas consecutivas.",
             HttpRequestException httpException when httpException.StatusCode is not null
                 => $"falha HTTP {(int)httpException.StatusCode.Value} ao consultar o Open-Meteo.",
             HttpRequestException => "falha de rede ao consultar o Open-Meteo.",
+            JsonException => "resposta invalida do Open-Meteo.",
             _ => "falha inesperada ao consultar o Open-Meteo.",
         };
     }
@@ -171,40 +205,12 @@ internal sealed class WeatherPreviewDataService
 
     internal readonly record struct CurrentWeatherData(double? Temperature, int? WeatherCode);
 
-    private sealed class OpenMeteoSdkWeatherForecastClient : IWeatherForecastClient
-    {
-        private readonly OpenMeteoClient client;
+    [LoggerMessage(EventId = 1520, Level = LogLevel.Warning, Message = "Weather preview nao recebeu temperatura atual do Open-Meteo.")]
+    private static partial void LogWeatherPreviewMissingCurrent(ILogger logger);
 
-        public OpenMeteoSdkWeatherForecastClient()
-            : this(CreateConfiguredClient())
-        {
-        }
+    [LoggerMessage(EventId = 1521, Level = LogLevel.Information, Message = "Weather preview atualizado com sucesso.")]
+    private static partial void LogWeatherPreviewUpdated(ILogger logger);
 
-        internal OpenMeteoSdkWeatherForecastClient(OpenMeteoClient client)
-        {
-            this.client = client;
-            this.client.RethrowExceptions = true;
-        }
-
-        public async Task<CurrentWeatherData> GetCurrentAsync(float latitude, float longitude, string timezone)
-        {
-            var forecast = await client.QueryWeatherApiAsync(new WeatherForecastOptions(latitude, longitude)
-            {
-                Temperature_Unit = TemperatureUnitType.celsius,
-                Timezone = timezone,
-                Current = new CurrentOptions(new[] { CurrentOptionsParameter.temperature_2m, CurrentOptionsParameter.weathercode }),
-            }).ConfigureAwait(false);
-
-            var current = forecast?.Current;
-            return new CurrentWeatherData(current?.Temperature_2m, current?.Weathercode);
-        }
-
-        private static OpenMeteoClient CreateConfiguredClient()
-        {
-            return new OpenMeteoClient
-            {
-                RethrowExceptions = true,
-            };
-        }
-    }
+    [LoggerMessage(EventId = 1522, Level = LogLevel.Warning, Message = "Weather preview falhou ao atualizar snapshot.")]
+    private static partial void LogWeatherPreviewRefreshFailure(ILogger logger, Exception exception);
 }

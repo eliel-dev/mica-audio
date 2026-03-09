@@ -12,6 +12,13 @@ Explicar como editar, salvar e aplicar modificadores dinamicos por `dispositivo 
 4. Clique `Salvar` para persistir localmente em `%AppData%/MicaAudio/apps/modifiers.json`.
 5. Clique `Instalar` para enviar a configuracao atual junto do deploy ao dispositivo.
 
+## Apps clima
+
+- O app `weather` continua usando `TimbO, SC` como local fixo no preview local.
+- O campo de cidade configuravel depende do autocomplete brasileiro do Open-Meteo via `CityAutocompleteService`.
+- O preview local do card de clima depende do `OpenMeteoForecastClient`.
+- Ambos os fluxos agora usam named clients registrados em `AddExternalHttpClients`, com retry para `GET`, timeout centralizado e circuit breaker de baixo throughput.
+
 ## Referencias de codigo
 
 - [AppsPage.OnSaveModifiersClicked](../../../src/App.WinUI/Views/AppsPage.Deployment.cs#L1) - assinatura: `private async void OnSaveModifiersClicked(...)`

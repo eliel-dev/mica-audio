@@ -93,6 +93,31 @@ public sealed class DeviceLifecyclePolicyTests
     }
 
     [Fact]
+    public void Build_ShouldReturnLegacyFirmwareLabel_WhenLegacyControlPlaneIsDetected()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = new DeviceSnapshot
+        {
+            DeviceId = "device-legacy",
+            Name = "Legacy Unit",
+            Status = DeviceStatus.Offline,
+            ControlPlaneState = DeviceControlPlaneState.LegacyOnly,
+            IsRegistered = true,
+            FirstSeenUtc = now.AddHours(-2),
+            LastSeenUtc = now.AddMinutes(-1),
+        };
+
+        var result = DeviceLifecyclePolicy.Build(snapshot, DeviceLifecycleThresholds.Default, now);
+
+        Assert.Equal("Offline", result.PrimaryStateLabel);
+        Assert.Equal("Firmware legado", result.SecondaryStateLabel);
+        Assert.Equal("Regrave para ativar controle e comandos via MQTT", result.DetailLabel);
+        Assert.Equal(DeviceLifecycleIcon.Important, result.Icon);
+        Assert.Equal(DeviceLifecycleTone.Warning, result.Tone);
+        Assert.False(result.CanRunCommands);
+    }
+
+    [Fact]
     public void Build_ShouldReturnOfflineConfigUncertain_WhenOfflinePastDormantThreshold()
     {
         var now = DateTimeOffset.UtcNow;

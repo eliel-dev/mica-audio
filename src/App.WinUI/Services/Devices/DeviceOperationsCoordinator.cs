@@ -1,12 +1,15 @@
 using App.WinUI.Services;
 using App.WinUI.Services.Logging;
+using App.WinUI.Infrastructure.Observability;
 using Device.Protocol.Models;
+using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using System.Globalization;
 
 namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
-internal sealed class DeviceOperationsCoordinator : IDisposable
+internal sealed partial class DeviceOperationsCoordinator : IDisposable
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
@@ -21,20 +24,27 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     private readonly DeviceRefreshCoordinator refreshCoordinator = new();
     private readonly DeviceLifecycleThresholdProvider lifecycleThresholdProvider;
     private readonly DeviceCommandDispatcher commandDispatcher;
+    private readonly ILogger<DeviceOperationsCoordinator>? logger;
     private readonly Timer refreshTimer;
     private bool disposed;
 
-    public DeviceOperationsCoordinator(DeviceIntegrationService integration, SettingsRepository settingsRepository, AppSettingsDomainService settingsDomainService)
-        : this(new DeviceOperationsRuntime(integration), settingsRepository, settingsDomainService)
+    public DeviceOperationsCoordinator(
+        DeviceIntegrationService integration,
+        SettingsRepository settingsRepository,
+        AppSettingsDomainService settingsDomainService,
+        ILogger<DeviceOperationsCoordinator> logger)
+        : this(new DeviceOperationsRuntime(integration), settingsRepository, settingsDomainService, logger)
     {
     }
 
     internal DeviceOperationsCoordinator(
         IDeviceOperationsRuntime integration,
         SettingsRepository? settingsRepository,
-        AppSettingsDomainService? settingsDomainService)
+        AppSettingsDomainService? settingsDomainService,
+        ILogger<DeviceOperationsCoordinator>? logger = null)
     {
         this.integration = integration;
+        this.logger = logger;
         lifecycleThresholdProvider = new DeviceLifecycleThresholdProvider(settingsRepository, settingsDomainService);
         commandDispatcher = new DeviceCommandDispatcher(integration, CommandTimeout);
         refreshTimer = new Timer(OnRefreshTimerTick, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
@@ -223,19 +233,65 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
         var normalizedDeviceId = deviceId.Trim();
         var operationLabel = DeviceOperationsText.DescribeCommand(commandType);
+        using var activity = AppObservability.StartActivity("device.command", AppObservability.DeviceIntegrationComponent);
+        activity?.SetTag(AppObservability.DeviceIdKey, normalizedDeviceId);
+        activity?.SetTag("commandType", commandType.ToString());
+        if (TryGetAppId(parameters, out var appId))
+        {
+            activity?.SetTag(AppObservability.AppIdKey, appId);
+        }
+
+        using var scope = AppObservability.BeginScope(
+            logger,
+            activity,
+            (AppObservability.ComponentKey, AppObservability.DeviceIntegrationComponent),
+            (AppObservability.MicaComponentKey, AppObservability.DeviceIntegrationComponent),
+            (AppObservability.OperationKey, "device.command"),
+            (AppObservability.DeviceIdKey, normalizedDeviceId),
+            ("commandType", commandType.ToString()),
+            (AppObservability.AppIdKey, appId));
 
         if (!commandTracker.TryQueue(normalizedDeviceId, operationLabel, out var busyResult))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, busyResult?.ErrorCode ?? "busy");
+            if (logger is not null)
+            {
+                LogDeviceCommandBusy(logger, commandType, normalizedDeviceId);
+            }
+
             return busyResult!;
         }
 
         RaiseStateChanged();
         AppendDeviceLog(normalizedDeviceId, $"Comando iniciado ({operationLabel}).");
         AppendLog($"Comando iniciado ({operationLabel}) para {normalizedDeviceId}.");
+        if (logger is not null)
+        {
+            LogDeviceCommandStarted(logger, commandType, normalizedDeviceId);
+        }
 
         var result = await commandDispatcher
             .DispatchAsync(normalizedDeviceId, commandType, parameters, cancellationToken)
             .ConfigureAwait(false);
+
+        activity?.SetTag(AppObservability.CommandIdKey, result.CommandId);
+        activity?.SetTag("command.stage", result.Stage);
+        activity?.SetTag("command.success", result.Success);
+        if (!result.Success)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, result.ErrorCode ?? result.Stage);
+            if (logger is not null)
+            {
+                LogDeviceCommandFailed(logger, commandType, normalizedDeviceId, result.Stage ?? "unknown", result.ErrorCode ?? "none");
+            }
+        }
+        else
+        {
+            if (logger is not null)
+            {
+                LogDeviceCommandSucceeded(logger, commandType, normalizedDeviceId, result.CommandId ?? string.Empty);
+            }
+        }
 
         commandTracker.Complete(normalizedDeviceId, result);
         RaiseStateChanged();
@@ -244,6 +300,23 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         AppendDeviceLog(normalizedDeviceId, resultMessage);
         AppendLog(resultMessage);
         return result;
+    }
+
+    private static bool TryGetAppId(IReadOnlyDictionary<string, string>? parameters, out string? appId)
+    {
+        appId = null;
+        if (parameters is null)
+        {
+            return false;
+        }
+
+        if (!parameters.TryGetValue("appId", out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
+        {
+            return false;
+        }
+
+        appId = rawValue.Trim();
+        return true;
     }
 
     private void OnRefreshTimerTick(object? _)
@@ -336,6 +409,18 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     {
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    [LoggerMessage(EventId = 1600, Level = LogLevel.Warning, Message = "Comando {CommandType} rejeitado para {DeviceId} porque ja existe outra operacao em andamento.")]
+    private static partial void LogDeviceCommandBusy(ILogger logger, DeviceCommandType commandType, string deviceId);
+
+    [LoggerMessage(EventId = 1601, Level = LogLevel.Information, Message = "Comando {CommandType} iniciado para {DeviceId}.")]
+    private static partial void LogDeviceCommandStarted(ILogger logger, DeviceCommandType commandType, string deviceId);
+
+    [LoggerMessage(EventId = 1602, Level = LogLevel.Warning, Message = "Comando {CommandType} para {DeviceId} concluiu sem sucesso. stage={Stage} errorCode={ErrorCode}")]
+    private static partial void LogDeviceCommandFailed(ILogger logger, DeviceCommandType commandType, string deviceId, string stage, string errorCode);
+
+    [LoggerMessage(EventId = 1603, Level = LogLevel.Information, Message = "Comando {CommandType} para {DeviceId} concluiu com sucesso. commandId={CommandId}")]
+    private static partial void LogDeviceCommandSucceeded(ILogger logger, DeviceCommandType commandType, string deviceId, string commandId);
 }
 
 internal interface IDeviceOperationsRuntime

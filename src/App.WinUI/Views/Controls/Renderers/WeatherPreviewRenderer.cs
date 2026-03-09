@@ -4,10 +4,16 @@ using Windows.UI;
 
 namespace App.WinUI.Views.Controls.Renderers;
 
+// DOCS: docs/wiki/modules/app-winui.md#integracoes-http-externas
 // DOCS: docs/wiki/guides/configure-app-modifiers.md#apps-clima
 internal sealed class WeatherPreviewRenderer : IAppPreviewRenderer
 {
-    private static readonly Lazy<WeatherPreviewDataService> FallbackDataService = new(static () => new WeatherPreviewDataService());
+    private static readonly WeatherPreviewSnapshot UnavailableSnapshot = new()
+    {
+        CityDisplay = WeatherAppFixedLocation.FixedCityDisplayName,
+        State = WeatherPreviewLoadState.Error,
+        FailureMessage = "Preview do clima indisponivel sem App.Services.",
+    };
 
     public string Kind => "weather";
 
@@ -16,7 +22,7 @@ internal sealed class WeatherPreviewRenderer : IAppPreviewRenderer
         var ds = context.DrawingSession;
         Hub75PreviewHelper.DrawPanel(context, out var ox, out var oy, out var pitch, out var ledSize);
 
-        var snapshot = ResolveDataService().GetSnapshot();
+        var snapshot = ResolveSnapshot();
         var cityText = BuildCityLabel(snapshot.CityDisplay, context.Time);
         var temperatureText = snapshot.State == WeatherPreviewLoadState.Error
             ? "ERR"
@@ -177,9 +183,9 @@ internal sealed class WeatherPreviewRenderer : IAppPreviewRenderer
         Hub75PreviewHelper.DrawPixel(ds, ox, oy, pitch, ledSize, x, y + 4, lightning, glow: false);
     }
 
-    private static WeatherPreviewDataService ResolveDataService()
+    private static WeatherPreviewSnapshot ResolveSnapshot()
     {
-        return global::App.WinUI.App.Services?.GetService<WeatherPreviewDataService>()
-            ?? FallbackDataService.Value;
+        var dataService = global::App.WinUI.App.Services?.GetService<WeatherPreviewDataService>();
+        return dataService?.GetSnapshot() ?? UnavailableSnapshot;
     }
 }

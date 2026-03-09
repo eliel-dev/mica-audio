@@ -2,12 +2,13 @@
 
 ## Objetivo
 
-Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames para dispositivos ESP32.
+Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e stream de frames para dispositivos ESP32.
 
 ## Responsabilidades
 
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
-- WebSocket `/ws/v1/stream` para comandos e telemetria/progresso.
+- Broker MQTT embutido para `commands`, `command-events`, `status` e `presence`.
+- WebSocket `/ws/v1/stream` exclusivamente para stream visual binario.
 - Sessao de comandos rastreados com timeout.
 - Normalizacao interna de `ServerConfig` para limites, timeouts e CIDRs.
 - Controle temporal deterministico via `TimeProvider` no pairing, snapshots e timeouts tracked.
@@ -19,13 +20,14 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 ## Fluxo de execucao
 
 1. `DeviceServerHost.StartAsync` sobe web app local.
-2. Dispositivo pareia via HTTP e recebe token.
+2. Dispositivo pareia via HTTP e recebe token + endpoint MQTT.
 3. `PairDeviceRequest` pode informar `BoardModel` e `PanelType`.
-4. Telemetria WS atualiza `FirmwareVersion`, app ativo, RSSI e metadados de hardware.
-5. App envia comandos tracked (`SendCommandTrackedAsync`).
-6. `PendingTrackedCommandStore` e `PendingTrackedCommand` correlacionam ACK/progresso por `commandId`.
-7. `DeviceSession` consolida invariantes de `DeviceRecord` e snapshot online/offline.
-8. `BroadcastFrame` distribui stream para sockets conectados.
+4. Device autentica no broker MQTT com `clientId = username = deviceId` e `password = token`.
+5. `presence` e `status` MQTT alimentam online/offline e o snapshot operacional do device.
+6. O snapshot tambem expoe `ControlPlaneState` para diferenciar `MqttOnline`, `LegacyOnly` e `Offline`.
+7. App envia comandos tracked (`SendCommandTrackedAsync`) via `mica/v1/devices/{deviceId}/commands`.
+8. `PendingTrackedCommandStore` e `PendingTrackedCommand` correlacionam `command-events` por `commandId`.
+9. `BroadcastFrame` distribui stream para sockets WS conectados.
 
 ## Politicas de seguranca
 
@@ -42,6 +44,7 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 3. Autenticacao:
 - HTTP (`/api/v1/*`): aceita somente `X-Device-Token` ou `Authorization: Bearer`.
 - WebSocket (`/ws/v1/stream`): aceita `X-Device-Id` + `X-Device-Token` (ou `Authorization: Bearer`).
+- MQTT: exige `clientId = username = deviceId` e `password = token`.
 - Query token legado em WS permanece disponivel apenas por compatibilidade quando `AllowLegacyWebSocketQueryToken=true`.
 - Default de seguranca: `AllowLegacyWebSocketQueryToken=false`.
 
@@ -56,6 +59,7 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - Endpoint novo em `/api/v1/*`.
 - Politica de timeout/comando e progresso.
 - Estrutura de DTOs em `Device.Protocol/Models`.
+- Topicos e autenticacao do control plane MQTT.
 - Politicas de seguranca em `ServerConfig`.
 - Normalizacao de runtime em `DeviceServerRuntimeConfig`.
 - Transicoes de estado em `DeviceRecordMutations` e `DeviceSession`.
@@ -75,16 +79,37 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 - Validar pareamento em burst (429 esperado no abuso).
 - Confirmar que stream continua estavel.
 
+## Observabilidade tecnica
+
+- O host embutido passou a reutilizar o `Serilog` global do processo via `DeviceServerObservability.ConfigureLogging(builder.Logging)`.
+- O `OpenTelemetry` do host continua desligado por default e so e configurado quando `OTEL_EXPORTER_OTLP_ENDPOINT` existe no ambiente.
+- O provider do host e isolado do provider do app:
+  - host escuta `AspNetCore` + `DeviceServerObservability.ActivitySourceName/MeterName`;
+  - app escuta `HttpClient` + fontes/meters do `AppObservability`.
+- `SendTrackedCommandCoreAsync` agora abre span manual para o comando tracked e o mantem vivo ate `ACK`, timeout, cancelamento ou falha de envio.
+- `PendingTrackedCommand` passou a anexar `ActivityEvent`s de progresso/conclusao no mesmo span para manter a correlacao `deviceId + commandId`.
+- Metricas customizadas adicionadas ao host:
+  - `mica.device.command.duration`
+  - `mica.device.command.timeout.count`
+  - `mica.device.command.failure.count`
+- `DeviceServerHost.LogMessage` continua alimentando a UI, mas agora tambem replica a mensagem para a trilha estruturada de engenharia.
+
 ## Referencias de codigo
 
 - [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1) - assinatura: `public interface IDeviceServerHost`
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Advanced](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [DeviceServerHost.Mqtt](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [DeviceServerObservability](../../../src/Device.Server/Hosting/DeviceServerObservability.cs#L1) - assinatura: `internal static class DeviceServerObservability`
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1) - assinatura: `internal sealed class DeviceServerRuntimeConfig`
+- [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1) - assinatura: `internal static class DeviceMqttTopics`
 - [DeviceSession](../../../src/Device.Server/Hosting/DeviceSession.cs#L1) - assinatura: `internal sealed class DeviceSession`
 - [PendingTrackedCommand](../../../src/Device.Server/Hosting/PendingTrackedCommand.cs#L1) - assinatura: `internal sealed class PendingTrackedCommand`
 - [PairDeviceRequest](../../../src/Device.Protocol/Models/PairDeviceRequest.cs#L1) - assinatura: `public sealed class PairDeviceRequest`
+- [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1) - assinatura: `public sealed class PairDeviceResponse`
+- [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
+- [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1) - assinatura: `public sealed class DevicePresenceMessage`
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1) - assinatura: `public sealed class DeviceTelemetryMessage`
 - [DeviceRecord](../../../src/Device.Protocol/Models/DeviceRecord.cs#L1) - assinatura: `public sealed class DeviceRecord`
 - [DeviceSnapshot](../../../src/Device.Protocol/Models/DeviceSnapshot.cs#L1) - assinatura: `public sealed class DeviceSnapshot`
@@ -94,12 +119,31 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
 
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
+- `src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Routes.cs`
 - `src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs`
+- `src/Device.Server/Hosting/DeviceMqttTopics.cs`
 - `src/Device.Server/Hosting/DeviceSession.cs`
 - `src/Device.Server/Hosting/PendingTrackedCommand.cs`
 - `src/Device.Protocol/Models/PairDeviceRequest.cs`
+- `src/Device.Protocol/Models/PairDeviceResponse.cs`
+- `src/Device.Protocol/Models/ServerInfoResponse.cs`
+- `src/Device.Protocol/Models/DevicePresenceMessage.cs`
 - `src/Device.Protocol/Models/DeviceTelemetryMessage.cs`
+
+## Atualizacao 2026-03 - MQTT como control plane oficial
+
+- O stream visual permaneceu no WS binario (`/ws/v1/stream`) sem espelhamento para MQTT.
+- O control plane oficial agora usa topicos fixos:
+  - `mica/v1/devices/{deviceId}/commands`
+  - `mica/v1/devices/{deviceId}/command-events`
+  - `mica/v1/devices/{deviceId}/status`
+  - `mica/v1/devices/{deviceId}/presence`
+- `status` e `presence` sao retained; `commands` e `command-events` nao sao retained.
+- O snapshot `Online` passou a significar disponibilidade do control plane MQTT.
+- Sessao WS sem MQTT passa a ser tratada como firmware legado fora do control plane.
+- Telemetria WS-texto ou `command-ack` HTTP sem MQTT ativo passam a marcar o snapshot como `LegacyOnly`.
+- `LegacyOnly` nao promove o device a `Online`; ele continua elegivel apenas ao caminho visual/rollback.
 
 ## Atualizacao 2026-03 - Presenca Leve e Carimbos de Sessao
 
@@ -195,4 +239,14 @@ Fornecer servidor HTTP/WS embutido para pareamento, comando e stream de frames p
   - mesmos paths;
   - mesmos DTOs;
   - mesmos comandos wire.
+
+## Atualizacao 2026-03 - Baseline de observabilidade do host
+
+- `DeviceServerHost.StartAsync` passou a configurar logging estruturado e `OpenTelemetry` no `WebApplication` interno antes de montar o pipeline.
+- Requests `/api/v1/*` entram no provider `AspNetCore` do host quando OTLP esta ativo.
+- O caminho tracked `dispatch -> ACK` agora registra:
+  - span manual por comando;
+  - eventos de progresso e conclusao;
+  - metricas de duracao, timeout e falha.
+- A correlacao atual e por `deviceId` e `commandId`; nao houve alteracao no protocolo com firmware para propagacao W3C trace context.
 

@@ -44,6 +44,9 @@ public sealed partial class DeviceServerHost
         return Results.Ok(new ServerInfoResponse
         {
             HttpBase = $"http://{host}:{runtimeConfig.Port}",
+            MqttHost = host,
+            MqttPort = runtimeConfig.MqttPort,
+            MqttRootTopic = runtimeConfig.MqttRootTopic,
             MdnsService = runtimeConfig.MdnsServiceName,
             MaxDevices = runtimeConfig.MaxDevices,
             WsPath = "/ws/v1/stream",

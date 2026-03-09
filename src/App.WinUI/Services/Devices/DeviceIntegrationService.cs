@@ -19,6 +19,8 @@ internal sealed partial class DeviceIntegrationService : IAsyncDisposable
     private readonly ILogger<DeviceIntegrationService> logger;
 
     private const int ServerPort = 5272;
+    private const int ServerMqttPort = 5273;
+    private const string ServerMqttRootTopic = "mica/v1/devices";
     private static readonly TimeSpan RegistrySaveMinInterval = TimeSpan.FromSeconds(10);
 
     private readonly object registrySaveGate = new();
@@ -79,9 +81,11 @@ internal sealed partial class DeviceIntegrationService : IAsyncDisposable
         {
             ListenHost = "0.0.0.0",
             Port = ServerPort,
+            MqttPort = ServerMqttPort,
             MaxDevices = 5,
             MdnsServiceName = "_micaaudio._tcp",
             PublicHost = publicHost,
+            MqttRootTopic = ServerMqttRootTopic,
             DeviceFreshThresholdSeconds = settings.DeviceFreshThresholdSeconds,
             AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
         }, cancellationToken).ConfigureAwait(false);
@@ -89,6 +93,7 @@ internal sealed partial class DeviceIntegrationService : IAsyncDisposable
         var baseAddress = GetServerBaseAddress();
         LogPublicServerBaseAddress(logger, baseAddress);
         LogMessage?.Invoke(this, $"Servidor HTTP publico: {baseAddress}");
+        LogMessage?.Invoke(this, $"Broker MQTT publico: mqtt://{publicHost}:{ServerMqttPort} ({ServerMqttRootTopic}/{{deviceId}})");
         started = true;
     }
 

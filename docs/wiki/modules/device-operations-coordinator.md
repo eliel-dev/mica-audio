@@ -89,3 +89,17 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
   - cap de logs;
   - fallback lazy de thresholds.
 - O shape de `DeviceOperationsState`, os textos operacionais e o wire com `Device.Server` permaneceram inalterados.
+
+## Observabilidade tecnica
+
+- `RunCommandCoreAsync` agora abre o span raiz de operacao de device no lado app (`AppObservability.DeviceIntegrationComponent`).
+- O coordinator replica no scope estruturado as mesmas chaves de correlacao usadas no span:
+  - `deviceId`
+  - `commandId`
+  - `appId` quando o comando carrega esse parametro
+  - `commandType`
+- O objetivo e deixar o path `acao de UI -> coordinator -> host embutido -> ACK` navegavel por correlacao, sem depender apenas do texto livre dos logs.
+- O comportamento funcional do coordinator nao mudou:
+  - continua 1 comando por device;
+  - continua permitindo paralelismo entre devices distintos;
+  - continua usando `DeviceCommandTracker` para refletir progresso na UI.

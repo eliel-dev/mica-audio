@@ -51,6 +51,25 @@ internal static class DeviceLifecyclePolicy
                 DeviceLifecycleTone.Success);
         }
 
+        if (snapshot.ControlPlaneState == DeviceControlPlaneState.LegacyOnly)
+        {
+            var legacyLastSeen = DeviceRegistryPresenceNormalizer.NormalizeTimestamp(snapshot.LastSeenUtc);
+            var lastSeenLabel = legacyLastSeen.HasValue
+                ? BuildLastSeenLabel(nowUtc - legacyLastSeen.Value)
+                : "Ultimo contato: desconhecido";
+
+            return new DeviceLifecyclePresentation(
+                "Offline",
+                "Firmware legado",
+                "Regrave para ativar controle e comandos via MQTT",
+                lastSeenLabel,
+                false,
+                false,
+                false,
+                DeviceLifecycleIcon.Important,
+                DeviceLifecycleTone.Warning);
+        }
+
         var lastSeen = DeviceRegistryPresenceNormalizer.NormalizeTimestamp(snapshot.LastSeenUtc);
         if (lastSeen is null)
         {

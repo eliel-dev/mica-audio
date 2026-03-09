@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Logging;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
+using Polly.Timeout;
 
 namespace Output.Tests;
 
@@ -12,7 +14,7 @@ public sealed class WeatherPreviewDataServiceTests
     public async Task GetSnapshot_ShouldStartLoadingWithFixedTimboLocation_WhenRefreshBegins()
     {
         var client = new FakeWeatherForecastClient();
-        var service = new WeatherPreviewDataService(client, appLogStore: null);
+        var service = new WeatherPreviewDataService(client, appLogStore: null, nowProvider: null, refreshInterval: null, failureRetryInterval: null);
 
         var snapshot = service.GetSnapshot();
 
@@ -27,7 +29,7 @@ public sealed class WeatherPreviewDataServiceTests
     public async Task GetSnapshot_ShouldReturnLiveData_WhenClientSucceeds()
     {
         var client = new FakeWeatherForecastClient();
-        var service = new WeatherPreviewDataService(client, appLogStore: null);
+        var service = new WeatherPreviewDataService(client, appLogStore: null, nowProvider: null, refreshInterval: null, failureRetryInterval: null);
 
         _ = service.GetSnapshot();
         await client.WaitForInvocationAsync(0);
@@ -52,7 +54,7 @@ public sealed class WeatherPreviewDataServiceTests
             var currentTime = new DateTimeOffset(2026, 3, 9, 12, 0, 0, TimeSpan.Zero);
             var client = new FakeWeatherForecastClient();
             var logStore = CreateLogStore(root, () => currentTime);
-            var service = new WeatherPreviewDataService(client, logStore, () => currentTime);
+            var service = new WeatherPreviewDataService(client, logStore, logger: null, nowProvider: () => currentTime);
 
             _ = service.GetSnapshot();
             await client.WaitForInvocationAsync(0);
@@ -82,7 +84,7 @@ public sealed class WeatherPreviewDataServiceTests
             var currentTime = new DateTimeOffset(2026, 3, 9, 12, 0, 0, TimeSpan.Zero);
             var client = new FakeWeatherForecastClient();
             var logStore = CreateLogStore(root, () => currentTime);
-            var service = new WeatherPreviewDataService(client, logStore, () => currentTime);
+            var service = new WeatherPreviewDataService(client, logStore, logger: null, nowProvider: () => currentTime);
 
             _ = service.GetSnapshot();
             await client.WaitForInvocationAsync(0);
@@ -113,6 +115,40 @@ public sealed class WeatherPreviewDataServiceTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task GetSnapshot_ShouldReportTimeoutMessage_WhenClientTimesOut()
+    {
+        var client = new FakeWeatherForecastClient();
+        var service = new WeatherPreviewDataService(client, appLogStore: null, nowProvider: null, refreshInterval: null, failureRetryInterval: null);
+
+        _ = service.GetSnapshot();
+        await client.WaitForInvocationAsync(0);
+        client.CompleteFailure(0, new TimeoutRejectedException("budget exhausted"));
+
+        var snapshot = await WaitForSnapshotAsync(service, static s => s.State == WeatherPreviewLoadState.Error);
+
+        Assert.Equal(WeatherPreviewLoadState.Error, snapshot.State);
+        Assert.Contains("tempo limite", snapshot.FailureMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetSnapshot_ShouldEmitRefreshActivity()
+    {
+        var client = new FakeWeatherForecastClient();
+        using var capture = new ActivityCapture(AppObservability.ActivitySourceName);
+        var service = new WeatherPreviewDataService(client, appLogStore: null, nowProvider: null, refreshInterval: null, failureRetryInterval: null);
+
+        _ = service.GetSnapshot();
+        await client.WaitForInvocationAsync(0);
+        client.CompleteSuccess(0, temperature: 18.4, weatherCode: 1);
+        _ = await WaitForSnapshotAsync(service, static s => s.State == WeatherPreviewLoadState.Live);
+
+        var activity = Assert.Single(capture.CompletedActivities, item => item.OperationName == "weather-preview.refresh");
+        Assert.Equal("weather-preview", activity.GetTagItem(AppObservability.FeatureKey));
+        Assert.Equal(WeatherAppFixedLocation.AppId, activity.GetTagItem(AppObservability.AppIdKey));
+        Assert.Equal(18.4, activity.GetTagItem("weather.temperature"));
     }
 
     private static async Task<WeatherPreviewSnapshot> WaitForSnapshotAsync(

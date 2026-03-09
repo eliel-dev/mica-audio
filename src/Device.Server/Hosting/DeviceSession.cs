@@ -8,17 +8,19 @@ namespace Device.Server.Hosting;
 internal sealed class DeviceSession : IDisposable
 {
     private readonly TimeProvider timeProvider;
-    private readonly TimeSpan socketDetachGracePeriod;
+    private readonly TimeSpan detachGracePeriod;
     private CancellationTokenSource senderCts = new();
     private DateTimeOffset? socketDetachGraceUntilUtc;
+    private DateTimeOffset? controlPlaneDetachGraceUntilUtc;
+    private DateTimeOffset? lastLegacyControlPlaneActivityUtc;
 
-    public DeviceSession(DeviceRecord record, TimeProvider timeProvider, TimeSpan socketDetachGracePeriod)
+    public DeviceSession(DeviceRecord record, TimeProvider timeProvider, TimeSpan detachGracePeriod)
     {
         ArgumentNullException.ThrowIfNull(record);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         this.timeProvider = timeProvider;
-        this.socketDetachGracePeriod = socketDetachGracePeriod;
+        this.detachGracePeriod = detachGracePeriod;
         Record = record;
         LastActivityUtc = record.LastSeenUtc != default && record.LastSeenUtc != DateTimeOffset.MinValue
             ? record.LastSeenUtc
@@ -37,6 +39,8 @@ internal sealed class DeviceSession : IDisposable
     public Channel<byte[]> Outgoing { get; }
 
     public DateTimeOffset LastActivityUtc { get; private set; }
+
+    public bool IsControlPlaneOnline { get; private set; }
 
     public CancellationToken SendToken => senderCts.Token;
 
@@ -144,6 +148,39 @@ internal sealed class DeviceSession : IDisposable
         LastActivityUtc = timeProvider.GetUtcNow();
     }
 
+    public void MarkControlPlaneConnected(string? ip)
+    {
+        IsControlPlaneOnline = true;
+        controlPlaneDetachGraceUntilUtc = null;
+        lastLegacyControlPlaneActivityUtc = null;
+        MarkSeen(
+            ip,
+            Record.LastKnownRssi,
+            Record.FirmwareVersion,
+            Record.ActiveAppId,
+            Record.ActiveAppName,
+            Record.BoardModel,
+            Record.PanelType);
+    }
+
+    public void MarkControlPlaneDisconnected()
+    {
+        IsControlPlaneOnline = false;
+        controlPlaneDetachGraceUntilUtc = timeProvider.GetUtcNow() + detachGracePeriod;
+    }
+
+    public bool MarkLegacyControlPlaneTraffic()
+    {
+        if (IsControlPlaneOnline)
+        {
+            return false;
+        }
+
+        var isFirstObservedLegacyTraffic = !lastLegacyControlPlaneActivityUtc.HasValue;
+        lastLegacyControlPlaneActivityUtc = timeProvider.GetUtcNow();
+        return isFirstObservedLegacyTraffic;
+    }
+
     public void AttachSocket(WebSocket socket, string? ip)
     {
         ArgumentNullException.ThrowIfNull(socket);
@@ -153,7 +190,20 @@ internal sealed class DeviceSession : IDisposable
         senderCts = new CancellationTokenSource();
         Socket = socket;
         socketDetachGraceUntilUtc = null;
-        MarkSeen(ip, Record.LastKnownRssi, Record.FirmwareVersion);
+        LastActivityUtc = timeProvider.GetUtcNow();
+        if (!string.IsNullOrWhiteSpace(ip))
+        {
+            Record = DeviceRecordMutations.MarkSeen(
+                Record,
+                LastActivityUtc,
+                ip,
+                Record.LastKnownRssi,
+                Record.FirmwareVersion,
+                Record.ActiveAppId,
+                Record.ActiveAppName,
+                Record.BoardModel,
+                Record.PanelType);
+        }
     }
 
     public bool DetachSocket(WebSocket socket)
@@ -167,7 +217,7 @@ internal sealed class DeviceSession : IDisposable
 
         senderCts.Cancel();
         Socket = null;
-        socketDetachGraceUntilUtc = timeProvider.GetUtcNow() + socketDetachGracePeriod;
+        socketDetachGraceUntilUtc = timeProvider.GetUtcNow() + detachGracePeriod;
         return true;
     }
 
@@ -180,24 +230,51 @@ internal sealed class DeviceSession : IDisposable
     public DeviceSnapshot ToSnapshot(TimeSpan offlineTimeout)
     {
         var now = timeProvider.GetUtcNow();
-        var onlineBySocket = Socket is { State: WebSocketState.Open } && (now - LastActivityUtc) <= offlineTimeout;
-
-        var withinDetachGrace = false;
-        if (socketDetachGraceUntilUtc.HasValue)
-        {
-            if (now <= socketDetachGraceUntilUtc.Value)
-            {
-                withinDetachGrace = true;
-            }
-            else
-            {
-                socketDetachGraceUntilUtc = null;
-            }
-        }
+        var withinControlPlaneGrace = IsWithinGraceWindow(now, ref controlPlaneDetachGraceUntilUtc);
+        _ = IsWithinGraceWindow(now, ref socketDetachGraceUntilUtc);
+        var hasFreshLegacyTraffic = HasRecentActivity(now, offlineTimeout, ref lastLegacyControlPlaneActivityUtc);
+        var controlPlaneState = IsControlPlaneOnline || withinControlPlaneGrace
+            ? DeviceControlPlaneState.MqttOnline
+            : hasFreshLegacyTraffic
+                ? DeviceControlPlaneState.LegacyOnly
+                : DeviceControlPlaneState.Offline;
 
         return DeviceRecordMutations.ToSnapshot(
             Record,
-            onlineBySocket || withinDetachGrace ? DeviceStatus.Online : DeviceStatus.Offline);
+            controlPlaneState == DeviceControlPlaneState.MqttOnline ? DeviceStatus.Online : DeviceStatus.Offline,
+            controlPlaneState);
+    }
+
+    private static bool IsWithinGraceWindow(DateTimeOffset now, ref DateTimeOffset? graceUntilUtc)
+    {
+        if (!graceUntilUtc.HasValue)
+        {
+            return false;
+        }
+
+        if (now <= graceUntilUtc.Value)
+        {
+            return true;
+        }
+
+        graceUntilUtc = null;
+        return false;
+    }
+
+    private static bool HasRecentActivity(DateTimeOffset now, TimeSpan window, ref DateTimeOffset? lastActivityUtc)
+    {
+        if (!lastActivityUtc.HasValue)
+        {
+            return false;
+        }
+
+        if (window > TimeSpan.Zero && (now - lastActivityUtc.Value) <= window)
+        {
+            return true;
+        }
+
+        lastActivityUtc = null;
+        return false;
     }
 
     public void Dispose()

@@ -11,6 +11,8 @@ Pontos principais do cutover HUB75 128x64:
 - [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
 - [Hub75VisualizerFrameRenderer](../../../src/App.WinUI/Services/Visualizer/Hub75VisualizerFrameRenderer.cs#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
+- [FirmwareArtifactManifest](../../../src/App.WinUI/Services/Firmware/FirmwareArtifactManifest.cs#L1)
+- [ResolvedFirmwareArtifact](../../../src/App.WinUI/Services/Firmware/ResolvedFirmwareArtifact.cs#L1)
 - [Hub75PreviewHelper](../../../src/App.WinUI/Views/Controls/Renderers/Hub75PreviewHelper.cs#L1)
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)
 - [MainPage XAML](../../../src/App.WinUI/Views/MainPage.xaml#L1)
@@ -26,10 +28,17 @@ Pontos principais do cutover HUB75 128x64:
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
+- [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
+- [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1)
+- [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1)
+- [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1)
+- [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1)
+- [DeviceControlPlaneState](../../../src/Device.Protocol/Models/DeviceControlPlaneState.cs#L1)
 
 Notas ativas:
 
 - Firmware oficial unico: `dma_exp` (DevKitC-1 128x64).
+- O portal AP do firmware voltou a expor `Servidor` editavel; aceita URL completa ou `host[:porta]` e preserva host salvo valido em erro manual.
 
 Pontos de UI para operacao de devices:
 
@@ -58,7 +67,9 @@ Pontos de estado e visibilidade de devices:
 - [DeviceListRenderDiff](../../../src/App.WinUI/Services/Devices/DeviceListRenderDiff.cs#L1)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1)
+- [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1)
 - [DeviceSession](../../../src/Device.Server/Hosting/DeviceSession.cs#L1)
 - [PendingTrackedCommand](../../../src/Device.Server/Hosting/PendingTrackedCommand.cs#L1)
 
@@ -78,6 +89,9 @@ Observacoes ativas:
 - A DevicesPage usa apenas miniatura inline da lista para preview de app; o painel da direita nao tem preview maior.
 - A DevicesPage usa painel seguro de status + logs por device selecionado, e nao monta mais o dashboard avancado estilo ESP-Dash no caminho padrao.
 - O DeviceServerHost aplica grace curto de detach WS (500ms) e detach por identidade de socket para reduzir flapping em reconexao rapida.
+- O online/offline oficial da UI agora vem do control plane MQTT; WS isolado nao basta mais para marcar device online.
+- O snapshot tambem diferencia `LegacyOnly` para firmware que ainda usa WS-texto/HTTP no control plane.
+- O hot path visual continua em `Esp32S3LedOutput -> DeviceServerHost.BroadcastFrame -> /ws/v1/stream`.
 
 Pontos centrais do pipeline de analise e captura:
 

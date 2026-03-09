@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Device.Protocol.Models;
 using Microsoft.AspNetCore.Http;
+using Serilog;
 
 namespace Device.Server.Hosting;
 
@@ -17,17 +19,41 @@ public sealed partial class DeviceServerHost
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        var commandId = Guid.NewGuid().ToString("N");
+        var commandTypeName = commandType.ToString();
+        var stopwatch = Stopwatch.StartNew();
+        using var activity = DeviceServerObservability.StartCommandActivity("device.command.tracked", deviceId, commandId, commandTypeName);
+        if (TryGetAppId(parameters, out var appId))
+        {
+            activity?.SetTag(DeviceServerObservability.AppIdKey, appId);
+        }
+
+        using var scope = DeviceServerObservability.PushScope(
+            activity,
+            (DeviceServerObservability.ComponentKey, DeviceServerObservability.Component),
+            (DeviceServerObservability.MicaComponentKey, DeviceServerObservability.Component),
+            (DeviceServerObservability.OperationKey, "device.command.tracked"),
+            (DeviceServerObservability.DeviceIdKey, deviceId),
+            (DeviceServerObservability.CommandIdKey, commandId),
+            (DeviceServerObservability.CommandTypeKey, commandTypeName),
+            (DeviceServerObservability.AppIdKey, appId));
+
         DeviceSession? state;
         lock (gate)
         {
             devices.TryGetValue(deviceId, out state);
         }
 
-        if (state?.Socket is null || state.Socket.State != System.Net.WebSockets.WebSocketState.Open)
+        if (state is null || !state.IsControlPlaneOnline)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "device_offline");
+            DeviceServerObservability.RecordCommandFailure(deviceId, commandTypeName, "offline");
+            DeviceServerObservability.RecordCommandDuration(stopwatch.Elapsed, deviceId, commandTypeName, success: false, stage: "offline");
+            Serilog.Log.Warning("Tracked command rejected because device is offline. deviceId={DeviceId} commandType={CommandType}", deviceId, commandTypeName);
             return new CommandDispatchResult
             {
                 DeviceId = deviceId,
+                CommandId = commandId,
                 Accepted = false,
                 Completed = true,
                 Success = false,
@@ -38,8 +64,7 @@ public sealed partial class DeviceServerHost
             };
         }
 
-        var commandId = Guid.NewGuid().ToString("N");
-        var pending = new PendingTrackedCommand(commandId, deviceId, commandType);
+        var pending = new PendingTrackedCommand(commandId, deviceId, commandType, activity);
 
         lock (gate)
         {
@@ -54,6 +79,7 @@ public sealed partial class DeviceServerHost
             Stage = "queued",
             Message = "Comando enfileirado.",
         });
+        Serilog.Log.Information("Tracked command queued. deviceId={DeviceId} commandId={CommandId} commandType={CommandType}", deviceId, commandId, commandTypeName);
 
         var commandEnvelope = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
@@ -71,7 +97,7 @@ public sealed partial class DeviceServerHost
 
         try
         {
-            await state.Socket.SendAsync(payload, System.Net.WebSockets.WebSocketMessageType.Text, true, cancellationToken).ConfigureAwait(false);
+            await PublishCommandOverMqttAsync(state.Record.DeviceId, payload, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -80,6 +106,10 @@ public sealed partial class DeviceServerHost
                 pendingTrackedCommands.Remove(commandId, out _);
             }
 
+            DeviceServerObservability.SetException(activity, ex);
+            DeviceServerObservability.RecordCommandFailure(deviceId, commandTypeName, "send-error");
+            DeviceServerObservability.RecordCommandDuration(stopwatch.Elapsed, deviceId, commandTypeName, success: false, stage: "send-error");
+            Serilog.Log.Warning(ex, "Tracked command failed before dispatch ACK flow. deviceId={DeviceId} commandId={CommandId}", deviceId, commandId);
             return new CommandDispatchResult
             {
                 DeviceId = deviceId,
@@ -102,14 +132,44 @@ public sealed partial class DeviceServerHost
             Stage = "sent",
             Message = "Comando enviado ao dispositivo.",
         });
+        Serilog.Log.Information("Tracked command sent to MQTT. deviceId={DeviceId} commandId={CommandId}", deviceId, commandId);
 
         try
         {
-            return await pending.WaitForResultAsync(timeout, timeProvider, cancellationToken).ConfigureAwait(false);
+            var result = await pending.WaitForResultAsync(timeout, timeProvider, cancellationToken).ConfigureAwait(false);
+            activity?.SetTag("command.stage", result.Stage);
+            activity?.SetTag("command.success", result.Success);
+            if (!string.IsNullOrWhiteSpace(result.ErrorCode))
+            {
+                activity?.SetTag("command.error_code", result.ErrorCode);
+            }
+
+            if (!result.Success)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, result.ErrorCode ?? result.Stage);
+                DeviceServerObservability.RecordCommandFailure(deviceId, commandTypeName, result.Stage ?? "failed");
+                Serilog.Log.Warning(
+                    "Tracked command completed with failure. deviceId={DeviceId} commandId={CommandId} stage={Stage} errorCode={ErrorCode}",
+                    deviceId,
+                    commandId,
+                    result.Stage,
+                    result.ErrorCode);
+            }
+            else
+            {
+                Serilog.Log.Information(
+                    "Tracked command completed successfully. deviceId={DeviceId} commandId={CommandId} stage={Stage}",
+                    deviceId,
+                    commandId,
+                    result.Stage);
+            }
+
+            DeviceServerObservability.RecordCommandDuration(stopwatch.Elapsed, deviceId, commandTypeName, result.Success, result.Stage ?? "completed");
+            return result;
         }
         catch (OperationCanceledException)
         {
-            return new CommandDispatchResult
+            var result = new CommandDispatchResult
             {
                 DeviceId = deviceId,
                 CommandId = commandId,
@@ -121,6 +181,12 @@ public sealed partial class DeviceServerHost
                 Message = "Operacao cancelada.",
                 ErrorCode = "cancelled",
             };
+            pending.RecordCompletion(result);
+            activity?.SetStatus(ActivityStatusCode.Error, result.ErrorCode);
+            DeviceServerObservability.RecordCommandFailure(deviceId, commandTypeName, result.Stage);
+            DeviceServerObservability.RecordCommandDuration(stopwatch.Elapsed, deviceId, commandTypeName, success: false, stage: result.Stage);
+            Serilog.Log.Warning("Tracked command cancelled. deviceId={DeviceId} commandId={CommandId}", deviceId, commandId);
+            return result;
         }
         catch (TimeoutException)
         {
@@ -134,7 +200,7 @@ public sealed partial class DeviceServerHost
                 Success = false,
             });
 
-            return new CommandDispatchResult
+            var result = new CommandDispatchResult
             {
                 DeviceId = deviceId,
                 CommandId = commandId,
@@ -146,6 +212,13 @@ public sealed partial class DeviceServerHost
                 Message = "Sem resposta do dispositivo dentro do timeout.",
                 ErrorCode = "timeout",
             };
+            pending.RecordCompletion(result);
+            activity?.SetStatus(ActivityStatusCode.Error, result.ErrorCode);
+            DeviceServerObservability.RecordCommandTimeout(deviceId, commandTypeName);
+            DeviceServerObservability.RecordCommandFailure(deviceId, commandTypeName, result.Stage);
+            DeviceServerObservability.RecordCommandDuration(stopwatch.Elapsed, deviceId, commandTypeName, success: false, stage: result.Stage);
+            Serilog.Log.Warning("Tracked command timed out. deviceId={DeviceId} commandId={CommandId}", deviceId, commandId);
+            return result;
         }
         finally
         {
@@ -179,6 +252,7 @@ public sealed partial class DeviceServerHost
             return Results.BadRequest(new { error = "invalid_json" });
         }
 
+        MarkLegacyControlPlaneTraffic(state, "command-ack");
         state.MarkSeen(ctx.Connection.RemoteIpAddress?.ToString(), state.Record.LastKnownRssi, state.Record.FirmwareVersion, state.Record.ActiveAppId, state.Record.ActiveAppName, state.Record.BoardModel, state.Record.PanelType);
         var progress = Math.Clamp(ack.ProgressPercent ?? (ack.Success ? 100 : 0), 0, 100);
         var stage = string.IsNullOrWhiteSpace(ack.Stage) ? (ack.Success ? "ack" : "ack-failed") : ack.Stage;
@@ -237,54 +311,8 @@ public sealed partial class DeviceServerHost
                     return false;
                 }
 
-                state.Touch();
-                var normalized = new DeviceCommandProgressMessage
-                {
-                    DeviceId = string.IsNullOrWhiteSpace(msg.DeviceId) ? state.Record.DeviceId : msg.DeviceId,
-                    CommandId = msg.CommandId,
-                    ProgressPercent = Math.Clamp(msg.ProgressPercent, 0, 100),
-                    Stage = msg.Stage,
-                    Message = msg.Message,
-                    Success = msg.Success,
-                };
-
-                PublishCommandProgress(normalized);
-
-                if (normalized.Success is false)
-                {
-                    TryCompletePending(
-                        normalized.CommandId,
-                        new CommandDispatchResult
-                        {
-                            DeviceId = normalized.DeviceId,
-                            CommandId = normalized.CommandId,
-                            Accepted = true,
-                            Completed = true,
-                            Success = false,
-                            ProgressPercent = normalized.ProgressPercent,
-                            Stage = normalized.Stage,
-                            Message = normalized.Message,
-                            ErrorCode = "device_reported_failure",
-                        });
-                }
-                else if (normalized.Success is true || normalized.ProgressPercent >= 100)
-                {
-                    TryCompletePending(
-                        normalized.CommandId,
-                        new CommandDispatchResult
-                        {
-                            DeviceId = normalized.DeviceId,
-                            CommandId = normalized.CommandId,
-                            Accepted = true,
-                            Completed = true,
-                            Success = true,
-                            ProgressPercent = 100,
-                            Stage = normalized.Stage,
-                            Message = normalized.Message,
-                        });
-                }
-
-                return true;
+                MarkLegacyControlPlaneTraffic(state, "ws-text");
+                return TryApplyCommandProgress(state, msg);
             }
 
             var telemetry = JsonSerializer.Deserialize<DeviceTelemetryMessage>(json, JsonOptions);
@@ -293,44 +321,170 @@ public sealed partial class DeviceServerHost
                 return false;
             }
 
-            state.MarkTelemetry(
-                telemetry.IpAddress,
-                telemetry.Rssi,
-                telemetry.FirmwareVersion,
-                telemetry.ActiveAppId,
-                telemetry.ActiveAppName,
-                telemetry.BoardModel,
-                telemetry.PanelType,
-                telemetry.UptimeSeconds,
-                telemetry.LoopLoadPercent,
-                telemetry.FreeHeapBytes,
-                telemetry.LargestHeapBlockBytes,
-                telemetry.PsramAvailable,
-                telemetry.FreePsramBytes,
-                telemetry.LargestPsramBlockBytes,
-                telemetry.WifiConnected,
-                telemetry.WifiState,
-                telemetry.ProvisioningPortalActive,
-                telemetry.AuxLedAvailable,
-                telemetry.TestLedAvailable,
-                telemetry.LastWifiEvent,
-                telemetry.StreamLastSequence,
-                telemetry.StreamFramesReceived,
-                telemetry.StreamFramesApplied,
-                telemetry.StreamSequenceGapCount,
-                telemetry.StreamInvalidFrameCount,
-                telemetry.TelemetrySequence,
-                telemetry.BrightnessCap,
-                telemetry.BrightnessRequested,
-                telemetry.BrightnessApplied,
-                telemetry.TestLedEnabled,
-                telemetry.TestLedDuty);
+            MarkLegacyControlPlaneTraffic(state, "ws-text");
+            return TryApplyTelemetry(state, telemetry, telemetry.IpAddress);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private bool TryHandleCommandEventPayload(DeviceSession state, byte[] payload)
+    {
+        try
+        {
+            var progress = JsonSerializer.Deserialize<DeviceCommandProgressMessage>(payload, JsonOptions);
+            return progress is not null && TryApplyCommandProgress(state, progress);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryHandleTelemetryPayload(DeviceSession state, byte[] payload, string? remoteIp)
+    {
+        try
+        {
+            var telemetry = JsonSerializer.Deserialize<DeviceTelemetryMessage>(payload, JsonOptions);
+            return telemetry is not null && TryApplyTelemetry(state, telemetry, remoteIp);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryHandlePresencePayload(DeviceSession state, byte[] payload, string? remoteIp)
+    {
+        try
+        {
+            var presence = JsonSerializer.Deserialize<DevicePresenceMessage>(payload, JsonOptions);
+            if (presence is null || string.IsNullOrWhiteSpace(presence.State))
+            {
+                return false;
+            }
+
+            if (string.Equals(presence.State, "online", StringComparison.OrdinalIgnoreCase))
+            {
+                state.MarkControlPlaneConnected(remoteIp);
+            }
+            else if (string.Equals(presence.State, "offline", StringComparison.OrdinalIgnoreCase))
+            {
+                state.MarkControlPlaneDisconnected();
+            }
+            else
+            {
+                return false;
+            }
+
             return true;
         }
         catch
         {
             return false;
         }
+    }
+
+    private bool TryApplyCommandProgress(DeviceSession state, DeviceCommandProgressMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(message);
+
+        if (string.IsNullOrWhiteSpace(message.CommandId))
+        {
+            return false;
+        }
+
+        state.Touch();
+        var normalized = new DeviceCommandProgressMessage
+        {
+            DeviceId = string.IsNullOrWhiteSpace(message.DeviceId) ? state.Record.DeviceId : message.DeviceId,
+            CommandId = message.CommandId,
+            ProgressPercent = Math.Clamp(message.ProgressPercent, 0, 100),
+            Stage = message.Stage,
+            Message = message.Message,
+            Success = message.Success,
+        };
+
+        PublishCommandProgress(normalized);
+
+        if (normalized.Success is false)
+        {
+            TryCompletePending(
+                normalized.CommandId,
+                new CommandDispatchResult
+                {
+                    DeviceId = normalized.DeviceId,
+                    CommandId = normalized.CommandId,
+                    Accepted = true,
+                    Completed = true,
+                    Success = false,
+                    ProgressPercent = normalized.ProgressPercent,
+                    Stage = normalized.Stage,
+                    Message = normalized.Message,
+                    ErrorCode = "device_reported_failure",
+                });
+        }
+        else if (normalized.Success is true || normalized.ProgressPercent >= 100)
+        {
+            TryCompletePending(
+                normalized.CommandId,
+                new CommandDispatchResult
+                {
+                    DeviceId = normalized.DeviceId,
+                    CommandId = normalized.CommandId,
+                    Accepted = true,
+                    Completed = true,
+                    Success = true,
+                    ProgressPercent = 100,
+                    Stage = normalized.Stage,
+                    Message = normalized.Message,
+                });
+        }
+
+        return true;
+    }
+
+    private static bool TryApplyTelemetry(DeviceSession state, DeviceTelemetryMessage telemetry, string? remoteIp)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(telemetry);
+
+        state.MarkTelemetry(
+            string.IsNullOrWhiteSpace(telemetry.IpAddress) ? remoteIp : telemetry.IpAddress,
+            telemetry.Rssi,
+            telemetry.FirmwareVersion,
+            telemetry.ActiveAppId,
+            telemetry.ActiveAppName,
+            telemetry.BoardModel,
+            telemetry.PanelType,
+            telemetry.UptimeSeconds,
+            telemetry.LoopLoadPercent,
+            telemetry.FreeHeapBytes,
+            telemetry.LargestHeapBlockBytes,
+            telemetry.PsramAvailable,
+            telemetry.FreePsramBytes,
+            telemetry.LargestPsramBlockBytes,
+            telemetry.WifiConnected,
+            telemetry.WifiState,
+            telemetry.ProvisioningPortalActive,
+            telemetry.AuxLedAvailable,
+            telemetry.TestLedAvailable,
+            telemetry.LastWifiEvent,
+            telemetry.StreamLastSequence,
+            telemetry.StreamFramesReceived,
+            telemetry.StreamFramesApplied,
+            telemetry.StreamSequenceGapCount,
+            telemetry.StreamInvalidFrameCount,
+            telemetry.TelemetrySequence,
+            telemetry.BrightnessCap,
+            telemetry.BrightnessRequested,
+            telemetry.BrightnessApplied,
+            telemetry.TestLedEnabled,
+            telemetry.TestLedDuty);
+        return true;
     }
 
     private void TryCompletePending(string commandId, CommandDispatchResult result)
@@ -341,7 +495,26 @@ public sealed partial class DeviceServerHost
             pendingTrackedCommands.TryGetValue(commandId, out pending);
         }
 
-        pending?.TrySetResult(result);
+        if (pending?.TrySetResult(result) == true)
+        {
+            pending.RecordCompletion(result);
+        }
+    }
+
+    private void MarkLegacyControlPlaneTraffic(DeviceSession state, string transport)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        bool firstObservedLegacyTraffic;
+        lock (gate)
+        {
+            firstObservedLegacyTraffic = state.MarkLegacyControlPlaneTraffic();
+        }
+
+        if (firstObservedLegacyTraffic)
+        {
+            Log($"Firmware legado detectado para {state.Record.DeviceId}: control plane via {transport} sem MQTT.");
+        }
     }
 
     private void PublishCommandProgress(DeviceCommandProgressMessage progress)
@@ -356,11 +529,28 @@ public sealed partial class DeviceServerHost
         {
             if (pendingTrackedCommands.TryGetValue(progress.CommandId, out var pending) && pending is not null)
             {
-                pending.LastPercent = Math.Max(pending.LastPercent, Math.Clamp(progress.ProgressPercent, 0, 100));
+                pending.RecordProgress(progress);
             }
         }
 
         CommandProgressChanged?.Invoke(this, progress);
+    }
+
+    private static bool TryGetAppId(IReadOnlyDictionary<string, string>? parameters, out string? appId)
+    {
+        appId = null;
+        if (parameters is null)
+        {
+            return false;
+        }
+
+        if (!parameters.TryGetValue("appId", out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
+        {
+            return false;
+        }
+
+        appId = rawValue.Trim();
+        return true;
     }
 
     private static string CommandTypeToWire(DeviceCommandType commandType)
