@@ -125,6 +125,7 @@
   - faixa superior de status;
   - grade adaptativa `3x2 / 2x3 / 1x6` de cards compostos;
   - cada card mostra contexto de hardware detectado (`CPU`, `GPU`, `RAM`, `VRAM`) e ate duas metricas internas;
+  - `Memoria RAM` e `VRAM GPU` usam uma barra unica de capacidade, com percentual + `GB` usados no centro e apoio de `disponivel` / `total` no rodape;
   - superficie focada apenas no dashboard, sem lista secundaria de sensores.
 - Os 6 cards principais do topo sao fixos e opinados:
   - `Uso total` com CPU + GPU;

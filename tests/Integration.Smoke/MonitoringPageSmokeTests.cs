@@ -53,4 +53,17 @@ public sealed class MonitoringPageSmokeTests
 
         Assert.Equal("Memoria do sistema | Windows", MonitoringPage.BuildMetricHardwareText(metric));
     }
+
+    [Fact]
+    public void BuildKpiContextText_ShouldExposeWindowsFallbackOriginForCapacityCards()
+    {
+        var kpi = new MonitoringKpi(
+            "ram-usage",
+            "Memoria RAM",
+            "Memoria do sistema",
+            [new MonitoringKpiMetric("Usada", "Memoria do sistema", "12 GB", progress: 0.4d, isAvailable: true, MonitoringDataOrigin.WindowsFallback)],
+            new MonitoringKpiCapacity("12 GB", "20 GB", "32 GB", "37.5% (12 GB)", progress: 0.4d, isAvailable: true, MonitoringDataOrigin.WindowsFallback));
+
+        Assert.Equal("Memoria do sistema | Windows", MonitoringPage.BuildKpiContextText(kpi));
+    }
 }

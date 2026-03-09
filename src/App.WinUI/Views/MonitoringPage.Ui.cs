@@ -147,12 +147,16 @@ public sealed partial class MonitoringPage
             metricsHost.Children.Add(row.Root);
         }
 
+        var capacity = CreateCapacityView();
+        capacity.Root.Visibility = Visibility.Collapsed;
+
         var stack = new StackPanel { Spacing = 10 };
         stack.Children.Add(title);
         stack.Children.Add(context);
         stack.Children.Add(metricsHost);
+        stack.Children.Add(capacity.Root);
 
-        return new KpiTileView(CreateCard(stack, padding: 14, elevated: true), title, context, rows);
+        return new KpiTileView(CreateCard(stack, padding: 14, elevated: true), title, context, metricsHost, capacity, rows);
     }
 
     private static KpiMetricRowView CreateKpiMetricRow()
@@ -221,6 +225,100 @@ public sealed partial class MonitoringPage
             progress);
     }
 
+    private static KpiCapacityView CreateCapacityView()
+    {
+        var usedLabel = new TextBlock
+        {
+            Text = "Usada",
+            FontSize = 11,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Opacity = 0.9,
+        };
+
+        var usedValue = new TextBlock
+        {
+            Text = "Indisponivel",
+            FontSize = 20,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextAlignment = TextAlignment.Right,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var header = new Grid { ColumnSpacing = 12 };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.Children.Add(usedLabel);
+        Grid.SetColumn(usedValue, 1);
+        header.Children.Add(usedValue);
+
+        var barProgress = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 1,
+            Height = 28,
+        };
+
+        var barText = new TextBlock
+        {
+            Text = "Indisponivel",
+            FontSize = 11,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.NoWrap,
+            TextTrimming = TextTrimming.None,
+        };
+
+        var barHost = new Grid();
+        barHost.Children.Add(barProgress);
+        barHost.Children.Add(barText);
+
+        var footer = new Grid { ColumnSpacing = 12 };
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var available = new TextBlock
+        {
+            Text = "Disponivel: -",
+            Opacity = 0.74,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var total = new TextBlock
+        {
+            Text = "Total: -",
+            Opacity = 0.74,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            TextAlignment = TextAlignment.Right,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        footer.Children.Add(available);
+        Grid.SetColumn(total, 1);
+        footer.Children.Add(total);
+
+        var stack = new StackPanel { Spacing = 8 };
+        stack.Children.Add(header);
+        stack.Children.Add(barHost);
+        stack.Children.Add(footer);
+
+        return new KpiCapacityView(
+            new Border
+            {
+                Padding = new Thickness(0, 6, 0, 6),
+                BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Child = stack,
+            },
+            usedLabel,
+            usedValue,
+            barProgress,
+            barText,
+            available,
+            total);
+    }
+
     private void ReflowKpiTiles(int columns)
     {
         KpiGrid.ColumnDefinitions.Clear();
@@ -275,11 +373,13 @@ public sealed partial class MonitoringPage
 
     private sealed class KpiTileView
     {
-        public KpiTileView(Border root, TextBlock title, TextBlock context, KpiMetricRowView[] metrics)
+        public KpiTileView(Border root, TextBlock title, TextBlock context, StackPanel metricsHost, KpiCapacityView capacity, KpiMetricRowView[] metrics)
         {
             Root = root;
             Title = title;
             Context = context;
+            MetricsHost = metricsHost;
+            Capacity = capacity;
             Metrics = metrics;
         }
 
@@ -289,7 +389,46 @@ public sealed partial class MonitoringPage
 
         public TextBlock Context { get; }
 
+        public StackPanel MetricsHost { get; }
+
+        public KpiCapacityView Capacity { get; }
+
         public KpiMetricRowView[] Metrics { get; }
+    }
+
+    private sealed class KpiCapacityView
+    {
+        public KpiCapacityView(
+            Border root,
+            TextBlock usedLabel,
+            TextBlock usedValue,
+            ProgressBar progress,
+            TextBlock barText,
+            TextBlock availableValue,
+            TextBlock totalValue)
+        {
+            Root = root;
+            UsedLabel = usedLabel;
+            UsedValue = usedValue;
+            Progress = progress;
+            BarText = barText;
+            AvailableValue = availableValue;
+            TotalValue = totalValue;
+        }
+
+        public Border Root { get; }
+
+        public TextBlock UsedLabel { get; }
+
+        public TextBlock UsedValue { get; }
+
+        public ProgressBar Progress { get; }
+
+        public TextBlock BarText { get; }
+
+        public TextBlock AvailableValue { get; }
+
+        public TextBlock TotalValue { get; }
     }
 
     private sealed class KpiMetricRowView

@@ -115,6 +115,11 @@ public sealed class HwinfoMonitoringTests
                 Assert.Equal("Memoria do sistema", memory.ContextText);
                 Assert.Equal("12.37 GB", memory.Metrics[0].ValueText);
                 Assert.Equal("3.54 GB", memory.Metrics[1].ValueText);
+                Assert.NotNull(memory.Capacity);
+                Assert.Equal("12.37 GB", memory.Capacity!.UsedText);
+                Assert.Equal("3.54 GB", memory.Capacity.AvailableText);
+                Assert.Equal("15.91 GB", memory.Capacity.TotalText);
+                Assert.Equal("77.7% (12.37 GB)", memory.Capacity.BarText);
                 Assert.Equal(MonitoringDataOrigin.Hwinfo, memory.Metrics[0].DataOrigin);
             },
             vram =>
@@ -123,6 +128,9 @@ public sealed class HwinfoMonitoringTests
                 Assert.Equal("NVIDIA GeForce RTX 5070", vram.ContextText);
                 Assert.Equal("1.49 GB", vram.Metrics[0].ValueText);
                 Assert.Equal("10.45 GB", vram.Metrics[1].ValueText);
+                Assert.NotNull(vram.Capacity);
+                Assert.Equal("11.94 GB", vram.Capacity!.TotalText);
+                Assert.Equal("12.5% (1.49 GB)", vram.Capacity.BarText);
                 Assert.Equal(MonitoringDataOrigin.Hwinfo, vram.Metrics[1].DataOrigin);
             },
             power =>
@@ -194,6 +202,8 @@ public sealed class HwinfoMonitoringTests
         Assert.Equal("20 GB", kpis[2].Metrics[1].ValueText);
         Assert.Equal("2 GB", kpis[3].Metrics[0].ValueText);
         Assert.Equal("10 GB", kpis[3].Metrics[1].ValueText);
+        Assert.Equal("37.5% (12 GB)", kpis[2].Capacity!.BarText);
+        Assert.Equal("16.7% (2 GB)", kpis[3].Capacity!.BarText);
     }
 
     [Fact]
@@ -213,6 +223,7 @@ public sealed class HwinfoMonitoringTests
         Assert.Equal(MonitoringDataOrigin.Hwinfo, kpis[2].Metrics[0].DataOrigin);
         Assert.Equal(MonitoringDataOrigin.Hwinfo, kpis[2].Metrics[1].DataOrigin);
         Assert.Equal("12.37 GB", kpis[2].Metrics[0].ValueText);
+        Assert.Equal("77.7% (12.37 GB)", kpis[2].Capacity!.BarText);
     }
 
     private static byte[] BuildSharedMemory(

@@ -88,13 +88,15 @@ internal sealed class MonitoringKpi
         string id,
         string title,
         string contextText,
-        IReadOnlyList<MonitoringKpiMetric> metrics)
+        IReadOnlyList<MonitoringKpiMetric> metrics,
+        MonitoringKpiCapacity? capacity = null)
     {
         Id = id;
         Title = title;
         ContextText = contextText;
         Metrics = metrics;
-        IsAvailable = metrics.Any(static metric => metric.IsAvailable);
+        Capacity = capacity;
+        IsAvailable = (capacity?.IsAvailable ?? false) || metrics.Any(static metric => metric.IsAvailable);
     }
 
     public string Id { get; }
@@ -105,7 +107,47 @@ internal sealed class MonitoringKpi
 
     public IReadOnlyList<MonitoringKpiMetric> Metrics { get; }
 
+    public MonitoringKpiCapacity? Capacity { get; }
+
     public bool IsAvailable { get; }
+}
+
+internal sealed class MonitoringKpiCapacity
+{
+    public MonitoringKpiCapacity(
+        string usedText,
+        string availableText,
+        string totalText,
+        string barText,
+        double? progress,
+        bool isAvailable,
+        MonitoringDataOrigin dataOrigin)
+    {
+        UsedText = usedText;
+        AvailableText = availableText;
+        TotalText = totalText;
+        BarText = barText;
+        Progress = progress;
+        IsAvailable = isAvailable;
+        DataOrigin = dataOrigin;
+    }
+
+    public string UsedText { get; }
+
+    public string AvailableText { get; }
+
+    public string TotalText { get; }
+
+    public string BarText { get; }
+
+    public double? Progress { get; }
+
+    public bool IsAvailable { get; }
+
+    public MonitoringDataOrigin DataOrigin { get; }
+
+    public static MonitoringKpiCapacity Unavailable()
+        => new("-", "-", "-", "Indisponivel", progress: null, isAvailable: false, MonitoringDataOrigin.Unavailable);
 }
 
 internal sealed class MonitoringKpiMetric

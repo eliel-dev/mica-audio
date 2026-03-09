@@ -93,7 +93,8 @@ internal static class MonitoringKpiSelector
     {
         var usedMetric = BuildMemoryMetric("Usada", hardwareName, direct: used, counterpart: available, total, fallback, preferAvailable: false);
         var availableMetric = BuildMemoryMetric("Disponivel", hardwareName, direct: available, counterpart: used, total, fallback, preferAvailable: true);
-        return new MonitoringKpi(id, title, contextText, [usedMetric, availableMetric]);
+        var capacity = BuildMemoryCapacity(used, available, total, fallback);
+        return new MonitoringKpi(id, title, contextText, [usedMetric, availableMetric], capacity);
     }
 
     private static MonitoringKpiMetric BuildMetricFromReading(string label, string hardwareName, MonitoringReading? reading, bool showProgress)
@@ -132,6 +133,25 @@ internal static class MonitoringKpiSelector
         }
 
         return MonitoringKpiMetric.Unavailable(label, hardwareName);
+    }
+
+    private static MonitoringKpiCapacity BuildMemoryCapacity(
+        MonitoringReading? used,
+        MonitoringReading? available,
+        MonitoringReading? total,
+        object? fallback)
+    {
+        if (TryResolveHwinfoMemoryCapacity(used, available, total, out var hwinfoCapacity))
+        {
+            return hwinfoCapacity;
+        }
+
+        if (TryResolveFallbackMemoryCapacity(fallback, out var fallbackCapacity))
+        {
+            return fallbackCapacity;
+        }
+
+        return MonitoringKpiCapacity.Unavailable();
     }
 
     private static bool TryResolveHwinfoMemoryMetric(
@@ -198,6 +218,120 @@ internal static class MonitoringKpiSelector
                 progress = null;
                 return false;
         }
+    }
+
+    private static bool TryResolveHwinfoMemoryCapacity(
+        MonitoringReading? used,
+        MonitoringReading? available,
+        MonitoringReading? total,
+        out MonitoringKpiCapacity capacity)
+    {
+        if (!TryResolveMemoryCapacityValues(used, available, total, out var usedValue, out var availableValue, out var totalValue))
+        {
+            capacity = MonitoringKpiCapacity.Unavailable();
+            return false;
+        }
+
+        capacity = new MonitoringKpiCapacity(
+            MonitoringReading.FormatValue(usedValue, MemoryCardDisplayUnit),
+            MonitoringReading.FormatValue(availableValue, MemoryCardDisplayUnit),
+            MonitoringReading.FormatValue(totalValue, MemoryCardDisplayUnit),
+            BuildCapacityBarText(usedValue, totalValue),
+            totalValue > 0d ? ClampFraction(usedValue / totalValue) : null,
+            isAvailable: true,
+            MonitoringDataOrigin.Hwinfo);
+        return true;
+    }
+
+    private static bool TryResolveFallbackMemoryCapacity(object? fallback, out MonitoringKpiCapacity capacity)
+    {
+        switch (fallback)
+        {
+            case MonitoringSystemMemoryFallback systemMemory:
+            {
+                capacity = BuildFallbackCapacity(systemMemory.UsedBytes, systemMemory.AvailableBytes, systemMemory.TotalBytes);
+                return true;
+            }
+            case MonitoringGpuMemoryFallback gpuMemory:
+            {
+                capacity = BuildFallbackCapacity(gpuMemory.UsedBytes, gpuMemory.AvailableBytes, gpuMemory.TotalBytes);
+                return true;
+            }
+            default:
+                capacity = MonitoringKpiCapacity.Unavailable();
+                return false;
+        }
+    }
+
+    private static MonitoringKpiCapacity BuildFallbackCapacity(ulong usedBytes, ulong availableBytes, ulong totalBytes)
+    {
+        var usedValue = usedBytes / (1024d * 1024d * 1024d);
+        var availableValue = availableBytes / (1024d * 1024d * 1024d);
+        var totalValue = totalBytes / (1024d * 1024d * 1024d);
+
+        return new MonitoringKpiCapacity(
+            MonitoringReading.FormatValue(usedValue, MemoryCardDisplayUnit),
+            MonitoringReading.FormatValue(availableValue, MemoryCardDisplayUnit),
+            MonitoringReading.FormatValue(totalValue, MemoryCardDisplayUnit),
+            BuildCapacityBarText(usedValue, totalValue),
+            totalValue > 0d ? ClampFraction(usedValue / totalValue) : null,
+            isAvailable: true,
+            MonitoringDataOrigin.WindowsFallback);
+    }
+
+    private static bool TryResolveMemoryCapacityValues(
+        MonitoringReading? used,
+        MonitoringReading? available,
+        MonitoringReading? total,
+        out double usedValue,
+        out double availableValue,
+        out double totalValue)
+    {
+        var hasUsed = TryGetMemoryCardValue(used, out usedValue);
+        var hasAvailable = TryGetMemoryCardValue(available, out availableValue);
+        var hasTotal = TryGetMemoryCardValue(total, out totalValue);
+
+        if (!hasTotal && hasUsed && hasAvailable)
+        {
+            totalValue = usedValue + availableValue;
+            hasTotal = true;
+        }
+
+        if (!hasUsed && hasTotal && hasAvailable)
+        {
+            usedValue = Math.Max(0d, totalValue - availableValue);
+            hasUsed = true;
+        }
+
+        if (!hasAvailable && hasTotal && hasUsed)
+        {
+            availableValue = Math.Max(0d, totalValue - usedValue);
+            hasAvailable = true;
+        }
+
+        return hasUsed && hasAvailable && hasTotal;
+    }
+
+    private static bool TryGetMemoryCardValue(MonitoringReading? reading, out double value)
+    {
+        if (reading?.CurrentValue is not double currentValue)
+        {
+            value = 0d;
+            return false;
+        }
+
+        return TryConvertMemoryValue(currentValue, reading.Unit, MemoryCardDisplayUnit, out value);
+    }
+
+    private static string BuildCapacityBarText(double usedValue, double totalValue)
+    {
+        if (totalValue <= 0d)
+        {
+            return MonitoringReading.FormatValue(usedValue, MemoryCardDisplayUnit);
+        }
+
+        var percentText = (usedValue / totalValue * 100d).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%";
+        return percentText + " (" + MonitoringReading.FormatValue(usedValue, MemoryCardDisplayUnit) + ")";
     }
 
     private static MonitoringGpuMemoryFallback? TryMatchGpuFallback(MonitoringGpuMemoryFallback? fallback, string gpuHardwareName)

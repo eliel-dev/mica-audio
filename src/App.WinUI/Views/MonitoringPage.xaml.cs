@@ -126,7 +126,19 @@ public sealed partial class MonitoringPage : Page, IDisposable
                 : BuildFallbackKpi(index);
 
             tile.Title.Text = kpi.Title;
-            tile.Context.Text = kpi.ContextText;
+            tile.Context.Text = BuildKpiContextText(kpi);
+
+            var capacity = kpi.Capacity;
+            var usesCapacity = capacity is not null;
+            tile.MetricsHost.Visibility = usesCapacity ? Visibility.Collapsed : Visibility.Visible;
+            tile.Capacity.Root.Visibility = usesCapacity ? Visibility.Visible : Visibility.Collapsed;
+
+            if (usesCapacity)
+            {
+                ApplyCapacity(tile, kpi, capacity!);
+                tile.Root.Opacity = kpi.IsAvailable ? 1d : 0.72d;
+                continue;
+            }
 
             for (var metricIndex = 0; metricIndex < tile.Metrics.Length; metricIndex++)
             {
@@ -144,6 +156,20 @@ public sealed partial class MonitoringPage : Page, IDisposable
 
             tile.Root.Opacity = kpi.IsAvailable ? 1d : 0.72d;
         }
+    }
+
+    private static void ApplyCapacity(KpiTileView tile, MonitoringKpi kpi, MonitoringKpiCapacity capacity)
+    {
+        var usedMetric = kpi.Metrics.Count > 0 ? kpi.Metrics[0] : MonitoringKpiMetric.Unavailable("Usada", "-");
+        tile.Capacity.UsedLabel.Text = usedMetric.Label;
+        tile.Capacity.UsedValue.Text = capacity.UsedText;
+        tile.Capacity.BarText.Text = capacity.BarText;
+        tile.Capacity.Progress.Value = capacity.Progress ?? 0d;
+        tile.Capacity.Progress.Visibility = capacity.Progress.HasValue ? Visibility.Visible : Visibility.Collapsed;
+        tile.Capacity.BarText.Visibility = capacity.IsAvailable ? Visibility.Visible : Visibility.Collapsed;
+        tile.Capacity.AvailableValue.Text = "Disponivel: " + capacity.AvailableText;
+        tile.Capacity.TotalValue.Text = "Total: " + capacity.TotalText;
+        tile.Capacity.Root.Opacity = capacity.IsAvailable ? 1d : 0.64d;
     }
 
     private void UpdateAdaptiveLayout(double width)
@@ -174,6 +200,11 @@ public sealed partial class MonitoringPage : Page, IDisposable
             ? metric.HardwareName + " | Windows"
             : metric.HardwareName;
 
+    internal static string BuildKpiContextText(MonitoringKpi kpi)
+        => kpi.Capacity?.DataOrigin == MonitoringDataOrigin.WindowsFallback
+            ? kpi.ContextText + " | Windows"
+            : kpi.ContextText;
+
     public void Dispose()
     {
         CancelRefreshLoop();
@@ -203,5 +234,6 @@ public sealed partial class MonitoringPage : Page, IDisposable
             [
                 MonitoringKpiMetric.Unavailable("Metrica 1", "-"),
                 MonitoringKpiMetric.Unavailable("Metrica 2", "-"),
-            ]);
+            ],
+            capacity: null);
 }
