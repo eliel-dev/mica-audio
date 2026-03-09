@@ -1,4 +1,5 @@
 using App.WinUI.Services;
+using App.WinUI.Services.Logging;
 using Device.Protocol.Models;
 using System.Globalization;
 
@@ -46,6 +47,8 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     public event EventHandler? StateChanged;
 
     public event EventHandler? DeviceListChanged;
+
+    internal AppLogStore? CentralLogStore { get; set; }
 
     public DeviceOperationsState GetStateSnapshot()
     {
@@ -324,6 +327,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     {
         if (logBook.AppendGlobal(message))
         {
+            CentralLogStore?.Append(LogCategory.Devices, LogSeverity.Info, message);
             RaiseStateChanged();
         }
     }

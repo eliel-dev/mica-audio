@@ -7,8 +7,11 @@ namespace App.WinUI.Services.Apps;
 
 internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
 {
+    private static readonly HashSet<string> SupportedExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".gif", ".png", ".jpg", ".jpeg", ".bmp" };
+
     private AppRuntimeHost? host;
-    private string? sessionFilePath;
+    private List<string> sessionPaths = [];
     private CancellationTokenSource? requestCts;
     private bool disposed;
 
@@ -39,9 +42,6 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
             return;
         }
 
-        var sourceMode = values.TryGetValue("sourceMode", out var rawSource) ? rawSource.Trim().ToLowerInvariant() : "url";
-        var gifUrl = values.TryGetValue("gifUrl", out var rawUrl) ? rawUrl.Trim() : string.Empty;
-
         CancellationToken linked;
         try
         {
@@ -55,26 +55,25 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
         try
         {
             var scale = host.ResolveScaleMode() ?? GifScaleMode.Fit;
-            if (sourceMode == "file")
-            {
-                if (string.IsNullOrWhiteSpace(sessionFilePath))
-                {
-                    host.SetStatus("Modo arquivo ativo. Clique em 'Selecionar GIF' para iniciar.");
-                    return;
-                }
+            var isSlideshow = IsSlideshow(values);
 
-                await host.GifRuntimeService.StartFromFileAsync(sessionFilePath, scale, linked).ConfigureAwait(false);
+            if (sessionPaths.Count == 0)
+            {
+                host.SetStatus(isSlideshow
+                    ? "Clique em 'Selecionar Pasta' para iniciar."
+                    : "Clique em 'Selecionar Arquivo' para iniciar.");
                 return;
             }
 
-            if (!Uri.TryCreate(gifUrl, UriKind.Absolute, out var uri)
-                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            if (!isSlideshow)
             {
-                host.SetStatus("Modo URL ativo. Informe uma URL direta http/https e clique em Salvar.");
+                await host.GifRuntimeService.StartFromFileAsync(sessionPaths[0], scale, linked).ConfigureAwait(false);
                 return;
             }
 
-            await host.GifRuntimeService.StartFromUrlAsync(uri.ToString(), scale, linked).ConfigureAwait(false);
+            var intervalMs = ParseIntervalMs(values);
+            var shuffle = ParseShuffle(values);
+            _ = RunSlideshowAsync(sessionPaths.ToList(), scale, intervalMs, shuffle, linked);
         }
         catch (OperationCanceledException)
         {
@@ -87,7 +86,7 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
 
     public void OnDeselected(AppCatalogItem item)
     {
-        // Mantem runtime ativo mesmo sem selecao do app GIF enquanto a aba Apps estiver aberta.
+        // Mantém runtime ativo enquanto a aba Apps estiver aberta.
     }
 
     public void Dispose()
@@ -131,16 +130,84 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
             return;
         }
 
-        var file = await host.PickGifFileAsync().ConfigureAwait(true);
-        if (file is null)
+        var values = await host.ResolveCurrentValuesAsync().ConfigureAwait(true);
+        var isSlideshow = IsSlideshow(values);
+
+        if (isSlideshow)
         {
-            return;
+            var folder = await host.PickImageFolderAsync().ConfigureAwait(true);
+            if (folder is null)
+            {
+                return;
+            }
+
+            var files = await folder.GetFilesAsync();
+            sessionPaths = files
+                .Where(f => SupportedExtensions.Contains(Path.GetExtension(f.Path)))
+                .Select(f => f.Path)
+                .ToList();
+
+            if (sessionPaths.Count == 0)
+            {
+                host.SetStatus("Nenhuma imagem encontrada na pasta selecionada.");
+                return;
+            }
+
+            host.SetStatus($"Pasta selecionada: {sessionPaths.Count} imagens.");
+        }
+        else
+        {
+            var file = await host.PickImageFileAsync().ConfigureAwait(true);
+            if (file is null)
+            {
+                return;
+            }
+
+            sessionPaths = [file.Path];
+            host.SetStatus($"Arquivo selecionado: {file.Name}");
         }
 
-        sessionFilePath = file.Path;
-        host.SetStatus($"Arquivo selecionado: {file.Name}");
-        var values = await host.ResolveCurrentValuesAsync().ConfigureAwait(false);
-        await OnConfigSavedAsync(new AppCatalogItem { Runtime = new AppRuntimeDefinition { Kind = "gifhub75" } }, values, CancellationToken.None).ConfigureAwait(false);
+        await OnConfigSavedAsync(
+            new AppCatalogItem { Runtime = new AppRuntimeDefinition { Kind = "gifhub75" } },
+            values,
+            CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private async Task RunSlideshowAsync(
+        List<string> paths, GifScaleMode scale, int intervalMs, bool shuffle, CancellationToken ct)
+    {
+        if (shuffle)
+        {
+            paths = [.. paths.OrderBy(_ => Guid.NewGuid())];
+        }
+
+        var idx = 0;
+        while (!ct.IsCancellationRequested)
+        {
+            var path = paths[idx % paths.Count];
+            idx++;
+            try
+            {
+                await host!.GifRuntimeService.StartFromFileAsync(path, scale, ct).ConfigureAwait(false);
+                await Task.Delay(intervalMs, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                host?.SetStatus($"Erro em '{Path.GetFileName(path)}': {ex.Message}");
+                try
+                {
+                    await Task.Delay(2000, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }
     }
 
     private void OnStatusChanged(object? sender, string status)
@@ -170,5 +237,31 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
         requestCts?.Cancel();
         requestCts?.Dispose();
         requestCts = null;
+    }
+
+    private static bool IsSlideshow(IReadOnlyDictionary<string, string> values)
+    {
+        values.TryGetValue("sourceType", out var v);
+        return string.Equals(v, "slideshow", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int ParseIntervalMs(IReadOnlyDictionary<string, string> values)
+    {
+        values.TryGetValue("slideshowInterval", out var v);
+        return (v?.Trim().ToLowerInvariant()) switch
+        {
+            "5s" => 5_000,
+            "30s" => 30_000,
+            "1min" => 60_000,
+            "5min" => 300_000,
+            "10min" => 600_000,
+            _ => 10_000,
+        };
+    }
+
+    private static bool ParseShuffle(IReadOnlyDictionary<string, string> values)
+    {
+        values.TryGetValue("slideshowShuffle", out var v);
+        return bool.TryParse(v, out var b) && b;
     }
 }

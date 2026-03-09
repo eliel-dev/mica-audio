@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using App.WinUI.Services.Gif;
@@ -13,7 +12,6 @@ namespace App.WinUI.Services.Apps;
 internal sealed class GifCatalogAppRuntimeService : IDisposable
 {
     public const int TargetFps = 12;
-    public const int DownloadTimeoutSeconds = 10;
     public const int MaxDownloadBytes = 25 * 1024 * 1024;
 
     private const string GifPresetId = "gifhub75";
@@ -23,10 +21,8 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
     private readonly Hub75GifDecoder decoder;
     private readonly Hub75FrameFormatter formatter;
     private readonly Hub75GifPlayer player;
-    private readonly HttpClient httpClient;
     private readonly object gate = new();
     private readonly int maxDownloadBytes;
-    private readonly int downloadTimeoutSeconds;
     private readonly RgbaColor[] blackFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
     private CancellationTokenSource? loadCts;
 
@@ -40,8 +36,6 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         Hub75GifDecoder decoder,
         Hub75FrameFormatter formatter,
         Hub75GifPlayer player,
-        HttpClient? httpClient = null,
-        int downloadTimeoutSeconds = DownloadTimeoutSeconds,
         int maxDownloadBytes = MaxDownloadBytes,
         float brightness = LedDefaults.Brightness)
     {
@@ -50,8 +44,6 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         this.decoder = decoder;
         this.formatter = formatter;
         this.player = player;
-        this.httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        this.downloadTimeoutSeconds = Math.Max(1, downloadTimeoutSeconds);
         this.maxDownloadBytes = Math.Max(1, maxDownloadBytes);
         latestFrame = blackFrame.ToArray();
 
@@ -92,25 +84,12 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         }
     }
 
-    public async Task StartFromUrlAsync(string url, GifScaleMode scaleMode, CancellationToken cancellationToken = default)
-    {
-        ThrowIfDisposed();
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
-            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-        {
-            throw new InvalidDataException("URL invalida: use http/https para um GIF direto.");
-        }
-
-        var bytes = await DownloadGifAsync(uri, cancellationToken).ConfigureAwait(false);
-        await StartFromBytesCoreAsync(bytes, scaleMode, $"URL: {uri.Host}", cancellationToken).ConfigureAwait(false);
-    }
-
     public async Task StartFromFileAsync(string filePath, GifScaleMode scaleMode, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
         {
-            throw new FileNotFoundException("Arquivo GIF nao encontrado.", filePath);
+            throw new FileNotFoundException("Arquivo não encontrado.", filePath);
         }
 
         var info = new FileInfo(filePath);
@@ -120,7 +99,15 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         }
 
         var bytes = await File.ReadAllBytesAsync(filePath, cancellationToken).ConfigureAwait(false);
-        await StartFromBytesCoreAsync(bytes, scaleMode, $"Arquivo: {info.Name}", cancellationToken).ConfigureAwait(false);
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        if (ext == ".gif")
+        {
+            await StartFromBytesCoreAsync(bytes, scaleMode, info.Name, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await StartFromStaticImageAsync(bytes, scaleMode, info.Name, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public void Stop()
@@ -157,7 +144,64 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         player.Dispose();
         matrixOutput.Stop();
         simulatorOutput.Stop();
-        httpClient.Dispose();
+    }
+
+    private async Task StartFromStaticImageAsync(byte[] imageBytes, GifScaleMode scaleMode, string label, CancellationToken cancellationToken)
+    {
+        CancelPendingLoad();
+        loadCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var ct = loadCts.Token;
+
+        StatusChanged?.Invoke(this, $"Carregando imagem ({label})...");
+
+        var frame = await Task.Run(() => DecodeStaticImageBytes(imageBytes), ct).ConfigureAwait(false);
+        var formatted = await Task.Run(() => formatter.Format(frame, scaleMode), ct).ConfigureAwait(false);
+
+        lock (gate)
+        {
+            loadedFrames = new RgbaColor[][] { formatted };
+            latestFrame = formatted.ToArray();
+        }
+
+        player.SetFrames(new RgbaColor[][] { formatted });
+        if (!player.Play())
+        {
+            throw new InvalidOperationException("Não foi possível iniciar o player de imagem.");
+        }
+
+        StatusChanged?.Invoke(this, $"Imagem carregada: {label}");
+    }
+
+    private static DecodedGifFrame DecodeStaticImageBytes(byte[] bytes)
+    {
+        using var ms = new MemoryStream(bytes);
+        using var img = System.Drawing.Image.FromStream(ms);
+        using var bmp = new System.Drawing.Bitmap(img);
+        var lockData = bmp.LockBits(
+            new System.Drawing.Rectangle(0, 0, bmp.Width, bmp.Height),
+            System.Drawing.Imaging.ImageLockMode.ReadOnly,
+            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        try
+        {
+            var stride = lockData.Stride;
+            var raw = new byte[Math.Abs(stride) * bmp.Height];
+            Marshal.Copy(lockData.Scan0, raw, 0, raw.Length);
+            var pixels = new RgbaColor[bmp.Width * bmp.Height];
+            for (var y = 0; y < bmp.Height; y++)
+            {
+                for (var x = 0; x < bmp.Width; x++)
+                {
+                    var o = (y * stride) + (x * 4);
+                    pixels[(y * bmp.Width) + x] = new RgbaColor(raw[o + 2], raw[o + 1], raw[o], raw[o + 3]);
+                }
+            }
+
+            return new DecodedGifFrame(bmp.Width, bmp.Height, pixels);
+        }
+        finally
+        {
+            bmp.UnlockBits(lockData);
+        }
     }
 
     private async Task StartFromBytesCoreAsync(byte[] gifBytes, GifScaleMode scaleMode, string sourceLabel, CancellationToken cancellationToken)
@@ -209,55 +253,6 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         }
 
         StatusChanged?.Invoke(this, $"GIF em reproducao ({formattedFrames.Count} frames, {TargetFps} FPS).");
-    }
-
-    private async Task<byte[]> DownloadGifAsync(Uri uri, CancellationToken cancellationToken)
-    {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(downloadTimeoutSeconds));
-
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            using var response = await httpClient.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
-                timeoutCts.Token).ConfigureAwait(false);
-
-            response.EnsureSuccessStatusCode();
-
-            if (response.Content.Headers.ContentLength is long contentLength && contentLength > maxDownloadBytes)
-            {
-                throw new InvalidDataException($"Download acima de {maxDownloadBytes / (1024 * 1024)}MB.");
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(timeoutCts.Token).ConfigureAwait(false);
-            using var memory = new MemoryStream();
-            var buffer = new byte[32 * 1024];
-            var totalRead = 0L;
-            while (true)
-            {
-                var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), timeoutCts.Token).ConfigureAwait(false);
-                if (read <= 0)
-                {
-                    break;
-                }
-
-                totalRead += read;
-                if (totalRead > maxDownloadBytes)
-                {
-                    throw new InvalidDataException($"Download acima de {maxDownloadBytes / (1024 * 1024)}MB.");
-                }
-
-                memory.Write(buffer, 0, read);
-            }
-
-            return memory.ToArray();
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new TimeoutException($"Download de GIF excedeu {downloadTimeoutSeconds}s.");
-        }
     }
 
     private void OnPlayerFrameReady(object? sender, RgbaColor[] frame)

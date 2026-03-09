@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="8.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
+    <PackageReference Include="OpenMeteo.dotnet.client.sdk" Version="5.2.0" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
@@ -34,6 +35,11 @@
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75GifPlayer.cs" Link="Shared\Hub75GifPlayer.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\GifCatalogAppRuntimeService.cs" Link="Shared\GifCatalogAppRuntimeService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppCatalogService.cs" Link="Shared\AppCatalogService.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Apps\WeatherAppFixedLocation.cs" Link="Shared\WeatherAppFixedLocation.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Apps\CityAutocompleteService.cs" Link="Shared\CityAutocompleteService.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Apps\CitySuggestion.cs" Link="Shared\CitySuggestion.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Apps\WeatherPreviewDataService.cs" Link="Shared\WeatherPreviewDataService.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Apps\WeatherPreviewSnapshot.cs" Link="Shared\WeatherPreviewSnapshot.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\AppSettingsDomainService.cs" Link="Shared\AppSettingsDomainService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Visualizer\VisualizerAnalyzerConfigFactory.cs" Link="Shared\Visualizer\VisualizerAnalyzerConfigFactory.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Visualizer\PresetNavigationHelper.cs" Link="Shared\Visualizer\PresetNavigationHelper.cs" />
@@ -72,6 +78,7 @@
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLifecyclePresentation.cs" Link="Shared\Devices\DeviceLifecyclePresentation.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLifecyclePolicy.cs" Link="Shared\Devices\DeviceLifecyclePolicy.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DevicePreviewVisibilityPolicy.cs" Link="Shared\Devices\DevicePreviewVisibilityPolicy.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Logging\AppLogStore.cs" Link="Shared\Logging\AppLogStore.cs" />
     
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppConfigDraft.cs" Link="Shared\Models\AppConfigDraft.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppModifierDefinition.cs" Link="Shared\Models\AppModifierDefinition.cs" />

@@ -14,7 +14,6 @@ public partial class MainPage : IDisposable
         pipelineCoordinator.StatusChanged -= OnPipelineCoordinatorStatusChanged;
 
         gifPlayer.Dispose();
-        gifHttpClient.Dispose();
         DisposeHubFrameRenderer();
         GC.SuppressFinalize(this);
     }

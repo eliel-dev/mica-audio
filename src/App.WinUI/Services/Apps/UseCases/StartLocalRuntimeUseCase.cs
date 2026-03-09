@@ -55,11 +55,8 @@ internal sealed class StartLocalRuntimeUseCase : IDisposable
             return;
         }
 
-        values.TryGetValue("sourceMode", out var sourceModeRaw);
-        values.TryGetValue("gifUrl", out var gifUrl);
         values.TryGetValue("scaleMode", out var scaleModeRaw);
 
-        var sourceMode = string.Equals(sourceModeRaw, "file", StringComparison.OrdinalIgnoreCase) ? "file" : "url";
         var scaleMode = ParseScaleMode(scaleModeRaw);
 
         CancellationToken cancellationToken;
@@ -76,26 +73,13 @@ internal sealed class StartLocalRuntimeUseCase : IDisposable
 
         try
         {
-            if (sourceMode == "file")
+            if (string.IsNullOrWhiteSpace(SessionFilePath))
             {
-                if (string.IsNullOrWhiteSpace(SessionFilePath))
-                {
-                    SetStatus("Modo arquivo ativo. Clique em 'Abrir arquivo GIF' para iniciar.");
-                    return;
-                }
-
-                await gifRuntimeService.StartFromFileAsync(SessionFilePath, scaleMode, cancellationToken).ConfigureAwait(false);
+                SetStatus("Clique em 'Abrir arquivo GIF' para iniciar.");
                 return;
             }
 
-            if (!Uri.TryCreate(gifUrl, UriKind.Absolute, out var uri)
-                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-            {
-                SetStatus("Modo URL ativo. Informe uma URL direta http/https e clique em Salvar.");
-                return;
-            }
-
-            await gifRuntimeService.StartFromUrlAsync(uri.ToString(), scaleMode, cancellationToken).ConfigureAwait(false);
+            await gifRuntimeService.StartFromFileAsync(SessionFilePath, scaleMode, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

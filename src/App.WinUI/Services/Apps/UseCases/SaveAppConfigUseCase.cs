@@ -20,15 +20,16 @@ internal sealed class SaveAppConfigUseCase
             return SaveAppConfigResult.Failure("Repositorio de modificadores indisponivel.");
         }
 
+        var normalizedValues = global::App.WinUI.Services.Apps.WeatherAppFixedLocation.NormalizeRawValues(item, rawValues);
         await modifierStore.SetDraftAsync(
             scope,
             item.Id,
             new AppConfigDraft
             {
-                Values = new Dictionary<string, string>(rawValues, StringComparer.OrdinalIgnoreCase),
+                Values = new Dictionary<string, string>(normalizedValues, StringComparer.OrdinalIgnoreCase),
             },
             cancellationToken).ConfigureAwait(false);
-        return SaveAppConfigResult.FromSuccess(rawValues);
+        return SaveAppConfigResult.FromSuccess(normalizedValues);
     }
 }
 

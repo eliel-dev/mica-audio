@@ -6,19 +6,23 @@ internal sealed class ShellPageContentFactory
     private readonly Func<object> createMainPage;
     private readonly Func<object> createDevicesPage;
     private readonly Func<object> createAppsPage;
+    private readonly Func<object> createSettingsPage;
 
     private object? mainPage;
     private object? devicesPage;
     private object? appsPage;
+    private object? settingsPage;
 
     internal ShellPageContentFactory(
         Func<object> createMainPage,
         Func<object> createDevicesPage,
-        Func<object> createAppsPage)
+        Func<object> createAppsPage,
+        Func<object> createSettingsPage)
     {
         this.createMainPage = createMainPage;
         this.createDevicesPage = createDevicesPage;
         this.createAppsPage = createAppsPage;
+        this.createSettingsPage = createSettingsPage;
     }
 
     internal bool TryResolve(string tag, out object? page, out Exception? exception)
@@ -43,6 +47,7 @@ internal sealed class ShellPageContentFactory
         {
             "devices" => devicesPage ??= createDevicesPage(),
             "apps" => appsPage ??= createAppsPage(),
+            "settings" => settingsPage ??= createSettingsPage(),
             _ => mainPage ??= createMainPage(),
         };
     }

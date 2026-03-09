@@ -13,6 +13,7 @@ internal sealed class AppCatalogCardControl : UserControl
     private readonly TextBlock titleText;
     private readonly TextBlock summaryText;
     private readonly TextBlock categoryText;
+    private bool previewPlaybackActive;
 
     public AppCatalogCardControl(AppCatalogItem item)
     {
@@ -67,8 +68,20 @@ internal sealed class AppCatalogCardControl : UserControl
         frame.Child = stack;
         Content = frame;
 
-        PointerEntered += (_, _) => Preview.Start();
-        PointerExited += (_, _) => Preview.Stop();
+        PointerEntered += (_, _) =>
+        {
+            if (!previewPlaybackActive)
+            {
+                Preview.Start();
+            }
+        };
+        PointerExited += (_, _) =>
+        {
+            if (!previewPlaybackActive)
+            {
+                Preview.Stop();
+            }
+        };
     }
 
     public AppCatalogItem Item { get; }
@@ -99,6 +112,18 @@ internal sealed class AppCatalogCardControl : UserControl
     public void SetRuntimeFrame(RgbaColor[]? frame)
     {
         Preview.SetRuntimeFrame(frame);
+    }
+
+    public void SetPreviewPlayback(bool active)
+    {
+        previewPlaybackActive = active;
+        if (active)
+        {
+            Preview.Start();
+            return;
+        }
+
+        Preview.Stop();
     }
 
     private static string ToDisplayCategory(string category)

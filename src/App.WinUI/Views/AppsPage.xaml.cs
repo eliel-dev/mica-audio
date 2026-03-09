@@ -3,6 +3,7 @@ using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Gif;
+using App.WinUI.Services.Logging;
 using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
@@ -26,6 +27,7 @@ public sealed partial class AppsPage : Page, IDisposable
     private readonly Dictionary<string, ModifierControlBinding> modifierBindings = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<AutoSuggestBox, CancellationTokenSource> citySuggestCts = new();
     private readonly Dictionary<AutoSuggestBox, Dictionary<string, CitySuggestion>> citySuggestionLookup = new();
+    private readonly Dictionary<AutoSuggestBox, TextBlock> citySuggestionFeedback = new();
     private readonly AppsPageViewModel viewModel;
     private readonly GifCatalogAppRuntimeService gifRuntimeService;
     private readonly DeviceOperationsCoordinator deviceOps;
@@ -35,6 +37,7 @@ public sealed partial class AppsPage : Page, IDisposable
     private readonly SaveAppConfigUseCase saveAppConfigUseCase;
     private readonly DeployAppUseCase deployAppUseCase;
     private readonly AppConfigValidationUseCase appConfigValidationUseCase;
+    private readonly AppLogStore appLogStore;
 
     private AppCatalogItem? selectedItem;
     private DeviceOperationsState currentState = new();
@@ -56,7 +59,8 @@ public sealed partial class AppsPage : Page, IDisposable
         SaveAppConfigUseCase saveAppConfigUseCase,
         DeployAppUseCase deployAppUseCase,
         AppConfigValidationUseCase appConfigValidationUseCase,
-        DeviceIntegrationService deviceIntegration)
+        DeviceIntegrationService deviceIntegration,
+        AppLogStore appLogStore)
     {
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
@@ -66,6 +70,7 @@ public sealed partial class AppsPage : Page, IDisposable
         this.saveAppConfigUseCase = saveAppConfigUseCase;
         this.deployAppUseCase = deployAppUseCase;
         this.appConfigValidationUseCase = appConfigValidationUseCase;
+        this.appLogStore = appLogStore;
 
         var host = deviceIntegration.Host;
         gifRuntimeService = new GifCatalogAppRuntimeService(
@@ -109,14 +114,10 @@ public sealed partial class AppsPage : Page, IDisposable
             catalogScrollViewer.ViewChanged -= OnCatalogScrollViewChanged;
         }
 
-        foreach (var pending in citySuggestCts.Values)
-        {
-            pending.Cancel();
-            pending.Dispose();
-        }
-
+        CleanupCityAutocompleteControls();
         citySuggestCts.Clear();
         citySuggestionLookup.Clear();
+        citySuggestionFeedback.Clear();
         foreach (var card in catalogCards)
         {
             card.Preview.Stop();

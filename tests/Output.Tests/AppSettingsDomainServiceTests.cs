@@ -105,6 +105,37 @@ public sealed class AppSettingsDomainServiceTests
         Assert.True(result.AllowLegacyWebSocketQueryToken);
     }
 
+    [Fact]
+    public void Migrate_ShouldPreserveUseMicaBackdropFlag()
+    {
+        var service = new AppSettingsDomainService();
+        var source = new AppSettings
+        {
+            UseMicaBackdrop = false,
+        };
+
+        var result = service.Migrate(source);
+
+        Assert.False(result.UseMicaBackdrop);
+    }
+
+    [Fact]
+    public void Copy_ShouldAllowTogglingUseMicaBackdrop()
+    {
+        var service = new AppSettingsDomainService();
+        var source = new AppSettings
+        {
+            UseMicaBackdrop = true,
+        };
+
+        var result = service.Copy(source, builder =>
+        {
+            builder.SetUseMicaBackdrop(false);
+        });
+
+        Assert.False(result.UseMicaBackdrop);
+    }
+
     [Theory]
     [InlineData(1.0f)]
     [InlineData(1.6f)]

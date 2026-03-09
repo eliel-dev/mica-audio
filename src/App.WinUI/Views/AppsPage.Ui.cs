@@ -15,9 +15,8 @@ public sealed partial class AppsPage
     private TextBlock SelectedAppMetaText = null!;
     private TextBlock SelectedAppDescriptionText = null!;
     private ComboBox TargetDeviceCombo = null!;
-    private ProgressRing OperationProgressRing = null!;
-    private TextBlock OperationStatusText = null!;
-    private TextBlock OperationPercentText = null!;
+    private InfoBar OperationInfoBar = null!;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _notificationTimer;
     private TextBlock ModifiersHintText = null!;
     private StackPanel ModifiersPanel = null!;
     private Button GifOpenFileButton = null!;
@@ -130,7 +129,9 @@ public sealed partial class AppsPage
         Grid.SetRow(deviceCard, 1);
         right.Children.Add(deviceCard);
 
-        var modifiersHost = new StackPanel { Spacing = 8 };
+        var modifiersHost = new Grid { RowSpacing = 8 };
+        modifiersHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        modifiersHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         ModifiersHintText = new TextBlock
         {
             Text = "Modificadores do app selecionado.",
@@ -141,21 +142,24 @@ public sealed partial class AppsPage
         ModifiersPanel = new StackPanel { Spacing = 10 };
         var modifierScroll = new ScrollViewer
         {
-            MinHeight = 170,
-            MaxHeight = 280,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = ModifiersPanel,
         };
 
-        modifiersHost.Children.Add(new TextBlock
+        var modifiersHeader = new StackPanel { Spacing = 4 };
+        modifiersHeader.Children.Add(new TextBlock
         {
             Text = "Modificadores",
             Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
         });
-        modifiersHost.Children.Add(ModifiersHintText);
+        modifiersHeader.Children.Add(ModifiersHintText);
+        modifiersHost.Children.Add(modifiersHeader);
+
+        Grid.SetRow(modifierScroll, 1);
         modifiersHost.Children.Add(modifierScroll);
 
         var modifiersCard = CreateCard(modifiersHost);
+        modifiersCard.VerticalAlignment = VerticalAlignment.Stretch;
         Grid.SetRow(modifiersCard, 2);
         right.Children.Add(modifiersCard);
 
@@ -172,7 +176,7 @@ public sealed partial class AppsPage
 
         GifOpenFileButton = new Button
         {
-            Content = "Selecionar GIF",
+            Content = "Selecionar Arquivo",
             Visibility = Visibility.Collapsed,
         };
 
@@ -187,43 +191,14 @@ public sealed partial class AppsPage
         Grid.SetRow(actionsCard, 3);
         right.Children.Add(actionsCard);
 
-        var statusGrid = new Grid { ColumnSpacing = 10 };
-        statusGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        statusGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        statusGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        OperationProgressRing = new ProgressRing
+        OperationInfoBar = new InfoBar
         {
-            Width = 18,
-            Height = 18,
-            IsActive = false,
-            Visibility = Visibility.Collapsed,
-            VerticalAlignment = VerticalAlignment.Center,
+            IsOpen = false,
+            IsClosable = true,
+            Severity = InfoBarSeverity.Informational,
         };
-
-        OperationStatusText = new TextBlock
-        {
-            Text = "Operações: pronto",
-            VerticalAlignment = VerticalAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-        };
-
-        OperationPercentText = new TextBlock
-        {
-            Text = "0%",
-            VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0.82,
-        };
-
-        Grid.SetColumn(OperationStatusText, 1);
-        Grid.SetColumn(OperationPercentText, 2);
-        statusGrid.Children.Add(OperationProgressRing);
-        statusGrid.Children.Add(OperationStatusText);
-        statusGrid.Children.Add(OperationPercentText);
-
-        var statusCard = CreateCard(statusGrid);
-        Grid.SetRow(statusCard, 4);
-        right.Children.Add(statusCard);
+        Grid.SetRow(OperationInfoBar, 4);
+        right.Children.Add(OperationInfoBar);
 
         content.Children.Add(right);
         root.Children.Add(content);

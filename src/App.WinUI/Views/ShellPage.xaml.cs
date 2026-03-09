@@ -11,6 +11,7 @@ public sealed partial class ShellPage : Page
     private const string VisualizerTag = "visualizer";
     private const string DevicesTag = "devices";
     private const string AppsTag = "apps";
+    private const string SettingsTag = "settings";
 
     private readonly ShellPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;

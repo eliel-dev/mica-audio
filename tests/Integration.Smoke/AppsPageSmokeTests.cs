@@ -1,5 +1,6 @@
 using System.Reflection;
 using App.WinUI.Models.Apps;
+using App.WinUI.Services.Apps;
 using App.WinUI.Views;
 using Device.Protocol.Models;
 
@@ -15,8 +16,7 @@ public sealed class AppsPageSmokeTests
         Assert.NotNull(typeof(AppsPage).GetField("SearchBox", flags));
         Assert.NotNull(typeof(AppsPage).GetField("CatalogGrid", flags));
         Assert.NotNull(typeof(AppsPage).GetField("TargetDeviceCombo", flags));
-        Assert.NotNull(typeof(AppsPage).GetField("OperationStatusText", flags));
-        Assert.NotNull(typeof(AppsPage).GetField("OperationPercentText", flags));
+        Assert.NotNull(typeof(AppsPage).GetField("OperationInfoBar", flags));
         Assert.NotNull(typeof(AppsPage).GetField("GifOpenFileButton", flags));
         Assert.NotNull(typeof(AppsPage).GetField("ModifiersPanel", flags));
     }
@@ -31,28 +31,6 @@ public sealed class AppsPageSmokeTests
         Assert.NotNull(typeof(AppsPage).GetMethod("EnsureGifRuntimeWhileAppsPageIsVisibleAsync", flags));
         Assert.NotNull(typeof(AppsPage).GetMethod("OnInstallClicked", flags));
         Assert.NotNull(typeof(AppsPage).GetMethod("OnSaveModifiersClicked", flags));
-    }
-
-    [Fact]
-    public void AppsPageShouldAutoStartGifRuntimeOnlyForRemoteUrls()
-    {
-        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Static;
-        var method = typeof(AppsPage).GetMethod("ShouldAutoStartGifRuntime", flags);
-        Assert.NotNull(method);
-
-        var remoteValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["sourceMode"] = "url",
-            ["gifUrl"] = "https://example.com/sample.gif",
-        };
-        var localValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["sourceMode"] = "file",
-            ["gifUrl"] = "https://example.com/sample.gif",
-        };
-
-        Assert.True((bool)method!.Invoke(null, [remoteValues])!);
-        Assert.False((bool)method.Invoke(null, [localValues])!);
     }
 
     [Fact]
@@ -137,5 +115,27 @@ public sealed class AppsPageSmokeTests
 
         Assert.Contains("com sucesso", successText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Falha ao instalar", failureText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AppsPageShouldBuildCityAutocompleteFailureMessage()
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Static;
+        var method = typeof(AppsPage).GetMethod("BuildCityAutocompleteFailureMessage", flags);
+        Assert.NotNull(method);
+
+        var result = new CityAutocompleteService.CitySearchResult(
+            Array.Empty<CitySuggestion>(),
+            0,
+            0,
+            CityAutocompleteService.CitySearchFailureKind.Timeout,
+            "A busca demorou demais.");
+
+        var message = method!.Invoke(null, ["sa", result])?.ToString();
+
+        Assert.NotNull(message);
+        Assert.Contains("Autocomplete de cidade indisponível", message, StringComparison.Ordinal);
+        Assert.Contains("sa", message, StringComparison.Ordinal);
+        Assert.Contains("A busca demorou demais.", message, StringComparison.Ordinal);
     }
 }

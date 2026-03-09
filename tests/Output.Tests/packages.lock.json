@@ -18,6 +18,15 @@
           "Microsoft.TestPlatform.TestHost": "18.3.0"
         }
       },
+      "OpenMeteo.dotnet.client.sdk": {
+        "type": "Direct",
+        "requested": "[5.2.0, )",
+        "resolved": "5.2.0",
+        "contentHash": "E8bl1Zd9kZbrpvSG9CoQHtX4nyRPqCPe72oSs8yupktGK+nMGpLEVw9cqIMuMjOOJVodzytVrTcJGe8hN23xFg==",
+        "dependencies": {
+          "openmeteo_sdk": "1.22.0"
+        }
+      },
       "System.Drawing.Common": {
         "type": "Direct",
         "requested": "[10.0.0, )",
@@ -43,6 +52,11 @@
         "requested": "[3.1.5, )",
         "resolved": "3.1.5",
         "contentHash": "tKi7dSTwP4m5m9eXPM2Ime4Kn7xNf4x4zT9sdLO/G4hZVnQCRiMTWoSZqI/pYTVeI27oPPqHBKYI/DjJ9GsYgA=="
+      },
+      "Google.FlatBuffers": {
+        "type": "Transitive",
+        "resolved": "25.2.10",
+        "contentHash": "z3ykbSRsy6oqMzeZ84a+K8rnMJ/ysVikar8r2yUhHz0HSxIjBpj53mZvpu6LjLEm5fLLWQsCdelJwL1nu7lloA=="
       },
       "Microsoft.CodeCoverage": {
         "type": "Transitive",
@@ -72,6 +86,14 @@
         "type": "Transitive",
         "resolved": "13.0.3",
         "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
+      },
+      "openmeteo_sdk": {
+        "type": "Transitive",
+        "resolved": "1.22.0",
+        "contentHash": "5/+TMEzLVShubdX046xTHVBKwtLH6tRW7IwUj88qde7y9C5rVA/2dQ3brrxV23w1A6c799ETxtooK1XCM+onxg==",
+        "dependencies": {
+          "Google.FlatBuffers": "25.2.10"
+        }
       },
       "xunit.abstractions": {
         "type": "Transitive",

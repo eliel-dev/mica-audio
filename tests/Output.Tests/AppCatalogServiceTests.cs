@@ -56,9 +56,10 @@ public sealed class AppCatalogServiceTests
 
             Assert.Equal(3, items.Count);
             Assert.DoesNotContain(items, item => string.Equals(item.Id, "newapp", StringComparison.OrdinalIgnoreCase));
-            Assert.Contains(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
+            var weather = Assert.Single(items, item => string.Equals(item.Id, "accuweather", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(items, item => string.Equals(item.Id, "analogclock", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(items, item => string.Equals(item.Id, "gifhub75", StringComparison.OrdinalIgnoreCase));
+            Assert.Empty(weather.Modifiers);
         }
         finally
         {

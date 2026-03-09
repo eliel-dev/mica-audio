@@ -43,6 +43,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.True(isService.IsService(typeof(MainPage)));
         Assert.True(isService.IsService(typeof(DevicesPage)));
         Assert.True(isService.IsService(typeof(AppsPage)));
+        Assert.True(isService.IsService(typeof(SettingsPage)));
         Assert.True(isService.IsService(typeof(ShellPage)));
         Assert.True(isService.IsService(typeof(ShellPageContentFactory)));
     }

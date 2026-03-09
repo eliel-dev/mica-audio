@@ -78,8 +78,6 @@ public sealed partial class DevicesPage
 
     private Grid WizardOverlay = null!;
     private Border WizardCardBorder = null!;
-    private Border WizardStepOneBar = null!;
-    private Border WizardStepTwoBar = null!;
     private StackPanel WizardPortPanel = null!;
     private ComboBox WizardPortComboBox = null!;
     private Button WizardRefreshPortsButton = null!;

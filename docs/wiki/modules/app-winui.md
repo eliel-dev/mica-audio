@@ -66,15 +66,69 @@
   - sem persistencia redundante quando o runtime efetivo nao mudou;
   - com render/preview HUB75 consumindo o ultimo runtime realmente aplicado.
 
+## Atualizacao 2026-03 - Menu de configuracao Fluent 2 no Visualizador
+
+- A `MainPage` manteve a metafora de painel lateral de configuracao, mas a composicao interna foi redesenhada como uma settings pane Fluent 2.
+- O `SplitView` continua como mecanismo tecnico da lateral, mas o corpo da pane deixou de ser um formulario cru:
+  - agora ha cabecalho proprio;
+  - grupos nomeados (`Renderizacao`, `Analise`, `Frequencia`, `Acoes`);
+  - linhas de configuracao com label, hint e controle;
+  - recursos visuais baseados em `Fluent2Tokens` e `Fluent2Controls`.
+- `RendererCombo` e `ContentModeCombo` sairam do `CommandBar` e passaram a viver dentro da pane de configuracao.
+- O `CommandBar` superior voltou a ficar focado em acoes e modos rapidos do visualizador:
+  - entrada para `Configuracoes`;
+  - toggle `HUB75`;
+  - status tecnico curto.
+- A logica da pane foi extraida para partials dedicados:
+  - `MainPage.SettingsPane`
+  - `MainPage.SettingsBindings`
+- O runtime do analyzer nao mudou de ownership:
+  - debounce de `150 ms`;
+  - rebuild consolidado;
+  - fallback seguro;
+  - persistencia pelo mesmo caminho existente.
+
+## Atualizacao 2026-03 - Mica configuravel em Configuracoes > Geral
+
+- O backdrop da janela deixou de ser hardcoded no startup.
+- `App` agora carrega `AppSettings` antes da primeira aplicacao do backdrop e respeita `UseMicaBackdrop`.
+- O caminho de aplicacao ficou unico:
+  - `UseMicaBackdrop = true` tenta `MicaBackdrop`;
+  - `UseMicaBackdrop = false` limpa `SystemBackdrop` e aplica superficie solida;
+  - falha ao ativar Mica nao derruba a app e cai em fallback visual com diagnostico.
+- `SettingsPage` ganhou toggle em `Geral > Aparencia da janela`:
+  - a preferencia aplica imediatamente;
+  - a mudanca persiste em `settings.json`;
+  - o status local informa se o ambiente ficou em fallback solido.
+
+## Atualizacao 2026-03 - SettingsPage simplificada e arquivo unico de erros
+
+- A `SettingsPage` deixou de ser um viewer de logs.
+- `Configuracoes` agora ficou reduzido a uma unica superficie `Geral`, com:
+  - toggle de Mica;
+  - card `Logs de erro` com atalho para abrir a pasta do `crash.log`.
+- O contrato de logging do app foi simplificado:
+  - `crash.log` em `%LocalAppData%\MicaAudio` virou o arquivo unico de erro;
+  - `AppLogStore` continua mantendo eventos em memoria para uso interno;
+  - apenas entradas `Error` passam a ser persistidas em disco;
+  - `Info` e `Warning` deixam de ser gravados em `app-logs.json`.
+
 ## Referencias de codigo
 
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)
+- [MainPage XAML](../../../src/App.WinUI/Views/MainPage.xaml#L1)
 - [MainPage startup helpers](../../../src/App.WinUI/Views/MainPage.Startup.cs#L1)
+- [MainPage settings pane helpers](../../../src/App.WinUI/Views/MainPage.SettingsPane.cs#L1)
+- [MainPage settings bindings helpers](../../../src/App.WinUI/Views/MainPage.SettingsBindings.cs#L1)
 - [MainPage Pipeline helpers](../../../src/App.WinUI/Views/MainPage.Pipeline.cs#L1)
 - [MainPage visualizer runtime helpers](../../../src/App.WinUI/Views/MainPage.VisualizerRuntime.cs#L1)
+- [Fluent2 controls](../../../src/App.WinUI/Styles/Fluent2/Fluent2Controls.xaml#L1)
 - [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
 - [ShellPageContentFactory](../../../src/App.WinUI/Views/ShellPageContentFactory.cs#L1)
+- [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
+- [App](../../../src/App.WinUI/App.xaml.cs#L1)
+- [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
 - [AudioPipelineFrameProcessor](../../../src/App.WinUI/Services/AudioPipelineFrameProcessor.cs#L1)
 - [AudioPipelineOutputRouter](../../../src/App.WinUI/Services/AudioPipelineOutputRouter.cs#L1)

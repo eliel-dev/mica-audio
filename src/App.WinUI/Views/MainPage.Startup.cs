@@ -146,7 +146,7 @@ public partial class MainPage
         UpdateGifControlsVisibility();
         UpdateGifTransportState();
         UpdateGifLoadingState(false);
-        UpdateGifLoadUrlButtonState();
+        UpdateSettingsPaneVisualState();
 
         viewModel.CurrentPresetId = currentPresetId;
         viewModel.SelectedRendererId = selectedRendererId;

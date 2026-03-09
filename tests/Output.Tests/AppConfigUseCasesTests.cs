@@ -26,7 +26,7 @@ public sealed class AppConfigUseCasesTests
             var rawValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["city"] = "São Paulo",
-                ["units"] = "metric",
+                ["units"] = "imperial",
                 ["refreshMinutes"] = "5",
                 ["showIcon"] = "true",
             };
@@ -39,19 +39,41 @@ public sealed class AppConfigUseCasesTests
             Assert.Equal("install_app", fakeDeployment.LastAction);
 
             var payload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(fakeDeployment.LastConfigJson ?? "{}")!;
-            Assert.Equal("São Paulo", payload["city"].GetString());
-            Assert.Equal("metric", payload["units"].GetString());
+            Assert.Equal(WeatherAppFixedLocation.FixedCityConfigValue, payload["city"].GetString());
+            Assert.Equal(WeatherAppFixedLocation.FixedUnitsValue, payload["units"].GetString());
             Assert.Equal(5d, payload["refreshMinutes"].GetDouble());
             Assert.True(payload["showIcon"].GetBoolean());
 
             var persisted = await store.GetDraftAsync("device-a", "accuweather");
             Assert.NotNull(persisted);
-            Assert.Equal("São Paulo", persisted!.Values["city"]);
+            Assert.Equal(WeatherAppFixedLocation.FixedCityConfigValue, persisted!.Values["city"]);
+            Assert.Equal(WeatherAppFixedLocation.FixedUnitsValue, persisted.Values["units"]);
         }
         finally
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public void TryBuildPayload_ShouldInjectFixedWeatherConfig_WhenModifiersAreMissing()
+    {
+        var validation = new AppConfigValidationUseCase();
+        var app = CreateWeatherApp();
+
+        var rawValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["refreshMinutes"] = "5",
+        };
+
+        var success = validation.TryBuildPayload(app, rawValues, out var configJson, out var error);
+
+        Assert.True(success);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+
+        var payload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(configJson)!;
+        Assert.Equal(WeatherAppFixedLocation.FixedCityConfigValue, payload["city"].GetString());
+        Assert.Equal(WeatherAppFixedLocation.FixedUnitsValue, payload["units"].GetString());
     }
 
     [Fact]
@@ -62,8 +84,6 @@ public sealed class AppConfigUseCasesTests
 
         var rawValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["city"] = "Brasília",
-            ["units"] = "metric",
             ["refreshMinutes"] = "abc",
         };
 
@@ -82,20 +102,6 @@ public sealed class AppConfigUseCasesTests
             Category = "clima",
             Modifiers =
             [
-                new AppModifierDefinition { Key = "city", Label = "Cidade", Type = AppModifierFieldType.Text, Required = true },
-                new AppModifierDefinition
-                {
-                    Key = "units",
-                    Label = "Unidade",
-                    Type = AppModifierFieldType.Select,
-                    Required = true,
-                    DefaultValue = "metric",
-                    Options =
-                    [
-                        new AppModifierOption { Value = "metric", Label = "Métrico" },
-                        new AppModifierOption { Value = "imperial", Label = "Imperial" },
-                    ],
-                },
                 new AppModifierDefinition { Key = "refreshMinutes", Label = "Atualização", Type = AppModifierFieldType.Number, Required = false, DefaultValue = "5" },
                 new AppModifierDefinition { Key = "showIcon", Label = "Mostrar ícone", Type = AppModifierFieldType.Toggle, Required = false, DefaultValue = "true" },
             ],

@@ -63,7 +63,7 @@ internal sealed class AudioPipelineCoordinator
 
         loopTask = Task.Run(() => PipelineLoopAsync(cts.Token), CancellationToken.None);
         running = true;
-        StatusChanged?.Invoke(this, "Executando a 60 FPS");
+        StatusChanged?.Invoke(this, string.Empty);
     }
 
     public async Task StopAsync()

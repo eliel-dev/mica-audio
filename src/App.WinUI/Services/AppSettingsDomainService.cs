@@ -37,6 +37,7 @@ internal sealed class AppSettingsDomainService
         {
             ActivePresetId = visualizer.ActivePresetId,
             SelectedRendererId = visualizer.SelectedRendererId,
+            UseMicaBackdrop = settings.UseMicaBackdrop,
             Hub75PreviewEnabled = settings.Hub75PreviewEnabled,
             Brightness = settings.Brightness,
             Sensitivity = VisualizerRuntimeDefaults.DefaultMaxDecibels,
@@ -67,6 +68,7 @@ internal sealed class AppSettingsDomainService
 
             ActivePresetId = visualizer.ActivePresetId;
             SelectedRendererId = visualizer.SelectedRendererId;
+            UseMicaBackdrop = source.UseMicaBackdrop;
             Hub75PreviewEnabled = source.Hub75PreviewEnabled;
             Brightness = source.Brightness;
             Sensitivity = VisualizerRuntimeDefaults.DefaultMaxDecibels;
@@ -90,6 +92,7 @@ internal sealed class AppSettingsDomainService
 
         public string ActivePresetId { get; private set; }
         public string SelectedRendererId { get; private set; }
+        public bool UseMicaBackdrop { get; private set; }
         public bool Hub75PreviewEnabled { get; private set; }
         public float Brightness { get; private set; }
         public float Sensitivity { get; private set; }
@@ -112,6 +115,7 @@ internal sealed class AppSettingsDomainService
 
         public void SetActivePresetId(string value) => ActivePresetId = value;
         public void SetSelectedRendererId(string value) => SelectedRendererId = value;
+        public void SetUseMicaBackdrop(bool value) => UseMicaBackdrop = value;
         public void SetHub75PreviewEnabled(bool value) => Hub75PreviewEnabled = value;
         public void SetBarCount(int value) => BarCount = value;
         public void SetFftSize(int value) => FftSize = VisualizerRuntimeSettings.NormalizeFftSize(value);
@@ -156,6 +160,7 @@ internal sealed class AppSettingsDomainService
             {
                 ActivePresetId = ActivePresetId,
                 SelectedRendererId = SelectedRendererId,
+                UseMicaBackdrop = UseMicaBackdrop,
                 Hub75PreviewEnabled = Hub75PreviewEnabled,
                 Brightness = Brightness,
                 Sensitivity = Sensitivity,

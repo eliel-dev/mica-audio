@@ -7,6 +7,7 @@ using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
+using App.WinUI.Services.Logging;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Audio.Loopback.Capture;
@@ -19,6 +20,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using MicaAudio.Core.Config;
+using MicaAudio.Core.Presets;
 using Output.Led;
 
 namespace App.WinUI;
@@ -64,12 +66,12 @@ public partial class App : Application
         MainWindow.Closed -= OnMainWindowClosed;
         MainWindow.Closed += OnMainWindowClosed;
 
-        ApplySystemBackdrop(rootFrame);
-
         try
         {
             RecordStartupBreadcrumb("BuildServiceProvider");
             EnsureServicesInitialized();
+            var startupSettings = LoadStartupSettings(Services!);
+            ApplyBackdropPreference(rootFrame, startupSettings.UseMicaBackdrop);
             _ = StartDeviceIntegrationAsync(Services!);
 
             if (rootFrame.Content is null)
@@ -135,7 +137,15 @@ public partial class App : Application
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<ILogger<DeviceIntegrationService>>()));
-        services.AddSingleton<DeviceOperationsCoordinator>();
+        services.AddSingleton<DeviceOperationsCoordinator>(sp =>
+        {
+            var coordinator = new DeviceOperationsCoordinator(
+                sp.GetRequiredService<DeviceIntegrationService>(),
+                sp.GetRequiredService<SettingsRepository>(),
+                sp.GetRequiredService<AppSettingsDomainService>());
+            coordinator.CentralLogStore = sp.GetRequiredService<AppLogStore>();
+            return coordinator;
+        });
         services.AddSingleton<Hub75VisualizerSessionService>();
         services.AddSingleton<ISerialPortCatalogService, SerialPortCatalogService>();
         services.AddSingleton<ISerialProvisioningClient, SerialProvisioningClient>();
@@ -145,11 +155,14 @@ public partial class App : Application
         services.AddSingleton<IAppCatalogService, AppCatalogService>();
         services.AddSingleton<IAppModifierStateStore, AppModifierStateStore>();
         services.AddSingleton<CityAutocompleteService>();
+        services.AddSingleton<WeatherPreviewDataService>();
         services.AddSingleton<IAppDeploymentService, AppDeploymentService>();
         services.AddSingleton<AppConfigValidationUseCase>();
         services.AddSingleton<SaveAppConfigUseCase>();
         services.AddSingleton<DeployAppUseCase>();
         services.AddSingleton<PrecompiledFirmwareService>();
+
+        services.AddSingleton<AppLogStore>();
 
         services.AddSingleton<PresetRepository>();
         services.AddSingleton<SettingsRepository>();
@@ -193,7 +206,12 @@ public partial class App : Application
             sp.GetRequiredService<SaveAppConfigUseCase>(),
             sp.GetRequiredService<DeployAppUseCase>(),
             sp.GetRequiredService<AppConfigValidationUseCase>(),
-            sp.GetRequiredService<DeviceIntegrationService>()));
+            sp.GetRequiredService<DeviceIntegrationService>(),
+            sp.GetRequiredService<AppLogStore>()));
+
+        services.AddTransient<SettingsPage>(sp => new SettingsPage(
+            sp.GetRequiredService<SettingsRepository>(),
+            sp.GetRequiredService<AppSettingsDomainService>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>
@@ -202,7 +220,8 @@ public partial class App : Application
                 return sp.GetRequiredService<MainPage>();
             },
             () => sp.GetRequiredService<DevicesPage>(),
-            () => sp.GetRequiredService<AppsPage>()));
+            () => sp.GetRequiredService<AppsPage>(),
+            () => sp.GetRequiredService<SettingsPage>()));
 
         services.AddTransient<ShellPage>(sp => new ShellPage(
             sp.GetRequiredService<ShellPageViewModel>(),
@@ -311,39 +330,85 @@ public partial class App : Application
         }
     }
 
-    private void ApplySystemBackdrop(Frame rootFrame)
+    internal static BackdropPreferenceResult ApplyBackdropPreference(bool useMica)
     {
+        if (MainWindow?.Content is not Frame rootFrame)
+        {
+            return new BackdropPreferenceResult(useMica, MicaApplied: false, "Janela principal indisponivel para aplicar backdrop.");
+        }
+
+        return ApplyBackdropPreference(rootFrame, useMica);
+    }
+
+    internal static BackdropPreferenceResult ApplyBackdropPreference(Frame rootFrame, bool useMica)
+    {
+        ArgumentNullException.ThrowIfNull(rootFrame);
+
         if (MainWindow is null)
         {
-            return;
+            return new BackdropPreferenceResult(useMica, MicaApplied: false, "Janela principal indisponivel para aplicar backdrop.");
+        }
+
+        if (!useMica)
+        {
+            MainWindow.SystemBackdrop = null;
+            ApplyFallbackBackground(rootFrame);
+            return new BackdropPreferenceResult(useMica, MicaApplied: false, "Mica desativado. Usando superficie solida.");
         }
 
         try
         {
             MainWindow.SystemBackdrop = new MicaBackdrop();
+            rootFrame.Background = null;
+            return new BackdropPreferenceResult(useMica, MicaApplied: true, "Mica ativo.");
         }
         catch (Exception ex)
         {
-            WriteCrashLog("Mica backdrop unavailable. Using solid fallback.", ex);
             MainWindow.SystemBackdrop = null;
-            if (TryResolveFallbackBrush(out var brush))
-            {
-                rootFrame.Background = brush;
-            }
+            ApplyFallbackBackground(rootFrame);
+            LogBackdropPreferenceIssue("Mica backdrop unavailable. Using solid fallback.", ex);
+            return new BackdropPreferenceResult(useMica, MicaApplied: false, "Mica indisponivel neste ambiente. Usando superficie solida.");
         }
     }
 
-    private bool TryResolveFallbackBrush(out Brush? brush)
+    private static AppSettings LoadStartupSettings(IServiceProvider services)
+    {
+        try
+        {
+            var repository = services.GetRequiredService<SettingsRepository>();
+            var settingsDomainService = services.GetRequiredService<AppSettingsDomainService>();
+            var settings = repository.LoadAsync().GetAwaiter().GetResult();
+            return settingsDomainService.Migrate(settings);
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog("Load startup settings failed. Using defaults.", ex);
+            return new AppSettings();
+        }
+    }
+
+    private static void ApplyFallbackBackground(Frame rootFrame)
+    {
+        if (TryResolveFallbackBrush(out var brush))
+        {
+            rootFrame.Background = brush;
+            return;
+        }
+
+        rootFrame.Background = null;
+    }
+
+    private static bool TryResolveFallbackBrush(out Brush? brush)
     {
         brush = null;
 
-        if (Resources.TryGetValue("AppSurfaceBaseBrush", out var primary) && primary is Brush primaryBrush)
+        if (Current?.Resources.TryGetValue("AppSurfaceBaseBrush", out var primary) == true && primary is Brush primaryBrush)
         {
             brush = primaryBrush;
             return true;
         }
 
-        if (Resources.TryGetValue("AppFallbackSurfaceBaseBrush", out var fallback) && fallback is Brush fallbackBrush)
+        if (Current?.Resources.TryGetValue("AppFallbackSurfaceBaseBrush", out var fallback) == true && fallback is Brush fallbackBrush)
         {
             brush = fallbackBrush;
             return true;
@@ -360,6 +425,9 @@ public partial class App : Application
             header,
             ex,
             logger is null ? null : (capturedHeader, capturedException) => LogUnhandledAppFailure(logger, capturedException, capturedHeader));
+
+        var centralLog = Services?.GetService<AppLogStore>();
+        centralLog?.Append(LogCategory.System, LogSeverity.Error, $"{header}: {ex.Message}");
     }
 
     private static string GetCrashLogPath()
@@ -382,15 +450,38 @@ public partial class App : Application
             GetCrashLogPath());
 
     internal static void RecordStartupBreadcrumb(string stage)
-        => AppStartupDiagnostics.RecordBreadcrumb(stage);
+    {
+        AppStartupDiagnostics.RecordBreadcrumb(stage);
+        var centralLog = Services?.GetService<AppLogStore>();
+        centralLog?.Append(LogCategory.System, LogSeverity.Info, $"Startup: {stage}");
+    }
 
     internal static void ReportStartupFailure(string header, Exception ex)
         => WriteCrashLog(header, ex);
 
+    internal static void ReportError(string header, Exception ex)
+        => WriteCrashLog(header, ex);
+
     internal static string CurrentCrashLogPath => GetCrashLogPath();
+
+    private static void LogBackdropPreferenceIssue(string message, Exception ex)
+    {
+        var logger = Services?.GetService<ILogger<App>>();
+        if (logger is not null)
+        {
+            LogBackdropPreferenceWarning(logger, ex, message);
+        }
+
+        Services?.GetService<AppLogStore>()?.Append(LogCategory.System, LogSeverity.Warning, $"{message}: {ex.Message}");
+    }
 
     [LoggerMessage(EventId = 1001, Level = LogLevel.Critical, Message = "Unhandled app failure: {Header}")]
     private static partial void LogUnhandledAppFailure(ILogger logger, Exception exception, string header);
+
+    [LoggerMessage(EventId = 1002, Level = LogLevel.Warning, Message = "{Message}")]
+    private static partial void LogBackdropPreferenceWarning(ILogger logger, Exception exception, string message);
+
+    internal readonly record struct BackdropPreferenceResult(bool UseMicaRequested, bool MicaApplied, string StatusMessage);
 }
 
 

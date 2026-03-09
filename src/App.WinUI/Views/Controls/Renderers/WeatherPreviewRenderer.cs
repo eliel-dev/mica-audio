@@ -1,4 +1,5 @@
-﻿using App.WinUI.Services.Apps;
+using App.WinUI.Services.Apps;
+using Microsoft.Extensions.DependencyInjection;
 using Windows.UI;
 
 namespace App.WinUI.Views.Controls.Renderers;
@@ -6,7 +7,7 @@ namespace App.WinUI.Views.Controls.Renderers;
 // DOCS: docs/wiki/guides/configure-app-modifiers.md#apps-clima
 internal sealed class WeatherPreviewRenderer : IAppPreviewRenderer
 {
-    private static readonly WeatherPreviewDataService DataService = new();
+    private static readonly Lazy<WeatherPreviewDataService> FallbackDataService = new(static () => new WeatherPreviewDataService());
 
     public string Kind => "weather";
 
@@ -15,24 +16,27 @@ internal sealed class WeatherPreviewRenderer : IAppPreviewRenderer
         var ds = context.DrawingSession;
         Hub75PreviewHelper.DrawPanel(context, out var ox, out var oy, out var pitch, out var ledSize);
 
-        var snapshot = DataService.GetSnapshot(context.GetConfigValue("city"), context.GetConfigValue("units"));
+        var snapshot = ResolveDataService().GetSnapshot();
         var cityText = BuildCityLabel(snapshot.CityDisplay, context.Time);
-        var temperatureText = snapshot.Temperature is double temperature
-            ? $"{Math.Round(temperature):00}{snapshot.UnitSymbol}"
-            : $"--{snapshot.UnitSymbol}";
+        var temperatureText = snapshot.State == WeatherPreviewLoadState.Error
+            ? "ERR"
+            : snapshot.Temperature is double temperature
+                ? $"{Math.Round(temperature):00}{snapshot.UnitSymbol}"
+                : $"--{snapshot.UnitSymbol}";
+        var temperatureColor = snapshot.State == WeatherPreviewLoadState.Error
+            ? Color.FromArgb(255, 255, 126, 126)
+            : Color.FromArgb(255, 255, 220, 140);
+        var indicatorColor = snapshot.State switch
+        {
+            WeatherPreviewLoadState.Live => Color.FromArgb(255, 70, 255, 140),
+            WeatherPreviewLoadState.Error => Color.FromArgb(255, 255, 92, 92),
+            _ => Color.FromArgb(255, 255, 170, 90),
+        };
 
         Hub75PreviewHelper.DrawText5x7(ds, ox, oy, pitch, ledSize, 2, 2, cityText, Color.FromArgb(255, 145, 215, 255));
         DrawWeatherIcon(ds, ox, oy, pitch, ledSize, snapshot.WeatherCode ?? -1, 8, 12);
-        Hub75PreviewHelper.DrawText5x7(ds, ox, oy, pitch, ledSize, 34, 19, temperatureText, Color.FromArgb(255, 255, 220, 140));
-
-        if (snapshot.HasLiveData)
-        {
-            Hub75PreviewHelper.DrawPixel(ds, ox, oy, pitch, ledSize, 62, 1, Color.FromArgb(255, 70, 255, 140), glow: false);
-        }
-        else
-        {
-            Hub75PreviewHelper.DrawPixel(ds, ox, oy, pitch, ledSize, 62, 1, Color.FromArgb(255, 255, 170, 90), glow: false);
-        }
+        Hub75PreviewHelper.DrawText5x7(ds, ox, oy, pitch, ledSize, 34, 19, temperatureText, temperatureColor);
+        Hub75PreviewHelper.DrawPixel(ds, ox, oy, pitch, ledSize, 62, 1, indicatorColor, glow: false);
     }
 
     private static string BuildCityLabel(string cityDisplay, float time)
@@ -41,7 +45,7 @@ internal sealed class WeatherPreviewRenderer : IAppPreviewRenderer
         var normalized = Hub75PreviewHelper.NormalizeForMatrix(city);
         if (string.IsNullOrWhiteSpace(normalized))
         {
-            return "SAO PAULO";
+            return "TIMBO";
         }
 
         const int maxChars = 10;
@@ -62,6 +66,12 @@ internal sealed class WeatherPreviewRenderer : IAppPreviewRenderer
 
     private static void DrawWeatherIcon(Microsoft.Graphics.Canvas.CanvasDrawingSession ds, float ox, float oy, float pitch, float ledSize, int weatherCode, int x, int y)
     {
+        if (weatherCode < 0)
+        {
+            DrawCloud(ds, ox, oy, pitch, ledSize, x, y, stormy: false);
+            return;
+        }
+
         if (IsThunderstorm(weatherCode))
         {
             DrawCloud(ds, ox, oy, pitch, ledSize, x, y, stormy: true);
@@ -165,5 +175,11 @@ internal sealed class WeatherPreviewRenderer : IAppPreviewRenderer
         Hub75PreviewHelper.DrawPixel(ds, ox, oy, pitch, ledSize, x + 2, y + 2, lightning, glow: false);
         Hub75PreviewHelper.DrawPixel(ds, ox, oy, pitch, ledSize, x + 1, y + 3, lightning, glow: false);
         Hub75PreviewHelper.DrawPixel(ds, ox, oy, pitch, ledSize, x, y + 4, lightning, glow: false);
+    }
+
+    private static WeatherPreviewDataService ResolveDataService()
+    {
+        return global::App.WinUI.App.Services?.GetService<WeatherPreviewDataService>()
+            ?? FallbackDataService.Value;
     }
 }

@@ -13,11 +13,17 @@ Pontos principais do cutover HUB75 128x64:
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
 - [Hub75PreviewHelper](../../../src/App.WinUI/Views/Controls/Renderers/Hub75PreviewHelper.cs#L1)
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)
+- [MainPage XAML](../../../src/App.WinUI/Views/MainPage.xaml#L1)
 - [MainPage startup helpers](../../../src/App.WinUI/Views/MainPage.Startup.cs#L1)
+- [MainPage settings pane helpers](../../../src/App.WinUI/Views/MainPage.SettingsPane.cs#L1)
+- [MainPage settings bindings helpers](../../../src/App.WinUI/Views/MainPage.SettingsBindings.cs#L1)
 - [MainPage visualizer runtime helpers](../../../src/App.WinUI/Views/MainPage.VisualizerRuntime.cs#L1)
 - [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
 - [ShellPageContentFactory](../../../src/App.WinUI/Views/ShellPageContentFactory.cs#L1)
+- [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
+- [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
+- [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
 
@@ -98,6 +104,7 @@ Pontos centrais de runtime do visualizer e payload:
 - [VisualizerRuntimeSettings](../../../src/MicaAudio.Core/Config/VisualizerRuntimeSettings.cs#L1)
 - [AnalyzerRuntimeProfile](../../../src/MicaAudio.Core/Config/AnalyzerRuntimeProfile.cs#L1)
 - [DeviceLifecycleSettings](../../../src/MicaAudio.Core/Config/DeviceLifecycleSettings.cs#L1)
+- [AppSettings](../../../src/MicaAudio.Core/Presets/AppSettings.cs#L1)
 - [LedPayloadFactory](../../../src/MicaAudio.Core/Led/LedPayloadFactory.cs#L1)
 - [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1)
 - [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L1)
@@ -118,8 +125,12 @@ Observacoes ativas do runtime do app:
 - `AudioPipelineCoordinator` atua como orquestrador fino; ciclo de vida, roteamento e frame processing estao separados em colaboradores internos.
 - `ShellPage` resolve abas de forma lazy e isolada; falha da `MainPage` nao derruba mais a shell inteira.
 - `AppStartupDiagnostics` e `MainPage.Startup` concentram breadcrumbs, fallback de preset legado e guard de bootstrap da UI.
+- `App` aplica `MicaBackdrop` com base em `AppSettings.UseMicaBackdrop` e consegue alternar entre Mica e superficie solida em runtime sem restart.
+- `SettingsPage` foi simplificada para uma unica superficie `Geral`, sem viewer de logs; o card `Logs de erro` apenas abre a pasta do `crash.log`.
+- `AppLogStore` deixou de persistir log operacional completo em `app-logs.json` e agora grava em disco apenas entradas `Error`, no mesmo `crash.log` canonico do app.
 - A reducao de escopo do fix de startup manteve a protecao concentrada na `MainPage`: presets sao sanitizados apenas no caminho de rebuild do analyzer.
 - O `Visualizador` agora separa runtime pendente do runtime aplicado e usa debounce unico de `150 ms` para ajustes finos antes do rebuild do analyzer.
+- O painel de configuracao do `Visualizador` continua lateral, mas agora usa grupos e linhas de settings inspirados em Fluent 2, com `RendererCombo` e `ContentModeCombo` movidos para a pane e `CommandBar` focado em acoes rapidas.
 
 Pontos centrais de catalogo e deploy de apps:
 

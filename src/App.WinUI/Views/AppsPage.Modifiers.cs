@@ -1,18 +1,23 @@
 using App.WinUI.Models.Apps;
 using App.WinUI.Services.Apps;
+using App.WinUI.Services.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/guides/troubleshoot-city-autocomplete.md#passos
+// DOCS: docs/wiki/guides/configure-app-modifiers.md#apps-clima
 public sealed partial class AppsPage
 {
     private async Task LoadModifierEditorAsync()
     {
         var item = selectedItem;
 
+        CleanupCityAutocompleteControls();
         ModifiersPanel.Children.Clear();
         modifierBindings.Clear();
 
@@ -27,25 +32,35 @@ public sealed partial class AppsPage
         var modifiers = item.Modifiers.Where(static modifier => modifier.IsValid()).ToArray();
         if (modifiers.Length == 0)
         {
-            ModifiersHintText.Text = "Este app nÃ£o possui modificadores configurÃ¡veis.";
-            ModifiersPanel.Children.Add(new TextBlock
+            if (WeatherAppFixedLocation.IsWeatherApp(item))
             {
-                Text = "Sem parÃ¢metros adicionais.",
-                Opacity = 0.8,
-            });
+                ModifiersHintText.Text = "Salvar atualiza o preview local. Instalar envia a configuração atual para o dispositivo selecionado.";
+                AddFixedWeatherInfo();
+            }
+            else
+            {
+                ModifiersHintText.Text = "Este app não possui modificadores configuráveis.";
+                ModifiersPanel.Children.Add(new TextBlock
+                {
+                    Text = "Sem parâmetros adicionais.",
+                    Opacity = 0.8,
+                });
+            }
+
             UpdateGifOpenFileButtonVisibility();
             UpdateActionButtonsEnabled();
             return;
         }
 
         IReadOnlyDictionary<string, string> values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var draft = await modifierStore.GetDraftAsync(LocalDraftScope, item.Id).ConfigureAwait(false);
+        var draft = await modifierStore.GetDraftAsync(LocalDraftScope, item.Id);
         if (draft is not null)
         {
             values = draft.Values;
         }
+        values = WeatherAppFixedLocation.NormalizeRawValues(item, values);
 
-        ModifiersHintText.Text = "Salvar atualiza o preview local. Instalar envia a configuraÃ§Ã£o atual para o dispositivo selecionado.";
+        ModifiersHintText.Text = "Salvar atualiza o preview local. Instalar envia a configuração atual para o dispositivo selecionado.";
 
         foreach (var modifier in modifiers)
         {
@@ -66,6 +81,16 @@ public sealed partial class AppsPage
                     Opacity = 0.76,
                     TextWrapping = TextWrapping.Wrap,
                 });
+            }
+
+            if (control is AutoSuggestBox suggest
+                && citySuggestionFeedback.TryGetValue(suggest, out var feedback))
+            {
+                var inlineHost = new StackPanel { Spacing = 6 };
+                inlineHost.Children.Add(control);
+                inlineHost.Children.Add(feedback);
+                ModifiersPanel.Children.Add(inlineHost);
+                continue;
             }
 
             ModifiersPanel.Children.Add(control);
@@ -97,9 +122,9 @@ public sealed partial class AppsPage
                 var selected = combo.Items.OfType<ComboBoxItem>().FirstOrDefault(i => string.Equals(i.Tag as string, initialValue, StringComparison.OrdinalIgnoreCase))
                     ?? combo.Items.OfType<ComboBoxItem>().FirstOrDefault();
                 combo.SelectedItem = selected;
-                if (string.Equals(definition.Key, "sourceMode", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(definition.Key, "sourceType", StringComparison.OrdinalIgnoreCase))
                 {
-                    combo.SelectionChanged += OnGifSourceModeSelectionChanged;
+                    combo.SelectionChanged += OnSourceTypeSelectionChanged;
                 }
 
                 return combo;
@@ -110,6 +135,12 @@ public sealed partial class AppsPage
                     PlaceholderText = definition.Placeholder ?? "Digite a cidade",
                     Text = cityDisplay,
                 };
+                citySuggestionFeedback[suggest] = new TextBlock
+                {
+                    Opacity = 0.82,
+                    TextWrapping = TextWrapping.Wrap,
+                    Visibility = Visibility.Collapsed,
+                };
                 if (citySuggestion is not null)
                 {
                     suggest.Tag = citySuggestion;
@@ -117,6 +148,7 @@ public sealed partial class AppsPage
 
                 suggest.TextChanged += OnCitySuggestTextChanged;
                 suggest.SuggestionChosen += OnCitySuggestionChosen;
+                suggest.QuerySubmitted += OnCitySuggestionQuerySubmitted;
                 return suggest;
             case AppModifierFieldType.Number:
                 var number = new NumberBox
@@ -146,12 +178,12 @@ public sealed partial class AppsPage
         }
 
         sender.Tag = null;
-        citySuggestionLookup.Remove(sender);
+        ClearCitySuggestions(sender);
 
         var query = sender.Text.Trim();
-        if (query.Length < 2)
+        if (query.Length < CityAutocompleteService.MinQueryLength)
         {
-            sender.ItemsSource = null;
+            SetCityAutocompleteFeedback(sender, string.Empty);
             return;
         }
 
@@ -161,14 +193,33 @@ public sealed partial class AppsPage
             previous.Dispose();
         }
 
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
         citySuggestCts[sender] = cts;
+        SetCityAutocompleteFeedback(sender, $"Buscando cidades brasileiras para '{query}'...", CityAutocompleteFeedbackState.Loading);
 
         try
         {
-            var suggestions = await cityService.SearchAsync(query, cts.Token).ConfigureAwait(false);
+            var searchResult = await cityService.SearchWithDiagnosticsAsync(query, cts.Token);
+            if (!citySuggestCts.TryGetValue(sender, out var active) || !ReferenceEquals(active, cts))
+            {
+                return;
+            }
+
+            if (searchResult.IsCancelled)
+            {
+                return;
+            }
+
+            if (searchResult.HasFailure)
+            {
+                var failureMessage = BuildCityAutocompleteFailureMessage(query, searchResult);
+                SetCityAutocompleteFeedback(sender, failureMessage, CityAutocompleteFeedbackState.Error);
+                RecordCityAutocompleteEvent(failureMessage, LogSeverity.Warning);
+                return;
+            }
+
             var lookup = new Dictionary<string, CitySuggestion>(StringComparer.OrdinalIgnoreCase);
-            foreach (var suggestion in suggestions)
+            foreach (var suggestion in searchResult.Suggestions)
             {
                 if (!lookup.ContainsKey(suggestion.DisplayName))
                 {
@@ -176,20 +227,17 @@ public sealed partial class AppsPage
                 }
             }
 
-            var displayItems = lookup.Keys.ToArray();
-            _ = DispatcherQueue.TryEnqueue(() =>
+            if (lookup.Count == 0)
             {
-                citySuggestionLookup[sender] = lookup;
-                sender.ItemsSource = displayItems;
-            });
-        }
-        catch
-        {
-            _ = DispatcherQueue.TryEnqueue(() =>
-            {
-                citySuggestionLookup.Remove(sender);
-                sender.ItemsSource = null;
-            });
+                SetCityAutocompleteFeedback(sender, $"Nenhuma cidade brasileira encontrada para '{query}'.", CityAutocompleteFeedbackState.Empty);
+                return;
+            }
+
+            citySuggestionLookup[sender] = lookup;
+            sender.ItemsSource = lookup.Keys.ToArray();
+            sender.IsSuggestionListOpen = true;
+            SetCityAutocompleteFeedback(sender, string.Empty);
+            sender.UpdateLayout();
         }
         finally
         {
@@ -217,6 +265,7 @@ public sealed partial class AppsPage
         }
 
         sender.Text = selectedText;
+        SetCityAutocompleteFeedback(sender, string.Empty);
         if (citySuggestionLookup.TryGetValue(sender, out var lookup)
             && lookup.TryGetValue(selectedText, out var mappedSuggestion))
         {
@@ -226,6 +275,38 @@ public sealed partial class AppsPage
 
         ParseCityConfig(selectedText, out _, out var parsedSuggestion);
         sender.Tag = parsedSuggestion;
+    }
+
+    private void OnCitySuggestionQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (args.ChosenSuggestion is CitySuggestion chosenSuggestion)
+        {
+            sender.Tag = chosenSuggestion;
+            sender.Text = chosenSuggestion.DisplayName;
+            SetCityAutocompleteFeedback(sender, string.Empty);
+            return;
+        }
+
+        var queryText = args.QueryText?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(queryText))
+        {
+            sender.Tag = null;
+            SetCityAutocompleteFeedback(sender, string.Empty);
+            return;
+        }
+
+        if (citySuggestionLookup.TryGetValue(sender, out var lookup)
+            && lookup.TryGetValue(queryText, out var suggestion))
+        {
+            sender.Tag = suggestion;
+            sender.Text = suggestion.DisplayName;
+            SetCityAutocompleteFeedback(sender, string.Empty);
+            return;
+        }
+
+        ParseCityConfig(queryText, out _, out var parsedSuggestion);
+        sender.Tag = parsedSuggestion;
+        SetCityAutocompleteFeedback(sender, string.Empty);
     }
 
     private static void ParseCityConfig(string? raw, out string displayName, out CitySuggestion? suggestion)
@@ -276,7 +357,12 @@ public sealed partial class AppsPage
     private void ApplyPreviewDraftToCard(string appId, IReadOnlyDictionary<string, string>? values)
     {
         var card = catalogCards.FirstOrDefault(c => string.Equals(c.Item.Id, appId, StringComparison.OrdinalIgnoreCase));
-        card?.SetPreviewConfig(values);
+        if (card is null)
+        {
+            return;
+        }
+
+        card.SetPreviewConfig(WeatherAppFixedLocation.NormalizeRawValues(card.Item, values));
     }
 
     private async Task RefreshPreviewDraftsAsync()
@@ -285,7 +371,7 @@ public sealed partial class AppsPage
         foreach (var card in catalogCards)
         {
             var draft = await modifierStore.GetDraftAsync(LocalDraftScope, card.Item.Id).ConfigureAwait(false);
-            perAppValues[card.Item.Id] = draft?.Values;
+            perAppValues[card.Item.Id] = WeatherAppFixedLocation.NormalizeRawValues(card.Item, draft?.Values);
         }
 
         _ = DispatcherQueue.TryEnqueue(() =>
@@ -318,6 +404,8 @@ public sealed partial class AppsPage
             rawValues[modifier.Key] = rawValue;
         }
 
+        WeatherAppFixedLocation.NormalizePayloadInPlace(item, jsonValues);
+        WeatherAppFixedLocation.NormalizeRawValuesInPlace(item, rawValues);
         error = string.Empty;
         return true;
     }
@@ -337,6 +425,7 @@ public sealed partial class AppsPage
             data[modifier.Key] = typedValue;
         }
 
+        WeatherAppFixedLocation.NormalizePayloadInPlace(item, data);
         configJson = JsonSerializer.Serialize(data);
         error = string.Empty;
         return true;
@@ -366,7 +455,7 @@ public sealed partial class AppsPage
                 {
                     typedValue = null;
                     rawValue = string.Empty;
-                    error = $"O campo '{definition.Label}' Ã© obrigatÃ³rio.";
+                    error = $"O campo '{definition.Label}' é obrigatório.";
                     return false;
                 }
 
@@ -380,7 +469,7 @@ public sealed partial class AppsPage
                 {
                     typedValue = null;
                     rawValue = string.Empty;
-                    error = $"O campo '{definition.Label}' Ã© obrigatÃ³rio.";
+                    error = $"O campo '{definition.Label}' é obrigatório.";
                     return false;
                 }
 
@@ -395,7 +484,7 @@ public sealed partial class AppsPage
                 {
                     typedValue = null;
                     rawValue = string.Empty;
-                    error = $"O campo '{definition.Label}' Ã© obrigatÃ³rio.";
+                    error = $"O campo '{definition.Label}' é obrigatório.";
                     return false;
                 }
 
@@ -409,7 +498,7 @@ public sealed partial class AppsPage
                 {
                     typedValue = null;
                     rawValue = string.Empty;
-                    error = $"O campo '{definition.Label}' Ã© obrigatÃ³rio.";
+                    error = $"O campo '{definition.Label}' é obrigatório.";
                     return false;
                 }
 
@@ -436,7 +525,7 @@ public sealed partial class AppsPage
                 if (!bool.TryParse(value, out var boolValue))
                 {
                     typedValue = null;
-                    error = $"Valor invÃ¡lido para '{modifier.Label}'.";
+                    error = $"Valor inválido para '{modifier.Label}'.";
                     return false;
                 }
 
@@ -447,7 +536,7 @@ public sealed partial class AppsPage
                 if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var numberValue))
                 {
                     typedValue = null;
-                    error = $"Valor numÃ©rico invÃ¡lido para '{modifier.Label}'.";
+                    error = $"Valor numérico inválido para '{modifier.Label}'.";
                     return false;
                 }
 
@@ -462,4 +551,105 @@ public sealed partial class AppsPage
     }
 
     private static bool TryParseDouble(string? value, out double result) => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+
+    private void AddFixedWeatherInfo()
+    {
+        AddStaticModifierInfo("Cidade", WeatherAppFixedLocation.FixedLocationLabel);
+        AddStaticModifierInfo("Temperatura", WeatherAppFixedLocation.FixedUnitsLabel);
+    }
+
+    private void AddStaticModifierInfo(string label, string value)
+    {
+        ModifiersPanel.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        });
+        ModifiersPanel.Children.Add(new TextBlock
+        {
+            Text = value,
+            Opacity = 0.76,
+            TextWrapping = TextWrapping.Wrap,
+        });
+    }
+
+    private void CleanupCityAutocompleteControls()
+    {
+        foreach (var binding in modifierBindings.Values)
+        {
+            if (binding.Control is not AutoSuggestBox suggest)
+            {
+                continue;
+            }
+
+            suggest.TextChanged -= OnCitySuggestTextChanged;
+            suggest.SuggestionChosen -= OnCitySuggestionChosen;
+            suggest.QuerySubmitted -= OnCitySuggestionQuerySubmitted;
+            ClearCitySuggestions(suggest);
+            SetCityAutocompleteFeedback(suggest, string.Empty);
+            citySuggestionFeedback.Remove(suggest);
+
+            if (citySuggestCts.Remove(suggest, out var pending))
+            {
+                pending.Cancel();
+                pending.Dispose();
+            }
+        }
+
+        citySuggestionFeedback.Clear();
+    }
+
+    private void ClearCitySuggestions(AutoSuggestBox sender)
+    {
+        citySuggestionLookup.Remove(sender);
+        sender.ItemsSource = null;
+        sender.IsSuggestionListOpen = false;
+    }
+
+    private static string BuildCityAutocompleteFailureMessage(string query, CityAutocompleteService.CitySearchResult searchResult)
+    {
+        var builder = new StringBuilder();
+        builder.Append("Autocomplete de cidade indisponível");
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            builder.Append(" para '");
+            builder.Append(query);
+            builder.Append('\'');
+        }
+
+        builder.Append(": ");
+        builder.Append(searchResult.FailureMessage);
+        return builder.ToString();
+    }
+
+    private void SetCityAutocompleteFeedback(AutoSuggestBox sender, string message, CityAutocompleteFeedbackState state = CityAutocompleteFeedbackState.None)
+    {
+        if (!citySuggestionFeedback.TryGetValue(sender, out var feedback))
+        {
+            return;
+        }
+
+        feedback.Text = message;
+        feedback.Visibility = string.IsNullOrWhiteSpace(message)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        feedback.Opacity = state == CityAutocompleteFeedbackState.Loading ? 0.72 : 0.9;
+    }
+
+    private void RecordCityAutocompleteEvent(string message, LogSeverity severity)
+    {
+        appLogStore.Append(LogCategory.App, severity, message, selectedItem?.Id);
+    }
+
+    private enum CityAutocompleteFeedbackState
+    {
+        None,
+        Loading,
+        Empty,
+        Error,
+    }
+
+    private void OnSourceTypeSelectionChanged(object sender, SelectionChangedEventArgs e)
+        => UpdateGifOpenFileButtonVisibility();
 }

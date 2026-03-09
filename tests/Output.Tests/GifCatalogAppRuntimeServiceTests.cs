@@ -1,7 +1,5 @@
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Net;
-using System.Net.Http.Headers;
 using System.Runtime.Versioning;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Gif;
@@ -14,50 +12,6 @@ namespace Output.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class GifCatalogAppRuntimeServiceTests
 {
-    [Fact]
-    public async Task StartFromUrlAsync_WithInvalidScheme_ShouldThrow()
-    {
-        using var service = CreateService();
-        await Assert.ThrowsAsync<InvalidDataException>(() =>
-            service.StartFromUrlAsync("ftp://example.com/test.gif", GifScaleMode.Fit));
-    }
-
-    [Fact]
-    public async Task StartFromUrlAsync_WhenDownloadExceedsLimit_ShouldThrow()
-    {
-        var payload = CreateSingleFrameGifBytes();
-        using var handler = new FixedResponseHandler((_) =>
-        {
-            var content = new ByteArrayContent(payload);
-            content.Headers.ContentLength = payload.Length;
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
-        });
-        using var client = new HttpClient(handler, disposeHandler: false);
-
-        using var service = CreateService(httpClient: client, maxDownloadBytes: payload.Length - 1);
-
-        await Assert.ThrowsAsync<InvalidDataException>(() =>
-            service.StartFromUrlAsync("https://example.com/test.gif", GifScaleMode.Fit));
-    }
-
-    [Fact]
-    public async Task StartFromUrlAsync_WhenDownloadTimeout_ShouldThrow()
-    {
-        using var handler = new FixedResponseHandler(async (_, cancellationToken) =>
-        {
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
-            var content = new ByteArrayContent(CreateSingleFrameGifBytes());
-            content.Headers.ContentType = new MediaTypeHeaderValue("image/gif");
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
-        });
-
-        using var client = new HttpClient(handler, disposeHandler: false);
-        using var service = CreateService(httpClient: client, downloadTimeoutSeconds: 1);
-
-        await Assert.ThrowsAsync<TimeoutException>(() =>
-            service.StartFromUrlAsync("https://example.com/slow.gif", GifScaleMode.Fit));
-    }
-
     [Fact]
     public async Task StartFromFileAsync_ShouldRespectDecoderFrameCap()
     {
@@ -139,8 +93,6 @@ public sealed class GifCatalogAppRuntimeServiceTests
         }
     }
     private static GifCatalogAppRuntimeService CreateService(
-        HttpClient? httpClient = null,
-        int downloadTimeoutSeconds = GifCatalogAppRuntimeService.DownloadTimeoutSeconds,
         int maxDownloadBytes = GifCatalogAppRuntimeService.MaxDownloadBytes)
     {
         return new GifCatalogAppRuntimeService(
@@ -149,8 +101,6 @@ public sealed class GifCatalogAppRuntimeServiceTests
             decoder: new Hub75GifDecoder(Hub75GifDecoder.DefaultMaxGifFrames),
             formatter: new Hub75FrameFormatter(),
             player: new Hub75GifPlayer(TimeSpan.FromMilliseconds(1000d / GifCatalogAppRuntimeService.TargetFps)),
-            httpClient: httpClient,
-            downloadTimeoutSeconds: downloadTimeoutSeconds,
             maxDownloadBytes: maxDownloadBytes);
     }
 
@@ -230,25 +180,6 @@ public sealed class GifCatalogAppRuntimeServiceTests
         }
     }
 
-    private sealed class FixedResponseHandler : HttpMessageHandler
-    {
-        private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responderAsync;
-
-        public FixedResponseHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responderAsync)
-        {
-            this.responderAsync = responderAsync;
-        }
-
-        public FixedResponseHandler(Func<HttpRequestMessage, HttpResponseMessage> responder)
-            : this((request, _) => Task.FromResult(responder(request)))
-        {
-        }
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            return responderAsync(request, cancellationToken);
-        }
-    }
 }
 
 

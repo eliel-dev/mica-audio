@@ -71,6 +71,15 @@
           "Microsoft.WindowsAppSDK.WinUI": "[1.8.260204000]"
         }
       },
+      "OpenMeteo.dotnet.client.sdk": {
+        "type": "Direct",
+        "requested": "[5.2.0, )",
+        "resolved": "5.2.0",
+        "contentHash": "E8bl1Zd9kZbrpvSG9CoQHtX4nyRPqCPe72oSs8yupktGK+nMGpLEVw9cqIMuMjOOJVodzytVrTcJGe8hN23xFg==",
+        "dependencies": {
+          "openmeteo_sdk": "1.22.0"
+        }
+      },
       "System.IO.Ports": {
         "type": "Direct",
         "requested": "[10.0.0, )",
@@ -88,6 +97,11 @@
         "dependencies": {
           "System.CodeDom": "10.0.0"
         }
+      },
+      "Google.FlatBuffers": {
+        "type": "Transitive",
+        "resolved": "25.2.10",
+        "contentHash": "z3ykbSRsy6oqMzeZ84a+K8rnMJ/ysVikar8r2yUhHz0HSxIjBpj53mZvpu6LjLEm5fLLWQsCdelJwL1nu7lloA=="
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "Transitive",
@@ -262,6 +276,14 @@
         "contentHash": "xFHRFwH4x6aq3IxRbewvO33ugJRvZFEOfO62i7uQJRUNW2cnu6BeBTHUS0JD5KBucZbHZaYqxQG8dwZ47ezQuQ==",
         "dependencies": {
           "NAudio.Core": "2.2.1"
+        }
+      },
+      "openmeteo_sdk": {
+        "type": "Transitive",
+        "resolved": "1.22.0",
+        "contentHash": "5/+TMEzLVShubdX046xTHVBKwtLH6tRW7IwUj88qde7y9C5rVA/2dQ3brrxV23w1A6c799ETxtooK1XCM+onxg==",
+        "dependencies": {
+          "Google.FlatBuffers": "25.2.10"
         }
       },
       "runtime.android-arm.runtime.native.System.IO.Ports": {

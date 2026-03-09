@@ -19,7 +19,8 @@ public sealed class ShellPageContentFactoryTests
                 return visualizerPage;
             },
             () => devicesPage,
-            () => appsPage);
+            () => appsPage,
+            () => new object());
 
         var first = factory.Resolve("visualizer");
         var second = factory.Resolve("visualizer");
@@ -34,6 +35,7 @@ public sealed class ShellPageContentFactoryTests
     {
         var factory = new ShellPageContentFactory(
             () => throw new InvalidOperationException("boom"),
+            () => new object(),
             () => new object(),
             () => new object());
 

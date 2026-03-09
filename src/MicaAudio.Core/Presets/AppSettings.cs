@@ -2,11 +2,14 @@ using MicaAudio.Core.Audio;
 
 namespace MicaAudio.Core.Presets;
 
+// DOCS: docs/wiki/modules/settings-presets-persistence.md#modulo-settings-presets-e-persistencia
 public sealed class AppSettings
 {
     public string ActivePresetId { get; init; } = "audiomotion-clone";
 
     public string SelectedRendererId { get; init; } = "audiomotion-clone";
+
+    public bool UseMicaBackdrop { get; init; } = true;
 
     public bool Hub75PreviewEnabled { get; init; }
 

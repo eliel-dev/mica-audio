@@ -7,6 +7,7 @@
     xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
+    <!-- DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-menu-de-configuracao-fluent-2 -->
 
     <Page.KeyboardAccelerators>
         <KeyboardAccelerator Key="F11" Invoked="OnFullscreenAcceleratorInvoked" />
@@ -22,7 +23,7 @@
         CompactPaneLength="0"
         DisplayMode="Inline"
         IsPaneOpen="False"
-        OpenPaneLength="360"
+        OpenPaneLength="420"
         PanePlacement="Right">
         <SplitView.Transitions>
             <TransitionCollection>
@@ -32,114 +33,331 @@
 
         <SplitView.Pane>
             <Border
-                Padding="12"
-                Background="{ThemeResource AppSurfacePanelBrush}"
-                BorderBrush="{ThemeResource AppSurfaceStrokeBrush}"
-                BorderThickness="1">
-                <Grid>
+                x:Name="SettingsPaneRoot"
+                Margin="10,10,0,10"
+                Style="{StaticResource AppSettingsPaneBorderStyle}">
+                <Grid RowSpacing="14">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Grid ColumnSpacing="8">
+                    <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Configuracoes" />
+
+                        <StackPanel Spacing="2">
+                            <TextBlock Style="{StaticResource AppHeaderTextStyle}" Text="Configurações" />
+                            <TextBlock
+                                x:Name="SettingsPaneSubtitleText"
+                                Style="{StaticResource AppMutedTextStyle}"
+                                Text="Ajuste renderização, análise e frequência do visualizador."
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+
                         <Button
                             Grid.Column="1"
                             Width="32"
                             Height="32"
+                            VerticalAlignment="Top"
                             Style="{StaticResource AppIconButtonStyle}"
                             Click="OnSettingsPaneCloseClicked"
-                            ToolTipService.ToolTip="Fechar">
+                            ToolTipService.ToolTip="Fechar configurações">
                             <SymbolIcon Symbol="Cancel" />
                         </Button>
                     </Grid>
 
-                    <ScrollViewer Grid.Row="1" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
-                        <StackPanel Spacing="10">
-                            <Button
-                                x:Name="ResetSettingsButton"
-                                HorizontalAlignment="Left"
-                                Style="{StaticResource AppChromeButtonStyle}"
-                                Click="OnResetSettingsClicked"
-                                Content="Restaurar padrao"
-                                ToolTipService.ToolTip="Restaura os parametros visuais e de analise para os valores recomendados." />
+                    <ScrollViewer
+                        Grid.Row="1"
+                        VerticalScrollBarVisibility="Auto"
+                        VerticalScrollMode="Enabled">
+                        <StackPanel Spacing="14">
+                            <Border Style="{StaticResource AppSettingsSectionBorderStyle}">
+                                <StackPanel Spacing="12">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource AppSettingsSectionTitleTextStyle}" Text="Renderização" />
+                                        <TextBlock
+                                            Style="{StaticResource AppSettingsSectionDescriptionTextStyle}"
+                                            Text="Defina o contexto visual do preset atual e como o conteúdo é desenhado."
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
 
-                            <StackPanel x:Name="BarCountPanel" Spacing="4">
-                                <TextBlock Text="Quantidade de barras" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Slider
-                                        x:Name="BarCountSlider"
-                                        Grid.Column="0"
-                                        Maximum="128"
-                                        Minimum="0"
-                                        SmallChange="1"
-                                        StepFrequency="1"
-                                        ValueChanged="OnBarCountChanged" />
-                                    <TextBlock x:Name="BarCountValueText" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Text="38" />
-                                </Grid>
-                            </StackPanel>
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
 
-                            <TextBlock
-                                x:Name="CloneBarsHintText"
-                                Style="{StaticResource AppMutedTextStyle}"
-                                Text="No modo AudioMotion Clone, a quantidade de barras e automatica pela largura da tela."
-                                TextWrapping="Wrap"
-                                Visibility="Collapsed" />
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Preset atual" />
+                                            <TextBlock
+                                                Style="{StaticResource AppMutedTextStyle}"
+                                                Text="Use as setas esquerda e direita para navegar rapidamente."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
 
-                            <TextBlock Text="FFT Smoothing" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Slider x:Name="FftSmoothingSlider" Grid.Column="0" ValueChanged="OnFftSmoothingChanged" />
-                                <TextBlock x:Name="FftSmoothingValueText" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Text="0.80" />
-                            </Grid>
+                                        <TextBlock
+                                            x:Name="CurrentPresetNameText"
+                                            Grid.Column="1"
+                                            MaxWidth="170"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource AppSettingsValueTextStyle}"
+                                            Text="AudioMotion Clone"
+                                            TextAlignment="Right"
+                                            TextWrapping="Wrap" />
+                                    </Grid>
 
-                            <TextBlock Text="Weighting Filter" />
-                            <ComboBox
-                                x:Name="WeightingFilterCombo"
-                                Style="{StaticResource AppChromeComboBoxStyle}"
-                                ToolTipService.ToolTip="Aplica curva psicoacustica por frequencia (A, B, C, D ou 468)."
-                                SelectionChanged="OnWeightingFilterChanged" />
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="190" />
+                                        </Grid.ColumnDefinitions>
 
-                            <TextBlock Text="Escala de frequencia" />
-                            <ComboBox
-                                x:Name="FrequencyScaleCombo"
-                                Style="{StaticResource AppChromeComboBoxStyle}"
-                                ToolTipService.ToolTip="Define como as barras sao distribuidas no espectro."
-                                SelectionChanged="OnFrequencyScaleChanged" />
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Renderizador" />
+                                            <TextBlock
+                                                x:Name="RendererHintText"
+                                                Style="{StaticResource AppMutedTextStyle}"
+                                                Text="Escolhe como o visualizador é desenhado no canvas principal."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
 
-                            <TextBlock Text="Faixa de frequencia" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox
-                                    x:Name="FrequencyMinCombo"
-                                    Grid.Column="0"
-                                    Style="{StaticResource AppChromeComboBoxStyle}"
-                                    ToolTipService.ToolTip="Frequencia minima analisada."
-                                    SelectionChanged="OnFrequencyMinChanged" />
-                                <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Text="ate" />
-                                <ComboBox
-                                    x:Name="FrequencyMaxCombo"
-                                    Grid.Column="2"
-                                    Style="{StaticResource AppChromeComboBoxStyle}"
-                                    ToolTipService.ToolTip="Frequencia maxima analisada."
-                                    SelectionChanged="OnFrequencyMaxChanged" />
-                            </Grid>
+                                        <ComboBox
+                                            x:Name="RendererCombo"
+                                            Grid.Column="1"
+                                            MinWidth="190"
+                                            HorizontalAlignment="Stretch"
+                                            Style="{StaticResource AppChromeComboBoxStyle}"
+                                            SelectionChanged="OnRendererSelectionChanged" />
+                                    </Grid>
+
+                                    <Grid
+                                        x:Name="ContentModeSettingRow"
+                                        ColumnSpacing="16"
+                                        Visibility="Collapsed">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="190" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Origem do conteúdo" />
+                                            <TextBlock
+                                                Style="{StaticResource AppMutedTextStyle}"
+                                                Text="Alterna entre áudio ao vivo e reprodução de GIF quando houver mídia carregada."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+
+                                        <ComboBox
+                                            x:Name="ContentModeCombo"
+                                            Grid.Column="1"
+                                            MinWidth="190"
+                                            HorizontalAlignment="Stretch"
+                                            Style="{StaticResource AppChromeComboBoxStyle}"
+                                            SelectionChanged="OnContentModeSelectionChanged" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource AppSettingsSectionBorderStyle}">
+                                <StackPanel Spacing="12">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource AppSettingsSectionTitleTextStyle}" Text="Análise" />
+                                        <TextBlock
+                                            Style="{StaticResource AppSettingsSectionDescriptionTextStyle}"
+                                            Text="Controle a densidade visual e o comportamento do espectro."
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <Grid x:Name="BarCountPanel" ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="190" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Quantidade de barras" />
+                                            <TextBlock
+                                                x:Name="CloneBarsHintText"
+                                                Style="{StaticResource AppMutedTextStyle}"
+                                                Text="No modo AudioMotion Clone, a quantidade de barras é automática pela largura da tela."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+
+                                        <Grid Grid.Column="1" ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Slider
+                                                x:Name="BarCountSlider"
+                                                Grid.Column="0"
+                                                Maximum="128"
+                                                Minimum="0"
+                                                SmallChange="1"
+                                                StepFrequency="1"
+                                                ValueChanged="OnBarCountChanged" />
+                                            <TextBlock
+                                                x:Name="BarCountValueText"
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource AppSettingsValueTextStyle}"
+                                                Text="38" />
+                                        </Grid>
+                                    </Grid>
+
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="190" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="FFT smoothing" />
+                                            <TextBlock
+                                                Style="{StaticResource AppMutedTextStyle}"
+                                                Text="Suaviza oscilações rápidas para deixar a resposta visual mais estável."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+
+                                        <Grid Grid.Column="1" ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Slider x:Name="FftSmoothingSlider" Grid.Column="0" ValueChanged="OnFftSmoothingChanged" />
+                                            <TextBlock
+                                                x:Name="FftSmoothingValueText"
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource AppSettingsValueTextStyle}"
+                                                Text="0.80" />
+                                        </Grid>
+                                    </Grid>
+
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="190" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Filtro de weighting" />
+                                            <TextBlock
+                                                Style="{StaticResource AppMutedTextStyle}"
+                                                Text="Aplica uma curva psicoacústica para privilegiar faixas mais percebidas pelo ouvido."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+
+                                        <ComboBox
+                                            x:Name="WeightingFilterCombo"
+                                            Grid.Column="1"
+                                            MinWidth="190"
+                                            HorizontalAlignment="Stretch"
+                                            Style="{StaticResource AppChromeComboBoxStyle}"
+                                            ToolTipService.ToolTip="Aplica curva psicoacústica por frequência (A, B, C, D ou 468)."
+                                            SelectionChanged="OnWeightingFilterChanged" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource AppSettingsSectionBorderStyle}">
+                                <StackPanel Spacing="12">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource AppSettingsSectionTitleTextStyle}" Text="Frequência" />
+                                        <TextBlock
+                                            Style="{StaticResource AppSettingsSectionDescriptionTextStyle}"
+                                            Text="Defina a escala e a faixa do espectro usada no visualizador."
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="190" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Escala de frequência" />
+                                            <TextBlock
+                                                Style="{StaticResource AppMutedTextStyle}"
+                                                Text="Escolhe como as barras são distribuídas ao longo do espectro."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+
+                                        <ComboBox
+                                            x:Name="FrequencyScaleCombo"
+                                            Grid.Column="1"
+                                            MinWidth="190"
+                                            HorizontalAlignment="Stretch"
+                                            Style="{StaticResource AppChromeComboBoxStyle}"
+                                            ToolTipService.ToolTip="Define como as barras são distribuídas no espectro."
+                                            SelectionChanged="OnFrequencyScaleChanged" />
+                                    </Grid>
+
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="190" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Faixa de frequência" />
+                                            <TextBlock
+                                                Style="{StaticResource AppMutedTextStyle}"
+                                                Text="Limita a janela analisada para destacar a região do áudio que interessa."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+
+                                        <Grid Grid.Column="1" ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <ComboBox
+                                                x:Name="FrequencyMinCombo"
+                                                Grid.Column="0"
+                                                Style="{StaticResource AppChromeComboBoxStyle}"
+                                                ToolTipService.ToolTip="Frequência mínima analisada."
+                                                SelectionChanged="OnFrequencyMinChanged" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource AppMutedTextStyle}"
+                                                Text="até" />
+                                            <ComboBox
+                                                x:Name="FrequencyMaxCombo"
+                                                Grid.Column="2"
+                                                Style="{StaticResource AppChromeComboBoxStyle}"
+                                                ToolTipService.ToolTip="Frequência máxima analisada."
+                                                SelectionChanged="OnFrequencyMaxChanged" />
+                                        </Grid>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource AppSettingsSectionBorderStyle}">
+                                <StackPanel Spacing="12">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource AppSettingsSectionTitleTextStyle}" Text="Ações" />
+                                        <TextBlock
+                                            Style="{StaticResource AppSettingsSectionDescriptionTextStyle}"
+                                            Text="Use quando quiser voltar rapidamente ao conjunto recomendado."
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <Button
+                                        x:Name="ResetSettingsButton"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource AppChromeButtonStyle}"
+                                        Click="OnResetSettingsClicked"
+                                        Content="Restaurar padrão"
+                                        ToolTipService.ToolTip="Restaura os parâmetros visuais e de análise para os valores recomendados." />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
@@ -188,34 +406,16 @@
                             OverflowButtonVisibility="Auto">
                             <AppBarToggleButton
                                 x:Name="SettingsButton"
-                                Label="Configuracoes"
-                                Click="OnSettingsClicked">
-                                <AppBarToggleButton.Icon>
-                                    <SymbolIcon Symbol="GlobalNavigationButton" />
-                                </AppBarToggleButton.Icon>
-                            </AppBarToggleButton>
-
-                            <AppBarElementContainer>
-                                <ComboBox
-                                    x:Name="ContentModeCombo"
-                                    Width="150"
-                                    PlaceholderText="Modo"
-                                    Visibility="Collapsed"
-                                    SelectionChanged="OnContentModeSelectionChanged" />
-                            </AppBarElementContainer>
+                                Icon="Setting"
+                                Label="Configurações"
+                                Click="OnSettingsClicked" />
+                            <AppBarSeparator />
                             <AppBarElementContainer>
                                 <ToggleSwitch
                                     x:Name="Hub75Toggle"
                                     Header="Modo HUB75"
+                                    Style="{StaticResource AppChromeToggleSwitchStyle}"
                                     Toggled="OnHub75Toggled" />
-                            </AppBarElementContainer>
-                            <AppBarElementContainer>
-                                <ComboBox
-                                    x:Name="RendererCombo"
-                                    Width="210"
-                                    PlaceholderText="Renderizador"
-                                    Visibility="Collapsed"
-                                    SelectionChanged="OnRendererSelectionChanged" />
                             </AppBarElementContainer>
                         </CommandBar>
 
@@ -240,36 +440,11 @@
                     CornerRadius="12"
                     Visibility="Collapsed">
                     <StackPanel Spacing="10">
-                        <TextBlock
-                            Style="{StaticResource AppMutedTextStyle}"
-                            Text="MVP GIF HUB75: URL direta (http/https) ou arquivo local. FPS fixo: 12."
-                            TextWrapping="Wrap" />
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox
-                                x:Name="GifUrlTextBox"
-                                Grid.Column="0"
-                                PlaceholderText="https://exemplo.com/animacao.gif"
-                                Text=""
-                                TextChanged="OnGifUrlTextChanged" />
-                            <Button
-                                x:Name="GifLoadUrlButton"
-                                Grid.Column="1"
-                                Margin="0,0,4,0"
-                                Style="{StaticResource AppChromeButtonStyle}"
-                                Click="OnGifLoadUrlClicked"
-                                Content="Carregar URL" />
-                            <Button
-                                x:Name="GifOpenFileButton"
-                                Grid.Column="2"
-                                Style="{StaticResource AppChromeButtonStyle}"
-                                Click="OnGifOpenFileClicked"
-                                Content="Abrir GIF" />
-                        </Grid>
+                        <Button
+                            x:Name="GifOpenFileButton"
+                            Style="{StaticResource AppChromeButtonStyle}"
+                            Click="OnGifOpenFileClicked"
+                            Content="Abrir GIF" />
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -439,6 +614,7 @@
                             </Grid>
                     </Grid>
                 </Border>
+
             </Grid>
         </SplitView.Content>
     </SplitView>

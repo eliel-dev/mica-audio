@@ -113,4 +113,32 @@ internal static class AppStartupDiagnostics
             // Ignore secondary failures while writing crash diagnostics.
         }
     }
+
+    internal static void AppendLogLine(string path, string line)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return;
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            lock (Gate)
+            {
+                File.AppendAllText(path, line + Environment.NewLine, Encoding.UTF8);
+            }
+        }
+        catch
+        {
+            // Ignore secondary failures while writing diagnostics.
+        }
+    }
 }
