@@ -32,6 +32,11 @@
                     <SymbolIcon Symbol="Shop" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem Tag="monitoring" Content="Monitoramento">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="View" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
 
         </NavigationView.MenuItems>
 

@@ -22,6 +22,8 @@ Pontos principais do cutover HUB75 128x64:
 - [MainPage visualizer runtime helpers](../../../src/App.WinUI/Views/MainPage.VisualizerRuntime.cs#L1)
 - [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
 - [ShellPageContentFactory](../../../src/App.WinUI/Views/ShellPageContentFactory.cs#L1)
+- [MonitoringPage](../../../src/App.WinUI/Views/MonitoringPage.xaml.cs#L1)
+- [MonitoringPage UI](../../../src/App.WinUI/Views/MonitoringPage.Ui.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
@@ -138,13 +140,34 @@ Observacoes ativas do runtime do app:
 - `LedPayloadFactory` centraliza o remapeamento para `128` bins e evita montagem manual repetida de `LedPayload`.
 - `AudioPipelineCoordinator` atua como orquestrador fino; ciclo de vida, roteamento e frame processing estao separados em colaboradores internos.
 - `ShellPage` resolve abas de forma lazy e isolada; falha da `MainPage` nao derruba mais a shell inteira.
+- `ShellPage` agora tambem resolve a sessao `Monitoramento`, que le sensores locais do PC via HWiNFO64 Shared Memory sem misturar com o runtime de devices.
 - `AppStartupDiagnostics` e `MainPage.Startup` concentram breadcrumbs, fallback de preset legado e guard de bootstrap da UI.
 - `App` aplica `MicaBackdrop` com base em `AppSettings.UseMicaBackdrop` e consegue alternar entre Mica e superficie solida em runtime sem restart.
 - `SettingsPage` foi simplificada para uma unica superficie `Geral`, sem viewer de logs; o card `Logs de erro` apenas abre a pasta do `crash.log`.
 - `AppLogStore` deixou de persistir log operacional completo em `app-logs.json` e agora grava em disco apenas entradas `Error`, no mesmo `crash.log` canonico do app.
+- `MonitoringPage` usa leitura local do HWiNFO64 via `HwinfoSharedMemorySource`, com 6 cards compostos orientados a hardware e lista pesquisavel de leituras agrupadas por sensor.
 - A reducao de escopo do fix de startup manteve a protecao concentrada na `MainPage`: presets sao sanitizados apenas no caminho de rebuild do analyzer.
 - O `Visualizador` agora separa runtime pendente do runtime aplicado e usa debounce unico de `150 ms` para ajustes finos antes do rebuild do analyzer.
 - O painel de configuracao do `Visualizador` continua lateral, mas agora usa grupos e linhas de settings inspirados em Fluent 2, com `RendererCombo` e `ContentModeCombo` movidos para a pane e `CommandBar` focado em acoes rapidas.
+
+Pontos centrais da sessao de monitoramento local:
+
+- [HwinfoSharedMemorySource](../../../src/App.WinUI/Services/Monitoring/HwinfoSharedMemorySource.cs#L1)
+- [HwinfoSharedMemoryBinaryParser](../../../src/App.WinUI/Services/Monitoring/HwinfoSharedMemoryBinaryParser.cs#L1)
+- [MonitoringSnapshotProjector](../../../src/App.WinUI/Services/Monitoring/MonitoringSnapshotProjector.cs#L1)
+- [MonitoringKpiSelector](../../../src/App.WinUI/Services/Monitoring/MonitoringKpiSelector.cs#L1)
+- [Monitoring contracts](../../../src/App.WinUI/Services/Monitoring/MonitoringContracts.cs#L1)
+- [Monitoring hardware resolver](../../../src/App.WinUI/Services/Monitoring/MonitoringHardwareResolver.cs#L1)
+- [Windows memory fallback](../../../src/App.WinUI/Services/Monitoring/WindowsMemoryFallbackProvider.cs#L1)
+- [Monitoring text normalization](../../../src/App.WinUI/Services/Monitoring/MonitoringTextNormalization.cs#L1)
+
+Observacoes ativas do monitoramento:
+
+- O v1 usa `Global\\HWiNFO_SENS_SM2` + `Global\\HWiNFO_SM2_MUTEX` e faz parsing manual do buffer para evitar `unsafe` no hot path.
+- A sessao `Monitoramento` trabalha com snapshot atual apenas: sem historico, sem editor de widgets e sem persistencia de layout.
+- O topo do dashboard deriva 6 cards fixos a partir das leituras recebidas: `Uso total`, `Temperatura geral`, `Memoria RAM`, `VRAM GPU`, `Consumo` e `Frequencia`.
+- Os cards tentam preservar o nome real do hardware detectado pelo HWiNFO64, como modelo de CPU e GPU, e derivam `Disponivel` quando so existem leituras de `Used + Total`.
+- O matching de memoria agora aceita labels localizados do HWiNFO (`Memoria fisica utilizada/disponivel`, `Memoria GPU alocada/disponivel`) e usa fallback local do Windows apenas para `RAM/VRAM` quando a heuristica nao resolve.
 
 Pontos centrais de catalogo e deploy de apps:
 

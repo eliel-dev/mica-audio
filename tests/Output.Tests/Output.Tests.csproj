@@ -24,6 +24,7 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
+    <PackageReference Include="System.Management" Version="10.0.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
@@ -102,6 +103,7 @@
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLifecyclePolicy.cs" Link="Shared\Devices\DeviceLifecyclePolicy.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DevicePreviewVisibilityPolicy.cs" Link="Shared\Devices\DevicePreviewVisibilityPolicy.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Logging\AppLogStore.cs" Link="Shared\Logging\AppLogStore.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Monitoring\*.cs" Link="Shared\Monitoring\%(Filename)%(Extension)" />
     
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppConfigDraft.cs" Link="Shared\Models\AppConfigDraft.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppModifierDefinition.cs" Link="Shared\Models\AppModifierDefinition.cs" />

@@ -10,6 +10,7 @@ using App.WinUI.Services.Devices;
 using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
 using App.WinUI.Services.Logging;
+using App.WinUI.Services.Monitoring;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Audio.Loopback.Capture;
@@ -174,6 +175,8 @@ public partial class App : Application
         services.AddSingleton<PrecompiledFirmwareService>();
 
         services.AddSingleton<AppLogStore>();
+        services.AddSingleton<WindowsMemoryFallbackProvider>();
+        services.AddSingleton<HwinfoSharedMemorySource>();
 
         services.AddSingleton<PresetRepository>();
         services.AddSingleton<SettingsRepository>();
@@ -186,6 +189,7 @@ public partial class App : Application
         services.AddTransient<MainPageViewModel>();
         services.AddTransient<DevicesPageViewModel>();
         services.AddTransient<AppsPageViewModel>();
+        services.AddTransient<MonitoringPageViewModel>();
         services.AddTransient<ShellPageViewModel>();
         services.AddTransient<MainPage>(sp => new MainPage(
             sp.GetRequiredService<MainPageViewModel>(),
@@ -221,6 +225,10 @@ public partial class App : Application
             sp.GetRequiredService<DeviceIntegrationService>(),
             sp.GetRequiredService<AppLogStore>()));
 
+        services.AddTransient<MonitoringPage>(sp => new MonitoringPage(
+            sp.GetRequiredService<MonitoringPageViewModel>(),
+            sp.GetRequiredService<HwinfoSharedMemorySource>()));
+
         services.AddTransient<SettingsPage>(sp => new SettingsPage(
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>()));
@@ -233,6 +241,7 @@ public partial class App : Application
             },
             () => sp.GetRequiredService<DevicesPage>(),
             () => sp.GetRequiredService<AppsPage>(),
+            () => sp.GetRequiredService<MonitoringPage>(),
             () => sp.GetRequiredService<SettingsPage>()));
 
         services.AddTransient<ShellPage>(sp => new ShellPage(

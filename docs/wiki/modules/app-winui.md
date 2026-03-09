@@ -111,7 +111,52 @@
   - `crash.log` em `%LocalAppData%\MicaAudio` virou o arquivo unico de erro;
   - `AppLogStore` continua mantendo eventos em memoria para uso interno;
   - apenas entradas `Error` passam a ser persistidas em disco;
-  - `Info` e `Warning` deixam de ser gravados em `app-logs.json`.
+- `Info` e `Warning` deixam de ser gravados em `app-logs.json`.
+
+## Atualizacao 2026-03 - Monitoramento local com HWiNFO64
+
+- A shell ganhou a sessao `Monitoramento`, resolvida de forma lazy por `ShellPageContentFactory` no mesmo padrao das demais areas primarias.
+- O v1 usa leitura local do HWiNFO64 via Shared Memory:
+  - map file `Global\\HWiNFO_SENS_SM2`;
+  - mutex `Global\\HWiNFO_SM2_MUTEX`;
+  - parsing manual do header/sensors/readings para manter o codigo testavel em `.NET 10 / C# 14` sem `unsafe`;
+  - decode narrow compativel com Windows local para preservar strings PT-BR do HWiNFO64.
+- A UX segue uma direcao inspirada no InfoPanel, mas sem editor de paineis:
+  - faixa superior de status;
+  - grade adaptativa `3x2 / 2x3 / 1x6` de cards compostos;
+  - cada card mostra contexto de hardware detectado (`CPU`, `GPU`, `RAM`, `VRAM`) e ate duas metricas internas;
+  - superficie focada apenas no dashboard, sem lista secundaria de sensores.
+- Os 6 cards principais do topo sao fixos e opinados:
+  - `Uso total` com CPU + GPU;
+  - `Temperatura geral` com CPU + GPU;
+  - `Memoria RAM` com usada + disponivel, normalizada para `GB` na UI;
+  - `VRAM GPU` com usada + disponivel, normalizada para `GB` na UI;
+  - `Consumo` com CPU + GPU;
+  - `Frequencia` com CPU + GPU.
+- A resolucao de nomes de hardware foi separada da secao do sensor:
+  - o card tenta mostrar o modelo real do dispositivo (`AMD Ryzen ...`, `DELL GeForce RTX 5070`);
+  - categorias como `C-State Ocupacao`, `DTS` e `Enhanced` deixam de substituir o nome da peca.
+- `RAM` e `VRAM` continuam preferindo o HWiNFO64, mas agora:
+  - aceitam labels em ingles e PT-BR;
+  - fazem matching accent-insensitive;
+  - podem cair em fallback local do Windows quando o HWiNFO nao resolver os slots de memoria.
+- O app trata quatro estados de fonte para o monitoramento:
+  - `Connected`;
+  - `Stale`;
+  - `Unavailable`;
+  - `Error`.
+- O refresh roda a cada `1s` com protecao contra concorrencia e sem acao manual exposta na UI.
+- O escopo desta entrega e snapshot-only:
+  - sem historico temporal;
+  - sem layout customizavel;
+  - sem monitoramento remoto;
+  - sem preferencias persistidas em `settings.json`.
+- Os componentes centrais desta trilha sao:
+  - `HwinfoSharedMemorySource`;
+  - `HwinfoSharedMemoryBinaryParser`;
+  - `MonitoringSnapshotProjector`;
+  - `MonitoringKpiSelector`;
+  - `MonitoringPage`.
 
 ## Integracoes HTTP externas
 
@@ -175,6 +220,8 @@
 - [Fluent2 controls](../../../src/App.WinUI/Styles/Fluent2/Fluent2Controls.xaml#L1)
 - [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
 - [ShellPageContentFactory](../../../src/App.WinUI/Views/ShellPageContentFactory.cs#L1)
+- [MonitoringPage](../../../src/App.WinUI/Views/MonitoringPage.xaml.cs#L1)
+- [MonitoringPage UI](../../../src/App.WinUI/Views/MonitoringPage.Ui.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppCacheKeys](../../../src/App.WinUI/Infrastructure/Cache/AppCacheKeys.cs#L1)
@@ -204,6 +251,10 @@
 - [DeviceMetricsFormatter](../../../src/App.WinUI/Services/Devices/DeviceMetricsFormatter.cs#L1)
 - [DeviceMetricsPresentation](../../../src/App.WinUI/Services/Devices/DeviceMetricsPresentation.cs#L1)
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
+- [HwinfoSharedMemorySource](../../../src/App.WinUI/Services/Monitoring/HwinfoSharedMemorySource.cs#L1)
+- [HwinfoSharedMemoryBinaryParser](../../../src/App.WinUI/Services/Monitoring/HwinfoSharedMemoryBinaryParser.cs#L1)
+- [MonitoringSnapshotProjector](../../../src/App.WinUI/Services/Monitoring/MonitoringSnapshotProjector.cs#L1)
+- [MonitoringKpiSelector](../../../src/App.WinUI/Services/Monitoring/MonitoringKpiSelector.cs#L1)
 
 ## Atualizacao 2026-03 - DevicesPage Estavel
 
