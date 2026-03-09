@@ -21,4 +21,5 @@ public static class RendererIds
     public const string PolarArcs = "polar-arcs";
     public const string AuroraRibbon = "aurora-ribbon";
     public const string PlasmaPulse = "plasma-pulse";
+    public const string LaunchpadGrid = "launchpad-grid";
 }

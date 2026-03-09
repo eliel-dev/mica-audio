@@ -34,6 +34,8 @@ internal sealed class AppCatalogCardControl : UserControl
         Preview = new AppPreviewThumbnailControl
         {
             HorizontalAlignment = HorizontalAlignment.Center,
+            Width = 232,
+            Height = 116,
         };
         Preview.Bind(item);
         stack.Children.Add(Preview);

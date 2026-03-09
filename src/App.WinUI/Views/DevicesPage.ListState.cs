@@ -151,6 +151,7 @@ public sealed partial class DevicesPage
         renderedOrder.Clear();
         renderedOrder.AddRange(nextIds);
         lastAppliedDeviceListSignature = nextSignature;
+        RefreshVisiblePreviewConfigsIfNeeded();
 
         RestoreSelection(retainedSelectionDeviceId);
         UpdateDeviceRowSelection();
@@ -234,6 +235,7 @@ public sealed partial class DevicesPage
         renderedItemsByDeviceId.Clear();
         renderedOrder.Clear();
         lastAppliedDeviceListSignature = null;
+        lastAppliedPreviewConfigSignature = null;
         selectedDeviceId = null;
         SetListSelectedItem(null);
         DevicesList.Items.Clear();

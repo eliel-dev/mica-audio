@@ -5,6 +5,7 @@ using Windows.UI;
 
 namespace App.WinUI.Views.Controls.Renderers;
 
+// DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
 internal static class Hub75PreviewHelper
 {
     public const int PanelWidth = 128;
@@ -57,11 +58,15 @@ internal static class Hub75PreviewHelper
 
     public static void DrawPanel(in AppPreviewRenderContext context, out float ox, out float oy, out float pitch, out float ledSize)
     {
-        const float padding = 6f;
+        var padding = MathF.Min(6f, MathF.Max(2f, MathF.Min(context.Width, context.Height) * 0.08f));
+        var availableWidth = MathF.Max(1f, context.Width - (padding * 2f));
+        var availableHeight = MathF.Max(1f, context.Height - (padding * 2f));
 
-        pitch = MathF.Min((context.Width - (padding * 2f)) / PanelWidth, (context.Height - (padding * 2f)) / PanelHeight);
-        pitch = MathF.Max(pitch, 1.1f);
-        ledSize = MathF.Max(1f, pitch * 0.78f);
+        pitch = MathF.Min(availableWidth / PanelWidth, availableHeight / PanelHeight);
+        pitch = MathF.Max(pitch, 0.1f);
+        ledSize = pitch < 1f
+            ? MathF.Min(pitch, MathF.Max(0.25f, pitch * 0.92f))
+            : MathF.Max(1f, pitch * 0.78f);
 
         var drawWidth = PanelWidth * pitch;
         var drawHeight = PanelHeight * pitch;

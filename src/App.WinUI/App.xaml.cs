@@ -204,6 +204,7 @@ public partial class App : Application
             sp.GetRequiredService<ISerialPortCatalogService>(),
             sp.GetRequiredService<IDeviceUsbOnboardingService>(),
             sp.GetRequiredService<IAppCatalogService>(),
+            sp.GetRequiredService<IAppModifierStateStore>(),
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<SimulatorLedOutput>()));

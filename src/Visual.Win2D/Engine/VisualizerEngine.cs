@@ -35,6 +35,7 @@ public sealed class VisualizerEngine
             [RendererIds.PolarArcs] = new PolarArcsRenderer(),
             [RendererIds.AuroraRibbon] = new AuroraRibbonRenderer(),
             [RendererIds.PlasmaPulse] = new PlasmaPulseRenderer(),
+            [RendererIds.LaunchpadGrid] = new LaunchpadGridRenderer(),
         };
     }
 

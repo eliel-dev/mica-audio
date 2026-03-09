@@ -21,6 +21,7 @@ namespace App.WinUI.Views;
 // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03---fase-9-wave-2-e-wave-3-monolitos-do-app-decompostos
 public sealed partial class DevicesPage : Page
 {
+    private const string LocalDraftScope = "__local__";
     private readonly List<DeviceListItem> allItems = new();
     private readonly List<DeviceListItem> visibleItems = new();
     private readonly Dictionary<string, DeviceListVisualItem> renderedItemsByDeviceId = new(StringComparer.OrdinalIgnoreCase);
@@ -32,6 +33,7 @@ public sealed partial class DevicesPage : Page
     private readonly ISerialPortCatalogService serialPortCatalogService;
     private readonly IDeviceUsbOnboardingService onboardingService;
     private readonly IAppCatalogService appCatalogService;
+    private readonly IAppModifierStateStore modifierStore;
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
     private readonly SimulatorLedOutput simulatorLedOutput;
@@ -61,6 +63,8 @@ public sealed partial class DevicesPage : Page
     private bool brightnessCommitPending;
     private bool wizardBindingsInitialized;
     private bool wizardOperationInFlight;
+    private string? lastAppliedPreviewConfigSignature;
+    private int previewConfigRefreshVersion;
 
     internal DevicesPage(
         DevicesPageViewModel viewModel,
@@ -69,6 +73,7 @@ public sealed partial class DevicesPage : Page
         ISerialPortCatalogService serialPortCatalogService,
         IDeviceUsbOnboardingService onboardingService,
         IAppCatalogService appCatalogService,
+        IAppModifierStateStore modifierStore,
         SettingsRepository settingsRepository,
         AppSettingsDomainService settingsDomainService,
         SimulatorLedOutput simulatorLedOutput)
@@ -79,6 +84,7 @@ public sealed partial class DevicesPage : Page
         this.serialPortCatalogService = serialPortCatalogService;
         this.onboardingService = onboardingService;
         this.appCatalogService = appCatalogService;
+        this.modifierStore = modifierStore;
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
         this.simulatorLedOutput = simulatorLedOutput;
@@ -122,6 +128,7 @@ public sealed partial class DevicesPage : Page
         var initialState = DeviceOps.GetStateSnapshot();
         ApplyDevices(initialState.DeviceListSnapshot);
         ApplyState(initialState);
+        await RefreshVisiblePreviewConfigsAsync(force: true).ConfigureAwait(true);
 
         StartPreviewPump();
     }
@@ -147,6 +154,8 @@ public sealed partial class DevicesPage : Page
         suppressBrightnessSliderEvents = false;
         suppressDeviceSelectionChanged = false;
         brightnessCommitPending = false;
+        lastAppliedPreviewConfigSignature = null;
+        previewConfigRefreshVersion++;
         HideNewDeviceWizard();
         ClearRenderedItems();
     }
@@ -466,6 +475,11 @@ public sealed partial class DevicesPage : Page
         public void SetRuntimeFrame(MicaAudio.Core.Presets.RgbaColor[]? frame)
         {
             RowControl.SetRuntimeFrame(frame);
+        }
+
+        public void SetPreviewConfig(IReadOnlyDictionary<string, string>? values)
+        {
+            RowControl.SetPreviewConfig(values);
         }
     }
 }

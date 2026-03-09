@@ -109,4 +109,9 @@ internal sealed class DeviceListRowControl : Grid
     {
         preview.SetRuntimeFrame(frame);
     }
+
+    public void SetPreviewConfig(IReadOnlyDictionary<string, string>? values)
+    {
+        preview.SetConfig(values);
+    }
 }

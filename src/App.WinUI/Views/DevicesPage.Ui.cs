@@ -70,6 +70,7 @@ public sealed partial class DevicesPage
     private TextBlock StreamLastSequenceText = null!;
 
     private TextBox DeviceLogsTextBox = null!;
+    private ScrollViewer? DeviceLogsScrollViewer;
 
     private Border PairingFooterBorder = null!;
     private Ellipse PairingDot = null!;
@@ -493,8 +494,9 @@ public sealed partial class DevicesPage
             Text = "Selecione um dispositivo para ver o historico de eventos.",
             BorderThickness = new Thickness(0),
             Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
-            Padding = new Thickness(0),
+            Padding = new Thickness(0, 0, 0, 10),
         };
+        DeviceLogsTextBox.Loaded += OnDeviceLogsTextBoxLoaded;
         ScrollViewer.SetVerticalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Auto);
         ScrollViewer.SetHorizontalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Disabled);
 
@@ -502,6 +504,49 @@ public sealed partial class DevicesPage
         section.Child = stack;
 
         return section;
+    }
+
+    private void OnDeviceLogsTextBoxLoaded(object sender, RoutedEventArgs e)
+    {
+        DeviceLogsScrollViewer ??= FindDescendant<ScrollViewer>(DeviceLogsTextBox);
+        ScrollDeviceLogsToOffset(scrollToEnd: true);
+    }
+
+    private void ScrollDeviceLogsToOffset(bool scrollToEnd)
+    {
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            DeviceLogsScrollViewer ??= FindDescendant<ScrollViewer>(DeviceLogsTextBox);
+            if (DeviceLogsScrollViewer is null)
+            {
+                return;
+            }
+
+            DeviceLogsScrollViewer.UpdateLayout();
+            var targetOffset = scrollToEnd ? DeviceLogsScrollViewer.ScrollableHeight : 0d;
+            DeviceLogsScrollViewer.ChangeView(null, targetOffset, null, true);
+        });
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var nested = FindDescendant<T>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private Border BuildPairingFooter()

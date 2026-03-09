@@ -4,10 +4,10 @@ using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services;
 
-// DOCS: docs/wiki/modules/visual-win2d.md#polar-arcs
+// DOCS: docs/wiki/modules/visual-win2d.md#launchpad-grid
 internal static class DefaultPresets
 {
-    private const int CurrentSchemaVersion = 14;
+    private const int CurrentSchemaVersion = 15;
 
     public static IReadOnlyList<PresetDefinition> Create()
     {
@@ -102,6 +102,22 @@ internal static class DefaultPresets
                     ["plasmaWarp"] = 0.72f,
                     ["plasmaBassPulse"] = 0.32f,
                     ["plasmaContrast"] = 1.34f,
+                }),
+            CreateRendererPreset(
+                id: "spectrum-launchpad-grid",
+                name: "Launchpad Grid",
+                rendererId: RendererIds.LaunchpadGrid,
+                paletteStops: CreateLaunchpadStops(),
+                glow: true,
+                displayBandCount: 64,
+                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["launchpadGap"] = 0.16f,
+                    ["launchpadCorner"] = 0.22f,
+                    ["launchpadBloom"] = 0.55f,
+                    ["launchpadIdleLevel"] = 0.025f,
+                    ["launchpadDriftSpeed"] = 0.85f,
+                    ["launchpadFlashThreshold"] = 0.58f,
                 }),
             CreateRendererPreset(
                 id: "spectrum-bars",
@@ -423,6 +439,19 @@ internal static class DefaultPresets
             new PaletteStop { Offset = 0.48f, Color = new RgbaColor(255, 58, 168) },
             new PaletteStop { Offset = 0.76f, Color = new RgbaColor(64, 108, 255) },
             new PaletteStop { Offset = 1.00f, Color = new RgbaColor(72, 244, 255) },
+        ];
+    }
+
+    private static IReadOnlyList<PaletteStop> CreateLaunchpadStops()
+    {
+        return
+        [
+            new PaletteStop { Offset = 0.00f, Color = new RgbaColor(6, 8, 10) },
+            new PaletteStop { Offset = 0.18f, Color = new RgbaColor(255, 154, 46) },
+            new PaletteStop { Offset = 0.34f, Color = new RgbaColor(255, 232, 84) },
+            new PaletteStop { Offset = 0.56f, Color = new RgbaColor(134, 255, 48) },
+            new PaletteStop { Offset = 0.74f, Color = new RgbaColor(68, 244, 255) },
+            new PaletteStop { Offset = 1.00f, Color = new RgbaColor(255, 76, 186) },
         ];
     }
 }

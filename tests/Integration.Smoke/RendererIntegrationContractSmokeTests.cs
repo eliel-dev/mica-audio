@@ -31,6 +31,21 @@ public sealed class RendererIntegrationContractSmokeTests
     }
 
     [Fact]
+    public void VisualizerEngine_ShouldReturnExplicitCapabilities_ForLaunchpadGrid()
+    {
+        var engine = new VisualizerEngine();
+        var capabilities = engine.GetCapabilities(RendererIds.LaunchpadGrid);
+
+        Assert.Equal(RendererIntegrationMode.Explicit, capabilities.IntegrationMode);
+        Assert.Equal(RendererBarCountMode.Fixed, capabilities.BarCountMode);
+        Assert.Equal(RendererHubTransportMode.Frame128x64, capabilities.HubTransportMode);
+        Assert.Equal(64, capabilities.FixedVisualElementCount);
+        Assert.True(capabilities.UsesAnalyzerPipeline);
+        Assert.False(capabilities.Controls.SupportsBarCount);
+        Assert.Equal("Launchpad Grid usa uma grade fixa de 64 pads.", capabilities.UnsupportedControlsHint);
+    }
+
+    [Fact]
     public void VisualizerEngine_ShouldFallbackToLegacyCapabilities_ForLegacyRenderers()
     {
         var engine = new VisualizerEngine();

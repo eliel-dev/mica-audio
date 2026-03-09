@@ -32,10 +32,7 @@ public sealed partial class DevicesPage
         DeviceLogsTextBox.Text = count == 0
             ? normalizedPlaceholder
             : string.Join("\r\n", entries) + "\r\n";
-        if (count > 0)
-        {
-            DeviceLogsTextBox.Select(DeviceLogsTextBox.Text.Length, 0);
-        }
+        ScrollDeviceLogsToOffset(scrollToEnd: count > 0);
 
         lastRenderedDeviceLogsDeviceId = deviceId;
         lastRenderedDeviceLogCount = count;
