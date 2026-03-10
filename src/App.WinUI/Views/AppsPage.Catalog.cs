@@ -262,7 +262,7 @@ public sealed partial class AppsPage
         SelectedAppDescriptionText.Text = viewModel.SelectedAppDescription;
         ModifiersHintText.Text = "Selecione um app e um dispositivo para editar modificadores.";
         ModifiersPanel.Children.Clear();
-        modifierBindings.Clear();
+        modifierEditor.Cleanup();
 
         previousProvider?.OnDeselected(previousItem ?? new AppCatalogItem());
 

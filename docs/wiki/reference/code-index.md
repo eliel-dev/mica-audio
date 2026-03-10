@@ -178,3 +178,29 @@ Pontos centrais de catalogo e deploy de apps:
 - [AppsPage Deployment](../../../src/App.WinUI/Views/AppsPage.Deployment.cs#L1)
 - [AppCatalogCardControl](../../../src/App.WinUI/Views/Controls/AppCatalogCardControl.cs#L1)
 - [AppRuntimeHost](../../../src/App.WinUI/Services/Apps/AppRuntimeHost.cs#L1)
+
+Pontos centrais da sessao de paineis HUB75:
+
+- [PanelsPage](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L1)
+- [PanelsPage UI](../../../src/App.WinUI/Views/PanelsPage.Ui.cs#L1)
+- [PanelsPageViewModel](../../../src/App.WinUI/ViewModels/PanelsPageViewModel.cs#L1)
+- [Hub75PanelThumbnailControl](../../../src/App.WinUI/Views/Controls/Hub75PanelThumbnailControl.cs#L1)
+- [Hub75PanelEditorControl](../../../src/App.WinUI/Views/Controls/Hub75PanelEditorControl.cs#L1)
+- [AppModifierEditorHost](../../../src/App.WinUI/Views/Controls/AppModifierEditorHost.cs#L1)
+- [PanelsStore](../../../src/App.WinUI/Services/Panels/PanelsStore.cs#L1)
+- [PanelsStoreDocument](../../../src/App.WinUI/Models/Panels/PanelsStoreDocument.cs#L1)
+- [PanelDefinition](../../../src/App.WinUI/Models/Panels/PanelDefinition.cs#L1)
+- [PanelWidgetDefinition](../../../src/App.WinUI/Models/Panels/PanelWidgetDefinition.cs#L1)
+- [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
+- [PanelsMatrixDrawHelpers](../../../src/App.WinUI/Services/Panels/PanelsMatrixDrawHelpers.cs#L1)
+- [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
+- [PanelsDeviceSessionService](../../../src/App.WinUI/Services/Devices/PanelsDeviceSessionService.cs#L1)
+
+Observacoes ativas dos paineis:
+
+- O V1 de `Paineis` e desktop-streamed: o ESP32 recebe apenas o frame final, sem persistencia nem execucao autonoma do layout.
+- A sessao agora abre em galeria de cards com miniaturas HUB75 `128x64`, toggle `Ativo` por card e editor dedicado dentro da mesma `PanelsPage`.
+- O editor trabalha com um unico framebuffer `128x64` e sobreposicao por `ZIndex`; os widgets atuais do compositor sao `analogclock` e `gifhub75`.
+- Somente o card ativo anima em tempo real via `PanelsPlaybackService.FrameUpdated`; cards inativos usam poster frame cacheado do compositor.
+- O runtime de painel em background usa `12 FPS`, salva `lastSelectedPanelId` e separa estado de widget (`ConfigValues`) do draft local da aba `Apps`.
+- O transporte HUB75 agora suporta `SendFrame(deviceId, payload)` em paralelo ao broadcast, e `Esp32S3LedOutput` escolhe o destino a partir de `LedOutputConfig.TargetDeviceId`.

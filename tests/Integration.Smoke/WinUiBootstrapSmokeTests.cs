@@ -4,6 +4,7 @@ using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
+using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,8 +31,13 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<MainPageViewModel>());
         Assert.NotNull(provider.GetService<DevicesPageViewModel>());
         Assert.NotNull(provider.GetService<AppsPageViewModel>());
+        Assert.NotNull(provider.GetService<PanelsPageViewModel>());
         Assert.NotNull(provider.GetService<ShellPageViewModel>());
         Assert.NotNull(provider.GetService<ShellPageContentFactory>());
+        Assert.NotNull(provider.GetService<PanelsStore>());
+        Assert.NotNull(provider.GetService<PanelsFrameComposer>());
+        Assert.NotNull(provider.GetService<PanelsPlaybackService>());
+        Assert.NotNull(provider.GetService<PanelsDeviceSessionService>());
     }
 
     [Fact]
@@ -43,6 +49,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.True(isService.IsService(typeof(MainPage)));
         Assert.True(isService.IsService(typeof(DevicesPage)));
         Assert.True(isService.IsService(typeof(AppsPage)));
+        Assert.True(isService.IsService(typeof(PanelsPage)));
         Assert.True(isService.IsService(typeof(SettingsPage)));
         Assert.True(isService.IsService(typeof(ShellPage)));
         Assert.True(isService.IsService(typeof(ShellPageContentFactory)));
@@ -57,6 +64,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.True(isService.IsService(typeof(MainPageViewModel)));
         Assert.True(isService.IsService(typeof(DevicesPageViewModel)));
         Assert.True(isService.IsService(typeof(AppsPageViewModel)));
+        Assert.True(isService.IsService(typeof(PanelsPageViewModel)));
         Assert.True(isService.IsService(typeof(ShellPageViewModel)));
         Assert.True(isService.IsService(typeof(PresetRepository)));
         Assert.True(isService.IsService(typeof(SettingsRepository)));
@@ -70,6 +78,7 @@ public sealed class WinUiBootstrapSmokeTests
         AssertNoServiceProviderConstructor(typeof(MainPage));
         AssertNoServiceProviderConstructor(typeof(DevicesPage));
         AssertNoServiceProviderConstructor(typeof(AppsPage));
+        AssertNoServiceProviderConstructor(typeof(PanelsPage));
     }
 
     [Fact]
@@ -84,6 +93,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.False(string.IsNullOrWhiteSpace(options.PresetsDirectory));
         Assert.False(string.IsNullOrWhiteSpace(options.AppsCatalogPath));
         Assert.False(string.IsNullOrWhiteSpace(options.AppsModifierStatePath));
+        Assert.False(string.IsNullOrWhiteSpace(options.PanelsFilePath));
         Assert.False(string.IsNullOrWhiteSpace(options.CrashLogPath));
     }
 

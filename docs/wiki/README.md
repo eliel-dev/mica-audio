@@ -25,6 +25,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Quero debugar falha de download/salvamento de firmware: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
 - Quero adicionar app no catalogo: [guides/add-app-catalog-item.md](guides/add-app-catalog-item.md)
 - Quero configurar modificadores dinamicos de app: [guides/configure-app-modifiers.md](guides/configure-app-modifiers.md)
+- Quero montar layouts HUB75 com widgets: [modules/paineis.md](modules/paineis.md)
 - Quero auditar codigo legado com Context7: [guides/context7-legacy-review.md](guides/context7-legacy-review.md)
 - Quero auditar criticidade do projeto com Context7: [guides/criticality-context7-audit.md](guides/criticality-context7-audit.md)
 - Quero resolver busca de cidade no clima: [guides/troubleshoot-city-autocomplete.md](guides/troubleshoot-city-autocomplete.md)
@@ -56,6 +57,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Settings + Presets + Persistencia](modules/settings-presets-persistence.md)
 - [DeviceOperationsCoordinator](modules/device-operations-coordinator.md)
 - [Apps catalog + deployment](modules/apps-catalog-deployment.md)
+- [Paineis](modules/paineis.md)
 - [Server setup + firmware artifacts](modules/server-build-and-artifacts.md)
 
 ### Guias

@@ -165,9 +165,40 @@ public class Esp32S3LedOutputTests
         Assert.Equal(2, host.BroadcastFrames.Count);
     }
 
+    [Fact]
+    public void Send_WithTargetDeviceId_ShouldUseDirectedFrameDispatch()
+    {
+        using var host = new FakeDeviceServerHost();
+        var output = new Esp32S3LedOutput(host);
+
+        output.Start(new LedOutputConfig
+        {
+            Width = 128,
+            Height = 64,
+            Brightness = 1f,
+            TargetDeviceId = "device-42",
+        });
+
+        var frame = new RgbaColor[128 * 64];
+        frame[0] = new RgbaColor(0, 0, 255, 255);
+
+        output.Send(new LedPayload
+        {
+            Frame128x64 = frame,
+            Level = 1f,
+        });
+
+        Assert.Empty(host.BroadcastFrames);
+        var directed = Assert.Single(host.TargetedFrames);
+        Assert.Equal("device-42", directed.DeviceId);
+        Assert.Equal(StreamFrameV2.MessageTypeFrame128x64Rgb565, directed.Payload[1]);
+    }
+
     private sealed class FakeDeviceServerHost : IDeviceServerHost, IDisposable
     {
         public List<byte[]> BroadcastFrames { get; } = new();
+
+        public List<(string DeviceId, byte[] Payload)> TargetedFrames { get; } = new();
 
         public event EventHandler? DevicesChanged
         {
@@ -199,6 +230,7 @@ public class Esp32S3LedOutputTests
         public Task<CommandDispatchResult> SendCommandTrackedAsync(string deviceId, DeviceCommandType commandType, IReadOnlyDictionary<string, string>? parameters, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
             => SendCommandTrackedAsync(deviceId, commandType, timeout, cancellationToken);
         public bool RemoveDevice(string deviceId) => false;
+        public void SendFrame(string deviceId, byte[] framePayload) => TargetedFrames.Add((deviceId, framePayload));
         public void BroadcastFrame(byte[] framePayload) => BroadcastFrames.Add(framePayload);
         public void Dispose() { }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

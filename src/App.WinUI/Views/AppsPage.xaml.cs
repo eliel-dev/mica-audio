@@ -24,10 +24,6 @@ public sealed partial class AppsPage : Page, IDisposable
     private readonly List<AppCatalogItem> filteredItems = new();
     private readonly List<AppCatalogCardControl> catalogCards = new();
     private readonly HashSet<AppCatalogCardControl> activePreviewCards = new();
-    private readonly Dictionary<string, ModifierControlBinding> modifierBindings = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<AutoSuggestBox, CancellationTokenSource> citySuggestCts = new();
-    private readonly Dictionary<AutoSuggestBox, Dictionary<string, CitySuggestion>> citySuggestionLookup = new();
-    private readonly Dictionary<AutoSuggestBox, TextBlock> citySuggestionFeedback = new();
     private readonly AppsPageViewModel viewModel;
     private readonly GifCatalogAppRuntimeService gifRuntimeService;
     private readonly DeviceOperationsCoordinator deviceOps;
@@ -48,6 +44,7 @@ public sealed partial class AppsPage : Page, IDisposable
     private RgbaColor[]? latestGifRuntimeFrame;
     private readonly GifHub75RuntimeProvider gifRuntimeProvider;
     private readonly AppRuntimeProviderRegistry runtimeProviderRegistry;
+    private readonly AppModifierEditorHost modifierEditor;
     private IAppRuntimeProvider? activeRuntimeProvider;
 
     internal AppsPage(
@@ -71,6 +68,9 @@ public sealed partial class AppsPage : Page, IDisposable
         this.deployAppUseCase = deployAppUseCase;
         this.appConfigValidationUseCase = appConfigValidationUseCase;
         this.appLogStore = appLogStore;
+        modifierEditor = new AppModifierEditorHost(
+            cityService,
+            message => RecordCityAutocompleteEvent(message, LogSeverity.Warning));
 
         var host = deviceIntegration.Host;
         gifRuntimeService = new GifCatalogAppRuntimeService(
@@ -114,10 +114,7 @@ public sealed partial class AppsPage : Page, IDisposable
             catalogScrollViewer.ViewChanged -= OnCatalogScrollViewChanged;
         }
 
-        CleanupCityAutocompleteControls();
-        citySuggestCts.Clear();
-        citySuggestionLookup.Clear();
-        citySuggestionFeedback.Clear();
+        modifierEditor.Cleanup();
         foreach (var card in catalogCards)
         {
             card.Preview.Stop();
@@ -129,19 +126,8 @@ public sealed partial class AppsPage : Page, IDisposable
 
     public void Dispose()
     {
+        modifierEditor.Dispose();
         runtimeProviderRegistry.Dispose();
         gifRuntimeService.Dispose();
-    }
-
-    private sealed class ModifierControlBinding
-    {
-        public ModifierControlBinding(AppModifierDefinition definition, FrameworkElement control)
-        {
-            Definition = definition;
-            Control = control;
-        }
-
-        public AppModifierDefinition Definition { get; }
-        public FrameworkElement Control { get; }
     }
 }

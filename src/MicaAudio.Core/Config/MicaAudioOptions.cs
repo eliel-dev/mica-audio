@@ -17,6 +17,8 @@ public class MicaAudioOptions
 
     public string AppsModifierStatePath { get; set; } = string.Empty;
 
+    public string PanelsFilePath { get; set; } = string.Empty;
+
     public string CrashLogPath { get; set; } = string.Empty;
 
     public string PrecompiledFirmwareDirectory { get; set; } = string.Empty;

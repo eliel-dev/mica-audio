@@ -5,6 +5,7 @@ using Device.Protocol.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
+using System.Text.Json;
 
 namespace Integration.Smoke;
 
@@ -16,7 +17,21 @@ public sealed class DeviceUsbOnboardingServiceTests
         var tempRoot = Path.Combine(Path.GetTempPath(), "mica-audio-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
         var firmwarePath = Path.Combine(tempRoot, "esp32s3-devkitc1-128x64-dma_exp_merged.bin");
+        var manifestPath = Path.Combine(tempRoot, "esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json");
         await File.WriteAllBytesAsync(firmwarePath, [0x01, 0x02, 0x03]);
+        await File.WriteAllTextAsync(
+            manifestPath,
+            JsonSerializer.Serialize(new FirmwareArtifactManifest
+            {
+                SchemaVersion = 1,
+                FirmwareVersion = "1.0.0-test",
+                GitSha = "deadbeef",
+                Profile = "dma_exp",
+                BoardModel = PrecompiledFirmwareService.Esp32S3DevKitC1Board,
+                PanelType = PrecompiledFirmwareService.Hub75PanelP25_128x64_Smd2121_Scan32,
+                ControlPlane = PrecompiledFirmwareService.RequiredControlPlane,
+                BuiltAtUtc = DateTimeOffset.UtcNow,
+            }));
 
         try
         {

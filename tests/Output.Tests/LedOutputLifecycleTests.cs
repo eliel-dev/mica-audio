@@ -107,6 +107,7 @@ public class LedOutputLifecycleTests
         public Task<CommandDispatchResult> SendCommandTrackedAsync(string deviceId, DeviceCommandType commandType, IReadOnlyDictionary<string, string>? parameters, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
             => SendCommandTrackedAsync(deviceId, commandType, timeout, cancellationToken);
         public bool RemoveDevice(string deviceId) => false;
+        public void SendFrame(string deviceId, byte[] framePayload) => BroadcastFrames.Add(framePayload);
         public void BroadcastFrame(byte[] framePayload) => BroadcastFrames.Add(framePayload);
         public void Dispose() { }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

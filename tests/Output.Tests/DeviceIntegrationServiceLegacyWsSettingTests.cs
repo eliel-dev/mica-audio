@@ -172,6 +172,10 @@ public sealed class DeviceIntegrationServiceLegacyWsSettingTests
 
         public bool RemoveDevice(string deviceId) => false;
 
+        public void SendFrame(string deviceId, byte[] framePayload)
+        {
+        }
+
         public void BroadcastFrame(byte[] framePayload)
         {
         }

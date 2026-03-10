@@ -134,7 +134,7 @@ public sealed class AppsPageSmokeTests
         var message = method!.Invoke(null, ["sa", result])?.ToString();
 
         Assert.NotNull(message);
-        Assert.Contains("Autocomplete de cidade indisponível", message, StringComparison.Ordinal);
+        Assert.Contains("Autocomplete de cidade indisponivel", message, StringComparison.Ordinal);
         Assert.Contains("sa", message, StringComparison.Ordinal);
         Assert.Contains("A busca demorou demais.", message, StringComparison.Ordinal);
     }

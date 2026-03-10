@@ -3,6 +3,7 @@ using Device.Protocol.Models;
 
 namespace Device.Server.Hosting;
 
+// DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 public interface IDeviceServerHost : IAsyncDisposable
 {
     event EventHandler? DevicesChanged;
@@ -39,6 +40,8 @@ public interface IDeviceServerHost : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     bool RemoveDevice(string deviceId);
+
+    void SendFrame(string deviceId, byte[] framePayload);
 
     void BroadcastFrame(byte[] framePayload);
 }

@@ -10,8 +10,10 @@ public sealed class ShellPageContentFactoryTests
         var visualizerPage = new object();
         var devicesPage = new object();
         var appsPage = new object();
+        var panelsPage = new object();
         var monitoringPage = new object();
         var visualizerResolutions = 0;
+        var panelsResolutions = 0;
         var monitoringResolutions = 0;
 
         var factory = new ShellPageContentFactory(
@@ -24,6 +26,11 @@ public sealed class ShellPageContentFactoryTests
             () => appsPage,
             () =>
             {
+                panelsResolutions++;
+                return panelsPage;
+            },
+            () =>
+            {
                 monitoringResolutions++;
                 return monitoringPage;
             },
@@ -31,14 +38,19 @@ public sealed class ShellPageContentFactoryTests
 
         var first = factory.Resolve("visualizer");
         var second = factory.Resolve("visualizer");
+        var panelsFirst = factory.Resolve("panels");
+        var panelsSecond = factory.Resolve("panels");
         var monitoringFirst = factory.Resolve("monitoring");
         var monitoringSecond = factory.Resolve("monitoring");
 
         Assert.Same(visualizerPage, first);
         Assert.Same(first, second);
+        Assert.Same(panelsPage, panelsFirst);
+        Assert.Same(panelsFirst, panelsSecond);
         Assert.Same(monitoringPage, monitoringFirst);
         Assert.Same(monitoringFirst, monitoringSecond);
         Assert.Equal(1, visualizerResolutions);
+        Assert.Equal(1, panelsResolutions);
         Assert.Equal(1, monitoringResolutions);
     }
 
@@ -47,6 +59,7 @@ public sealed class ShellPageContentFactoryTests
     {
         var factory = new ShellPageContentFactory(
             () => throw new InvalidOperationException("boom"),
+            () => new object(),
             () => new object(),
             () => new object(),
             () => new object(),

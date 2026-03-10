@@ -220,10 +220,7 @@ public sealed partial class AppsPage
 
     private bool IsSlideshow()
     {
-        if (!modifierBindings.TryGetValue("sourceType", out var b)
-            || b.Control is not ComboBox combo
-            || combo.SelectedItem is not ComboBoxItem item
-            || item.Tag is not string mode)
+        if (!modifierEditor.TryGetCurrentRawValue("sourceType", out var mode))
         {
             return false;
         }

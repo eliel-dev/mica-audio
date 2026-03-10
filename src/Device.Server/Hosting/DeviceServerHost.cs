@@ -415,6 +415,24 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
+    public void SendFrame(string deviceId, byte[] framePayload)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
+        ArgumentNullException.ThrowIfNull(framePayload);
+
+        DeviceSession? target;
+        lock (gate)
+        {
+            if (!devices.TryGetValue(deviceId.Trim(), out target)
+                || target?.Socket is not { State: WebSocketState.Open })
+            {
+                return;
+            }
+        }
+
+        target.QueueFrame(framePayload);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);

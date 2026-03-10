@@ -32,6 +32,11 @@
                     <SymbolIcon Symbol="Shop" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem Tag="panels" Content="Paineis">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="AlignCenter" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem Tag="monitoring" Content="Monitoramento">
                 <NavigationViewItem.Icon>
                     <SymbolIcon Symbol="View" />

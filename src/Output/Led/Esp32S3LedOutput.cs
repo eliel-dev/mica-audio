@@ -14,6 +14,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
     private readonly object gate = new();
 
     private float brightness = LedDefaults.Brightness;
+    private string? targetDeviceId;
     private bool started;
     private uint sequence;
     private ushort[]? lastFrameRgb565;
@@ -34,6 +35,9 @@ public sealed class Esp32S3LedOutput : ILedOutput
         {
             started = true;
             brightness = Math.Clamp(config.Brightness, 0f, 1f);
+            targetDeviceId = string.IsNullOrWhiteSpace(config.TargetDeviceId)
+                ? null
+                : config.TargetDeviceId.Trim();
             hasLastFrame = false;
         }
     }
@@ -43,6 +47,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
         lock (gate)
         {
             started = false;
+            targetDeviceId = null;
             hasLastFrame = false;
         }
     }
@@ -53,6 +58,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
         RgbaColor[]? frame;
         float level;
         float localBrightness;
+        string? localTargetDeviceId;
         uint localSequence;
         byte localBrightnessByte;
         ushort[]? encodedFrame;
@@ -68,6 +74,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
             frame = payload.Frame128x64;
             level = payload.Level;
             localBrightness = brightness;
+            localTargetDeviceId = targetDeviceId;
             localBrightnessByte = ToByte01(localBrightness);
             encodedFrame = null;
 
@@ -102,7 +109,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
                 pixels128x64Rgb565: encodedFrame,
                 brightness0To255: localBrightnessByte);
 
-            deviceServerHost.BroadcastFrame(frameBytes);
+            SendFrame(frameBytes, localTargetDeviceId);
             return;
         }
 
@@ -124,7 +131,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
             bins128: binsBytes,
             brightness0To255: localBrightnessByte);
 
-        deviceServerHost.BroadcastFrame(bytes);
+        SendFrame(bytes, localTargetDeviceId);
     }
 
     private void EnsureFrameBuffersLocked()
@@ -151,6 +158,17 @@ public sealed class Esp32S3LedOutput : ILedOutput
     private static byte ToByte01(float value)
     {
         return (byte)Math.Clamp((int)MathF.Round(Math.Clamp(value, 0f, 1f) * 255f), 0, 255);
+    }
+
+    private void SendFrame(byte[] payload, string? localTargetDeviceId)
+    {
+        if (string.IsNullOrWhiteSpace(localTargetDeviceId))
+        {
+            deviceServerHost.BroadcastFrame(payload);
+            return;
+        }
+
+        deviceServerHost.SendFrame(localTargetDeviceId, payload);
     }
 }
 

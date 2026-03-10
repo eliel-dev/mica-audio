@@ -11,6 +11,7 @@ using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
 using App.WinUI.Services.Logging;
 using App.WinUI.Services.Monitoring;
+using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Audio.Loopback.Capture;
@@ -109,6 +110,7 @@ public partial class App : Application
             PresetsDirectory = Path.Combine(appDataRoot, "presets"),
             AppsCatalogPath = Path.Combine(appDataRoot, "apps", "catalog.json"),
             AppsModifierStatePath = Path.Combine(appDataRoot, "apps", "modifiers.json"),
+            PanelsFilePath = Path.Combine(appDataRoot, "panels", "panels.json"),
             CrashLogPath = Path.Combine(localAppDataRoot, "crash.log"),
             PrecompiledFirmwareDirectory = Path.Combine(AppContext.BaseDirectory, "AppData", "Firmware"),
         };
@@ -132,6 +134,7 @@ public partial class App : Application
             configured.PresetsDirectory = options.PresetsDirectory;
             configured.AppsCatalogPath = options.AppsCatalogPath;
             configured.AppsModifierStatePath = options.AppsModifierStatePath;
+            configured.PanelsFilePath = options.PanelsFilePath;
             configured.CrashLogPath = options.CrashLogPath;
             configured.PrecompiledFirmwareDirectory = options.PrecompiledFirmwareDirectory;
         });
@@ -163,6 +166,8 @@ public partial class App : Application
 
         services.AddSingleton<IAppCatalogService, AppCatalogService>();
         services.AddSingleton<IAppModifierStateStore, AppModifierStateStore>();
+        services.AddSingleton<PanelsStore>();
+        services.AddSingleton<PanelsFrameComposer>();
         services.AddSingleton(sp => new CityAutocompleteService(
             sp.GetRequiredService<IHttpClientFactory>(),
             sp.GetRequiredService<ILogger<CityAutocompleteService>>()));
@@ -185,10 +190,13 @@ public partial class App : Application
         services.AddSingleton<SimulatorLedOutput>();
         services.AddSingleton<NullLedOutput>();
         services.AddSingleton(sp => new Esp32S3LedOutput(sp.GetRequiredService<DeviceServerHost>()));
+        services.AddSingleton<PanelsDeviceSessionService>();
+        services.AddSingleton<PanelsPlaybackService>();
 
         services.AddTransient<MainPageViewModel>();
         services.AddTransient<DevicesPageViewModel>();
         services.AddTransient<AppsPageViewModel>();
+        services.AddTransient<PanelsPageViewModel>();
         services.AddTransient<MonitoringPageViewModel>();
         services.AddTransient<ShellPageViewModel>();
         services.AddTransient<MainPage>(sp => new MainPage(
@@ -229,6 +237,15 @@ public partial class App : Application
             sp.GetRequiredService<MonitoringPageViewModel>(),
             sp.GetRequiredService<HwinfoSharedMemorySource>()));
 
+        services.AddTransient<PanelsPage>(sp => new PanelsPage(
+            sp.GetRequiredService<PanelsPageViewModel>(),
+            sp.GetRequiredService<DeviceOperationsCoordinator>(),
+            sp.GetRequiredService<IAppCatalogService>(),
+            sp.GetRequiredService<PanelsStore>(),
+            sp.GetRequiredService<PanelsFrameComposer>(),
+            sp.GetRequiredService<PanelsPlaybackService>(),
+            sp.GetRequiredService<CityAutocompleteService>()));
+
         services.AddTransient<SettingsPage>(sp => new SettingsPage(
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>()));
@@ -241,6 +258,7 @@ public partial class App : Application
             },
             () => sp.GetRequiredService<DevicesPage>(),
             () => sp.GetRequiredService<AppsPage>(),
+            () => sp.GetRequiredService<PanelsPage>(),
             () => sp.GetRequiredService<MonitoringPage>(),
             () => sp.GetRequiredService<SettingsPage>()));
 
