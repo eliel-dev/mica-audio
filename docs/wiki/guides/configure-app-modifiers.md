@@ -1,34 +1,39 @@
-# Guia - Configurar modificadores de apps
+# Guia - Configurar modificadores de widgets
 
 ## Objetivo
 
-Explicar como editar, salvar e aplicar modificadores dinamicos por `dispositivo + app` na aba `Apps`.
+Explicar como configurar widgets derivados do catalogo HUB75 dentro da sessao `Paineis`.
 
 ## Passos
 
-1. Abra a aba `Apps` e selecione um app no catalogo.
-2. Selecione um dispositivo online no combo `Dispositivo online`.
-3. Edite os campos em `Modificadores`.
-4. Clique `Salvar` para persistir localmente em `%AppData%/MicaAudio/apps/modifiers.json`.
-5. Clique `Instalar` para enviar a configuracao atual junto do deploy ao dispositivo.
+1. Abra `Paineis` e entre no editor de um painel.
+2. Busque o widget desejado na biblioteca lateral.
+3. Arraste o widget suportado para o canvas HUB75.
+4. Selecione o widget no canvas para abrir seus modificadores no inspetor direito.
+5. Ajuste os campos e salve o painel.
 
-## Apps clima
+## Drafts locais
 
-- O app `weather` continua usando `TimbO, SC` como local fixo no preview local.
-- O campo de cidade configuravel depende do autocomplete brasileiro do Open-Meteo via `CityAutocompleteService`.
-- O preview local do card de clima depende do `OpenMeteoForecastClient`.
-- Ambos os fluxos agora usam named clients registrados em `AddExternalHttpClients`, com retry para `GET`, timeout centralizado e circuit breaker de baixo throughput.
+- O app continua usando `%AppData%/MicaAudio/apps/modifiers.json` como store local de defaults.
+- Ao criar um widget novo, a `PanelsPage` reaproveita o draft `__local__|appId`, se existir.
+- O widget salvo no painel continua tendo `ConfigValues` proprios; alterar um widget nao sobrescreve automaticamente o draft local.
+
+## Widgets clima
+
+- Widgets baseados em clima continuam usando `CityAutocompleteService` e `OpenMeteoForecastClient` via DI.
+- O editor compartilhado de modifiers (`AppModifierEditorHost`) continua normalizando valores de cidade e mensagens de erro de autocomplete.
 
 ## Referencias de codigo
 
-- [AppsPage.OnSaveModifiersClicked](../../../src/App.WinUI/Views/AppsPage.Deployment.cs#L1) - assinatura: `private async void OnSaveModifiersClicked(...)`
-- [AppsPage.OnInstallClicked](../../../src/App.WinUI/Views/AppsPage.Deployment.cs#L1) - assinatura: `private async void OnInstallClicked(...)`
-- [AppsPage.TryBuildConfigFromEditor](../../../src/App.WinUI/Views/AppsPage.Modifiers.cs#L1) - assinatura: `private bool TryBuildConfigFromEditor(...)`
-- [AppModifierStateStore.SetDraftAsync](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L88) - assinatura: `Task SetDraftAsync(...)`
-- [AppDeploymentService.SetConfigAsync](../../../src/App.WinUI/Services/Apps/AppDeploymentService.cs#L37) - assinatura: `Task<CommandDispatchResult> SetConfigAsync(...)`
+- [PanelsPage](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L1)
+- [PanelsPage UI](../../../src/App.WinUI/Views/PanelsPage.Ui.cs#L1)
+- [AppModifierEditorHost](../../../src/App.WinUI/Views/Controls/AppModifierEditorHost.cs#L1)
+- [AppModifierStateStore.SetDraftAsync](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L78)
+- [AppModifierStateStore.GetDraftAsync](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L61)
+- [CityAutocompleteService](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L1)
 
 ## Checklist rapido
 
-- [ ] Campos aparecem de acordo com o schema do app.
-- [ ] `Salvar` persiste e recarrega ao voltar para o app/dispositivo.
-- [ ] `Instalar` envia deploy com a configuracao atual e atualiza progresso/log.
+- [ ] O widget novo nasce com defaults do catalogo e, quando existir, com o draft local reaplicado.
+- [ ] Os campos do inspetor seguem o schema do item no catalogo.
+- [ ] O painel salvo preserva a configuracao por widget sem depender da antiga sessao `Apps`.

@@ -8,7 +8,7 @@ using MicaAudio.Core.Config;
 
 namespace App.WinUI.Services.Apps;
 
-// DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md
 internal sealed class AppCatalogService : IAppCatalogService
 {
     private const int CurrentSchemaVersion = 2;

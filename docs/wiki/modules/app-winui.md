@@ -159,6 +159,16 @@
   - `MonitoringKpiSelector`;
   - `MonitoringPage`.
 
+## Atualizacao 2026-03 - Consolidacao de Apps em Paineis
+
+- A sessao `Apps` saiu da shell como fluxo principal.
+- O catalogo HUB75 continua existindo, mas agora alimenta:
+  - a biblioteca de widgets de `Paineis`;
+  - previews/diagnosticos em `DevicesPage`.
+- A configuracao operacional de apps passou a ser por instancia de widget dentro de `Paineis`.
+- O fluxo de deploy individual por app deixou de fazer parte da UX principal; ativacao no ESP32 passa pelo painel carregado.
+- Os drafts locais em `apps/modifiers.json` foram mantidos e reaproveitados como defaults de widget.
+
 ## Integracoes HTTP externas
 
 - As chamadas HTTP de internet do app passaram a ter registro centralizado em `AddExternalHttpClients`, sem aplicar politicas globais ao HTTP local/in-process.
@@ -198,13 +208,10 @@
   - `CityAutocompleteService`
   - `OpenMeteoForecastClient`
   - `WeatherPreviewDataService`
-  - `DeployAppUseCase`
-  - `SaveAppConfigUseCase`
   - `DeviceUsbOnboardingService`
   - `EspToolFlashService`
   - `App.WriteCrashLog`
 - Metricas customizadas do app:
-  - `mica.app.deploy.duration`
   - `mica.onboarding.flash.duration`
   - `mica.ui.error.count`
 - `AppLogStore` e `crash.log` continuam sendo a superficie local para o usuario; a nova trilha estruturada serve diagnostico tecnico e correlacao.
@@ -232,11 +239,12 @@
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
+- [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)
 - [CityAutocompleteService](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L1)
 - [OpenMeteoForecastClient](../../../src/App.WinUI/Services/Apps/OpenMeteoForecastClient.cs#L1)
 - [WeatherPreviewDataService](../../../src/App.WinUI/Services/Apps/WeatherPreviewDataService.cs#L1)
-- [DeployAppUseCase](../../../src/App.WinUI/Services/Apps/UseCases/DeployAppUseCase.cs#L1)
-- [SaveAppConfigUseCase](../../../src/App.WinUI/Services/Apps/UseCases/SaveAppConfigUseCase.cs#L1)
+- [PanelsPage](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L1)
+- [AppModifierEditorHost](../../../src/App.WinUI/Views/Controls/AppModifierEditorHost.cs#L1)
 - [WeatherPreviewRenderer](../../../src/App.WinUI/Views/Controls/Renderers/WeatherPreviewRenderer.cs#L1)
 - [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)
 - [AudioPipelineFrameProcessor](../../../src/App.WinUI/Services/AudioPipelineFrameProcessor.cs#L1)
@@ -263,26 +271,22 @@
 - A lista de devices agora usa atualizacao incremental por diff, sem rebuild total a cada refresh.
 - O objetivo e reduzir flicker visual e manter a lista/miniaturas inline estaveis sem rebuild desnecessario.
 
-## Atualizacao 2026-03 - Fase 9 Wave 2 e Wave 3, monolitos do app decompostos
+## Atualizacao 2026-03 - Fase 9 Wave 2 e consolidacao em Paineis
 
-- A trilha de qualidade estrutural em `.NET 10 / C# 14` passou a tratar `DevicesPage` e `AppsPage` como bordas de UI com partials focados por responsabilidade.
+- A trilha de qualidade estrutural em `.NET 10 / C# 14` passou a tratar `DevicesPage` e `PanelsPage` como bordas de UI com responsabilidades mais claras.
 - `DevicesPage` foi quebrada em blocos estaveis sem mudar UX:
   - `DevicesPage.Onboarding`
   - `DevicesPage.ListState`
   - `DevicesPage.PreviewPump`
   - `DevicesPage.Dashboard`
   - `DevicesPage.Selection`
-- `AppsPage` recebeu a mesma estrategia:
-  - `AppsPage.Catalog`
-  - `AppsPage.RuntimePreview`
-  - `AppsPage.Modifiers`
-  - `AppsPage.Deployment`
-- O arquivo principal de cada pagina ficou restrito a:
-  - estado/campos;
-  - composicao;
-  - lifecycle `Loaded/Unloaded`;
-  - wiring central.
-- A experiencia visivel foi preservada; a mudanca e de ownership interno e testabilidade.
+- `PanelsPage` concentrou o fluxo antes espalhado entre catalogo e configuracao individual:
+  - galeria de paineis
+  - biblioteca de widgets com busca
+  - editor dedicado do painel
+  - integracao com `PanelsPlaybackService`
+- O arquivo principal de cada pagina ficou restrito a estado, composicao, lifecycle e wiring central.
+- A experiencia visivel mudou no caso de `Paineis`: o catalogo continua existindo, mas a configuracao operacional passou a ser apenas por widget/painel.
 
 ## Atualizacao 2026-03 - DevicesPage Offline e Remocao Local
 
@@ -306,7 +310,7 @@
 ## Atualizacao 2026-03 - Preview animado e pump de frame real
 
 - Na `DevicesPage`, miniaturas de app ficam sempre animadas (`preview.Start()` chamado automaticamente no `Bind`).
-- Na `AppsPage`, miniaturas animam apenas no hover do card (`PointerEntered` → `Start`, `PointerExited` → `Stop`).
+- Na galeria de `Paineis`, os cards usam poster frame estatico por default e apenas o painel ativo recebe frames animados do `PanelsPlaybackService`.
 - Um timer de UI leve (`DispatcherQueueTimer`, 8 Hz / 125ms) alimenta frames reais do `SimulatorLedOutput` para linhas cujo app ativo e `visualizer-hub75`.
 - O pump respeita a flag `isApplyingDeviceList` para nao competir com o diff incremental.
 - A leitura do frame do simulador e lazy: so ocorre se houver ao menos uma linha com visualizer ativo.

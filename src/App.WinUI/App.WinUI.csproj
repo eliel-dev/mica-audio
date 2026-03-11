@@ -110,6 +110,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="ViewModels\AppsPageViewModel.cs" />
+    <Compile Remove="Views\AppsPage*.cs" />
+    <Compile Remove="Services\Apps\AppDeploymentService.cs" />
+    <Compile Remove="Services\Apps\IAppDeploymentService.cs" />
+    <Compile Remove="Services\Apps\AppRuntimeHost.cs" />
+    <Compile Remove="Services\Apps\AppRuntimeProviderRegistry.cs" />
+    <Compile Remove="Services\Apps\GifCatalogAppRuntimeService.cs" />
+    <Compile Remove="Services\Apps\GifHub75RuntimeProvider.cs" />
+    <Compile Remove="Services\Apps\IAppRuntimeProvider.cs" />
+    <Compile Remove="Services\Apps\UseCases\AppConfigValidationUseCase.cs" />
+    <Compile Remove="Services\Apps\UseCases\DeployAppUseCase.cs" />
+    <Compile Remove="Services\Apps\UseCases\SaveAppConfigUseCase.cs" />
+    <Compile Remove="Services\Apps\UseCases\StartLocalRuntimeUseCase.cs" />
     <Page Remove="Views\DevicesPage.xaml" />
     <Page Remove="Views\AppsPage.xaml" />
     <Page Remove="Views\ServerPage.xaml" />

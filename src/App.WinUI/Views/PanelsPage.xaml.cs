@@ -1,3 +1,6 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using App.WinUI.Models.Apps;
 using App.WinUI.Models.Panels;
 using App.WinUI.Services;
@@ -24,6 +27,7 @@ namespace App.WinUI.Views;
 public sealed partial class PanelsPage : Page, IDisposable
 {
     private static readonly RgbaColor[] EmptyFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
+    private const string LocalDraftScope = "__local__";
     private const string DraggedWidgetAppIdKey = "panelWidgetAppId";
     private const int DefaultNewWidgetWidth = 64;
     private const int DefaultNewWidgetHeight = 32;
@@ -31,15 +35,21 @@ public sealed partial class PanelsPage : Page, IDisposable
     private readonly PanelsPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly IAppCatalogService catalogService;
+    private readonly IAppModifierStateStore modifierStore;
     private readonly PanelsStore panelsStore;
     private readonly PanelsFrameComposer frameComposer;
     private readonly PanelsPlaybackService playbackService;
     private readonly AppModifierEditorHost modifierEditor;
 
     private readonly List<AppCatalogItem> catalogItems = [];
+    private readonly List<WidgetLibraryEntry> widgetLibraryEntries = [];
+    private readonly List<WidgetLibraryEntry> filteredWidgetLibraryEntries = [];
+    private readonly ObservableCollection<PanelGalleryItemState> panelGalleryItems = [];
     private readonly Dictionary<string, AppCatalogItem> catalogById = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, PanelCardVisualState> panelCards = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PanelGalleryItemState> panelGalleryItemsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, RgbaColor[]> panelThumbnailCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Task> panelPosterTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> panelPosterGenerations = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherQueueTimer previewTimer;
 
     private DeviceOperationsState currentState = new();
@@ -49,7 +59,11 @@ public sealed partial class PanelsPage : Page, IDisposable
     private PanelWidgetDefinition? selectedWidget;
     private AppCatalogItem? selectedWidgetCatalogItem;
     private PanelsPageMode currentMode = PanelsPageMode.Gallery;
-    private string? animatedPanelId;
+    private PanelsPreviewMode previewMode = PanelsPreviewMode.Off;
+    private CancellationTokenSource? pageLifetimeCts;
+    private CancellationTokenSource? previewRefreshCts;
+    private bool handlersAttached;
+    private bool initialized;
     private bool dirty;
     private bool updatingInspector;
 
@@ -57,6 +71,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         PanelsPageViewModel viewModel,
         DeviceOperationsCoordinator deviceOps,
         IAppCatalogService catalogService,
+        IAppModifierStateStore modifierStore,
         PanelsStore panelsStore,
         PanelsFrameComposer frameComposer,
         PanelsPlaybackService playbackService,
@@ -65,6 +80,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
         this.catalogService = catalogService;
+        this.modifierStore = modifierStore;
         this.panelsStore = panelsStore;
         this.frameComposer = frameComposer;
         this.playbackService = playbackService;
@@ -72,7 +88,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         modifierEditor.ModifierChanged += OnWidgetModifierChanged;
 
         previewTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        previewTimer.Interval = TimeSpan.FromMilliseconds(1000d / PanelsFrameComposer.TargetFps);
+        previewTimer.Interval = TimeSpan.FromMilliseconds(1000d / 6d);
         previewTimer.Tick += OnPreviewTimerTick;
 
         InitializeComponent();
@@ -94,31 +110,108 @@ public sealed partial class PanelsPage : Page, IDisposable
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        deviceOps.StateChanged += OnDeviceOpsStateChanged;
-        playbackService.StateChanged += OnPlaybackStateChanged;
-        playbackService.FrameUpdated += OnPlaybackFrameUpdated;
+        try
+        {
+            if (!handlersAttached)
+            {
+                deviceOps.StateChanged += OnDeviceOpsStateChanged;
+                playbackService.StateChanged += OnPlaybackStateChanged;
+                playbackService.FrameUpdated += OnPlaybackFrameUpdated;
+                handlersAttached = true;
+            }
 
-        currentState = deviceOps.GetStateSnapshot();
-        ApplyDevices(currentState.DeviceListSnapshot);
-        SetPageMode(PanelsPageMode.Gallery);
-        UpdateAdaptiveLayout(ActualWidth);
+            pageLifetimeCts?.Cancel();
+            pageLifetimeCts?.Dispose();
+            pageLifetimeCts = new CancellationTokenSource();
+            currentState = deviceOps.GetStateSnapshot();
+            ApplyDevices(currentState.DeviceListSnapshot);
+            SetPageMode(PanelsPageMode.Gallery);
+            SetPreviewMode(PanelsPreviewMode.Off, syncToggle: true);
+            UpdateAdaptiveLayout(ActualWidth);
 
-        await LoadCatalogAsync();
-        await LoadPanelsAsync();
+            if (!initialized)
+            {
+                await LoadCatalogAsync();
+                await LoadPanelsAsync();
+                initialized = true;
+                return;
+            }
+
+            RebuildPanelsGallery();
+            QueueInitialGalleryPosterBatch();
+            UpdateGalleryCardStates();
+            ClearEditorPreview();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            HandleLoadFailure(ex);
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         previewTimer.Stop();
-        deviceOps.StateChanged -= OnDeviceOpsStateChanged;
-        playbackService.StateChanged -= OnPlaybackStateChanged;
-        playbackService.FrameUpdated -= OnPlaybackFrameUpdated;
+        pageLifetimeCts?.Cancel();
+        pageLifetimeCts?.Dispose();
+        pageLifetimeCts = null;
+        previewRefreshCts?.Cancel();
+        previewRefreshCts?.Dispose();
+        previewRefreshCts = null;
+
+        if (handlersAttached)
+        {
+            deviceOps.StateChanged -= OnDeviceOpsStateChanged;
+            playbackService.StateChanged -= OnPlaybackStateChanged;
+            playbackService.FrameUpdated -= OnPlaybackFrameUpdated;
+            handlersAttached = false;
+        }
+
         DisposePreviewSession();
+        lock (panelPosterTasks)
+        {
+            panelPosterTasks.Clear();
+            panelPosterGenerations.Clear();
+        }
     }
 
     private void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateAdaptiveLayout(e.NewSize.Width);
+    }
+
+    private void HandleLoadFailure(Exception ex)
+    {
+        initialized = false;
+        App.ReportError("PanelsPage.OnLoaded failed", ex);
+
+        storeDocument = new PanelsStoreDocument();
+        storeDocument.Normalize();
+        currentPanel = null;
+        selectedWidget = null;
+        selectedWidgetCatalogItem = null;
+        dirty = false;
+
+        panelGalleryItems.Clear();
+        panelGalleryItemsById.Clear();
+        panelThumbnailCache.Clear();
+        lock (panelPosterTasks)
+        {
+            panelPosterTasks.Clear();
+            panelPosterGenerations.Clear();
+        }
+
+        SetPageMode(PanelsPageMode.Gallery);
+        SetPreviewMode(PanelsPreviewMode.Off, syncToggle: true);
+        EditorCanvas.Panel = null;
+        EditorCanvas.SelectedWidgetId = null;
+        ClearEditorPreview();
+        UpdatePanelInspector();
+        UpdateWidgetInspector();
+        UpdateGalleryCardStates();
+        SetStatus("Falha ao carregar paineis. O store local foi restaurado/reiniciado.", isError: true);
     }
 
     private void OnPageKeyDown(object sender, KeyRoutedEventArgs e)
@@ -135,6 +228,10 @@ public sealed partial class PanelsPage : Page, IDisposable
     public void Dispose()
     {
         previewTimer.Stop();
+        pageLifetimeCts?.Cancel();
+        pageLifetimeCts?.Dispose();
+        previewRefreshCts?.Cancel();
+        previewRefreshCts?.Dispose();
         modifierEditor.Dispose();
         DisposePreviewSession();
         EditorCanvas.Dispose();
@@ -145,16 +242,23 @@ public sealed partial class PanelsPage : Page, IDisposable
         var catalog = await catalogService.LoadCatalogAsync();
         catalogItems.Clear();
         catalogItems.AddRange(catalog.OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase));
+        widgetLibraryEntries.Clear();
         catalogById.Clear();
         foreach (var item in catalogItems)
         {
             if (item.IsValid())
             {
                 catalogById[item.Id] = item;
+                var previewDraft = await ResolveWidgetDefaultValuesAsync(item);
+                widgetLibraryEntries.Add(new WidgetLibraryEntry(
+                    item,
+                    PanelsFrameComposer.SupportsWidgetApp(item.Id),
+                    PanelsFrameComposer.SupportsWidgetApp(item.Id) ? null : "Em breve",
+                    previewDraft));
             }
         }
 
-        RebuildWidgetLibrary();
+        ApplyWidgetLibraryFilter();
     }
 
     private async Task LoadPanelsAsync()
@@ -183,8 +287,8 @@ public sealed partial class PanelsPage : Page, IDisposable
         storeDocument = loadedDocument;
         var initialPanelId = storeDocument.LastSelectedPanelId ?? storeDocument.Panels.First().PanelId;
         await SelectPanelAsync(initialPanelId, saveDirty: false, refreshPreview: false);
-        await RegenerateAllThumbnailsAsync();
         RebuildPanelsGallery();
+        QueueInitialGalleryPosterBatch();
         UpdateGalleryCardStates();
         ClearEditorPreview();
     }
@@ -201,8 +305,9 @@ public sealed partial class PanelsPage : Page, IDisposable
         storeDocument.Panels.Add(panel);
         storeDocument.LastSelectedPanelId = panel.PanelId;
         await panelsStore.SaveAsync(storeDocument);
-        await RegenerateThumbnailAsync(panel, force: true);
+        InvalidatePanelPoster(panel.PanelId);
         RebuildPanelsGallery();
+        _ = QueuePosterGenerationAsync(panel.PanelId, force: true);
         await OpenEditorAsync(panel.PanelId, saveDirty: false);
         SetStatus($"Painel '{panel.Name}' criado.");
     }
@@ -255,8 +360,9 @@ public sealed partial class PanelsPage : Page, IDisposable
         storeDocument.Panels.Add(duplicate);
         storeDocument.LastSelectedPanelId = duplicate.PanelId;
         await panelsStore.SaveAsync(storeDocument);
-        await RegenerateThumbnailAsync(duplicate, force: true);
+        InvalidatePanelPoster(duplicate.PanelId);
         RebuildPanelsGallery();
+        _ = QueuePosterGenerationAsync(duplicate.PanelId, force: true);
 
         if (openEditor)
         {
@@ -292,7 +398,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         storeDocument.Panels.RemoveAll(panel => string.Equals(panel.PanelId, panelId, StringComparison.OrdinalIgnoreCase));
-        panelThumbnailCache.Remove(panelId);
+        InvalidatePanelPoster(panelId);
 
         if (storeDocument.Panels.Count == 0)
         {
@@ -311,7 +417,6 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         await panelsStore.SaveAsync(storeDocument);
-        await RegenerateAllThumbnailsAsync();
 
         var nextPanelId = currentPanel?.PanelId;
         if (string.IsNullOrWhiteSpace(nextPanelId) || !TryGetPanel(nextPanelId, out _))
@@ -325,6 +430,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         RebuildPanelsGallery();
+        QueueInitialGalleryPosterBatch();
         if (returnToGallery)
         {
             SetPageMode(PanelsPageMode.Gallery);
@@ -349,8 +455,9 @@ public sealed partial class PanelsPage : Page, IDisposable
         await panelsStore.SaveAsync(storeDocument);
 
         dirty = false;
-        await RegenerateThumbnailAsync(currentPanel, force: true);
-        RebuildPanelsGallery();
+        InvalidatePanelPoster(currentPanel.PanelId);
+        UpsertGalleryItemState(currentPanel);
+        _ = QueuePosterGenerationAsync(currentPanel.PanelId, force: true);
         UpdatePanelInspector();
 
         var reapplied = await ReapplyActivePanelIfNeededAsync();
@@ -437,13 +544,12 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         var panelId = activePanel.PanelId;
-        var liveFrame = frame.ToArray();
         _ = DispatcherQueue.TryEnqueue(() =>
         {
-            panelThumbnailCache[panelId] = liveFrame.ToArray();
-            if (panelCards.TryGetValue(panelId, out var card))
+            panelThumbnailCache[panelId] = frame;
+            if (panelGalleryItemsById.TryGetValue(panelId, out var state))
             {
-                card.Thumbnail.Frame = liveFrame;
+                state.Frame = frame;
             }
         });
     }
@@ -477,6 +583,18 @@ public sealed partial class PanelsPage : Page, IDisposable
     private async void OnEditorBackClicked(object sender, RoutedEventArgs e)
     {
         await TryReturnToGalleryAsync();
+    }
+
+    private async void OnEditorPreviewToggleToggled(object sender, RoutedEventArgs e)
+    {
+        if (updatingInspector)
+        {
+            return;
+        }
+
+        SetPreviewMode(EditorPreviewToggle.IsOn ? PanelsPreviewMode.OnDemand : PanelsPreviewMode.Off, syncToggle: false);
+        await RefreshPreviewSessionAsync();
+        SetStatus(EditorPreviewToggle.IsOn ? "Preview do editor ativado." : "Preview do editor pausado.");
     }
 
     private void OnPanelNameChanged(object sender, TextChangedEventArgs e)
@@ -546,15 +664,20 @@ public sealed partial class PanelsPage : Page, IDisposable
         await RefreshPreviewSessionAsync();
     }
 
+    private void OnWidgetLibrarySearchChanged(object sender, TextChangedEventArgs e)
+    {
+        ApplyWidgetLibraryFilter();
+    }
+
     private void OnWidgetLibraryDragItemsStarting(object sender, DragItemsStartingEventArgs e)
     {
-        if (!TryResolveDraggedCatalogItem(e.Items, out var catalogItem))
+        if (!TryResolveDraggedCatalogItem(e.Items, out var entry) || !entry.IsSupported)
         {
             return;
         }
 
-        e.Data.Properties[DraggedWidgetAppIdKey] = catalogItem.Id;
-        e.Data.SetText(catalogItem.Id);
+        e.Data.Properties[DraggedWidgetAppIdKey] = entry.Item.Id;
+        e.Data.SetText(entry.Item.Id);
         e.Data.RequestedOperation = DataPackageOperation.Copy;
     }
 
@@ -573,7 +696,9 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         var appId = await TryResolveDraggedWidgetAppIdAsync(e.DataView);
-        if (string.IsNullOrWhiteSpace(appId) || !catalogById.TryGetValue(appId, out var item))
+        if (string.IsNullOrWhiteSpace(appId)
+            || !catalogById.TryGetValue(appId, out var item)
+            || !PanelsFrameComposer.SupportsWidgetApp(item.Id))
         {
             return;
         }
@@ -589,7 +714,7 @@ public sealed partial class PanelsPage : Page, IDisposable
             Width = Math.Min(DefaultNewWidgetWidth, currentPanel.Width),
             Height = Math.Min(DefaultNewWidgetHeight, currentPanel.Height),
             ZIndex = GetNextWidgetZIndex(),
-            ConfigValues = BuildDefaultWidgetValues(item),
+            ConfigValues = await ResolveWidgetDefaultValuesAsync(item),
         };
         widget.Normalize(currentPanel.Width, currentPanel.Height);
         currentPanel.Widgets.Add(widget);
@@ -656,12 +781,12 @@ public sealed partial class PanelsPage : Page, IDisposable
         selectedWidget.ConfigValues = new Dictionary<string, string>(rawValues, StringComparer.OrdinalIgnoreCase);
         UpdateWidgetSourceUi();
         MarkDirty($"Configuracao do widget '{selectedWidgetCatalogItem.Name}' atualizada.");
-        await RefreshPreviewSessionAsync();
+        ScheduleEditorSurfaceRefresh();
     }
 
     private void OnPreviewTimerTick(DispatcherQueueTimer sender, object args)
     {
-        if (currentMode != PanelsPageMode.Editor || previewSession is null)
+        if (currentMode != PanelsPageMode.Editor || previewMode != PanelsPreviewMode.OnDemand || previewSession is null)
         {
             return;
         }
@@ -674,6 +799,7 @@ public sealed partial class PanelsPage : Page, IDisposable
     {
         var previousMode = currentMode;
         SetPageMode(PanelsPageMode.Editor);
+        SetPreviewMode(PanelsPreviewMode.Off, syncToggle: true);
         if (!await SelectPanelAsync(panelId, saveDirty, refreshPreview: true))
         {
             SetPageMode(previousMode);
@@ -693,11 +819,12 @@ public sealed partial class PanelsPage : Page, IDisposable
 
         if (currentPanel is not null)
         {
-            await RegenerateThumbnailAsync(currentPanel, force: true);
-            RebuildPanelsGallery();
+            UpsertGalleryItemState(currentPanel);
+            _ = QueuePosterGenerationAsync(currentPanel.PanelId, force: false);
         }
 
         SetPageMode(PanelsPageMode.Gallery);
+        SetPreviewMode(PanelsPreviewMode.Off, syncToggle: true);
         ClearEditorPreview();
         UpdateGalleryCardStates();
         return true;
@@ -805,13 +932,35 @@ public sealed partial class PanelsPage : Page, IDisposable
 
         try
         {
-            previewSession = await frameComposer.CreateSessionAsync(currentPanel.Clone());
+            if (previewMode == PanelsPreviewMode.Off)
+            {
+                previewTimer.Stop();
+                var posterResult = await frameComposer.CreatePosterAsync(currentPanel.Clone(), pageLifetimeCts?.Token ?? CancellationToken.None);
+                panelThumbnailCache[currentPanel.PanelId] = posterResult.Frame;
+                if (panelGalleryItemsById.TryGetValue(currentPanel.PanelId, out var state))
+                {
+                    state.PosterStatus = posterResult.WidgetErrors.Count == 0 ? PanelPosterStatus.Ready : PanelPosterStatus.Error;
+                    if (!state.IsActive)
+                    {
+                        state.Frame = posterResult.Frame;
+                    }
+                }
+
+                EditorCanvas.Frame = posterResult.Frame;
+                EditorCanvas.WidgetErrors = posterResult.WidgetErrors;
+                return;
+            }
+
+            previewSession = await frameComposer.CreateSessionAsync(currentPanel.Clone(), pageLifetimeCts?.Token ?? CancellationToken.None);
             EditorCanvas.Frame = previewSession.RenderFrame(DateTimeOffset.UtcNow);
             EditorCanvas.WidgetErrors = previewSession.GetWidgetErrors();
             if (!previewTimer.IsRunning)
             {
                 previewTimer.Start();
             }
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception ex)
         {
@@ -830,243 +979,291 @@ public sealed partial class PanelsPage : Page, IDisposable
     {
         previewTimer.Stop();
         DisposePreviewSession();
-        EditorCanvas.Frame = EmptyFrame.ToArray();
+        EditorCanvas.Frame = EmptyFrame;
         EditorCanvas.WidgetErrors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
 
-    private async Task RegenerateAllThumbnailsAsync()
+    private void SetPreviewMode(PanelsPreviewMode mode, bool syncToggle)
     {
-        panelThumbnailCache.Clear();
-        foreach (var panel in storeDocument.Panels)
+        previewMode = mode;
+        if (syncToggle && EditorPreviewToggle is not null)
         {
-            await RegenerateThumbnailAsync(panel, force: true);
+            updatingInspector = true;
+            try
+            {
+                EditorPreviewToggle.IsOn = mode == PanelsPreviewMode.OnDemand;
+            }
+            finally
+            {
+                updatingInspector = false;
+            }
         }
     }
 
-    private async Task RegenerateThumbnailAsync(PanelDefinition panel, bool force)
+    private void ScheduleEditorSurfaceRefresh()
     {
-        if (!force && panelThumbnailCache.ContainsKey(panel.PanelId))
-        {
-            return;
-        }
+        previewRefreshCts?.Cancel();
+        previewRefreshCts?.Dispose();
+        previewRefreshCts = new CancellationTokenSource();
+        var token = previewRefreshCts.Token;
+        _ = DebounceEditorSurfaceRefreshAsync(token);
+    }
 
+    private async Task DebounceEditorSurfaceRefreshAsync(CancellationToken cancellationToken)
+    {
         try
         {
-            using var session = await frameComposer.CreateSessionAsync(panel.Clone());
-            panelThumbnailCache[panel.PanelId] = session.RenderFrame(DateTimeOffset.UtcNow);
+            var delay = previewMode == PanelsPreviewMode.OnDemand
+                ? TimeSpan.FromMilliseconds(180)
+                : TimeSpan.FromMilliseconds(320);
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (DispatcherQueue is null)
+            {
+                return;
+            }
+
+            await DispatcherQueue.EnqueueAsync(() =>
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    _ = RefreshPreviewSessionAsync();
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void InvalidatePanelPoster(string panelId)
+    {
+        panelThumbnailCache.Remove(panelId);
+        if (panelGalleryItemsById.TryGetValue(panelId, out var state))
+        {
+            state.PosterStatus = PanelPosterStatus.Missing;
+            if (!state.IsActive)
+            {
+                state.Frame = EmptyFrame;
+            }
+        }
+    }
+
+    private void QueueInitialGalleryPosterBatch()
+    {
+        foreach (var item in panelGalleryItems.Take(4))
+        {
+            _ = QueuePosterGenerationAsync(item.PanelId, force: false);
+        }
+    }
+
+    private Task QueuePosterGenerationAsync(string panelId, bool force)
+    {
+        if (!TryGetPanel(panelId, out var panel))
+        {
+            return Task.CompletedTask;
+        }
+
+        var generation = 0;
+        if (!force && panelThumbnailCache.ContainsKey(panelId))
+        {
+            if (panelGalleryItemsById.TryGetValue(panelId, out var cachedState))
+            {
+                cachedState.PosterStatus = PanelPosterStatus.Ready;
+                if (!cachedState.IsActive)
+                {
+                    cachedState.Frame = panelThumbnailCache[panelId];
+                }
+            }
+            return Task.CompletedTask;
+        }
+
+        lock (panelPosterTasks)
+        {
+            if (panelPosterTasks.TryGetValue(panelId, out var existing))
+            {
+                if (existing.IsCompleted)
+                {
+                    panelPosterTasks.Remove(panelId);
+                }
+                else if (!force)
+                {
+                    return existing;
+                }
+            }
+
+            generation = panelPosterGenerations.TryGetValue(panelId, out var currentGeneration)
+                ? currentGeneration + 1
+                : 1;
+            panelPosterGenerations[panelId] = generation;
+        }
+
+        if (panelGalleryItemsById.TryGetValue(panelId, out var loadingState))
+        {
+            loadingState.PosterStatus = PanelPosterStatus.Loading;
+        }
+
+        var task = GeneratePosterAsync(panel.Clone(), generation, pageLifetimeCts?.Token ?? CancellationToken.None);
+        lock (panelPosterTasks)
+        {
+            panelPosterTasks[panelId] = task;
+        }
+
+        return task;
+    }
+
+    private async Task GeneratePosterAsync(PanelDefinition panel, int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var posterResult = await frameComposer.CreatePosterAsync(panel, cancellationToken).ConfigureAwait(false);
+            if (cancellationToken.IsCancellationRequested || !IsLatestPosterGeneration(panel.PanelId, generation))
+            {
+                return;
+            }
+
+            await DispatcherQueue.EnqueueAsync(() =>
+            {
+                panelThumbnailCache[panel.PanelId] = posterResult.Frame;
+                if (panelGalleryItemsById.TryGetValue(panel.PanelId, out var state))
+                {
+                    state.PosterStatus = posterResult.WidgetErrors.Count == 0 ? PanelPosterStatus.Ready : PanelPosterStatus.Error;
+                    if (!state.IsActive)
+                    {
+                        state.Frame = posterResult.Frame;
+                    }
+                }
+
+                if (currentPanel is not null
+                    && string.Equals(currentPanel.PanelId, panel.PanelId, StringComparison.OrdinalIgnoreCase)
+                    && currentMode == PanelsPageMode.Editor
+                    && previewMode == PanelsPreviewMode.Off)
+                {
+                    EditorCanvas.Frame = posterResult.Frame;
+                    EditorCanvas.WidgetErrors = posterResult.WidgetErrors;
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch
         {
-            panelThumbnailCache[panel.PanelId] = EmptyFrame.ToArray();
+            await DispatcherQueue.EnqueueAsync(() =>
+            {
+                if (!IsLatestPosterGeneration(panel.PanelId, generation))
+                {
+                    return;
+                }
+
+                panelThumbnailCache[panel.PanelId] = EmptyFrame;
+                if (panelGalleryItemsById.TryGetValue(panel.PanelId, out var state))
+                {
+                    state.PosterStatus = PanelPosterStatus.Error;
+                    if (!state.IsActive)
+                    {
+                        state.Frame = EmptyFrame;
+                    }
+                }
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (panelPosterTasks)
+            {
+                if (panelPosterGenerations.TryGetValue(panel.PanelId, out var trackedGeneration)
+                    && trackedGeneration == generation)
+                {
+                    panelPosterTasks.Remove(panel.PanelId);
+                }
+            }
+        }
+    }
+
+    private bool IsLatestPosterGeneration(string panelId, int generation)
+    {
+        lock (panelPosterTasks)
+        {
+            return panelPosterGenerations.TryGetValue(panelId, out var trackedGeneration)
+                && trackedGeneration == generation;
         }
     }
 
     private void RebuildPanelsGallery()
     {
-        PanelsGalleryGrid.Items.Clear();
-        panelCards.Clear();
+        panelGalleryItems.Clear();
+        panelGalleryItemsById.Clear();
 
         foreach (var panel in storeDocument.Panels.OrderBy(panel => panel.Name, StringComparer.CurrentCultureIgnoreCase))
         {
-            var item = BuildPanelCard(panel);
-            PanelsGalleryGrid.Items.Add(item);
+            var state = CreateGalleryItemState(panel);
+            panelGalleryItems.Add(state);
+            panelGalleryItemsById[state.PanelId] = state;
         }
 
         UpdateAdaptiveLayout(ActualWidth);
     }
 
-    private GridViewItem BuildPanelCard(PanelDefinition panel)
+    private void UpsertGalleryItemState(PanelDefinition panel)
     {
-        var panelId = panel.PanelId;
-        var previewButton = new Button
+        if (!panelGalleryItemsById.TryGetValue(panel.PanelId, out var state))
         {
-            Padding = new Thickness(0),
-            Background = null,
-            BorderThickness = new Thickness(0),
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
-            Tag = panelId,
-            MinHeight = 190,
-        };
-        previewButton.Click += OnPanelPreviewClicked;
+            RebuildPanelsGallery();
+            return;
+        }
 
-        var thumbnail = new Hub75PanelThumbnailControl
-        {
-            Margin = new Thickness(16),
-            Height = 180,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Frame = panelThumbnailCache.TryGetValue(panelId, out var frame) ? frame : EmptyFrame.ToArray(),
-        };
-        previewButton.Content = thumbnail;
+        state.Name = panel.Name;
+        state.WidgetCount = panel.Widgets.Count;
+        state.Subtitle = state.IsActive
+            ? $"Ativo em {playbackService.TargetDeviceId}"
+            : $"{panel.Widgets.Count} widget(s)";
+    }
 
-        var previewHost = new Grid();
-        previewHost.Children.Add(previewButton);
-
-        var activeBadge = new Border
+    private PanelGalleryItemState CreateGalleryItemState(PanelDefinition panel)
+    {
+        return new PanelGalleryItemState(
+            panel.PanelId,
+            panel.Name,
+            panel.Widgets.Count,
+            ResolveGalleryCardWidth(ActualWidth),
+            panelThumbnailCache.TryGetValue(panel.PanelId, out var frame) ? frame : EmptyFrame,
+            openEditorAsync: panelId => OpenEditorAsync(panelId, saveDirty: currentMode == PanelsPageMode.Editor),
+            duplicateAsync: panelId => DuplicatePanelAsync(panelId, openEditor: true),
+            deleteAsync: panelId => DeletePanelAsync(panelId, returnToGallery: true),
+            setActiveAsync: SetPanelActivationAsync)
         {
-            Padding = new Thickness(8, 4, 8, 4),
-            CornerRadius = new CornerRadius(999),
-            Background = UiResourceResolver.ResolveBrush("SystemAccentColor", Windows.UI.Color.FromArgb(255, 0, 120, 212)),
-            Child = new TextBlock
-            {
-                Text = "ATIVO",
-                FontSize = 11,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            },
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(12),
-            Visibility = Visibility.Collapsed,
+            PosterStatus = panelThumbnailCache.ContainsKey(panel.PanelId) ? PanelPosterStatus.Ready : PanelPosterStatus.Missing,
         };
-        previewHost.Children.Add(activeBadge);
-
-        var menuButton = new Button
-        {
-            Content = new SymbolIcon(Symbol.More),
-            Padding = new Thickness(8),
-            Width = 36,
-            Height = 36,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(12),
-            Tag = panelId,
-        };
-        var menuFlyout = new MenuFlyout();
-        var editItem = new MenuFlyoutItem
-        {
-            Text = "Editar",
-            Icon = new SymbolIcon(Symbol.Edit),
-            Tag = panelId,
-        };
-        editItem.Click += OnPanelEditMenuClicked;
-        var duplicateItem = new MenuFlyoutItem
-        {
-            Text = "Duplicar",
-            Icon = new SymbolIcon(Symbol.Copy),
-            Tag = panelId,
-        };
-        duplicateItem.Click += OnPanelDuplicateMenuClicked;
-        var deleteItem = new MenuFlyoutItem
-        {
-            Text = "Excluir",
-            Icon = new SymbolIcon(Symbol.Delete),
-            Tag = panelId,
-        };
-        deleteItem.Click += OnPanelDeleteMenuClicked;
-        menuFlyout.Items.Add(editItem);
-        menuFlyout.Items.Add(duplicateItem);
-        menuFlyout.Items.Add(deleteItem);
-        menuButton.Flyout = menuFlyout;
-        previewHost.Children.Add(menuButton);
-
-        var infoButton = new Button
-        {
-            Padding = new Thickness(0),
-            Background = null,
-            BorderThickness = new Thickness(0),
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Tag = panelId,
-        };
-        infoButton.Click += OnPanelPreviewClicked;
-
-        var titleText = new TextBlock
-        {
-            Text = panel.Name,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            TextWrapping = TextWrapping.WrapWholeWords,
-            MaxLines = 2,
-        };
-        var subtitleText = new TextBlock
-        {
-            Text = $"{panel.Widgets.Count} widget(s)",
-            Opacity = 0.72,
-            TextWrapping = TextWrapping.WrapWholeWords,
-        };
-        infoButton.Content = new StackPanel
-        {
-            Spacing = 2,
-            Children =
-            {
-                titleText,
-                subtitleText,
-            },
-        };
-
-        var toggle = new ToggleSwitch
-        {
-            OffContent = string.Empty,
-            OnContent = string.Empty,
-            Tag = panelId,
-        };
-        toggle.Toggled += OnPanelToggleToggled;
-
-        var footerActions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = "Ativo",
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Opacity = 0.86,
-                },
-                toggle,
-            },
-        };
-
-        var footerGrid = new Grid
-        {
-            Padding = new Thickness(16, 14, 16, 14),
-            ColumnSpacing = 16,
-        };
-        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        footerGrid.Children.Add(infoButton);
-        Grid.SetColumn(footerActions, 1);
-        footerGrid.Children.Add(footerActions);
-
-        var cardGrid = new Grid();
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        cardGrid.Children.Add(previewHost);
-        Grid.SetRow(footerGrid, 1);
-        cardGrid.Children.Add(footerGrid);
-
-        var cardBorder = CreateCard(cardGrid, padding: 0, elevated: true);
-        cardBorder.Width = 320;
-
-        var item = new GridViewItem
-        {
-            Content = cardBorder,
-            Tag = panelId,
-            Padding = new Thickness(6),
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
-        };
-
-        panelCards[panelId] = new PanelCardVisualState(item, cardBorder, thumbnail, toggle, subtitleText, activeBadge, titleText);
-        return item;
     }
 
     private void RebuildWidgetLibrary()
     {
         WidgetLibraryList.Items.Clear();
-        foreach (var item in catalogItems)
+        foreach (var entry in filteredWidgetLibraryEntries)
         {
-            var card = new AppCatalogCardControl(item);
-            card.SetPreviewPlayback(true);
+            var card = new AppCatalogCardControl(entry.Item);
+            card.SetPreviewConfig(entry.PreviewValues);
+            card.SetAvailability(entry.IsSupported, entry.BadgeLabel);
             var listItem = new ListViewItem
             {
-                Tag = item,
+                Tag = entry,
                 Content = card,
+                IsEnabled = true,
+                CanDrag = entry.IsSupported,
             };
+            if (!entry.IsSupported)
+            {
+                ToolTipService.SetToolTip(listItem, "Este widget ainda nao possui renderer HUB75 no compositor.");
+            }
+
             WidgetLibraryList.Items.Add(listItem);
         }
+
+        WidgetLibrarySummaryText.Text = BuildWidgetLibrarySummary();
     }
 
     private void ApplyDevices(IReadOnlyList<DeviceSnapshot> devices)
@@ -1121,47 +1318,24 @@ public sealed partial class PanelsPage : Page, IDisposable
         var activeDeviceId = playbackService.TargetDeviceId;
         var selectedDeviceId = GetSelectedDeviceId();
 
-        if (!string.Equals(animatedPanelId, activePanelId, StringComparison.OrdinalIgnoreCase)
-            && !string.IsNullOrWhiteSpace(animatedPanelId)
-            && panelCards.TryGetValue(animatedPanelId, out var previousCard)
-            && panelThumbnailCache.TryGetValue(animatedPanelId, out var previousPoster))
+        foreach (var state in panelGalleryItems)
         {
-            previousCard.Thumbnail.Frame = previousPoster;
-        }
-
-        animatedPanelId = activePanelId;
-        foreach (var panel in storeDocument.Panels)
-        {
-            if (!panelCards.TryGetValue(panel.PanelId, out var card))
+            if (!TryGetPanel(state.PanelId, out var panel))
             {
                 continue;
             }
 
-            var isActive = string.Equals(panel.PanelId, activePanelId, StringComparison.OrdinalIgnoreCase);
-            var canActivate = isActive || !string.IsNullOrWhiteSpace(selectedDeviceId);
-            card.SuppressToggle = true;
-            card.ActiveToggle.IsOn = isActive;
-            card.ActiveToggle.IsEnabled = canActivate;
-            card.SuppressToggle = false;
-
-            card.CardBorder.BorderThickness = isActive ? new Thickness(2) : new Thickness(1);
-            card.CardBorder.BorderBrush = isActive
-                ? UiResourceResolver.ResolveBrush("SystemAccentColor", Windows.UI.Color.FromArgb(255, 0, 120, 212))
-                : UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Windows.UI.Color.FromArgb(255, 55, 68, 86));
-            card.ActiveBadge.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
-            card.TitleText.Text = panel.Name;
-            card.SubtitleText.Text = isActive
+            state.Name = panel.Name;
+            state.WidgetCount = panel.Widgets.Count;
+            state.IsActive = string.Equals(panel.PanelId, activePanelId, StringComparison.OrdinalIgnoreCase);
+            state.CanActivate = state.IsActive || !string.IsNullOrWhiteSpace(selectedDeviceId);
+            state.Subtitle = state.IsActive
                 ? $"Ativo em {activeDeviceId}"
                 : $"{panel.Widgets.Count} widget(s)";
-
-            if (isActive)
-            {
-                card.Thumbnail.Frame = playbackService.GetLatestFrame();
-            }
-            else if (panelThumbnailCache.TryGetValue(panel.PanelId, out var poster))
-            {
-                card.Thumbnail.Frame = poster;
-            }
+            state.Frame = state.IsActive
+                ? playbackService.GetLatestFrame()
+                    ?? (panelThumbnailCache.TryGetValue(state.PanelId, out var activePoster) ? activePoster : EmptyFrame)
+                : (panelThumbnailCache.TryGetValue(state.PanelId, out var poster) ? poster : EmptyFrame);
         }
     }
 
@@ -1289,9 +1463,10 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         TargetDeviceCombo.Width = width < 640d ? double.NaN : 260d;
-        foreach (var card in panelCards.Values)
+        var cardWidth = ResolveGalleryCardWidth(width);
+        foreach (var state in panelGalleryItems)
         {
-            card.Item.Width = width < 760d ? Math.Max(260d, width - 56d) : 332d;
+            state.CardWidth = cardWidth;
         }
 
         EditorContentLayout.ColumnDefinitions.Clear();
@@ -1358,7 +1533,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         {
             previewTimer.Stop();
         }
-        else if (previewSession is not null && !previewTimer.IsRunning)
+        else if (previewMode == PanelsPreviewMode.OnDemand && previewSession is not null && !previewTimer.IsRunning)
         {
             previewTimer.Start();
         }
@@ -1440,7 +1615,55 @@ public sealed partial class PanelsPage : Page, IDisposable
         SetStatus(action);
     }
 
-    private static Dictionary<string, string> BuildDefaultWidgetValues(AppCatalogItem item)
+    private void ApplyWidgetLibraryFilter()
+    {
+        var query = WidgetLibrarySearchBox?.Text?.Trim() ?? string.Empty;
+        filteredWidgetLibraryEntries.Clear();
+
+        IEnumerable<WidgetLibraryEntry> source = widgetLibraryEntries;
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            source = source.Where(entry =>
+                entry.Item.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || entry.Item.Category.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || entry.Item.Summary.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
+
+        filteredWidgetLibraryEntries.AddRange(source.OrderBy(entry => entry.Item.Name, StringComparer.CurrentCultureIgnoreCase));
+        RebuildWidgetLibrary();
+    }
+
+    private string BuildWidgetLibrarySummary()
+    {
+        if (filteredWidgetLibraryEntries.Count == 0)
+        {
+            return "Nenhum widget encontrado para o filtro atual.";
+        }
+
+        var supportedCount = filteredWidgetLibraryEntries.Count(static entry => entry.IsSupported);
+        var unavailableCount = filteredWidgetLibraryEntries.Count - supportedCount;
+        return unavailableCount == 0
+            ? $"{supportedCount} widget(s) disponivel(is) para HUB75."
+            : $"{supportedCount} widget(s) disponivel(is), {unavailableCount} indisponivel(is) no compositor HUB75.";
+    }
+
+    private async Task<Dictionary<string, string>> ResolveWidgetDefaultValuesAsync(AppCatalogItem item)
+    {
+        var values = BuildCatalogDefaultWidgetValues(item);
+        var draft = await modifierStore.GetDraftAsync(LocalDraftScope, item.Id).ConfigureAwait(true);
+        if (draft?.Values is not null)
+        {
+            foreach (var pair in draft.Values)
+            {
+                values[pair.Key] = pair.Value;
+            }
+        }
+
+        WeatherAppFixedLocation.NormalizeRawValuesInPlace(item, values);
+        return values;
+    }
+
+    private static Dictionary<string, string> BuildCatalogDefaultWidgetValues(AppCatalogItem item)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var modifier in item.Modifiers.Where(static modifier => modifier.IsValid()))
@@ -1450,7 +1673,6 @@ public sealed partial class PanelsPage : Page, IDisposable
                 : (modifier.DefaultValue ?? string.Empty);
         }
 
-        WeatherAppFixedLocation.NormalizeRawValuesInPlace(item, values);
         return values;
     }
 
@@ -1464,25 +1686,28 @@ public sealed partial class PanelsPage : Page, IDisposable
         return panel.Width != previousWidth || panel.Height != previousHeight;
     }
 
-    private static bool TryResolveDraggedCatalogItem(IEnumerable<object> dragItems, out AppCatalogItem catalogItem)
+    private static bool TryResolveDraggedCatalogItem(IEnumerable<object> dragItems, out WidgetLibraryEntry entry)
     {
         foreach (var candidate in dragItems)
         {
             switch (candidate)
             {
-                case AppCatalogItem appItem when appItem.IsValid():
-                    catalogItem = appItem;
+                case WidgetLibraryEntry widgetEntry when widgetEntry.Item.IsValid():
+                    entry = widgetEntry;
                     return true;
-                case ListViewItem listViewItem when listViewItem.Tag is AppCatalogItem taggedItem && taggedItem.IsValid():
-                    catalogItem = taggedItem;
+                case AppCatalogItem appItem when appItem.IsValid():
+                    entry = new WidgetLibraryEntry(appItem, PanelsFrameComposer.SupportsWidgetApp(appItem.Id), null, null);
+                    return true;
+                case ListViewItem listViewItem when listViewItem.Tag is WidgetLibraryEntry taggedEntry && taggedEntry.Item.IsValid():
+                    entry = taggedEntry;
                     return true;
                 case AppCatalogCardControl card when card.Item is { } cardItem && cardItem.IsValid():
-                    catalogItem = cardItem;
+                    entry = new WidgetLibraryEntry(cardItem, PanelsFrameComposer.SupportsWidgetApp(cardItem.Id), null, null);
                     return true;
             }
         }
 
-        catalogItem = null!;
+        entry = null!;
         return false;
     }
 
@@ -1584,49 +1809,9 @@ public sealed partial class PanelsPage : Page, IDisposable
         return await picker.PickSingleFolderAsync();
     }
 
-    private void OnPanelPreviewClicked(object sender, RoutedEventArgs e)
+    private async Task SetPanelActivationAsync(string panelId, bool activate)
     {
-        if (sender is Button button && button.Tag is string panelId)
-        {
-            _ = OpenEditorAsync(panelId, saveDirty: currentMode == PanelsPageMode.Editor);
-        }
-    }
-
-    private async void OnPanelEditMenuClicked(object sender, RoutedEventArgs e)
-    {
-        if (sender is MenuFlyoutItem item && item.Tag is string panelId)
-        {
-            await OpenEditorAsync(panelId, saveDirty: currentMode == PanelsPageMode.Editor);
-        }
-    }
-
-    private async void OnPanelDuplicateMenuClicked(object sender, RoutedEventArgs e)
-    {
-        if (sender is MenuFlyoutItem item && item.Tag is string panelId)
-        {
-            await DuplicatePanelAsync(panelId, openEditor: true);
-        }
-    }
-
-    private async void OnPanelDeleteMenuClicked(object sender, RoutedEventArgs e)
-    {
-        if (sender is MenuFlyoutItem item && item.Tag is string panelId)
-        {
-            await DeletePanelAsync(panelId, returnToGallery: true);
-        }
-    }
-
-    private async void OnPanelToggleToggled(object sender, RoutedEventArgs e)
-    {
-        if (sender is not ToggleSwitch toggle
-            || toggle.Tag is not string panelId
-            || !panelCards.TryGetValue(panelId, out var card)
-            || card.SuppressToggle)
-        {
-            return;
-        }
-
-        if (toggle.IsOn)
+        if (activate)
         {
             if (!TryGetPanel(panelId, out var panel))
             {
@@ -1666,35 +1851,138 @@ public sealed partial class PanelsPage : Page, IDisposable
         return panel is not null;
     }
 
+    private static double ResolveGalleryCardWidth(double width)
+        => width < 760d ? Math.Max(260d, width - 56d) : 332d;
+
     private enum PanelsPageMode
     {
         Gallery,
         Editor,
     }
 
-    private sealed class PanelCardVisualState(
-        GridViewItem item,
-        Border cardBorder,
-        Hub75PanelThumbnailControl thumbnail,
-        ToggleSwitch activeToggle,
-        TextBlock subtitleText,
-        Border activeBadge,
-        TextBlock titleText)
+    private enum PanelsPreviewMode
     {
-        public GridViewItem Item { get; } = item;
-
-        public Border CardBorder { get; } = cardBorder;
-
-        public Hub75PanelThumbnailControl Thumbnail { get; } = thumbnail;
-
-        public ToggleSwitch ActiveToggle { get; } = activeToggle;
-
-        public TextBlock SubtitleText { get; } = subtitleText;
-
-        public Border ActiveBadge { get; } = activeBadge;
-
-        public TextBlock TitleText { get; } = titleText;
-
-        public bool SuppressToggle { get; set; }
+        Off,
+        OnDemand,
     }
+
+    internal enum PanelPosterStatus
+    {
+        Missing,
+        Loading,
+        Ready,
+        Error,
+    }
+
+    internal sealed class PanelGalleryItemState : INotifyPropertyChanged
+    {
+        private string name;
+        private int widgetCount;
+        private string subtitle;
+        private bool isActive;
+        private bool canActivate;
+        private PanelPosterStatus posterStatus;
+        private RgbaColor[] frame;
+        private double cardWidth;
+
+        public PanelGalleryItemState(
+            string panelId,
+            string name,
+            int widgetCount,
+            double cardWidth,
+            RgbaColor[] frame,
+            Func<string, Task> openEditorAsync,
+            Func<string, Task> duplicateAsync,
+            Func<string, Task> deleteAsync,
+            Func<string, bool, Task> setActiveAsync)
+        {
+            PanelId = panelId;
+            this.name = name;
+            this.widgetCount = widgetCount;
+            subtitle = $"{widgetCount} widget(s)";
+            this.cardWidth = cardWidth;
+            this.frame = frame;
+            OpenEditorAsync = openEditorAsync;
+            DuplicateAsync = duplicateAsync;
+            DeleteAsync = deleteAsync;
+            SetActiveAsync = setActiveAsync;
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string PanelId { get; }
+
+        public Func<string, Task> OpenEditorAsync { get; }
+
+        public Func<string, Task> DuplicateAsync { get; }
+
+        public Func<string, Task> DeleteAsync { get; }
+
+        public Func<string, bool, Task> SetActiveAsync { get; }
+
+        public string Name
+        {
+            get => name;
+            set => SetField(ref name, value);
+        }
+
+        public int WidgetCount
+        {
+            get => widgetCount;
+            set => SetField(ref widgetCount, value);
+        }
+
+        public string Subtitle
+        {
+            get => subtitle;
+            set => SetField(ref subtitle, value);
+        }
+
+        public bool IsActive
+        {
+            get => isActive;
+            set => SetField(ref isActive, value);
+        }
+
+        public bool CanActivate
+        {
+            get => canActivate;
+            set => SetField(ref canActivate, value);
+        }
+
+        internal PanelPosterStatus PosterStatus
+        {
+            get => posterStatus;
+            set => SetField(ref posterStatus, value, propertyName: nameof(PosterStatus));
+        }
+
+        public RgbaColor[] Frame
+        {
+            get => frame;
+            set => SetField(ref frame, value);
+        }
+
+        public double CardWidth
+        {
+            get => cardWidth;
+            set => SetField(ref cardWidth, value);
+        }
+
+        private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+            {
+                return;
+            }
+
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    private sealed record WidgetLibraryEntry(
+        AppCatalogItem Item,
+        bool IsSupported,
+        string? BadgeLabel,
+        IReadOnlyDictionary<string, string>? PreviewValues);
 }

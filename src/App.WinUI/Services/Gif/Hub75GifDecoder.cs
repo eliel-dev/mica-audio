@@ -61,6 +61,32 @@ internal sealed class Hub75GifDecoder
         return output;
     }
 
+    public static DecodedGifFrame DecodeFirstFrame(byte[] gifBytes, CancellationToken cancellationToken = default)
+    {
+        if (!LooksLikeGif(gifBytes))
+        {
+            throw new InvalidDataException("Arquivo invalido: esperado GIF87a/GIF89a.");
+        }
+
+        using var input = new MemoryStream(gifBytes, writable: false);
+        using var image = DrawingImage.FromStream(input, useEmbeddedColorManagement: false, validateImageData: true);
+
+        var frameDimension = ResolveFrameDimension(image);
+        if (image.GetFrameCount(frameDimension) <= 0)
+        {
+            throw new InvalidDataException("GIF sem frames decodificaveis.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        image.SelectActiveFrame(frameDimension, 0);
+        using var snapshot = new DrawingBitmap(image.Width, image.Height, PixelFormat.Format32bppArgb);
+        using var graphics = DrawingGraphics.FromImage(snapshot);
+        graphics.Clear(DrawingColor.Transparent);
+        graphics.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
+        graphics.DrawImage(image, 0, 0, image.Width, image.Height);
+        return new DecodedGifFrame(snapshot.Width, snapshot.Height, CopyPixels(snapshot));
+    }
+
     private static FrameDimension ResolveFrameDimension(DrawingImage image)
     {
         if (image.FrameDimensionsList.Length == 0)

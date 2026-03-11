@@ -25,6 +25,8 @@ public sealed partial class PanelsPage
     private FrameworkElement InspectorPane = null!;
     private GridView PanelsGalleryGrid = null!;
     private ListView WidgetLibraryList = null!;
+    private TextBox WidgetLibrarySearchBox = null!;
+    private TextBlock WidgetLibrarySummaryText = null!;
     private Hub75PanelEditorControl EditorCanvas = null!;
     private ComboBox TargetDeviceCombo = null!;
     private TextBlock StatusTextBlock = null!;
@@ -33,6 +35,7 @@ public sealed partial class PanelsPage
     private Button EditorSaveButton = null!;
     private Button EditorDuplicateButton = null!;
     private Button EditorDeleteButton = null!;
+    private ToggleSwitch EditorPreviewToggle = null!;
     private TextBox EditorNameText = null!;
     private TextBlock WidgetInspectorTitle = null!;
     private TextBlock WidgetModifiersHintText = null!;
@@ -164,9 +167,17 @@ public sealed partial class PanelsPage
             Spacing = 10,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
+        EditorPreviewToggle = new ToggleSwitch
+        {
+            Header = "Preview",
+            IsOn = false,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        EditorPreviewToggle.Toggled += OnEditorPreviewToggleToggled;
         EditorSaveButton = CreatePageButton("Salvar", OnSavePanelClicked, isPrimary: true);
         EditorDuplicateButton = CreatePageButton("Duplicar", OnDuplicatePanelClicked);
         EditorDeleteButton = CreatePageButton("Excluir", OnDeletePanelClicked);
+        EditorHeaderActionsPanel.Children.Add(EditorPreviewToggle);
         EditorHeaderActionsPanel.Children.Add(EditorSaveButton);
         EditorHeaderActionsPanel.Children.Add(EditorDuplicateButton);
         EditorHeaderActionsPanel.Children.Add(EditorDeleteButton);
@@ -187,6 +198,9 @@ public sealed partial class PanelsPage
             Padding = new Thickness(0, 4, 0, 20),
             Margin = new Thickness(-6, 0, -6, 0),
         };
+        PanelsGalleryGrid.ItemsSource = panelGalleryItems;
+        PanelsGalleryGrid.ItemTemplate = CreateGalleryItemTemplate();
+        PanelsGalleryGrid.ItemContainerStyle = BuildGalleryItemContainerStyle();
         ScrollViewer.SetHorizontalScrollBarVisibility(PanelsGalleryGrid, ScrollBarVisibility.Disabled);
         ScrollViewer.SetHorizontalScrollMode(PanelsGalleryGrid, ScrollMode.Disabled);
         ScrollViewer.SetVerticalScrollBarVisibility(PanelsGalleryGrid, ScrollBarVisibility.Auto);
@@ -226,6 +240,19 @@ public sealed partial class PanelsPage
             Opacity = 0.78,
             TextWrapping = TextWrapping.Wrap,
         });
+        WidgetLibrarySearchBox = new TextBox
+        {
+            PlaceholderText = "Buscar widgets por nome ou categoria",
+        };
+        WidgetLibrarySearchBox.TextChanged += OnWidgetLibrarySearchChanged;
+        stack.Children.Add(WidgetLibrarySearchBox);
+
+        WidgetLibrarySummaryText = new TextBlock
+        {
+            Opacity = 0.78,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        stack.Children.Add(WidgetLibrarySummaryText);
 
         WidgetLibraryList = new ListView
         {
@@ -366,5 +393,26 @@ public sealed partial class PanelsPage
     private static Brush ResolveBrush(string key, Color fallback)
     {
         return UiResourceResolver.ResolveBrush(key, fallback);
+    }
+
+    private static Style BuildGalleryItemContainerStyle()
+    {
+        var style = new Style(typeof(GridViewItem));
+        style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
+        style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Stretch));
+        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0)));
+        return style;
+    }
+
+    private static DataTemplate CreateGalleryItemTemplate()
+    {
+        if (Application.Current.Resources.TryGetValue("PanelGalleryCardTemplate", out var resource)
+            && resource is DataTemplate template)
+        {
+            return template;
+        }
+
+        throw new InvalidOperationException("PanelGalleryCardTemplate nao foi encontrado em Application.Resources.");
     }
 }

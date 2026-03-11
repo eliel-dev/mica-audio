@@ -10,7 +10,6 @@ public sealed partial class ShellPage : Page
 {
     private const string VisualizerTag = "visualizer";
     private const string DevicesTag = "devices";
-    private const string AppsTag = "apps";
     private const string PanelsTag = "panels";
     private const string MonitoringTag = "monitoring";
     private const string SettingsTag = "settings";
@@ -102,11 +101,6 @@ public sealed partial class ShellPage : Page
         currentTag = tag;
         viewModel.CurrentTag = currentTag;
         ContentFrame.Content = page;
-
-        if (string.Equals(tag, AppsTag, StringComparison.OrdinalIgnoreCase) && page is AppsPage appsPage)
-        {
-            _ = appsPage.ReloadCatalogFromDiskAsync();
-        }
     }
 
     private void OnDeviceOpsStateChanged(object? sender, EventArgs e)

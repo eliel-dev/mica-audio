@@ -5,7 +5,6 @@ using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Infrastructure;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
-using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
@@ -173,10 +172,6 @@ public partial class App : Application
             sp.GetRequiredService<ILogger<CityAutocompleteService>>()));
         services.AddSingleton<WeatherPreviewDataService.IWeatherForecastClient, OpenMeteoForecastClient>();
         services.AddSingleton<WeatherPreviewDataService>();
-        services.AddSingleton<IAppDeploymentService, AppDeploymentService>();
-        services.AddSingleton<AppConfigValidationUseCase>();
-        services.AddSingleton<SaveAppConfigUseCase>();
-        services.AddSingleton<DeployAppUseCase>();
         services.AddSingleton<PrecompiledFirmwareService>();
 
         services.AddSingleton<AppLogStore>();
@@ -195,7 +190,6 @@ public partial class App : Application
 
         services.AddTransient<MainPageViewModel>();
         services.AddTransient<DevicesPageViewModel>();
-        services.AddTransient<AppsPageViewModel>();
         services.AddTransient<PanelsPageViewModel>();
         services.AddTransient<MonitoringPageViewModel>();
         services.AddTransient<ShellPageViewModel>();
@@ -221,18 +215,6 @@ public partial class App : Application
             sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<SimulatorLedOutput>()));
 
-        services.AddTransient<AppsPage>(sp => new AppsPage(
-            sp.GetRequiredService<AppsPageViewModel>(),
-            sp.GetRequiredService<DeviceOperationsCoordinator>(),
-            sp.GetRequiredService<IAppCatalogService>(),
-            sp.GetRequiredService<IAppModifierStateStore>(),
-            sp.GetRequiredService<CityAutocompleteService>(),
-            sp.GetRequiredService<SaveAppConfigUseCase>(),
-            sp.GetRequiredService<DeployAppUseCase>(),
-            sp.GetRequiredService<AppConfigValidationUseCase>(),
-            sp.GetRequiredService<DeviceIntegrationService>(),
-            sp.GetRequiredService<AppLogStore>()));
-
         services.AddTransient<MonitoringPage>(sp => new MonitoringPage(
             sp.GetRequiredService<MonitoringPageViewModel>(),
             sp.GetRequiredService<HwinfoSharedMemorySource>()));
@@ -241,6 +223,7 @@ public partial class App : Application
             sp.GetRequiredService<PanelsPageViewModel>(),
             sp.GetRequiredService<DeviceOperationsCoordinator>(),
             sp.GetRequiredService<IAppCatalogService>(),
+            sp.GetRequiredService<IAppModifierStateStore>(),
             sp.GetRequiredService<PanelsStore>(),
             sp.GetRequiredService<PanelsFrameComposer>(),
             sp.GetRequiredService<PanelsPlaybackService>(),
@@ -257,7 +240,6 @@ public partial class App : Application
                 return sp.GetRequiredService<MainPage>();
             },
             () => sp.GetRequiredService<DevicesPage>(),
-            () => sp.GetRequiredService<AppsPage>(),
             () => sp.GetRequiredService<PanelsPage>(),
             () => sp.GetRequiredService<MonitoringPage>(),
             () => sp.GetRequiredService<SettingsPage>()));

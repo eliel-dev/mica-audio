@@ -134,6 +134,54 @@ public sealed class PanelsFrameComposerTests
         }
     }
 
+    [Fact]
+    public async Task CreatePosterAsync_ShouldRenderStaticPosterForSlideshowFolder()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var redPath = Path.Combine(root, "red.png");
+            var bluePath = Path.Combine(root, "blue.png");
+            await File.WriteAllBytesAsync(redPath, Convert.FromBase64String(RedPngBase64));
+            await File.WriteAllBytesAsync(bluePath, Convert.FromBase64String(BluePngBase64));
+
+            var composer = new PanelsFrameComposer();
+            var panel = new PanelDefinition
+            {
+                Widgets =
+                [
+                    new PanelWidgetDefinition
+                    {
+                        WidgetId = "gif-poster",
+                        AppId = "gifhub75",
+                        X = 0,
+                        Y = 0,
+                        Width = 32,
+                        Height = 16,
+                        ConfigValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["sourceType"] = "slideshow",
+                        },
+                        RuntimeState = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["sourcePath"] = root,
+                        },
+                    },
+                ],
+            };
+
+            var poster = await composer.CreatePosterAsync(panel);
+
+            Assert.Equal(128 * 64, poster.Frame.Length);
+            Assert.Empty(poster.WidgetErrors);
+            Assert.Contains(poster.Frame, static pixel => (pixel.R | pixel.G | pixel.B) != 0);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "mica-audio-tests", Guid.NewGuid().ToString("N"));

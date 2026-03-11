@@ -1,5 +1,6 @@
 using App.WinUI.Models.Panels;
 using App.WinUI.Services.Panels;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
 
@@ -121,13 +122,124 @@ public sealed class PanelsStoreTests
         }
     }
 
+    [Fact]
+    public async Task LoadAsync_ShouldReturnEmptyDocument_WhenFileDoesNotExist()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var storePath = Path.Combine(root, "panels", "panels.json");
+            using var store = CreateStore(root, storePath);
+
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(PanelsStoreDocument.CurrentSchemaVersion, loaded.SchemaVersion);
+            Assert.Empty(loaded.Panels);
+            Assert.Null(loaded.LastSelectedPanelId);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAsync_ShouldReturnEmptyDocument_WhenFileIsZeroBytes()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var storePath = Path.Combine(root, "panels", "panels.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
+            await File.WriteAllBytesAsync(storePath, []);
+
+            using var store = CreateStore(root, storePath);
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(PanelsStoreDocument.CurrentSchemaVersion, loaded.SchemaVersion);
+            Assert.Empty(loaded.Panels);
+            Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(storePath)!, "panels.json.corrupt-*.json"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAsync_ShouldQuarantineInvalidJson_AndReturnEmptyDocument()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var storePath = Path.Combine(root, "panels", "panels.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(storePath)!);
+            await File.WriteAllTextAsync(storePath, "{ invalid json }");
+
+            using var store = CreateStore(root, storePath);
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal(PanelsStoreDocument.CurrentSchemaVersion, loaded.SchemaVersion);
+            Assert.Empty(loaded.Panels);
+            Assert.False(File.Exists(storePath));
+            Assert.Single(Directory.GetFiles(Path.GetDirectoryName(storePath)!, "panels.json.corrupt-*.json"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SaveAsync_ShouldUseAtomicReplace_AndLeaveNoTempFile()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var storePath = Path.Combine(root, "panels", "panels.json");
+            using var store = CreateStore(root, storePath);
+
+            await store.SaveAsync(new PanelsStoreDocument
+            {
+                Panels =
+                [
+                    new PanelDefinition { PanelId = "panel-a", Name = "Alpha" },
+                ],
+            });
+
+            await store.SaveAsync(new PanelsStoreDocument
+            {
+                LastSelectedPanelId = "panel-b",
+                Panels =
+                [
+                    new PanelDefinition { PanelId = "panel-b", Name = "Beta" },
+                ],
+            });
+
+            Assert.True(File.Exists(storePath));
+            Assert.True(File.Exists(storePath + ".bak"));
+            Assert.False(File.Exists(storePath + ".tmp"));
+
+            var json = await File.ReadAllTextAsync(storePath);
+            Assert.Contains("Beta", json, StringComparison.Ordinal);
+
+            var loaded = await store.LoadAsync();
+            Assert.Equal("panel-b", loaded.LastSelectedPanelId);
+            Assert.Equal("Beta", Assert.Single(loaded.Panels).Name);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static PanelsStore CreateStore(string appDataRoot, string storePath)
     {
         return new PanelsStore(Options.Create(new MicaAudioOptions
         {
             AppDataRoot = appDataRoot,
             PanelsFilePath = storePath,
-        }));
+        }), NullLogger<PanelsStore>.Instance);
     }
 
     private static string CreateTempDirectory()

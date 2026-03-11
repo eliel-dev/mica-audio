@@ -18,7 +18,7 @@ using Windows.ApplicationModel.DataTransfer;
 namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
-// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03---fase-9-wave-2-e-wave-3-monolitos-do-app-decompostos
+// DOCS: docs/wiki/modules/app-winui.md
 public sealed partial class DevicesPage : Page
 {
     private const string LocalDraftScope = "__local__";

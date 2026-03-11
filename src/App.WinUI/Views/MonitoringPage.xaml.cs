@@ -39,11 +39,40 @@ public sealed partial class MonitoringPage : Page, IDisposable
             return;
         }
 
-        refreshLoopCts = new CancellationTokenSource();
-        UpdateAdaptiveLayout(ActualWidth);
-        ApplySnapshot(MonitoringSnapshot.Empty);
-        await RefreshSnapshotAsync().ConfigureAwait(false);
-        refreshLoopTask = RunRefreshLoopAsync(refreshLoopCts.Token);
+        var cts = new CancellationTokenSource();
+        refreshLoopCts = cts;
+
+        try
+        {
+            UpdateAdaptiveLayout(ActualWidth);
+            ApplySnapshot(MonitoringSnapshot.Empty);
+            await RefreshSnapshotAsync().ConfigureAwait(false);
+            if (!ShouldStartRefreshLoop(refreshLoopCts, cts))
+            {
+                return;
+            }
+
+            refreshLoopTask = RunRefreshLoopAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (ReferenceEquals(refreshLoopCts, cts))
+            {
+                CancelRefreshLoop();
+            }
+
+            App.ReportError("MonitoringPage.OnLoaded failed", ex);
+            await DispatcherQueue.EnqueueAsync(() =>
+            {
+                viewModel.SourceStatus = "Falha ao carregar monitoramento";
+                viewModel.SourceHint = "A sessao foi mantida aberta, mas a leitura inicial falhou.";
+                SourceStatusText.Text = viewModel.SourceStatus;
+                SourceHintText.Text = viewModel.SourceHint;
+            }).ConfigureAwait(false);
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -204,6 +233,9 @@ public sealed partial class MonitoringPage : Page, IDisposable
         => kpi.Capacity?.DataOrigin == MonitoringDataOrigin.WindowsFallback
             ? kpi.ContextText + " | Windows"
             : kpi.ContextText;
+
+    internal static bool ShouldStartRefreshLoop(CancellationTokenSource? activeLoopCts, CancellationTokenSource candidate)
+        => ReferenceEquals(activeLoopCts, candidate) && !candidate.IsCancellationRequested;
 
     public void Dispose()
     {

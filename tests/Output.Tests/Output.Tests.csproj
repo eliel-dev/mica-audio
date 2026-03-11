@@ -49,7 +49,6 @@
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75FrameFormatter.cs" Link="Shared\Hub75FrameFormatter.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75GifDecoder.cs" Link="Shared\Hub75GifDecoder.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75GifPlayer.cs" Link="Shared\Hub75GifPlayer.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Apps\GifCatalogAppRuntimeService.cs" Link="Shared\GifCatalogAppRuntimeService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppCatalogService.cs" Link="Shared\AppCatalogService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\WeatherAppFixedLocation.cs" Link="Shared\WeatherAppFixedLocation.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\CityAutocompleteService.cs" Link="Shared\CityAutocompleteService.cs" />
@@ -64,11 +63,7 @@
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppModifierStateDocument.cs" Link="Shared\AppModifierStateDocument.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppModifierStateStore.cs" Link="Shared\AppModifierStateStore.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\IAppModifierStateStore.cs" Link="Shared\IAppModifierStateStore.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Apps\IAppDeploymentService.cs" Link="Shared\IAppDeploymentService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\SettingsRepository.cs" Link="Shared\SettingsRepository.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Apps\UseCases\AppConfigValidationUseCase.cs" Link="Shared\UseCases\AppConfigValidationUseCase.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Apps\UseCases\SaveAppConfigUseCase.cs" Link="Shared\UseCases\SaveAppConfigUseCase.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Apps\UseCases\DeployAppUseCase.cs" Link="Shared\UseCases\DeployAppUseCase.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\Onboarding\DeviceOnboardingModels.cs" Link="Shared\Onboarding\DeviceOnboardingModels.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\Onboarding\DeviceUsbOnboardingService.cs" Link="Shared\Onboarding\DeviceUsbOnboardingService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\Onboarding\IEspToolFlashService.cs" Link="Shared\Onboarding\IEspToolFlashService.cs" />

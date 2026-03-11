@@ -9,7 +9,6 @@ public sealed class ShellPageContentFactoryTests
     {
         var visualizerPage = new object();
         var devicesPage = new object();
-        var appsPage = new object();
         var panelsPage = new object();
         var monitoringPage = new object();
         var visualizerResolutions = 0;
@@ -23,7 +22,6 @@ public sealed class ShellPageContentFactoryTests
                 return visualizerPage;
             },
             () => devicesPage,
-            () => appsPage,
             () =>
             {
                 panelsResolutions++;
@@ -59,7 +57,6 @@ public sealed class ShellPageContentFactoryTests
     {
         var factory = new ShellPageContentFactory(
             () => throw new InvalidOperationException("boom"),
-            () => new object(),
             () => new object(),
             () => new object(),
             () => new object(),

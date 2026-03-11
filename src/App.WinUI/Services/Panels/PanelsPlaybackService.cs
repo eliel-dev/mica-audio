@@ -25,7 +25,7 @@ internal sealed class PanelsPlaybackService : IDisposable
     private PanelDefinition? activePanelSnapshot;
     private string? targetDeviceId;
     private Esp32S3LedOutput? matrixOutput;
-    private RgbaColor[] latestFrame = BlackFrame.ToArray();
+    private RgbaColor[] latestFrame = BlackFrame;
     private bool disposed;
 
     public PanelsPlaybackService(
@@ -76,7 +76,7 @@ internal sealed class PanelsPlaybackService : IDisposable
     {
         lock (stateGate)
         {
-            return latestFrame.ToArray();
+            return latestFrame;
         }
     }
 
@@ -205,7 +205,7 @@ internal sealed class PanelsPlaybackService : IDisposable
             matrixOutput = null;
             activePanelSnapshot = null;
             targetDeviceId = null;
-            latestFrame = BlackFrame.ToArray();
+            latestFrame = BlackFrame;
         }
 
         if (localLoopCts is not null)
@@ -247,7 +247,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         var frame = session.RenderFrame(utcNow);
         lock (stateGate)
         {
-            latestFrame = frame.ToArray();
+            latestFrame = frame;
         }
 
         output.Send(LedPayloadFactory.CreateFramePayload(frame, PanelsDeviceSessionService.PanelsAppId));
@@ -257,7 +257,7 @@ internal sealed class PanelsPlaybackService : IDisposable
 
     private void RaiseFrameUpdated(RgbaColor[] frame)
     {
-        FrameUpdated?.Invoke(this, frame.ToArray());
+        FrameUpdated?.Invoke(this, frame);
     }
 
     private void ThrowIfDisposed()

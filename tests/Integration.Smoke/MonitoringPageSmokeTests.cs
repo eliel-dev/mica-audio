@@ -66,4 +66,18 @@ public sealed class MonitoringPageSmokeTests
 
         Assert.Equal("Memoria do sistema | Windows", MonitoringPage.BuildKpiContextText(kpi));
     }
+
+    [Fact]
+    public void ShouldStartRefreshLoop_ShouldRejectReplacedOrCancelledTokenSource()
+    {
+        using var active = new CancellationTokenSource();
+        using var replaced = new CancellationTokenSource();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        Assert.True(MonitoringPage.ShouldStartRefreshLoop(active, active));
+        Assert.False(MonitoringPage.ShouldStartRefreshLoop(replaced, active));
+        Assert.False(MonitoringPage.ShouldStartRefreshLoop(cancelled, cancelled));
+        Assert.False(MonitoringPage.ShouldStartRefreshLoop(null, active));
+    }
 }

@@ -12,16 +12,23 @@ namespace App.WinUI.Views.Controls;
 // DOCS: docs/wiki/modules/paineis.md#galeria-de-paineis
 internal sealed class Hub75PanelThumbnailControl : Grid
 {
+    private const double MinimumVisibleWidth = 148d;
+    private const double MinimumVisibleHeight = 74d;
     private static readonly AppCatalogItem EmptyItem = new();
     private static readonly IReadOnlyDictionary<string, string> EmptyConfigValues =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     private static readonly RgbaColor[] BlackFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
 
     private readonly CanvasControl canvas;
-    private RgbaColor[] frame = BlackFrame.ToArray();
+    private RgbaColor[] frame = BlackFrame;
 
     public Hub75PanelThumbnailControl()
     {
+        MinWidth = MinimumVisibleWidth;
+        MinHeight = MinimumVisibleHeight;
+        HorizontalAlignment = HorizontalAlignment.Stretch;
+        VerticalAlignment = VerticalAlignment.Stretch;
+
         var border = new Border
         {
             CornerRadius = new CornerRadius(12),
@@ -31,7 +38,11 @@ internal sealed class Hub75PanelThumbnailControl : Grid
             Padding = new Thickness(8),
         };
 
-        canvas = new CanvasControl();
+        canvas = new CanvasControl
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
         canvas.Draw += OnDraw;
         border.Child = canvas;
 
@@ -40,12 +51,12 @@ internal sealed class Hub75PanelThumbnailControl : Grid
 
     public RgbaColor[] Frame
     {
-        get => frame.ToArray();
+        get => frame;
         set
         {
             frame = value?.Length == BlackFrame.Length
-                ? value.ToArray()
-                : BlackFrame.ToArray();
+                ? value
+                : BlackFrame;
             canvas.Invalidate();
         }
     }

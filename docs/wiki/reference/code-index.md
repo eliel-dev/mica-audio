@@ -169,15 +169,14 @@ Observacoes ativas do monitoramento:
 - Os cards tentam preservar o nome real do hardware detectado pelo HWiNFO64, como modelo de CPU e GPU, e derivam `Disponivel` quando so existem leituras de `Used + Total`.
 - O matching de memoria agora aceita labels localizados do HWiNFO (`Memoria fisica utilizada/disponivel`, `Memoria GPU alocada/disponivel`) e usa fallback local do Windows apenas para `RAM/VRAM` quando a heuristica nao resolve.
 
-Pontos centrais de catalogo e deploy de apps:
+Pontos centrais de catalogo compartilhado e widgets:
 
-- [AppsPage](../../../src/App.WinUI/Views/AppsPage.xaml.cs#L1)
-- [AppsPage Catalog](../../../src/App.WinUI/Views/AppsPage.Catalog.cs#L1)
-- [AppsPage RuntimePreview](../../../src/App.WinUI/Views/AppsPage.RuntimePreview.cs#L1)
-- [AppsPage Modifiers](../../../src/App.WinUI/Views/AppsPage.Modifiers.cs#L1)
-- [AppsPage Deployment](../../../src/App.WinUI/Views/AppsPage.Deployment.cs#L1)
+- [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
+- [IAppCatalogService](../../../src/App.WinUI/Services/Apps/IAppCatalogService.cs#L1)
+- [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)
+- [IAppModifierStateStore](../../../src/App.WinUI/Services/Apps/IAppModifierStateStore.cs#L1)
 - [AppCatalogCardControl](../../../src/App.WinUI/Views/Controls/AppCatalogCardControl.cs#L1)
-- [AppRuntimeHost](../../../src/App.WinUI/Services/Apps/AppRuntimeHost.cs#L1)
+- [AppModifierEditorHost](../../../src/App.WinUI/Views/Controls/AppModifierEditorHost.cs#L1)
 
 Pontos centrais da sessao de paineis HUB75:
 
@@ -185,6 +184,7 @@ Pontos centrais da sessao de paineis HUB75:
 - [PanelsPage UI](../../../src/App.WinUI/Views/PanelsPage.Ui.cs#L1)
 - [PanelsPageViewModel](../../../src/App.WinUI/ViewModels/PanelsPageViewModel.cs#L1)
 - [Hub75PanelThumbnailControl](../../../src/App.WinUI/Views/Controls/Hub75PanelThumbnailControl.cs#L1)
+- [PanelGalleryCardControl](../../../src/App.WinUI/Views/Controls/PanelGalleryCardControl.cs#L1)
 - [Hub75PanelEditorControl](../../../src/App.WinUI/Views/Controls/Hub75PanelEditorControl.cs#L1)
 - [AppModifierEditorHost](../../../src/App.WinUI/Views/Controls/AppModifierEditorHost.cs#L1)
 - [PanelsStore](../../../src/App.WinUI/Services/Panels/PanelsStore.cs#L1)
@@ -192,6 +192,7 @@ Pontos centrais da sessao de paineis HUB75:
 - [PanelDefinition](../../../src/App.WinUI/Models/Panels/PanelDefinition.cs#L1)
 - [PanelWidgetDefinition](../../../src/App.WinUI/Models/Panels/PanelWidgetDefinition.cs#L1)
 - [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
+- [PanelsMediaCache](../../../src/App.WinUI/Services/Panels/PanelsMediaCache.cs#L1)
 - [PanelsMatrixDrawHelpers](../../../src/App.WinUI/Services/Panels/PanelsMatrixDrawHelpers.cs#L1)
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [PanelsDeviceSessionService](../../../src/App.WinUI/Services/Devices/PanelsDeviceSessionService.cs#L1)
@@ -200,7 +201,12 @@ Observacoes ativas dos paineis:
 
 - O V1 de `Paineis` e desktop-streamed: o ESP32 recebe apenas o frame final, sem persistencia nem execucao autonoma do layout.
 - A sessao agora abre em galeria de cards com miniaturas HUB75 `128x64`, toggle `Ativo` por card e editor dedicado dentro da mesma `PanelsPage`.
-- O editor trabalha com um unico framebuffer `128x64` e sobreposicao por `ZIndex`; os widgets atuais do compositor sao `analogclock` e `gifhub75`.
-- Somente o card ativo anima em tempo real via `PanelsPlaybackService.FrameUpdated`; cards inativos usam poster frame cacheado do compositor.
-- O runtime de painel em background usa `12 FPS`, salva `lastSelectedPanelId` e separa estado de widget (`ConfigValues`) do draft local da aba `Apps`.
+- O editor trabalha com um unico framebuffer `128x64` e sobreposicao por `ZIndex`; a biblioteca lateral e o ponto unico de descoberta/configuracao de widgets.
+- A biblioteca de `Paineis` usa busca + cards do catalogo compartilhado, reaproveita drafts `__local__|appId` como defaults de widget e desabilita itens ainda sem renderer HUB75.
+- Os widgets atuais do compositor sao `analogclock` e `gifhub75`.
+- A galeria de `Paineis` agora e `static first`: abre com posters lazy, sem compor todos os cards no `Loaded` e sem preview animado local por default.
+- O editor entra com preview desligado; a animacao local so e criada quando o usuario ativa o toggle `Preview`.
+- `PanelsFrameComposer.CreatePosterAsync(...)` e `PanelsMediaCache` separam poster de playback e reutilizam decodificacao de midia para evitar churn de RAM/CPU.
+- `PanelsStore` agora recupera `panels.json` vazio/corrompido sem derrubar a app e grava com temp+replace para reduzir risco de arquivo truncado.
+- O runtime de painel em background usa `12 FPS`, salva `lastSelectedPanelId` e separa estado de widget (`ConfigValues`) do draft local compartilhado de apps.
 - O transporte HUB75 agora suporta `SendFrame(deviceId, payload)` em paralelo ao broadcast, e `Esp32S3LedOutput` escolhe o destino a partir de `LedOutputConfig.TargetDeviceId`.

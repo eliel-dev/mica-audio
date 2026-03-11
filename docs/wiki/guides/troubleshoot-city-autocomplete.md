@@ -2,33 +2,30 @@
 
 ## Objetivo
 
-Resolver problemas quando o campo de cidade (clima) nao retorna sugestoes no `AutoSuggestBox`.
+Resolver problemas quando um widget de clima nao retorna sugestoes no campo de cidade do inspetor em `Paineis`.
 
 ## Passos
 
-1. Verifique conectividade HTTP de saida na maquina (acesso a `geocoding-api.open-meteo.com`).
-2. Digite pelo menos 2 caracteres no campo `Cidade` para disparar o autocomplete.
-3. Se nada aparecer, verifique se a lista de sugestoes abriu abaixo do campo; quando houver itens, o `AutoSuggestBox` deve exibir o dropdown automaticamente.
-4. Confirme que nao ha timeout/restricao de firewall local para HTTPS. O profile `Short` do app trabalha com budget total de aproximadamente 8 segundos.
-5. Lembre que a pipeline agora aplica retry so para metodo seguro + circuit breaker; durante indisponibilidade prolongada do Open-Meteo, o app pode falhar mais rapido por alguns segundos em vez de repetir tentativas indefinidamente.
-6. Revise a notificacao/log da aba `Apps`; falhas de HTTP, timeout, circuito aberto ou resposta invalida do Open-Meteo aparecem explicitamente ali.
-6. Se continuar sem sugestoes, use texto manual da cidade e aplique configuracao.
+1. Verifique conectividade HTTP de saida para `geocoding-api.open-meteo.com`.
+2. Digite pelo menos 2 caracteres no campo `Cidade` do widget selecionado.
+3. Confirme que a lista de sugestoes do `AutoSuggestBox` abre abaixo do campo.
+4. Verifique timeout ou bloqueio local de HTTPS.
+5. Revise a mensagem de status da pagina; falhas de HTTP, timeout, circuito aberto ou resposta invalida aparecem ali.
+6. Se continuar sem sugestoes, use texto manual da cidade e salve o widget.
 
 ## Referencias de codigo
 
-- [CityAutocompleteService.SearchWithDiagnosticsAsync](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L1) - assinatura: `Task<CitySearchResult> SearchWithDiagnosticsAsync(...)`
-- [ExternalHttpClients](../../../src/App.WinUI/Infrastructure/Http/ExternalHttpClients.cs#L1) - assinatura: `IServiceCollection AddExternalHttpClients(...)`
-- [AppsPage.OnCitySuggestTextChanged](../../../src/App.WinUI/Views/AppsPage.Modifiers.cs#L1) - assinatura: `private async void OnCitySuggestTextChanged(...)`
-- [AppsPage.OnCitySuggestionChosen](../../../src/App.WinUI/Views/AppsPage.Modifiers.cs#L1) - assinatura: `private void OnCitySuggestionChosen(...)`
-- [CitySuggestion.ToConfigValue](../../../src/App.WinUI/Services/Apps/CitySuggestion.cs#L15) - assinatura: `string ToConfigValue()`
+- [CityAutocompleteService.SearchWithDiagnosticsAsync](../../../src/App.WinUI/Services/Apps/CityAutocompleteService.cs#L1)
+- [ExternalHttpClients](../../../src/App.WinUI/Infrastructure/Http/ExternalHttpClients.cs#L1)
+- [AppModifierEditorHost.OnCitySuggestTextChanged](../../../src/App.WinUI/Views/Controls/AppModifierEditorHost.cs#L376)
+- [AppModifierEditorHost.OnCitySuggestionChosen](../../../src/App.WinUI/Views/Controls/AppModifierEditorHost.cs#L456)
+- [CitySuggestion.ToConfigValue](../../../src/App.WinUI/Services/Apps/CitySuggestion.cs#L15)
 
 ## Checklist rapido
 
 - [ ] Busca retorna sugestoes com internet ativa.
-- [ ] Busca inicia com 2 caracteres, sem divergencia entre UI e service.
-- [ ] Lista de sugestoes abre quando ha itens retornados.
-- [ ] Falhas de timeout/HTTP/JSON aparecem na aba `Apps`, sem sumir silenciosamente.
-- [ ] Circuit breaker nao derruba a tela; apenas antecipa feedback de indisponibilidade temporaria.
-- [ ] Timeout/cancelamento nao quebram a tela.
-- [ ] Escolha de sugestao preenche e persiste o valor.
-- [ ] Campo manual continua funcional sem autocomplete.
+- [ ] Busca inicia com 2 caracteres.
+- [ ] A lista abre quando ha itens retornados.
+- [ ] Falhas de timeout/HTTP/JSON aparecem na tela, sem sumir silenciosamente.
+- [ ] Circuit breaker nao derruba o editor.
+- [ ] Escolha de sugestao preenche o valor salvo no widget.

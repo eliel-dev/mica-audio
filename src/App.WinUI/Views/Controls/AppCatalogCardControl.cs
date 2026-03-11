@@ -10,10 +10,13 @@ namespace App.WinUI.Views.Controls;
 internal sealed class AppCatalogCardControl : UserControl
 {
     private readonly Border frame;
+    private readonly Border badge;
+    private readonly TextBlock badgeText;
     private readonly TextBlock titleText;
     private readonly TextBlock summaryText;
     private readonly TextBlock categoryText;
     private bool previewPlaybackActive;
+    private bool available = true;
 
     public AppCatalogCardControl(AppCatalogItem item)
     {
@@ -38,7 +41,28 @@ internal sealed class AppCatalogCardControl : UserControl
             Height = 116,
         };
         Preview.Bind(item);
-        stack.Children.Add(Preview);
+
+        var previewHost = new Grid();
+        previewHost.Children.Add(Preview);
+        badgeText = new TextBlock
+        {
+            Text = string.Empty,
+            FontSize = 11,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        };
+        badge = new Border
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(8),
+            Padding = new Thickness(8, 4, 8, 4),
+            CornerRadius = new CornerRadius(999),
+            Background = UiResourceResolver.ResolveBrush("SystemAccentColor", Color.FromArgb(255, 0, 120, 212)),
+            Child = badgeText,
+            Visibility = Visibility.Collapsed,
+        };
+        previewHost.Children.Add(badge);
+        stack.Children.Add(previewHost);
 
         titleText = new TextBlock
         {
@@ -72,7 +96,7 @@ internal sealed class AppCatalogCardControl : UserControl
 
         PointerEntered += (_, _) =>
         {
-            if (!previewPlaybackActive)
+            if (!previewPlaybackActive && available)
             {
                 Preview.Start();
             }
@@ -104,6 +128,23 @@ internal sealed class AppCatalogCardControl : UserControl
         titleText.Opacity = selected ? 1 : 0.94;
         summaryText.Opacity = selected ? 0.95 : 0.9;
         categoryText.Opacity = selected ? 0.8 : 0.72;
+    }
+
+    public void SetAvailability(bool isAvailable, string? badgeLabel = null)
+    {
+        available = isAvailable;
+        IsHitTestVisible = true;
+        Opacity = isAvailable ? 1d : 0.68d;
+        badge.Visibility = string.IsNullOrWhiteSpace(badgeLabel) ? Visibility.Collapsed : Visibility.Visible;
+        badgeText.Text = badgeLabel ?? string.Empty;
+        badge.Background = isAvailable
+            ? UiResourceResolver.ResolveBrush("AppAccentBrush", Color.FromArgb(255, 36, 196, 113))
+            : UiResourceResolver.ResolveBrush("SystemFillColorCriticalBrush", Color.FromArgb(255, 145, 44, 44));
+
+        if (!isAvailable)
+        {
+            Preview.Stop();
+        }
     }
 
     public void SetPreviewConfig(IReadOnlyDictionary<string, string>? values)

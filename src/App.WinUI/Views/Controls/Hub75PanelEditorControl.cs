@@ -20,6 +20,7 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
     private const float OverlayErrorTopPadding = 20f;
     private const double HandleVisualSize = 8d;
     private const double HandleHitThickness = 10d;
+    private static readonly RgbaColor[] BlackFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
 
     private readonly CanvasControl canvas;
     private readonly CanvasTextFormat labelTextFormat = new()
@@ -37,7 +38,7 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
     private PanelDefinition? panel;
     private string? selectedWidgetId;
     private IReadOnlyDictionary<string, string> widgetErrors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-    private RgbaColor[] frame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
+    private RgbaColor[] frame = BlackFrame;
     private LayoutInfo lastLayout;
     private PanelWidgetDefinition? activeWidget;
     private WidgetBounds startBounds;
@@ -111,12 +112,12 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
 
     public RgbaColor[] Frame
     {
-        get => frame.ToArray();
+        get => frame;
         set
         {
             frame = value?.Length == LedDefaults.MatrixWidth * LedDefaults.MatrixHeight
-                ? value.ToArray()
-                : Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
+                ? value
+                : BlackFrame;
             canvas.Invalidate();
         }
     }

@@ -62,6 +62,7 @@ Adicionar uma sessao `Paineis` com galeria de cards HUB75, editor dedicado, pers
 5. A UX final foi consolidada como `galeria -> editor dedicado`: ativacao centralizada na galeria, cards com poster frame estatico, animacao apenas para o painel ativo e autosave ao voltar do editor.
 6. O code-behind da `PanelsPage` foi ajustado para permanecer no thread da UI, removendo `DispatcherQueue.EnqueueAsync(async ...)` e `ConfigureAwait(...)` improprios no caminho WinUI.
 7. O refinamento do editor fixou o painel em `128x64`, moveu a edicao de nome para o header, removeu os `NumberBox` de bounds do inspetor e trocou a manipulacao do layout por drag/drop robusto e resize por alcas diretamente no canvas.
+8. A sessao `Apps` deixou de ser exposta na shell; o catalogo passou a alimentar diretamente a biblioteca de widgets de `Paineis`, com drafts legados `__local__|appId` reutilizados como defaults na criacao de widgets.
 
 ## Validacoes executadas
 
@@ -85,4 +86,4 @@ dotnet test tests/Integration.Smoke/Integration.Smoke.csproj -c Debug -> 91 apro
 1. Adicionar resize por alca, snap visual de grid e selecao multipla no editor.
 2. Expandir o compositor para outros apps do catalogo alem de `analogclock` e `gifhub75`.
 3. Avaliar export/import de paineis e presets de layout para compartilhamento entre maquinas.
-4. Considerar filtros, ordenacao e estados de device no topo da galeria quando o catalogo de paineis crescer.
+4. Considerar filtros, ordenacao e estados de device no topo da galeria quando o catalogo de widgets crescer.

@@ -27,11 +27,6 @@
                     <SymbolIcon Symbol="AllApps" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Tag="apps" Content="Apps">
-                <NavigationViewItem.Icon>
-                    <SymbolIcon Symbol="Shop" />
-                </NavigationViewItem.Icon>
-            </NavigationViewItem>
             <NavigationViewItem Tag="panels" Content="Paineis">
                 <NavigationViewItem.Icon>
                     <SymbolIcon Symbol="AlignCenter" />

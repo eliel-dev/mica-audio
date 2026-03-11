@@ -15,8 +15,8 @@ using Output.Led;
 
 namespace App.WinUI.Views;
 
-// DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
-// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03---fase-9-wave-2-e-wave-3-monolitos-do-app-decompostos
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md
+// DOCS: docs/wiki/modules/app-winui.md
 public sealed partial class AppsPage : Page, IDisposable
 {
     private const string LocalDraftScope = "__local__";
