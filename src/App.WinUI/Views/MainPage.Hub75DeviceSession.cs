@@ -4,6 +4,7 @@ namespace App.WinUI.Views;
 
 public partial class MainPage
 {
+    // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-prioridade-hub75-visualizador-sobre-paineis
     private async Task SyncHub75DeviceSessionAsync()
     {
         if (ShouldIgnoreUiMutation())
@@ -11,15 +12,17 @@ public partial class MainPage
             return;
         }
 
-        var services = App.Services;
-        if (services?.GetService(typeof(Hub75VisualizerSessionService)) is not Hub75VisualizerSessionService sessionService)
-        {
-            return;
-        }
-
         try
         {
-            await sessionService.SetHub75ModeAsync(hubPreviewEnabled).ConfigureAwait(false);
+            if (hubPreviewEnabled)
+            {
+                await panelsPlaybackService.SuspendAsync().ConfigureAwait(false);
+                await hub75VisualizerSessionService.SetHub75ModeAsync(enabled: true).ConfigureAwait(false);
+                return;
+            }
+
+            await hub75VisualizerSessionService.SetHub75ModeAsync(enabled: false).ConfigureAwait(false);
+            await panelsPlaybackService.ResumeSuspendedAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {

@@ -58,13 +58,22 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - O toggle `Ativo` da galeria usa snapshot salvo do painel; editar depois disso nao muda o device ate novo `Salvar` ou nova ativacao.
 - O tick padrao do painel e `12 FPS`, alinhado ao runtime GIF atual.
 - O playback real continua em `12 FPS`, mas galeria e editor usam poster estatico ou preview sob demanda para reduzir RAM/CPU.
+- Quando o `Visualizador HUB75` assume prioridade, o runtime do painel entra em suspensao retomavel:
+  - o loop/frame output para;
+  - o painel deixa de aparecer como ativo na galeria;
+  - o snapshot + `deviceId` ficam retidos apenas para retomada posterior.
 
 ## Carga Direcionada Por Device
 
 - `PanelsDeviceSessionService` marca o device alvo como app logico `panels-hub75`, restaura o app anterior ao parar e tenta reativar o painel em reconexao.
+- Quando o `Visualizador HUB75` esta ativo, `PanelsDeviceSessionService` entra em supressao por prioridade superior:
+  - nao reativa `panels-hub75` em reconnect/refresh;
+  - nao executa restore do app anterior durante a preempcao;
+  - volta a reconciliar apenas quando o painel e retomado explicitamente.
 - `Esp32S3LedOutput` agora aceita `LedOutputConfig.TargetDeviceId` e escolhe entre `SendFrame(deviceId, ...)` e `BroadcastFrame(...)`.
 - `DeviceServerHost` mantem o broadcast existente para fluxos antigos e adiciona envio direcionado sem mudar o payload wire.
 - O V1 suporta um unico painel ativo e um unico device alvo por vez.
+- A aba `Paineis` bloqueia novas ativacoes enquanto o `Visualizador HUB75` estiver dono do HUB75; edicao/salvamento continuam liberados, mas sem disputar `activate-app`.
 
 ## Referencias De Codigo
 

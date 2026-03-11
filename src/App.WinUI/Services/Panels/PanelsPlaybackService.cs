@@ -8,14 +8,18 @@ using Output.Led;
 namespace App.WinUI.Services.Panels;
 
 // DOCS: docs/wiki/modules/paineis.md#runtime-em-background
+// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-prioridade-hub75-visualizador-sobre-paineis
 internal sealed class PanelsPlaybackService : IDisposable
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(1000d / PanelsFrameComposer.TargetFps);
-    private static readonly RgbaColor[] BlackFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
+    private static readonly RgbaColor[] BlackFrame = Enumerable
+        .Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
+        .ToArray();
 
     private readonly DeviceServerHost host;
     private readonly PanelsFrameComposer composer;
     private readonly PanelsDeviceSessionService deviceSessionService;
+    private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
     private readonly object stateGate = new();
 
@@ -25,17 +29,20 @@ internal sealed class PanelsPlaybackService : IDisposable
     private PanelDefinition? activePanelSnapshot;
     private string? targetDeviceId;
     private Esp32S3LedOutput? matrixOutput;
+    private SuspendedPanelState? suspendedPanelState;
     private RgbaColor[] latestFrame = BlackFrame;
     private bool disposed;
 
     public PanelsPlaybackService(
         DeviceServerHost host,
         PanelsFrameComposer composer,
-        PanelsDeviceSessionService deviceSessionService)
+        PanelsDeviceSessionService deviceSessionService,
+        Hub75VisualizerSessionService hub75VisualizerSessionService)
     {
         this.host = host;
         this.composer = composer;
         this.deviceSessionService = deviceSessionService;
+        this.hub75VisualizerSessionService = hub75VisualizerSessionService;
     }
 
     public event EventHandler? StateChanged;
@@ -48,7 +55,20 @@ internal sealed class PanelsPlaybackService : IDisposable
         {
             lock (stateGate)
             {
-                return loopCts is not null && compositionSession is not null && !string.IsNullOrWhiteSpace(targetDeviceId);
+                return loopCts is not null
+                    && compositionSession is not null
+                    && !string.IsNullOrWhiteSpace(targetDeviceId);
+            }
+        }
+    }
+
+    public bool HasSuspendedPanel
+    {
+        get
+        {
+            lock (stateGate)
+            {
+                return suspendedPanelState is not null;
             }
         }
     }
@@ -64,11 +84,30 @@ internal sealed class PanelsPlaybackService : IDisposable
         }
     }
 
+    public string? SuspendedTargetDeviceId
+    {
+        get
+        {
+            lock (stateGate)
+            {
+                return suspendedPanelState?.TargetDeviceId;
+            }
+        }
+    }
+
     public PanelDefinition? GetActivePanelSnapshot()
     {
         lock (stateGate)
         {
             return activePanelSnapshot?.Clone();
+        }
+    }
+
+    public PanelDefinition? GetSuspendedPanelSnapshot()
+    {
+        lock (stateGate)
+        {
+            return suspendedPanelState?.PanelSnapshot.Clone();
         }
     }
 
@@ -86,45 +125,87 @@ internal sealed class PanelsPlaybackService : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
         ThrowIfDisposed();
 
+        if (hub75VisualizerSessionService.IsHub75Enabled)
+        {
+            throw new InvalidOperationException("O visualizador HUB75 tem prioridade enquanto estiver ativo.");
+        }
+
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await StopCoreAsync(restoreDevice: true, cancellationToken).ConfigureAwait(false);
+            await StopCoreAsync(restoreDevice: true, clearSuspendedState: true, cancellationToken).ConfigureAwait(false);
+            await StartCoreAsync(panelSnapshot, deviceId.Trim(), resumeSuppressedSession: false, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            lifecycleGate.Release();
+        }
+    }
 
-            var snapshot = panelSnapshot.Clone();
-            snapshot.Normalize();
-            var session = await composer.CreateSessionAsync(snapshot, cancellationToken).ConfigureAwait(false);
-            var output = new Esp32S3LedOutput(host);
-            output.Start(new LedOutputConfig
+    public async Task SuspendAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            PanelDefinition? retainedPanel;
+            string? retainedDeviceId;
+            lock (stateGate)
             {
-                Width = LedDefaults.MatrixWidth,
-                Height = LedDefaults.MatrixHeight,
-                Brightness = LedDefaults.Brightness,
-                TargetDeviceId = deviceId.Trim(),
-            });
-            output.SetBrightness(LedDefaults.Brightness);
+                retainedPanel = activePanelSnapshot?.Clone();
+                retainedDeviceId = targetDeviceId;
+            }
 
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (retainedPanel is null || string.IsNullOrWhiteSpace(retainedDeviceId))
+            {
+                return;
+            }
+
+            await deviceSessionService.SuppressAsync(cancellationToken).ConfigureAwait(false);
 
             lock (stateGate)
             {
-                compositionSession = session;
-                activePanelSnapshot = snapshot;
-                targetDeviceId = deviceId.Trim();
-                matrixOutput = output;
-                loopCts = cts;
+                suspendedPanelState = new SuspendedPanelState(retainedPanel, retainedDeviceId);
             }
 
-            await deviceSessionService.StartAsync(deviceId.Trim(), cancellationToken).ConfigureAwait(false);
-            await SendFrameAsync(session, output, DateTimeOffset.UtcNow).ConfigureAwait(false);
+            await StopCoreAsync(restoreDevice: false, clearSuspendedState: false, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            lifecycleGate.Release();
+        }
+    }
 
-            var localLoopTask = RunLoopAsync(session, output, cts.Token);
+    public async Task ResumeSuspendedAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (hub75VisualizerSessionService.IsHub75Enabled)
+            {
+                return;
+            }
+
+            SuspendedPanelState? retainedState;
             lock (stateGate)
             {
-                loopTask = localLoopTask;
+                retainedState = suspendedPanelState;
             }
 
-            StateChanged?.Invoke(this, EventArgs.Empty);
+            if (retainedState is null)
+            {
+                return;
+            }
+
+            await StartCoreAsync(
+                    retainedState.PanelSnapshot,
+                    retainedState.TargetDeviceId,
+                    resumeSuppressedSession: true,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -138,7 +219,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await StopCoreAsync(restoreDevice: true, cancellationToken).ConfigureAwait(false);
+            await StopCoreAsync(restoreDevice: true, clearSuspendedState: true, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -165,6 +246,76 @@ internal sealed class PanelsPlaybackService : IDisposable
         lifecycleGate.Dispose();
     }
 
+    private async Task StartCoreAsync(
+        PanelDefinition panelSnapshot,
+        string deviceId,
+        bool resumeSuppressedSession,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = panelSnapshot.Clone();
+        snapshot.Normalize();
+        var normalizedDeviceId = deviceId.Trim();
+        var session = await composer.CreateSessionAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        Esp32S3LedOutput? output = null;
+        CancellationTokenSource? cts = null;
+
+        try
+        {
+            if (resumeSuppressedSession)
+            {
+                await deviceSessionService.ResumeAsync(cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await deviceSessionService.StartAsync(normalizedDeviceId, cancellationToken).ConfigureAwait(false);
+            }
+
+            output = new Esp32S3LedOutput(host);
+            output.Start(new LedOutputConfig
+            {
+                Width = LedDefaults.MatrixWidth,
+                Height = LedDefaults.MatrixHeight,
+                Brightness = LedDefaults.Brightness,
+                TargetDeviceId = normalizedDeviceId,
+            });
+            output.SetBrightness(LedDefaults.Brightness);
+
+            cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            lock (stateGate)
+            {
+                compositionSession = session;
+                activePanelSnapshot = snapshot;
+                targetDeviceId = normalizedDeviceId;
+                matrixOutput = output;
+                loopCts = cts;
+                latestFrame = BlackFrame;
+                if (resumeSuppressedSession)
+                {
+                    suspendedPanelState = null;
+                }
+            }
+
+            await SendFrameAsync(session, output, DateTimeOffset.UtcNow).ConfigureAwait(false);
+
+            var localLoopTask = RunLoopAsync(session, output, cts.Token);
+            lock (stateGate)
+            {
+                loopTask = localLoopTask;
+            }
+
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            cts?.Cancel();
+            cts?.Dispose();
+            output?.Stop();
+            session.Dispose();
+            throw;
+        }
+    }
+
     private async Task RunLoopAsync(
         PanelsFrameComposer.PanelCompositionSession session,
         Esp32S3LedOutput output,
@@ -183,7 +334,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         }
     }
 
-    private async Task StopCoreAsync(bool restoreDevice, CancellationToken cancellationToken)
+    private async Task StopCoreAsync(bool restoreDevice, bool clearSuspendedState, CancellationToken cancellationToken)
     {
         CancellationTokenSource? localLoopCts;
         Task? localLoopTask;
@@ -206,6 +357,10 @@ internal sealed class PanelsPlaybackService : IDisposable
             activePanelSnapshot = null;
             targetDeviceId = null;
             latestFrame = BlackFrame;
+            if (clearSuspendedState)
+            {
+                suspendedPanelState = null;
+            }
         }
 
         if (localLoopCts is not null)
@@ -242,7 +397,10 @@ internal sealed class PanelsPlaybackService : IDisposable
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private Task SendFrameAsync(PanelsFrameComposer.PanelCompositionSession session, Esp32S3LedOutput output, DateTimeOffset utcNow)
+    private Task SendFrameAsync(
+        PanelsFrameComposer.PanelCompositionSession session,
+        Esp32S3LedOutput output,
+        DateTimeOffset utcNow)
     {
         var frame = session.RenderFrame(utcNow);
         lock (stateGate)
@@ -264,4 +422,6 @@ internal sealed class PanelsPlaybackService : IDisposable
     {
         ObjectDisposedException.ThrowIf(disposed, this);
     }
+
+    private sealed record SuspendedPanelState(PanelDefinition PanelSnapshot, string TargetDeviceId);
 }

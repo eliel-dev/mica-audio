@@ -194,7 +194,10 @@ public sealed partial class DevicesPage
         };
         Grid.SetRow(scroll, 1);
 
-        var contentStack = new StackPanel();
+        var contentStack = new StackPanel
+        {
+            Padding = new Thickness(0, 0, 0, 16),
+        };
         contentStack.Children.Add(BuildBrightnessSection());
         contentStack.Children.Add(BuildMetricsSection());
         contentStack.Children.Add(BuildStatusSection());
@@ -469,9 +472,10 @@ public sealed partial class DevicesPage
     {
         var section = new Border
         {
-            Padding = new Thickness(20, 12, 20, 12),
+            Padding = new Thickness(20, 12, 20, 20),
             BorderThickness = new Thickness(0),
             Background = ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32)),
+            Margin = new Thickness(0, 0, 0, 8),
         };
 
         var stack = new StackPanel { Spacing = 8 };
@@ -489,12 +493,13 @@ public sealed partial class DevicesPage
             TextWrapping = TextWrapping.NoWrap,
             FontFamily = new FontFamily("Consolas"),
             FontSize = 11.5,
+            VerticalContentAlignment = VerticalAlignment.Top,
             MinHeight = 260,
             MaxHeight = 320,
             Text = "Selecione um dispositivo para ver o historico de eventos.",
             BorderThickness = new Thickness(0),
             Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
-            Padding = new Thickness(0, 0, 0, 10),
+            Padding = new Thickness(0, 0, 0, 16),
         };
         DeviceLogsTextBox.Loaded += OnDeviceLogsTextBoxLoaded;
         ScrollViewer.SetVerticalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Auto);

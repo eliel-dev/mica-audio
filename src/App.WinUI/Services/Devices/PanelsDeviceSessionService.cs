@@ -26,6 +26,7 @@ internal sealed class PanelsDeviceSessionService : IDisposable
     private int retryCount;
     private string? lastErrorCode;
     private DeviceSessionStatus status;
+    private bool suppressedByHigherPriority;
     private bool targetEnabled;
     private bool disposed;
     private int reconcileRequested;
@@ -42,7 +43,18 @@ internal sealed class PanelsDeviceSessionService : IDisposable
         {
             lock (stateGate)
             {
-                return targetEnabled ? targetDeviceId : null;
+                return targetEnabled && !suppressedByHigherPriority ? targetDeviceId : null;
+            }
+        }
+    }
+
+    public bool IsSuppressed
+    {
+        get
+        {
+            lock (stateGate)
+            {
+                return suppressedByHigherPriority;
             }
         }
     }
@@ -56,6 +68,7 @@ internal sealed class PanelsDeviceSessionService : IDisposable
         {
             targetDeviceId = deviceId.Trim();
             targetEnabled = true;
+            suppressedByHigherPriority = false;
             nextAttemptUtc = DateTimeOffset.MinValue;
             retryCount = 0;
             lastErrorCode = null;
@@ -76,6 +89,13 @@ internal sealed class PanelsDeviceSessionService : IDisposable
             nextAttemptUtc = DateTimeOffset.MinValue;
             retryCount = 0;
             lastErrorCode = null;
+            CancelDelayedReconcileLocked();
+            if (suppressedByHigherPriority)
+            {
+                ClearStateLocked();
+                return;
+            }
+
             shouldRestore = !string.IsNullOrWhiteSpace(targetDeviceId) && !string.IsNullOrWhiteSpace(previousAppId);
             status = shouldRestore ? DeviceSessionStatus.RestorePending : DeviceSessionStatus.Idle;
             if (!shouldRestore)
@@ -85,6 +105,57 @@ internal sealed class PanelsDeviceSessionService : IDisposable
         }
 
         if (shouldRestore)
+        {
+            await ReconcileAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public Task SuppressAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
+
+        lock (stateGate)
+        {
+            if (!targetEnabled || string.IsNullOrWhiteSpace(targetDeviceId))
+            {
+                return Task.CompletedTask;
+            }
+
+            suppressedByHigherPriority = true;
+            nextAttemptUtc = DateTimeOffset.MinValue;
+            retryCount = 0;
+            lastErrorCode = null;
+            status = DeviceSessionStatus.Suppressed;
+            CancelDelayedReconcileLocked();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public async Task ResumeAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        var shouldReconcile = false;
+        lock (stateGate)
+        {
+            if (!suppressedByHigherPriority)
+            {
+                return;
+            }
+
+            suppressedByHigherPriority = false;
+            nextAttemptUtc = DateTimeOffset.MinValue;
+            retryCount = 0;
+            lastErrorCode = null;
+            shouldReconcile = targetEnabled && !string.IsNullOrWhiteSpace(targetDeviceId);
+            status = shouldReconcile
+                ? DeviceSessionStatus.ActivationPending
+                : DeviceSessionStatus.Idle;
+        }
+
+        if (shouldReconcile)
         {
             await ReconcileAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -215,6 +286,12 @@ internal sealed class PanelsDeviceSessionService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(targetDeviceId))
         {
+            return null;
+        }
+
+        if (suppressedByHigherPriority)
+        {
+            status = DeviceSessionStatus.Suppressed;
             return null;
         }
 
@@ -426,6 +503,7 @@ internal sealed class PanelsDeviceSessionService : IDisposable
         nextAttemptUtc = DateTimeOffset.MinValue;
         retryCount = 0;
         lastErrorCode = null;
+        suppressedByHigherPriority = false;
         status = DeviceSessionStatus.Idle;
     }
 
@@ -465,6 +543,7 @@ internal sealed class PanelsDeviceSessionService : IDisposable
     private enum DeviceSessionStatus
     {
         Idle,
+        Suppressed,
         ActivationPending,
         ActivationFailed,
         RestorePending,

@@ -91,6 +91,13 @@
 - Telemetria ganhou observabilidade de conectividade:
   - `wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`.
 
+## Atualizacao 2026-03 - Hotfix de ruido WS na conectividade
+
+- `lastWifiEvent` continua no payload MQTT `status`, mas agora fica restrito a eventos de `Wi-Fi/provisioning`.
+- Eventos `ws_connecting`, `ws_connected` e `ws_disconnected` permanecem apenas em serial/debug local.
+- O firmware agrega flaps WS em janela local e emite `[ws_diag]` quando detectar repeticao de desconexoes, sem poluir a telemetria operacional.
+- `presence` MQTT retained + will continuam sendo a fonte oficial de disponibilidade do device.
+
 ## Atualizacao 2026-03 - Rollback onboarding para COM+flash + AP
 
 - Fluxo oficial voltou para:

@@ -39,6 +39,7 @@ public sealed partial class PanelsPage : Page, IDisposable
     private readonly PanelsStore panelsStore;
     private readonly PanelsFrameComposer frameComposer;
     private readonly PanelsPlaybackService playbackService;
+    private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
     private readonly AppModifierEditorHost modifierEditor;
 
     private readonly List<AppCatalogItem> catalogItems = [];
@@ -75,6 +76,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         PanelsStore panelsStore,
         PanelsFrameComposer frameComposer,
         PanelsPlaybackService playbackService,
+        Hub75VisualizerSessionService hub75VisualizerSessionService,
         CityAutocompleteService cityService)
     {
         this.viewModel = viewModel;
@@ -84,6 +86,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         this.panelsStore = panelsStore;
         this.frameComposer = frameComposer;
         this.playbackService = playbackService;
+        this.hub75VisualizerSessionService = hub75VisualizerSessionService;
         modifierEditor = new AppModifierEditorHost(cityService, message => SetStatus(message, isError: true));
         modifierEditor.ModifierChanged += OnWidgetModifierChanged;
 
@@ -392,7 +395,7 @@ public sealed partial class PanelsPage : Page, IDisposable
             dirty = false;
         }
 
-        if (IsActivePanel(panelId))
+        if (IsRetainedPanel(panelId))
         {
             await playbackService.StopAsync();
         }
@@ -489,6 +492,12 @@ public sealed partial class PanelsPage : Page, IDisposable
         if (string.IsNullOrWhiteSpace(deviceId))
         {
             SetStatus("Selecione um dispositivo online para ativar o painel.", isError: true);
+            UpdateGalleryCardStates();
+            return;
+        }
+
+        if (!EnsurePanelActivationAllowed())
+        {
             UpdateGalleryCardStates();
             return;
         }
@@ -907,6 +916,11 @@ public sealed partial class PanelsPage : Page, IDisposable
             return false;
         }
 
+        if (IsVisualizerHub75PriorityActive())
+        {
+            return false;
+        }
+
         var activePanel = playbackService.GetActivePanelSnapshot();
         var targetDeviceId = playbackService.TargetDeviceId;
         if (activePanel is null
@@ -1317,6 +1331,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         var activePanelId = activePanel?.PanelId;
         var activeDeviceId = playbackService.TargetDeviceId;
         var selectedDeviceId = GetSelectedDeviceId();
+        var canActivateNewPanel = !IsVisualizerHub75PriorityActive() && !string.IsNullOrWhiteSpace(selectedDeviceId);
 
         foreach (var state in panelGalleryItems)
         {
@@ -1328,7 +1343,7 @@ public sealed partial class PanelsPage : Page, IDisposable
             state.Name = panel.Name;
             state.WidgetCount = panel.Widgets.Count;
             state.IsActive = string.Equals(panel.PanelId, activePanelId, StringComparison.OrdinalIgnoreCase);
-            state.CanActivate = state.IsActive || !string.IsNullOrWhiteSpace(selectedDeviceId);
+            state.CanActivate = state.IsActive || canActivateNewPanel;
             state.Subtitle = state.IsActive
                 ? $"Ativo em {activeDeviceId}"
                 : $"{panel.Widgets.Count} widget(s)";
@@ -1844,6 +1859,32 @@ public sealed partial class PanelsPage : Page, IDisposable
         return activePanel is not null
             && string.Equals(activePanel.PanelId, panelId, StringComparison.OrdinalIgnoreCase);
     }
+
+    private bool IsRetainedPanel(string panelId)
+    {
+        if (IsActivePanel(panelId))
+        {
+            return true;
+        }
+
+        var suspendedPanel = playbackService.GetSuspendedPanelSnapshot();
+        return suspendedPanel is not null
+            && string.Equals(suspendedPanel.PanelId, panelId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool EnsurePanelActivationAllowed()
+    {
+        if (!IsVisualizerHub75PriorityActive())
+        {
+            return true;
+        }
+
+        SetStatus("Desative o visualizador HUB75 antes de ativar um painel.", isError: true);
+        return false;
+    }
+
+    private bool IsVisualizerHub75PriorityActive()
+        => hub75VisualizerSessionService.IsHub75Enabled;
 
     private bool TryGetPanel(string panelId, out PanelDefinition panel)
     {

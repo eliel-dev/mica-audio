@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using Analyzer.Dsp.Analysis;
 using App.WinUI.Services;
+using App.WinUI.Services.Devices;
 using App.WinUI.Services.Gif;
+using App.WinUI.Services.Panels;
 using App.WinUI.Services.Visualizer;
 using App.WinUI.ViewModels;
 using Audio.Loopback.Capture;
@@ -31,7 +33,136 @@ namespace App.WinUI.Views;// DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execu
 
 public partial class MainPage : Page
 {
-    private const string AudioMotionClonePresetId = "audiomotion-clone"; private const float DefaultMinDecibels = -85f; private const float DefaultMaxDecibels = -25f; private const float DefaultLinearBoost = 1.3f; private const int DefaultBarCount = 38; private const int DefaultFftSize = 2048; private const float DefaultFftSmoothing = 0.75f; private const WeightingFilter DefaultWeightingFilter = WeightingFilter.B; private const FrequencyScale DefaultFrequencyScale = FrequencyScale.Bark; private const float DefaultFrequencyMinHz = 20f; private const float DefaultFrequencyMaxHz = 1000f; private const double HubPreviewHeightRatio = 0.20; private const double HubPreviewMinHeight = 84d; private const double HubPreviewMaxHeight = 220d; private const double FullscreenButtonAutoHideDelayMs = 1400d; private const int GifTargetFps = 12; private const int GifMaxDownloadBytes = 25 * 1024 * 1024; private readonly VisualizerEngine visualizer = new(); private readonly ILoopbackCapture capture; private readonly SimulatorLedOutput simulatorLedOutput; private readonly NullLedOutput nullLedOutput; private readonly Esp32S3LedOutput esp32s3LedOutput; private readonly Hub75GifDecoder gifDecoder = new(Hub75GifDecoder.DefaultMaxGifFrames); private readonly Hub75FrameFormatter gifFrameFormatter = new(); private readonly Hub75GifPlayer gifPlayer = new(TimeSpan.FromMilliseconds(1000d / GifTargetFps)); private readonly PresetRepository presetRepository; private readonly SettingsRepository settingsRepository; private readonly AppSettingsDomainService settingsDomainService; private readonly MainPageViewModel viewModel; private readonly AudioPipelineCoordinator pipelineCoordinator; private readonly Dictionary<string, PresetDefinition> presetsById = new(StringComparer.OrdinalIgnoreCase); private readonly List<PresetDefinition> presetNavigationOrder = []; private int currentPresetIndex = -1; private Microsoft.UI.Dispatching.DispatcherQueueTimer? presetSwitchHudHideTimer; private IAnalyzer analyzer = new SpectrumAnalyzer(new AnalyzerConfig()); private Microsoft.UI.Dispatching.DispatcherQueueTimer? renderTimer; private Microsoft.UI.Dispatching.DispatcherQueueTimer? cloneViewportDebounceTimer; private Microsoft.UI.Dispatching.DispatcherQueueTimer? fullscreenButtonHideTimer; private AppWindow? appWindow; private AppSettings appSettings = new(); private PresetDefinition activePreset = new(); private string selectedRendererId = RendererIds.AudioMotionClone; private string currentPresetId = AudioMotionClonePresetId; private GifContentSourceMode contentSourceMode = GifContentSourceMode.Audio; private GifScaleMode gifScaleMode = GifScaleMode.Fit; private IReadOnlyList<DecodedGifFrame> decodedGifFrames = Array.Empty<DecodedGifFrame>(); private IReadOnlyList<RgbaColor[]> gifFrames = Array.Empty<RgbaColor[]>(); private RgbaColor[]? lastGifFrame; private CancellationTokenSource? gifLoadCts; private long lastRenderQpc; private float lastCloneViewportWidth; private bool initialized; private bool hubPreviewEnabled; private bool fullscreen; private bool suppressBarCountChanged; private bool suppressFftSmoothingChanged; private bool suppressWeightingFilterChanged; private bool suppressFrequencyScaleChanged; private bool suppressFrequencyMinChanged; private bool suppressFrequencyMaxChanged; private bool suppressContentModeChanged; private bool suppressGifScaleModeChanged; private bool gifLoading; private float linearBoost = DefaultLinearBoost; private int displayBandCount = 38; private int fftSize = DefaultFftSize; private float fftSmoothing = 0.8f; private WeightingFilter weightingFilter = WeightingFilter.Off; private FrequencyScale frequencyScale = FrequencyScale.Logarithmic; private float frequencyMinHz = 30f; private float frequencyMaxHz = 16_000f; private static readonly float[] FrequencyMinOptions = [16f, 20f, 30f, 40f, 60f, 80f, 100f, 160f, 200f, 250f, 315f, 400f, 500f, 630f, 800f, 1000f,]; private static readonly float[] FrequencyMaxOptions = [250f, 315f, 400f, 500f, 630f, 800f, 1000f, 1250f, 1600f, 2000f, 2500f, 3150f, 4000f, 5000f, 6300f, 8000f, 10_000f, 12_000f, 16_000f, 20_000f,]; internal MainPage(MainPageViewModel viewModel, PresetRepository presetRepository, SettingsRepository settingsRepository, AppSettingsDomainService settingsDomainService, ILoopbackCapture capture, SimulatorLedOutput simulatorLedOutput, NullLedOutput nullLedOutput, Esp32S3LedOutput esp32s3LedOutput) { this.viewModel = viewModel; this.presetRepository = presetRepository; this.settingsRepository = settingsRepository; this.settingsDomainService = settingsDomainService; this.capture = capture; this.simulatorLedOutput = simulatorLedOutput; this.nullLedOutput = nullLedOutput; this.esp32s3LedOutput = esp32s3LedOutput; pipelineCoordinator = new AudioPipelineCoordinator(capture, simulatorLedOutput, esp32s3LedOutput, nullLedOutput, Volatile.Read(ref analyzer)); using (uiBootstrapGuard.Enter()) { InitializeComponent(); ConfigureSliderDefaults(); } gifPlayer.FrameReady += OnGifFrameReady; capture.StatusChanged += OnCaptureStatusChanged; pipelineCoordinator.StatusChanged += OnPipelineCoordinatorStatusChanged; DataContext = viewModel; Loaded += OnLoaded; Unloaded += OnUnloaded; }
+    private const string AudioMotionClonePresetId = "audiomotion-clone";
+    private const float DefaultMinDecibels = -85f;
+    private const float DefaultMaxDecibels = -25f;
+    private const float DefaultLinearBoost = 1.3f;
+    private const int DefaultBarCount = 38;
+    private const int DefaultFftSize = 2048;
+    private const float DefaultFftSmoothing = 0.75f;
+    private const WeightingFilter DefaultWeightingFilter = WeightingFilter.B;
+    private const FrequencyScale DefaultFrequencyScale = FrequencyScale.Bark;
+    private const float DefaultFrequencyMinHz = 20f;
+    private const float DefaultFrequencyMaxHz = 1000f;
+    private const double HubPreviewHeightRatio = 0.20;
+    private const double HubPreviewMinHeight = 84d;
+    private const double HubPreviewMaxHeight = 220d;
+    private const double FullscreenButtonAutoHideDelayMs = 1400d;
+    private const int GifTargetFps = 12;
+    private const int GifMaxDownloadBytes = 25 * 1024 * 1024;
+
+    private readonly VisualizerEngine visualizer = new();
+    private readonly ILoopbackCapture capture;
+    private readonly SimulatorLedOutput simulatorLedOutput;
+    private readonly NullLedOutput nullLedOutput;
+    private readonly Esp32S3LedOutput esp32s3LedOutput;
+    private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
+    private readonly PanelsPlaybackService panelsPlaybackService;
+    private readonly Hub75GifDecoder gifDecoder = new(Hub75GifDecoder.DefaultMaxGifFrames);
+    private readonly Hub75FrameFormatter gifFrameFormatter = new();
+    private readonly Hub75GifPlayer gifPlayer = new(TimeSpan.FromMilliseconds(1000d / GifTargetFps));
+    private readonly PresetRepository presetRepository;
+    private readonly SettingsRepository settingsRepository;
+    private readonly AppSettingsDomainService settingsDomainService;
+    private readonly MainPageViewModel viewModel;
+    private readonly AudioPipelineCoordinator pipelineCoordinator;
+    private readonly Dictionary<string, PresetDefinition> presetsById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<PresetDefinition> presetNavigationOrder = [];
+
+    private int currentPresetIndex = -1;
+    private DispatcherQueueTimer? presetSwitchHudHideTimer;
+    private IAnalyzer analyzer = new SpectrumAnalyzer(new AnalyzerConfig());
+    private DispatcherQueueTimer? renderTimer;
+    private DispatcherQueueTimer? cloneViewportDebounceTimer;
+    private DispatcherQueueTimer? fullscreenButtonHideTimer;
+    private AppWindow? appWindow;
+    private AppSettings appSettings = new();
+    private PresetDefinition activePreset = new();
+    private string selectedRendererId = RendererIds.AudioMotionClone;
+    private string currentPresetId = AudioMotionClonePresetId;
+    private GifContentSourceMode contentSourceMode = GifContentSourceMode.Audio;
+    private GifScaleMode gifScaleMode = GifScaleMode.Fit;
+    private IReadOnlyList<DecodedGifFrame> decodedGifFrames = Array.Empty<DecodedGifFrame>();
+    private IReadOnlyList<RgbaColor[]> gifFrames = Array.Empty<RgbaColor[]>();
+    private RgbaColor[]? lastGifFrame;
+    private CancellationTokenSource? gifLoadCts;
+    private long lastRenderQpc;
+    private float lastCloneViewportWidth;
+    private bool initialized;
+    private bool hubPreviewEnabled;
+    private bool fullscreen;
+    private bool suppressBarCountChanged;
+    private bool suppressFftSmoothingChanged;
+    private bool suppressWeightingFilterChanged;
+    private bool suppressFrequencyScaleChanged;
+    private bool suppressFrequencyMinChanged;
+    private bool suppressFrequencyMaxChanged;
+    private bool suppressContentModeChanged;
+    private bool suppressGifScaleModeChanged;
+    private bool gifLoading;
+    private float linearBoost = DefaultLinearBoost;
+    private int displayBandCount = 38;
+    private int fftSize = DefaultFftSize;
+    private float fftSmoothing = 0.8f;
+    private WeightingFilter weightingFilter = WeightingFilter.Off;
+    private FrequencyScale frequencyScale = FrequencyScale.Logarithmic;
+    private float frequencyMinHz = 30f;
+    private float frequencyMaxHz = 16_000f;
+
+    private static readonly float[] FrequencyMinOptions =
+    [
+        16f, 20f, 30f, 40f, 60f, 80f, 100f, 160f, 200f, 250f, 315f, 400f, 500f, 630f, 800f, 1000f,
+    ];
+
+    private static readonly float[] FrequencyMaxOptions =
+    [
+        250f, 315f, 400f, 500f, 630f, 800f, 1000f, 1250f, 1600f, 2000f, 2500f, 3150f, 4000f, 5000f, 6300f, 8000f,
+        10_000f, 12_000f, 16_000f, 20_000f,
+    ];
+
+    internal MainPage(
+        MainPageViewModel viewModel,
+        PresetRepository presetRepository,
+        SettingsRepository settingsRepository,
+        AppSettingsDomainService settingsDomainService,
+        ILoopbackCapture capture,
+        SimulatorLedOutput simulatorLedOutput,
+        NullLedOutput nullLedOutput,
+        Esp32S3LedOutput esp32s3LedOutput,
+        Hub75VisualizerSessionService hub75VisualizerSessionService,
+        PanelsPlaybackService panelsPlaybackService)
+    {
+        this.viewModel = viewModel;
+        this.presetRepository = presetRepository;
+        this.settingsRepository = settingsRepository;
+        this.settingsDomainService = settingsDomainService;
+        this.capture = capture;
+        this.simulatorLedOutput = simulatorLedOutput;
+        this.nullLedOutput = nullLedOutput;
+        this.esp32s3LedOutput = esp32s3LedOutput;
+        this.hub75VisualizerSessionService = hub75VisualizerSessionService;
+        this.panelsPlaybackService = panelsPlaybackService;
+
+        pipelineCoordinator = new AudioPipelineCoordinator(
+            capture,
+            simulatorLedOutput,
+            esp32s3LedOutput,
+            nullLedOutput,
+            Volatile.Read(ref analyzer));
+
+        using (uiBootstrapGuard.Enter())
+        {
+            InitializeComponent();
+            ConfigureSliderDefaults();
+        }
+
+        gifPlayer.FrameReady += OnGifFrameReady;
+        capture.StatusChanged += OnCaptureStatusChanged;
+        pipelineCoordinator.StatusChanged += OnPipelineCoordinatorStatusChanged;
+        DataContext = viewModel;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
     private void ConfigureSliderDefaults() { FftSmoothingSlider.Minimum = 0d; FftSmoothingSlider.Maximum = 0.99d; FftSmoothingSlider.SmallChange = 0.01d; FftSmoothingSlider.StepFrequency = 0.01d; }
     private async void OnLoaded(object sender, RoutedEventArgs e) { if (!initialized) { try { await InitializeAsync().ConfigureAwait(true); initialized = true; } catch (Exception ex) { App.ReportStartupFailure("MainPage.OnLoaded failed", ex); StatusText.Text = "Falha ao iniciar o visualizador."; } return; } if (contentSourceMode == GifContentSourceMode.Gif) { pipelineCoordinator.ConfigureHubOutputs(ShouldShowHubPreview(), appSettings.Brightness); EnsureRenderTimerStarted(); MainCanvas.Invalidate(); InvalidateHubPreviews(); await SyncHub75DeviceSessionAsync().ConfigureAwait(true); return; } await ActivateVisualizerSessionAsync().ConfigureAwait(true); await SyncHub75DeviceSessionAsync().ConfigureAwait(true); }
     private async void OnUnloaded(object sender, RoutedEventArgs e) { App.SetShellChromeHidden(false); renderTimer?.Stop(); cloneViewportDebounceTimer?.Stop(); StopVisualizerRuntimeDebounceTimer(); fullscreenButtonHideTimer?.Stop(); gifLoadCts?.Cancel(); gifLoadCts?.Dispose(); gifLoadCts = null; gifPlayer.Stop(); await pipelineCoordinator.StopAsync().ConfigureAwait(true); SaveWindowSizeIntoSettings(); await settingsRepository.SaveAsync(appSettings); }

@@ -81,6 +81,7 @@
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceOperationsText.cs" Link="Shared\Devices\DeviceOperationsText.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceOperationsState.cs" Link="Shared\Devices\DeviceOperationsState.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceOperationsCoordinator.cs" Link="Shared\Devices\DeviceOperationsCoordinator.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceConnectivityEventClassifier.cs" Link="Shared\Devices\DeviceConnectivityEventClassifier.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceRefreshCoordinator.cs" Link="Shared\Devices\DeviceRefreshCoordinator.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLogBook.cs" Link="Shared\Devices\DeviceLogBook.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceLifecycleThresholdProvider.cs" Link="Shared\Devices\DeviceLifecycleThresholdProvider.cs" />

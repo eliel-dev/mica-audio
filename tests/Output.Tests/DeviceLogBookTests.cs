@@ -58,11 +58,33 @@ public sealed class DeviceLogBookTests
         Assert.Contains(logs, line => line.Contains("Primeira telemetria recebida apos reconexao.", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void RecordLifecycleEvents_ShouldIgnoreWebSocketConnectivityEvents()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var book = new DeviceLogBook(maxLogEntries: 10, maxDeviceLogEntries: 10);
+
+        book.RecordLifecycleEvents(
+            previous:
+            [
+                CreateSnapshot("device-1", DeviceStatus.Online, now.AddSeconds(-2), now.AddSeconds(-2), lastWifiEvent: "wifi_connected"),
+            ],
+            next:
+            [
+                CreateSnapshot("device-1", DeviceStatus.Online, now, now, lastWifiEvent: "ws_disconnected"),
+            ],
+            now);
+
+        var logs = book.GetDeviceLogs("device-1");
+        Assert.DoesNotContain(logs, line => line.Contains("ws_disconnected", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static DeviceSnapshot CreateSnapshot(
         string deviceId,
         DeviceStatus status,
         DateTimeOffset lastSeenUtc,
-        DateTimeOffset? lastTelemetryUtc)
+        DateTimeOffset? lastTelemetryUtc,
+        string? lastWifiEvent = null)
     {
         return new DeviceSnapshot
         {
@@ -74,6 +96,7 @@ public sealed class DeviceLogBookTests
             FirstSeenUtc = lastSeenUtc.AddMinutes(-5),
             LastSeenUtc = lastSeenUtc,
             LastTelemetryUtc = lastTelemetryUtc,
+            LastWifiEvent = lastWifiEvent,
         };
     }
 }

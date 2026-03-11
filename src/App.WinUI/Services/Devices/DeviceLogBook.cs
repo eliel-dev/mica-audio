@@ -2,6 +2,7 @@ using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
+// DOCS: docs/wiki/modules/device-operations-coordinator.md#render-estavel-na-devicespage
 internal sealed class DeviceLogBook
 {
     private readonly object gate = new();
@@ -164,9 +165,10 @@ internal sealed class DeviceLogBook
                         AppendDeviceLocked(deviceId, "Portal de provisioning ativo.", now);
                     }
 
-                    if (!string.IsNullOrWhiteSpace(current.LastWifiEvent))
+                    var currentConnectivityEvent = DeviceConnectivityEventClassifier.NormalizeForUi(current.LastWifiEvent);
+                    if (DeviceConnectivityEventClassifier.ShouldSurfaceConnectivityEvent(currentConnectivityEvent))
                     {
-                        AppendDeviceLocked(deviceId, $"Evento conectividade: {current.LastWifiEvent}.", now);
+                        AppendDeviceLocked(deviceId, $"Evento conectividade: {currentConnectivityEvent}.", now);
                     }
                 }
                 else
@@ -184,10 +186,12 @@ internal sealed class DeviceLogBook
                         AppendDeviceLocked(deviceId, $"Portal de provisioning: {portalState}.", now);
                     }
 
-                    if (!string.Equals(previousSnapshot.LastWifiEvent, current.LastWifiEvent, StringComparison.OrdinalIgnoreCase)
-                        && !string.IsNullOrWhiteSpace(current.LastWifiEvent))
+                    var previousConnectivityEvent = DeviceConnectivityEventClassifier.NormalizeForUi(previousSnapshot.LastWifiEvent);
+                    var currentConnectivityEvent = DeviceConnectivityEventClassifier.NormalizeForUi(current.LastWifiEvent, previousConnectivityEvent);
+                    if (!string.Equals(previousConnectivityEvent, currentConnectivityEvent, StringComparison.OrdinalIgnoreCase)
+                        && DeviceConnectivityEventClassifier.ShouldSurfaceConnectivityEvent(currentConnectivityEvent))
                     {
-                        AppendDeviceLocked(deviceId, $"Evento conectividade: {current.LastWifiEvent}.", now);
+                        AppendDeviceLocked(deviceId, $"Evento conectividade: {currentConnectivityEvent}.", now);
                     }
                 }
             }

@@ -33,6 +33,9 @@ constexpr uint8_t kStreamFrame128x64Rgb565MessageType = 2;
 constexpr unsigned long kWifiDisconnectProvisioningFallbackMs = 20000;
 constexpr unsigned long kMqttReconnectRetryMs = 5000;
 constexpr unsigned long kWsReconnectRetryMs = 60000;
+constexpr unsigned long kWsAutoReconnectIntervalMs = 2000;
+constexpr unsigned long kWsFlapReportWindowMs = 60000;
+constexpr uint8_t kWsFlapReportThreshold = 3;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
 constexpr unsigned long kSerialHelloIntervalMs = 3000;
 constexpr size_t kSerialInputMaxLength = 1024;
@@ -144,6 +147,9 @@ String gLastWifiEvent = "boot";
 String gAuxLedUnavailableReason;
 String gSerialInputBuffer;
 unsigned long gLastSerialHelloMs = 0;
+unsigned long gWsFlapWindowStartMs = 0;
+uint16_t gWsConnectCountInWindow = 0;
+uint16_t gWsDisconnectCountInWindow = 0;
 
 void connectWebSocket();
 void connectMqtt();
@@ -239,23 +245,70 @@ bool tryValidateAuxLedPin(int pin, String& reason) {
   return true;
 }
 
-void setConnectivityState(const char* wifiState, const char* lastEvent, bool forceLog = false) {
+void logConnectivityState(const char* eventOverride = nullptr) {
+  const char* eventName = (eventOverride != nullptr && eventOverride[0] != '\0')
+      ? eventOverride
+      : gLastWifiEvent.c_str();
+
+  Serial.printf("[conn] wifiState=%s portal=%s event=%s\n",
+      gWifiState.c_str(),
+      gProvisioningPortalActive ? "on" : "off",
+      eventName);
+}
+
+void flushWsFlapDiagnostics(bool force = false) {
+  if (gWsFlapWindowStartMs == 0) {
+    return;
+  }
+
+  const unsigned long now = millis();
+  const unsigned long elapsed = now - gWsFlapWindowStartMs;
+  if (!force && elapsed < kWsFlapReportWindowMs) {
+    return;
+  }
+
+  if (gWsDisconnectCountInWindow >= kWsFlapReportThreshold) {
+    Serial.printf(
+        "[ws_diag] window_ms=%lu connects=%u disconnects=%u reconnect_interval_ms=%lu state=flapping\n",
+        elapsed,
+        gWsConnectCountInWindow,
+        gWsDisconnectCountInWindow,
+        kWsAutoReconnectIntervalMs);
+  }
+
+  gWsFlapWindowStartMs = now;
+  gWsConnectCountInWindow = 0;
+  gWsDisconnectCountInWindow = 0;
+}
+
+void registerWsConnectivitySample(bool connected) {
+  if (gWsFlapWindowStartMs == 0) {
+    gWsFlapWindowStartMs = millis();
+  } else {
+    flushWsFlapDiagnostics(false);
+  }
+
+  if (connected) {
+    gWsConnectCountInWindow++;
+  } else {
+    gWsDisconnectCountInWindow++;
+  }
+}
+
+void setConnectivityState(const char* wifiState, const char* lastEvent, bool forceLog = false, bool publishEvent = true) {
   bool changed = false;
   if (wifiState != nullptr && wifiState[0] != '\0' && !gWifiState.equals(wifiState)) {
     gWifiState = wifiState;
     changed = true;
   }
 
-  if (lastEvent != nullptr && lastEvent[0] != '\0' && !gLastWifiEvent.equals(lastEvent)) {
+  if (publishEvent && lastEvent != nullptr && lastEvent[0] != '\0' && !gLastWifiEvent.equals(lastEvent)) {
     gLastWifiEvent = lastEvent;
     changed = true;
   }
 
   if (changed || forceLog) {
-    Serial.printf("[conn] wifiState=%s portal=%s event=%s\n",
-        gWifiState.c_str(),
-        gProvisioningPortalActive ? "on" : "off",
-        gLastWifiEvent.c_str());
+    logConnectivityState(publishEvent ? nullptr : lastEvent);
   }
 }
 
@@ -1437,14 +1490,16 @@ void onMqttMessage(char* topic, uint8_t* payload, unsigned int length) {
 void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
   if (type == WStype_CONNECTED) {
     gWsDisconnectedSinceMs = 0;
-    setConnectivityState(kWifiStateConnected, "ws_connected", true);
+    registerWsConnectivitySample(true);
+    setConnectivityState(kWifiStateConnected, "ws_connected", true, false);
     Serial.println("[ws_connected] sessao websocket estabelecida.");
     sendTelemetry(true);
     return;
   }
 
   if (type == WStype_DISCONNECTED) {
-    setConnectivityState(WiFi.status() == WL_CONNECTED ? kWifiStateConnected : kWifiStateDisconnected, "ws_disconnected", true);
+    registerWsConnectivitySample(false);
+    setConnectivityState(WiFi.status() == WL_CONNECTED ? kWifiStateConnected : kWifiStateDisconnected, "ws_disconnected", true, false);
     Serial.println("[ws_disconnected] sessao websocket encerrada.");
     gLastTelemetryMs = 0;
     return;
@@ -1544,12 +1599,12 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
 void connectWebSocket() {
   if (gDeviceId.isEmpty() || gToken.isEmpty() || gServerHost.isEmpty()) {
-    setConnectivityState(kWifiStateConnecting, "ws_missing_auth", true);
+    setConnectivityState(kWifiStateConnecting, "ws_missing_auth", true, false);
     return;
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    setConnectivityState(kWifiStateConnecting, "ws_waiting_wifi", true);
+    setConnectivityState(kWifiStateConnecting, "ws_waiting_wifi", true, false);
     return;
   }
 
@@ -1557,10 +1612,10 @@ void connectWebSocket() {
   gWs.setExtraHeaders(extraHeaders.c_str());
   String path = "/ws/v1/stream";
   Serial.printf("[ws] conectando em ws://%s:%u%s\n", gServerHost.c_str(), gServerPort, path.c_str());
-  setConnectivityState(kWifiStateConnected, "ws_connecting", true);
+  setConnectivityState(kWifiStateConnected, "ws_connecting", true, false);
   gWs.begin(gServerHost.c_str(), gServerPort, path.c_str());
   gWs.onEvent(onWsEvent);
-  gWs.setReconnectInterval(2000);
+  gWs.setReconnectInterval(kWsAutoReconnectIntervalMs);
 }
 
 void connectMqtt() {
@@ -1790,6 +1845,7 @@ void loop() {
   setConnectivityState(kWifiStateConnected, "wifi_connected");
   gMqtt.loop();
   gWs.loop();
+  flushWsFlapDiagnostics(false);
 
   if (!gMqtt.connected()) {
     if (gMqttDisconnectedSinceMs == 0) {
@@ -1808,7 +1864,7 @@ void loop() {
   if (!gWs.isConnected()) {
     if (gWsDisconnectedSinceMs == 0) {
       gWsDisconnectedSinceMs = millis();
-      setConnectivityState(kWifiStateConnected, "ws_disconnected");
+      setConnectivityState(kWifiStateConnected, "ws_disconnected", false, false);
     }
 
     if (millis() - gWsDisconnectedSinceMs > kWsReconnectRetryMs) {

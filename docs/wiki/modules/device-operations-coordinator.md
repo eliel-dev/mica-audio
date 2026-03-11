@@ -74,6 +74,9 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
 - `DeviceListChanged` e a fonte principal do refresh da lista na `DevicesPage` apos a carga inicial.
 - `StateChanged` continua atualizando estado geral, mas nao deve disparar rebuild da lista de devices.
 - A UI reaproveita a arvore visual existente e aplica diff incremental para reduzir flicker.
+- O hotfix de conectividade trata `ws_*` como diagnostico de stream, nao como evento principal de conectividade:
+  - logs por device continuam mostrando apenas transicoes de `Wi-Fi/provisioning`;
+  - churn de refresh causado por `ws_connected/ws_disconnected` legado deixa de repintar a lista.
 
 ## Atualizacao 2026-03 - Fase 9 Wave 1, coordenador decomposto
 

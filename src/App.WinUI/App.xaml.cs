@@ -201,7 +201,9 @@ public partial class App : Application
             sp.GetRequiredService<ILoopbackCapture>(),
             sp.GetRequiredService<SimulatorLedOutput>(),
             sp.GetRequiredService<NullLedOutput>(),
-            sp.GetRequiredService<Esp32S3LedOutput>()));
+            sp.GetRequiredService<Esp32S3LedOutput>(),
+            sp.GetRequiredService<Hub75VisualizerSessionService>(),
+            sp.GetRequiredService<PanelsPlaybackService>()));
 
         services.AddTransient<DevicesPage>(sp => new DevicesPage(
             sp.GetRequiredService<DevicesPageViewModel>(),
@@ -227,6 +229,7 @@ public partial class App : Application
             sp.GetRequiredService<PanelsStore>(),
             sp.GetRequiredService<PanelsFrameComposer>(),
             sp.GetRequiredService<PanelsPlaybackService>(),
+            sp.GetRequiredService<Hub75VisualizerSessionService>(),
             sp.GetRequiredService<CityAutocompleteService>()));
 
         services.AddTransient<SettingsPage>(sp => new SettingsPage(

@@ -66,6 +66,22 @@
   - sem persistencia redundante quando o runtime efetivo nao mudou;
   - com render/preview HUB75 consumindo o ultimo runtime realmente aplicado.
 
+## Atualizacao 2026-03 - Prioridade HUB75 visualizador sobre paineis
+
+- O toggle HUB75 da `MainPage` passou a arbitrar explicitamente com a sessao `Paineis`.
+- Ao ativar HUB75 no `Visualizador`, o app:
+  - suspende qualquer painel HUB75 ativo sem restaurar o app anterior naquele momento;
+  - impede novas ativacoes de paineis enquanto o visualizador estiver dono do HUB75;
+  - envia `visualizer-hub75` como app prioritario no device.
+- Ao desligar HUB75 no `Visualizador`, o app:
+  - desativa a sessao `visualizer-hub75`;
+  - retoma apenas o painel que estava ativo antes da preempcao, no mesmo `deviceId`;
+  - nao mantem fila para novos paineis pedidos durante a prioridade do visualizador.
+- O runtime suspenso do painel continua intencionalmente invisivel na galeria:
+  - sem badge novo;
+  - sem estado visual intermediario;
+  - apenas retomada automatica quando a prioridade do visualizador termina.
+
 ## Atualizacao 2026-03 - Menu de configuracao Fluent 2 no Visualizador
 
 - A `MainPage` manteve a metafora de painel lateral de configuracao, mas a composicao interna foi redesenhada como uma settings pane Fluent 2.

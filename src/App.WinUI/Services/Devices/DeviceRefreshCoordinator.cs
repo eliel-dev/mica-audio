@@ -2,6 +2,7 @@ using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
+// DOCS: docs/wiki/modules/device-operations-coordinator.md#render-estavel-na-devicespage
 internal readonly record struct DeviceRefreshStateSnapshot(
     IReadOnlyList<DeviceSnapshot> Devices,
     DateTimeOffset LastRefreshUtc);
@@ -59,18 +60,98 @@ internal sealed class DeviceRefreshCoordinator
         lock (gate)
         {
             lastRefreshUtc = refreshedAtUtc;
-            var nonOnlinePresent = nextSnapshot.Any(static d => d.Status != DeviceStatus.Online);
+            var previousById = new Dictionary<string, DeviceSnapshot>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in devicesSnapshot)
+            {
+                if (!string.IsNullOrWhiteSpace(item.DeviceId))
+                {
+                    previousById[item.DeviceId] = item;
+                }
+            }
 
-            if (!forcePublish && !nonOnlinePresent && AreSnapshotsEquivalent(devicesSnapshot, nextSnapshot))
+            var normalizedSnapshot = NormalizeForUi(nextSnapshot, previousById);
+            var nonOnlinePresent = normalizedSnapshot.Any(static d => d.Status != DeviceStatus.Online);
+
+            if (!forcePublish && !nonOnlinePresent && AreSnapshotsEquivalent(devicesSnapshot, normalizedSnapshot))
             {
                 return new DeviceRefreshUpdate(false, Array.Empty<DeviceSnapshot>(), devicesSnapshot.ToArray());
             }
 
             var previousSnapshot = devicesSnapshot.ToArray();
             devicesSnapshot.Clear();
-            devicesSnapshot.AddRange(nextSnapshot);
+            devicesSnapshot.AddRange(normalizedSnapshot);
             return new DeviceRefreshUpdate(true, previousSnapshot, devicesSnapshot.ToArray());
         }
+    }
+
+    private static DeviceSnapshot[] NormalizeForUi(
+        DeviceSnapshot[] nextSnapshot,
+        Dictionary<string, DeviceSnapshot> previousById)
+    {
+        var normalized = new DeviceSnapshot[nextSnapshot.Length];
+        for (var i = 0; i < nextSnapshot.Length; i++)
+        {
+            var current = nextSnapshot[i];
+            previousById.TryGetValue(current.DeviceId, out var previousSnapshot);
+            var normalizedConnectivityEvent = DeviceConnectivityEventClassifier.NormalizeForUi(
+                current.LastWifiEvent,
+                previousSnapshot?.LastWifiEvent);
+
+            normalized[i] = string.Equals(normalizedConnectivityEvent, current.LastWifiEvent, StringComparison.OrdinalIgnoreCase)
+                ? current
+                : CloneWithConnectivityEvent(current, normalizedConnectivityEvent);
+        }
+
+        return normalized;
+    }
+
+    private static DeviceSnapshot CloneWithConnectivityEvent(DeviceSnapshot source, string? lastWifiEvent)
+    {
+        return new DeviceSnapshot
+        {
+            DeviceId = source.DeviceId,
+            Name = source.Name,
+            Profile = source.Profile,
+            Status = source.Status,
+            ControlPlaneState = source.ControlPlaneState,
+            IsRegistered = source.IsRegistered,
+            LastSeenUtc = source.LastSeenUtc,
+            FirstSeenUtc = source.FirstSeenUtc,
+            LastTelemetryUtc = source.LastTelemetryUtc,
+            LastAuthUtc = source.LastAuthUtc,
+            ConfigState = source.ConfigState,
+            LastKnownIp = source.LastKnownIp,
+            LastKnownRssi = source.LastKnownRssi,
+            UptimeSeconds = source.UptimeSeconds,
+            LoopLoadPercent = source.LoopLoadPercent,
+            FreeHeapBytes = source.FreeHeapBytes,
+            LargestHeapBlockBytes = source.LargestHeapBlockBytes,
+            PsramAvailable = source.PsramAvailable,
+            FreePsramBytes = source.FreePsramBytes,
+            LargestPsramBlockBytes = source.LargestPsramBlockBytes,
+            WifiConnected = source.WifiConnected,
+            WifiState = source.WifiState,
+            ProvisioningPortalActive = source.ProvisioningPortalActive,
+            AuxLedAvailable = source.AuxLedAvailable,
+            TestLedAvailable = source.TestLedAvailable,
+            LastWifiEvent = lastWifiEvent,
+            StreamLastSequence = source.StreamLastSequence,
+            StreamFramesReceived = source.StreamFramesReceived,
+            StreamFramesApplied = source.StreamFramesApplied,
+            StreamSequenceGapCount = source.StreamSequenceGapCount,
+            StreamInvalidFrameCount = source.StreamInvalidFrameCount,
+            FirmwareVersion = source.FirmwareVersion,
+            TelemetrySequence = source.TelemetrySequence,
+            BrightnessCap = source.BrightnessCap,
+            BrightnessRequested = source.BrightnessRequested,
+            BrightnessApplied = source.BrightnessApplied,
+            TestLedEnabled = source.TestLedEnabled,
+            TestLedDuty = source.TestLedDuty,
+            ActiveAppId = source.ActiveAppId,
+            ActiveAppName = source.ActiveAppName,
+            BoardModel = source.BoardModel,
+            PanelType = source.PanelType,
+        };
     }
 
     private static bool AreSnapshotsEquivalent(List<DeviceSnapshot> current, DeviceSnapshot[] next)
