@@ -98,7 +98,9 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
             UptimeSeconds = record.UptimeSeconds,
+            LoopHealthyPercent = record.LoopHealthyPercent,
             LoopLoadPercent = record.LoopLoadPercent,
+            ChipTemperatureCelsius = record.ChipTemperatureCelsius,
             FreeHeapBytes = record.FreeHeapBytes,
             LargestHeapBlockBytes = record.LargestHeapBlockBytes,
             PsramAvailable = record.PsramAvailable,
@@ -153,7 +155,9 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
             UptimeSeconds = record.UptimeSeconds,
+            LoopHealthyPercent = record.LoopHealthyPercent,
             LoopLoadPercent = record.LoopLoadPercent,
+            ChipTemperatureCelsius = record.ChipTemperatureCelsius,
             FreeHeapBytes = record.FreeHeapBytes,
             LargestHeapBlockBytes = record.LargestHeapBlockBytes,
             PsramAvailable = record.PsramAvailable,
@@ -282,7 +286,11 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
 
         public int? UptimeSeconds { get; init; }
 
+        public int? LoopHealthyPercent { get; init; }
+
         public int? LoopLoadPercent { get; init; }
+
+        public double? ChipTemperatureCelsius { get; init; }
 
         public long? FreeHeapBytes { get; init; }
 

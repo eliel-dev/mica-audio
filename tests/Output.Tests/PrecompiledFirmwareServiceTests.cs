@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 using App.WinUI.Services.Firmware;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -54,6 +55,10 @@ public sealed class PrecompiledFirmwareServiceTests
             Assert.Equal("v2026.03.09-hotfix", artifact.Manifest.FirmwareVersion);
             Assert.Equal("abc1234", artifact.Manifest.GitSha);
             Assert.Equal(PrecompiledFirmwareService.RequiredControlPlane, artifact.Manifest.ControlPlane);
+            Assert.Equal(3L, artifact.Manifest.FileSizeBytes);
+            Assert.Equal(
+                Convert.ToHexString(SHA256.HashData([0x01, 0x02, 0x03])).ToLowerInvariant(),
+                artifact.Manifest.Sha256);
         }
         finally
         {

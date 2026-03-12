@@ -9,7 +9,9 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | Campo | Tipo | Semantica |
 | --- | --- | --- |
 | `uptimeSeconds` | `int?` | uptime do firmware em segundos |
-| `loopLoadPercent` | `int?` | carga util aproximada do app no loop principal (0..100 no emissor), excluindo esperas deliberadas |
+| `loopHealthyPercent` | `int?` | percentual de iteracoes do `loop()` concluidas em ate `25 ms`, calculado em janela fixa de `5 s` |
+| `loopLoadPercent` | `int?` | campo legado de compatibilidade; nao e mais a metrica oficial consumida pelo dashboard HTML |
+| `chipTemperatureCelsius` | `double?` | leitura do sensor interno de temperatura do ESP32-S3 em graus Celsius quando disponivel |
 | `freeHeapBytes` | `long?` | heap livre em bytes |
 | `largestHeapBlockBytes` | `long?` | maior bloco contiguo de heap livre |
 | `psramAvailable` | `bool?` | indica se o build/device possui PSRAM utilizavel |
@@ -31,9 +33,11 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 ## Regras de sanitizacao e pass-through
 
 1. Sanitizacao de `largestHeapBlockBytes` e `largestPsramBlockBytes` ocorre apenas no firmware emissor.
-2. O servidor deve tratar os campos v2 em pass-through (sem clamp/renormalizacao).
+2. O servidor deve tratar `loopHealthyPercent`, `loopLoadPercent`, `chipTemperatureCelsius` e os demais campos v2 em pass-through (sem clamp/renormalizacao).
 3. Campos permanecem `nullable` para compatibilidade com firmware legado.
-4. `wifiState` usa valores canonicos em minusculo para facilitar consumo no dashboard.
+4. `loopLoadPercent` continua aceito apenas para leitura/round-trip de compatibilidade.
+5. `chipTemperatureCelsius` so deve ser emitido quando a leitura do sensor interno vier valida (`finite`).
+6. `wifiState` usa valores canonicos em minusculo para facilitar consumo no dashboard.
 
 ## Persistencia local
 
@@ -41,10 +45,18 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 - `JsonDeviceRegistryStore` faz round-trip desses campos no `devices.json`.
 - Em offline, a UI pode mostrar o ultimo snapshot conhecido sem depender de nova telemetria.
 
-## Consumo na DevicesPage (Entrega 3)
+## Consumo no dashboard por device
 
-- A `DevicesPage` usa `DeviceMetricsFormatter` para converter snapshot bruto em apresentacao.
-- O card principal da `DevicesPage` exibe status, carga do loop, uptime, heap, PSRAM e rede em painel seguro baseado em texto, barras e grade simples.
+- A superficie oficial desta entrega e o dashboard HTML/WebView2 servido por `Device.Server`.
+- O card principal de saude usa `loopHealthyPercent` com tres faixas:
+  - `>= 90`: `Saudavel: loop estavel`;
+  - `>= 75 e < 90`: `Atencao: latencia moderada`;
+  - `< 75`: `Sobrecarregado: latencia elevada`.
+- O dashboard HTML nao depende mais de `loopLoadPercent` para renderizar saude.
+- O dashboard exibe `chipTemperatureCelsius` no card `Temperatura do chip`, com fallback textual quando ausente.
+- O estado de update de firmware no dashboard nao e telemetria crua:
+  - `firmwareVersion` continua vindo do device;
+  - `latestFirmwareVersion`, `firmwareUpdateSupported` e `firmwareUpdateAvailable` sao derivados no host a partir do catalogo oficial de firmware embarcado no app.
 - Barras derivadas de fragmentacao sao exibidas apenas quando os dados sao coerentes.
 - `RSSI` deve aparecer apenas quando o `snapshot.Status` esta online; para offline a UI exibe estado de rede sem sinal numerico.
 - O card de logs usa `GetDeviceLogs(deviceId)` e exibe somente o device selecionado.
@@ -57,6 +69,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
   - idade do ultimo heartbeat;
   - ultimo evento curto de conectividade por dispositivo;
   - contadores de stream em tabela textual segura.
+- O fallback nativo antigo da `DevicesPage` continua fora do escopo funcional desta entrega.
 
 ## Checklist rapido de validacao
 

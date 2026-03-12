@@ -21,6 +21,8 @@ public sealed partial class DeviceServerHost
 
         var device = api.MapGroup("/device");
         device.MapGet("/config", (Delegate)HandleDeviceConfig);
+        device.MapGet("/firmware/latest", (Delegate)HandleDeviceFirmwareLatest);
+        device.MapGet("/firmware/download", (Delegate)HandleDeviceFirmwareDownload);
         device.MapPost("/command-ack", (Delegate)HandleCommandAckAsync)
             .RequireRateLimiting(CommandAckRatePolicy);
 

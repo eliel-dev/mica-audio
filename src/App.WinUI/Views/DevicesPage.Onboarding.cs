@@ -1,6 +1,7 @@
 using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
+using Device.Protocol.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage;
@@ -24,6 +25,24 @@ public sealed partial class DevicesPage
 
     private async Task ShowNewDeviceWizardAsync()
     {
+        await ShowWizardOverlayAsync(
+            "Selecione a porta COM para apagar toda a flash e gravar o firmware. O processo remove configuracoes anteriores do ESP32 e pode demorar mais. O Wi-Fi sera configurado no AP do ESP32 apos o flash.")
+            .ConfigureAwait(true);
+    }
+
+    private async Task ShowUsbFirmwareRefreshWizardAsync(DeviceSnapshot snapshot, string latestVersion)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        var currentVersion = string.IsNullOrWhiteSpace(snapshot.FirmwareVersion)
+            ? "desconhecida"
+            : snapshot.FirmwareVersion;
+        var summary = $"Atualizacao por USB para {snapshot.DeviceId}. O processo apaga toda a flash, grava {latestVersion} e exige novo provisionamento Wi-Fi/pareamento. Firmware atual: {currentVersion}.";
+        await ShowWizardOverlayAsync(summary).ConfigureAwait(true);
+    }
+
+    private async Task ShowWizardOverlayAsync(string summaryNote)
+    {
         var serialCatalog = SerialPortCatalogService;
         var onboarding = OnboardingService;
         if (serialCatalog is null || onboarding is null)
@@ -36,7 +55,7 @@ public sealed partial class DevicesPage
 
         wizardOperationInFlight = false;
         WizardStatusText.Text = string.Empty;
-        WizardSummaryNoteText.Text = "Selecione a porta COM para apagar toda a flash e gravar o firmware. O processo remove configuracoes anteriores do ESP32 e pode demorar mais. O Wi-Fi sera configurado no AP do ESP32 apos o flash.";
+        WizardSummaryNoteText.Text = summaryNote;
         WizardPortComboBox.ItemsSource = Array.Empty<SerialPortDescriptor>();
         WizardPortComboBox.SelectedIndex = -1;
         ResetWizardFlashProgressUi();

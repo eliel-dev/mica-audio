@@ -17,4 +17,8 @@ internal sealed class FirmwareArtifactManifest
     public string ControlPlane { get; init; } = string.Empty;
 
     public DateTimeOffset BuiltAtUtc { get; init; }
+
+    public string Sha256 { get; init; } = string.Empty;
+
+    public long FileSizeBytes { get; init; }
 }

@@ -1,5 +1,6 @@
 namespace Device.Protocol.Models;
 
+// DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#persistencia-local
 public sealed class DeviceSnapshot
 {
     public string DeviceId { get; init; } = string.Empty;
@@ -30,7 +31,11 @@ public sealed class DeviceSnapshot
 
     public int? UptimeSeconds { get; init; }
 
+    public int? LoopHealthyPercent { get; init; }
+
     public int? LoopLoadPercent { get; init; }
+
+    public double? ChipTemperatureCelsius { get; init; }
 
     public long? FreeHeapBytes { get; init; }
 

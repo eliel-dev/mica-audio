@@ -1,5 +1,12 @@
 # Modulo Firmware HUB75 (DevKitC-1 128x64)
 
+## Referencias oficiais obrigatorias
+
+- Para qualquer integracao do `ESP32-S3` neste repositorio, consultar primeiro:
+  - `https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32s3/index.html`
+  - `https://github.com/espressif/esp-idf/blob/v5.5.3/docs/en/index.rst`
+- Essa exigencia vale para decisoes de implementacao, configuracao, OTA, networking, boot, particoes e uso de APIs de baixo nivel do SoC.
+
 ## Fluxo de execucao
 
 1. conecta ao servidor local
@@ -30,6 +37,11 @@
 - O pacote precompilado oficial continua com o mesmo nome logico:
   - `esp32s3-devkitc1-128x64-dma_exp_merged.bin`
   - `esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json`
+- O manifesto oficial do pacote embarcado no app subiu para `schemaVersion = 2`:
+  - `firmwareVersion`
+  - `sha256`
+  - `fileSizeBytes`
+  - metadados de compatibilidade (`boardModel`, `panelType`, `profile`, `controlPlane`)
 - Requisito operacional:
   - na primeira gravacao apos migrar de um layout/configuracao anterior, fazer erase total do flash antes do upload.
 - A variante `2MB APP / 12.5MB FATFS` permanece apenas como alternativa documentada, nao como baseline oficial.
@@ -71,16 +83,57 @@
   - `mqttPort = 5273`
   - `mqttRootTopic = mica/v1/devices`
 
-## Atualizacao 2026-03 - `loopLoadPercent` como carga util do app
+## Atualizacao 2026-03 - OTA autenticado por HTTP
 
-- `loopLoadPercent` deixou de representar ocupacao bruta do loop bare-metal.
-- A amostra agora mede apenas trabalho util:
-  - renderizacao (`drawBars` / `drawFrame128x64`);
-  - telemetria e publish MQTT;
-  - manutencao de WS/MQTT e tarefas operacionais do app.
-- Esperas deliberadas ficam fora da conta:
-  - principalmente `delay(120)` no ramo sem Wi-Fi.
-- O objetivo e tornar o card `Uso do processador` util no dashboard WebView, sem saturar artificialmente em `99%`.
+- O firmware oficial voltou a aceitar o comando wire `update_firmware`.
+- Fluxo OTA implementado:
+  1. receber `update_firmware` via MQTT `commands`;
+  2. consultar `GET /api/v1/device/firmware/latest` com `X-Device-Id` + `X-Device-Token`;
+  3. validar `boardModel`, `panelType`, `profile`, `controlPlane`, `sha256` e `fileSizeBytes`;
+  4. baixar `GET /api/v1/device/firmware/download?version=...`;
+  5. gravar a imagem na particao OTA inativa via `Update`;
+  6. persistir `commandId + sourceVersion + targetVersion` em `Preferences` antes do reboot;
+  7. reiniciar o ESP32-S3;
+  8. entrar em `Safe update mode` no primeiro boot da nova imagem;
+  9. publicar `pending-verify` durante a janela local de validacao;
+  10. concluir como `validated` ou `rolled-back`.
+- O firmware interrompe o stream WS durante a OTA e limpa o painel antes de gravar a imagem.
+- Falhas de metadata, tamanho, hash ou espaco OTA respondem `failed` no comando tracked e nao reiniciam o device.
+- A implementacao passou a seguir a recomendacao oficial da Espressif para `Safe update mode` no `ESP32-S3`:
+  - com rollback habilitado, a nova imagem pode iniciar em `ESP_OTA_IMG_PENDING_VERIFY`;
+  - a confirmacao explicita usa `esp_ota_mark_app_valid_cancel_rollback()`;
+  - rollback explicito usa `esp_ota_mark_app_invalid_rollback_and_reboot()`.
+- Politica local desta base para confirmar a imagem:
+  - self-test minimo de `10 s` apos o primeiro boot;
+  - sem exigir Wi-Fi, MQTT ou WS;
+  - falha de rede nao provoca rollback.
+- Os estagios tracked do OTA agora sao:
+  - pre-reboot: `metadata`, `downloading`, `flashing`, `rebooting`;
+  - pos-reboot: `pending-verify`, `validated` ou `rolled-back`.
+- `rebooting` deixou de ser terminal:
+  - sucesso real so existe em `validated`;
+  - rollback ou timeout encerram a operacao como falha.
+
+## Atualizacao 2026-03 - Saude oficial do loop
+
+### Saude oficial do loop
+
+- A metrica oficial do dashboard deixou de ser `loopLoadPercent`.
+- O firmware agora calcula `loopHealthyPercent` como:
+  - percentual de iteracoes do `loop()` concluidas em ate `25 ms`;
+  - janela fixa de `5 s`;
+  - arredondamento para inteiro percentual ao fechar cada janela.
+- O tempo medido e o da iteracao completa do `loop()`, incluindo trabalho efetivo do app naquele ciclo.
+- O calculo continua ignorando janelas vazias por definicao: sem iteracoes contabilizadas, nao ha novo percentual para publicar.
+- Faixas operacionais consumidas pelo dashboard:
+  - `>= 90`: `Saudavel: loop estavel`;
+  - `>= 75 e < 90`: `Atencao: latencia moderada`;
+  - `< 75`: `Sobrecarregado: latencia elevada`.
+- `loopLoadPercent` fica apenas como legado de compatibilidade no lado do host/protocolo e deixa de ser emitido pelo caminho oficial de telemetria do firmware.
+- O firmware tambem passou a publicar `chipTemperatureCelsius`:
+  - leitura do sensor interno via `temperatureRead()`;
+  - o campo so e enviado quando a leitura vier valida (`finite`);
+  - nao existe estado termico separado nem historico termico dedicado nesta entrega.
 
 ## Atualizacao 2026-03 - Auth WS por header (RSK-002)
 
@@ -107,7 +160,7 @@
 - Fallback estatico: `src/firmware_version.h`.
 - Build precompilado gera `src/firmware_version.auto.h` com carimbo `UTC date + tag + short commit`.
 - O arquivo auto-gerado e temporario (limpo ao final do script de build).
-- O fallback empacotado atual esta em `v2026.03.12-untagged-c2ba150`.
+- O pacote oficial regenerado nesta entrega ficou em `v2026.03.12-untagged-8fc3a7e`.
 
 ## Atualizacao 2026-03 - Hotfix P0 Wi-Fi/AP + LED auxiliar seguro
 

@@ -38,6 +38,12 @@ public sealed class DeviceServerHostDashboardTests
         Assert.Contains("id=\"espdash-sec\" style=\"display:none;\"", htmlBody, StringComparison.Ordinal);
         Assert.Contains("id=\"s-fps\"", htmlBody, StringComparison.Ordinal);
         Assert.Contains("id=\"s-rssi\"", htmlBody, StringComparison.Ordinal);
+        Assert.Contains("id=\"m-health\"", htmlBody, StringComparison.Ordinal);
+        Assert.Contains("id=\"m-temp\"", htmlBody, StringComparison.Ordinal);
+        Assert.Contains("id=\"firmware-row\"", htmlBody, StringComparison.Ordinal);
+        Assert.Contains("id=\"firmware-current\"", htmlBody, StringComparison.Ordinal);
+        Assert.Contains("id=\"firmware-latest\"", htmlBody, StringComparison.Ordinal);
+        Assert.Contains("id=\"btn-fw\"", htmlBody, StringComparison.Ordinal);
         Assert.Contains("id=\"chart-loop\"", htmlBody, StringComparison.Ordinal);
         Assert.Contains("id=\"chart-heap\"", htmlBody, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"btn-led-secondary\"", htmlBody, StringComparison.Ordinal);
@@ -47,8 +53,15 @@ public sealed class DeviceServerHostDashboardTests
         Assert.Contains("selectDevice", js, StringComparison.Ordinal);
         Assert.Contains("HEAP_TOTAL_BYTES_FALLBACK = 320000", js, StringComparison.Ordinal);
         Assert.Contains("PSRAM_TOTAL_BYTES_FALLBACK = 8000000", js, StringComparison.Ordinal);
+        Assert.Contains("resolveHealthState", js, StringComparison.Ordinal);
         Assert.Contains("resolveHeapPercent", js, StringComparison.Ordinal);
         Assert.Contains("resolvePsramPercent", js, StringComparison.Ordinal);
+        Assert.Contains("loopHealthyPercent", js, StringComparison.Ordinal);
+        Assert.Contains("chipTemperatureCelsius", js, StringComparison.Ordinal);
+        Assert.Contains("firmwareUpdateAvailable", js, StringComparison.Ordinal);
+        Assert.Contains("latestFirmwareVersion", js, StringComparison.Ordinal);
+        Assert.Contains("update-firmware", js, StringComparison.Ordinal);
+        Assert.DoesNotContain("device.loopLoadPercent", js, StringComparison.Ordinal);
         Assert.Contains("style.display = selectedDeviceId ? \"block\" : \"none\"", js, StringComparison.Ordinal);
     }
 
@@ -98,7 +111,8 @@ public sealed class DeviceServerHostDashboardTests
             rssi = -52,
             uptimeSeconds = 123,
             telemetrySequence = 7,
-            loopLoadPercent = 43,
+            loopHealthyPercent = 92,
+            chipTemperatureCelsius = 48.5,
             freeHeapBytes = 204800,
             largestHeapBlockBytes = 174080,
             psramAvailable = true,
@@ -141,6 +155,9 @@ public sealed class DeviceServerHostDashboardTests
         Assert.Equal("dashboard-ws", firstPayload.RootElement.GetProperty("name").GetString());
         Assert.True(firstPayload.RootElement.GetProperty("online").GetBoolean());
         Assert.Equal("visualizer-hub75", firstPayload.RootElement.GetProperty("activeAppName").GetString());
+        Assert.Equal(92, firstPayload.RootElement.GetProperty("loopHealthyPercent").GetInt32());
+        Assert.Equal(48.5d, firstPayload.RootElement.GetProperty("chipTemperatureCelsius").GetDouble());
+        Assert.Equal(JsonValueKind.Null, firstPayload.RootElement.GetProperty("loopLoadPercent").ValueKind);
         Assert.Equal(62, firstPayload.RootElement.GetProperty("heapFreePercent").GetInt32());
         Assert.Equal(78, firstPayload.RootElement.GetProperty("psramFreePercent").GetInt32());
         Assert.Equal(15, firstPayload.RootElement.GetProperty("heapFragmentationPercent").GetInt32());
@@ -153,7 +170,8 @@ public sealed class DeviceServerHostDashboardTests
             rssi = -49,
             uptimeSeconds = 125,
             telemetrySequence = 8,
-            loopLoadPercent = 47,
+            loopHealthyPercent = 74,
+            chipTemperatureCelsius = 50.0,
             freeHeapBytes = 196608,
             largestHeapBlockBytes = 167936,
             psramAvailable = true,
@@ -177,9 +195,102 @@ public sealed class DeviceServerHostDashboardTests
 
         using var secondPayload = JsonDocument.Parse(await ReceiveTextMessageAsync(ws));
         Assert.Equal(8u, secondPayload.RootElement.GetProperty("telemetrySequence").GetUInt32());
-        Assert.Equal(47, secondPayload.RootElement.GetProperty("loopLoadPercent").GetInt32());
+        Assert.Equal(74, secondPayload.RootElement.GetProperty("loopHealthyPercent").GetInt32());
+        Assert.Equal(50d, secondPayload.RootElement.GetProperty("chipTemperatureCelsius").GetDouble());
         Assert.Equal(120u, secondPayload.RootElement.GetProperty("streamFramesApplied").GetUInt32());
         Assert.True(secondPayload.RootElement.GetProperty("hub75Fps").GetInt32() > 0);
+    }
+
+    [Fact]
+    public async Task DashboardWebSocket_ShouldExposeFirmwareUpdateState_WhenOfficialPackageExists()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "mica-audio-dashboard-firmware", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        var firmwarePath = Path.Combine(tempRoot, "firmware.bin");
+        await File.WriteAllBytesAsync(firmwarePath, [0x01, 0x02, 0x03]);
+
+        var package = new DeviceOfficialFirmwarePackage(
+            "v2026.03.12-untagged-c2ba150",
+            "esp32s3_devkitc1",
+            "hub75_p2_5_128x64_smd2121_scan32",
+            "dma_exp",
+            "mqtt",
+            firmwarePath,
+            Path.Combine(tempRoot, "firmware.manifest.json"),
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            3);
+
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        try
+        {
+            await using var host = new DeviceServerHost(new StaticFirmwareCatalog(package));
+            await host.StartAsync(new ServerConfig
+            {
+                ListenHost = "127.0.0.1",
+                PublicHost = "127.0.0.1",
+                Port = port,
+                MqttPort = mqttPort,
+                RestrictToPrivateNetworks = true,
+            });
+
+            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            var paired = await DeviceServerTestHarness.PairDeviceAsync(
+                host,
+                client,
+                "dashboard-firmware",
+                boardModel: package.BoardModel,
+                panelType: package.PanelType);
+
+            using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+                "127.0.0.1",
+                mqttPort,
+                paired.DeviceId,
+                paired.Token);
+
+            await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+            await DeviceServerTestHarness.PublishTelemetryAsync(mqttClient, paired.DeviceId, new
+            {
+                deviceId = paired.DeviceId,
+                telemetrySequence = 1,
+                firmwareVersion = "v2026.03.11-legacy-old",
+                loopHealthyPercent = 91,
+                chipTemperatureCelsius = 46.5,
+                boardModel = package.BoardModel,
+                panelType = package.PanelType,
+            });
+
+            using var ws = new ClientWebSocket();
+            await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/device/{paired.DeviceId}"), CancellationToken.None);
+
+            using var firstPayload = JsonDocument.Parse(await ReceiveTextMessageAsync(ws));
+            Assert.Equal("v2026.03.11-legacy-old", firstPayload.RootElement.GetProperty("firmwareVersion").GetString());
+            Assert.Equal(package.FirmwareVersion, firstPayload.RootElement.GetProperty("latestFirmwareVersion").GetString());
+            Assert.True(firstPayload.RootElement.GetProperty("firmwareUpdateSupported").GetBoolean());
+            Assert.True(firstPayload.RootElement.GetProperty("firmwareUpdateAvailable").GetBoolean());
+
+            await DeviceServerTestHarness.PublishTelemetryAsync(mqttClient, paired.DeviceId, new
+            {
+                deviceId = paired.DeviceId,
+                telemetrySequence = 2,
+                firmwareVersion = package.FirmwareVersion,
+                loopHealthyPercent = 96,
+                chipTemperatureCelsius = 45.0,
+                boardModel = package.BoardModel,
+                panelType = package.PanelType,
+            });
+
+            using var secondPayload = JsonDocument.Parse(await ReceiveTextMessageAsync(ws));
+            Assert.Equal(package.FirmwareVersion, secondPayload.RootElement.GetProperty("firmwareVersion").GetString());
+            Assert.Equal(package.FirmwareVersion, secondPayload.RootElement.GetProperty("latestFirmwareVersion").GetString());
+            Assert.True(secondPayload.RootElement.GetProperty("firmwareUpdateSupported").GetBoolean());
+            Assert.False(secondPayload.RootElement.GetProperty("firmwareUpdateAvailable").GetBoolean());
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
     }
 
     [Fact]
@@ -214,7 +325,7 @@ public sealed class DeviceServerHostDashboardTests
             rssi = -61,
             uptimeSeconds = 44,
             telemetrySequence = 2,
-            loopLoadPercent = 18,
+            loopHealthyPercent = 88,
             freeHeapBytes = 180224,
             largestHeapBlockBytes = 131072,
             psramAvailable = true,
@@ -246,6 +357,7 @@ public sealed class DeviceServerHostDashboardTests
         Assert.Equal(JsonValueKind.Null, payload.RootElement.GetProperty("heapFreePercent").ValueKind);
         Assert.Equal(JsonValueKind.Null, payload.RootElement.GetProperty("psramTotalBytes").ValueKind);
         Assert.Equal(JsonValueKind.Null, payload.RootElement.GetProperty("psramFreePercent").ValueKind);
+        Assert.Equal(88, payload.RootElement.GetProperty("loopHealthyPercent").GetInt32());
         Assert.Equal(180224L, payload.RootElement.GetProperty("heapFreeBytes").GetInt64());
         Assert.Equal(4194304L, payload.RootElement.GetProperty("psramFreeBytes").GetInt64());
     }
@@ -275,5 +387,36 @@ public sealed class DeviceServerHostDashboardTests
         }
 
         return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private sealed class StaticFirmwareCatalog : IDeviceOfficialFirmwareCatalog
+    {
+        private readonly DeviceOfficialFirmwarePackage package;
+
+        public StaticFirmwareCatalog(DeviceOfficialFirmwarePackage package)
+        {
+            this.package = package;
+        }
+
+        public bool TryResolveLatest(
+            string? boardModel,
+            string? panelType,
+            string? profile,
+            out DeviceOfficialFirmwarePackage package,
+            out string failureReason)
+        {
+            if (string.Equals(boardModel, this.package.BoardModel, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(panelType, this.package.PanelType, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(profile, this.package.Profile, StringComparison.OrdinalIgnoreCase))
+            {
+                package = this.package;
+                failureReason = string.Empty;
+                return true;
+            }
+
+            package = default!;
+            failureReason = "firmware_not_found";
+            return false;
+        }
     }
 }

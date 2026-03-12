@@ -7,7 +7,8 @@
   const HEAP_TOTAL_BYTES_FALLBACK = 320000;
   const PSRAM_TOTAL_BYTES_FALLBACK = 8000000;
   const HISTORY_POINTS = 30;
-  const loopHistory = new Map();
+  const HEALTH_TONES = ["health-ok", "health-warn", "health-bad"];
+  const healthHistory = new Map();
   const heapHistory = new Map();
   const lastTelemetrySequence = new Map();
 
@@ -102,6 +103,65 @@
     return typeof value === "number" ? String(Math.round(value)) : "-";
   }
 
+  function formatTemperatureCelsius(value) {
+    return typeof value === "number" && Number.isFinite(value)
+      ? value.toFixed(1)
+      : "-";
+  }
+
+  function formatCurrentFirmwareVersion(value) {
+    return typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : "Versao atual nao identificada";
+  }
+
+  function formatLatestFirmwareVersion(value) {
+    return typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : "Sem pacote oficial";
+  }
+
+  function resolveHealthState(percent) {
+    const safe = clamp(Math.round(percent), 0, 100);
+    if (safe >= 90) {
+      return {
+        tone: "health-ok",
+        label: "Saudavel: loop estavel",
+        color: "#4EC94E",
+      };
+    }
+
+    if (safe >= 75) {
+      return {
+        tone: "health-warn",
+        label: "Atencao: latencia moderada",
+        color: "#F6B000",
+      };
+    }
+
+    return {
+      tone: "health-bad",
+      label: "Sobrecarregado: latencia elevada",
+      color: "#D94B4B",
+    };
+  }
+
+  function setHealthVisualState(percent) {
+    const card = $("m-health-card");
+    const bar = $("m-health-bar");
+    card.classList.remove(...HEALTH_TONES);
+    bar.classList.remove(...HEALTH_TONES);
+
+    if (typeof percent !== "number" || Number.isNaN(percent)) {
+      return null;
+    }
+
+    const state = resolveHealthState(percent);
+    card.classList.add(state.tone);
+    bar.classList.add(state.tone);
+    return state;
+  }
+
   function computeFragmentationPercent(freeBytes, largestBlockBytes) {
     if (typeof freeBytes !== "number" || typeof largestBlockBytes !== "number" || freeBytes <= 0 || largestBlockBytes < 0) {
       return null;
@@ -136,51 +196,6 @@
     }
 
     return computeFallbackPercent(device.psramFreeBytes, PSRAM_TOTAL_BYTES_FALLBACK);
-  }
-
-  function fmtHeapSub(device) {
-    return typeof device.heapFragmentationPercent === "number"
-      ? `Frag. de memória ${clamp(Math.round(device.heapFragmentationPercent), 0, 100)}%`
-      : "Frag. de memória -";
-  }
-
-  function fmtPsramSub(device) {
-    if (device.psramAvailable === false || device.psramTotalBytes == null || device.psramTotalBytes <= 0) {
-      return "PSRAM indisponível";
-    }
-
-    if (typeof device.psramTotalBytes === "number") {
-      const mb = Math.round(device.psramTotalBytes / (1024 * 1024));
-      return `Base ${mb} MB`;
-    }
-
-    return "PSRAM disponível";
-  }
-
-  function resolveHeapSubLabel(device) {
-    const fragmentation = typeof device.heapFragmentationPercent === "number"
-      ? clamp(Math.round(device.heapFragmentationPercent), 0, 100)
-      : computeFragmentationPercent(device.heapFreeBytes, device.heapLargestBlockBytes);
-    return fragmentation != null
-      ? `Frag. de memÃ³ria ${fragmentation}%`
-      : "Frag. de memÃ³ria -";
-  }
-
-  function resolvePsramSubLabel(device) {
-    if (device.psramAvailable === false) {
-      return "PSRAM indisponÃ­vel";
-    }
-
-    if (typeof device.psramTotalBytes === "number") {
-      const mb = Math.round(device.psramTotalBytes / (1024 * 1024));
-      return `Base ${mb} MB`;
-    }
-
-    if (typeof device.psramFreeBytes === "number") {
-      return "Base 8 MB";
-    }
-
-    return fmtPsramSub(device);
   }
 
   function buildHeapSubLabel(device) {
@@ -243,8 +258,16 @@
     }
 
     lastTelemetrySequence.set(telemetryKey, nextSequence);
-    pushHistoryValue(loopHistory, telemetryKey, typeof device.loopLoadPercent === "number" ? device.loopLoadPercent : null);
-    pushHistoryValue(heapHistory, telemetryKey, typeof device.heapFreeBytes === "number" ? Math.round(device.heapFreeBytes / 1024) : null);
+    pushHistoryValue(
+      healthHistory,
+      telemetryKey,
+      typeof device.loopHealthyPercent === "number"
+        ? clamp(Math.round(device.loopHealthyPercent), 0, 100)
+        : null);
+    pushHistoryValue(
+      heapHistory,
+      telemetryKey,
+      typeof device.heapFreeBytes === "number" ? Math.round(device.heapFreeBytes / 1024) : null);
   }
 
   function drawHistoryChart(canvas, values, color, maxValue) {
@@ -333,10 +356,13 @@
 
   function renderCharts(device) {
     const deviceId = device && device.deviceId ? device.deviceId : selectedDeviceId;
-    const loopValues = deviceId ? [...getHistory(loopHistory, deviceId)] : Array(HISTORY_POINTS).fill(null);
+    const healthValues = deviceId ? [...getHistory(healthHistory, deviceId)] : Array(HISTORY_POINTS).fill(null);
     const heapValues = deviceId ? [...getHistory(heapHistory, deviceId)] : Array(HISTORY_POINTS).fill(null);
+    const healthState = device && typeof device.loopHealthyPercent === "number"
+      ? resolveHealthState(device.loopHealthyPercent)
+      : null;
 
-    drawHistoryChart($("chart-loop"), loopValues, "#0078D4", 100);
+    drawHistoryChart($("chart-loop"), healthValues, healthState ? healthState.color : "#4EC94E", 100);
 
     const heapMaxKb = (() => {
       if (device && typeof device.heapTotalBytes === "number" && device.heapTotalBytes > 0) {
@@ -358,19 +384,29 @@
     $("s-rssi").textContent = "-";
     setWifiIconState($("d-rssi-icon"), null, null);
     setWifiIconState($("s-rssi-icon"), null, null);
+    $("firmware-row").style.display = "none";
+    $("firmware-current").textContent = "-";
+    $("firmware-latest").textContent = "-";
+    $("btn-fw").style.display = "none";
+    $("btn-fw").disabled = true;
     $("btn-led").disabled = true;
     $("btn-rm").disabled = true;
     $("m-ph").textContent = "Selecione um dispositivo para ver a telemetria.";
     $("m-ph").style.display = "";
     $("m-grid").style.display = "none";
     $("espdash-sec").style.display = "none";
-    $("m-loop").textContent = "-";
+    $("m-health").textContent = "-";
+    $("m-health-s").textContent = "Saudavel: loop estavel";
     $("m-heap").textContent = "-";
     $("m-psram").textContent = "-";
-    $("m-heap-s").textContent = "Frag. de memória -";
-    $("m-psram-s").textContent = "PSRAM indisponível";
+    $("m-temp").textContent = "-";
+    $("m-temp-unit").textContent = "";
+    $("m-temp-s").textContent = "Sensor interno indisponivel";
+    $("m-heap-s").textContent = "Frag. de memoria -";
+    $("m-psram-s").textContent = "PSRAM indisponivel";
     $("s-fps").textContent = "-";
-    updateProgressBar("m-loop-bar", 0);
+    setHealthVisualState(null);
+    updateProgressBar("m-health-bar", 0);
     updateProgressBar("m-heap-bar", 0);
     updateProgressBar("m-psram-bar", 0);
     setBrightnessUi(120);
@@ -387,19 +423,35 @@
     setWifiIconState($("s-rssi-icon"), device.wifiState, device.signalDbm);
 
     const ledEnabled = !!selectedDeviceId && device.testLedAvailable !== false;
+    const firmwareUpdateAvailable = !!selectedDeviceId && device.firmwareUpdateSupported === true && device.firmwareUpdateAvailable === true;
     $("btn-led").disabled = !ledEnabled;
     $("btn-rm").disabled = !selectedDeviceId;
+    $("btn-fw").style.display = firmwareUpdateAvailable ? "" : "none";
+    $("btn-fw").disabled = !firmwareUpdateAvailable;
+
+    const currentFirmwareKnown = typeof device.firmwareVersion === "string" && device.firmwareVersion.trim().length > 0;
+    const latestFirmwareKnown = typeof device.latestFirmwareVersion === "string" && device.latestFirmwareVersion.trim().length > 0;
+    $("firmware-row").style.display = selectedDeviceId && (currentFirmwareKnown || latestFirmwareKnown || device.firmwareUpdateSupported === true)
+      ? "grid"
+      : "none";
+    $("firmware-current").textContent = formatCurrentFirmwareVersion(device.firmwareVersion);
+    $("firmware-latest").textContent = formatLatestFirmwareVersion(device.latestFirmwareVersion);
 
     const brightnessValue = normalizeBrightness(device.brightnessRequested ?? device.brightnessApplied ?? 120);
     setBrightnessUi(brightnessValue);
     $("slider-bright").disabled = !device.online;
 
+    const healthPercent = typeof device.loopHealthyPercent === "number"
+      ? clamp(Math.round(device.loopHealthyPercent), 0, 100)
+      : null;
     const heapPercent = resolveHeapPercent(device);
     const psramPercent = resolvePsramPercent(device);
-    const hasMetrics = device.online && (
-      typeof device.loopLoadPercent === "number" ||
+    const chipTemperatureAvailable = typeof device.chipTemperatureCelsius === "number" && Number.isFinite(device.chipTemperatureCelsius);
+    const hasMetrics =
+      healthPercent != null ||
       heapPercent != null ||
-      psramPercent != null);
+      psramPercent != null ||
+      chipTemperatureAvailable;
 
     if (!hasMetrics) {
       $("m-ph").textContent = device.online
@@ -407,16 +459,36 @@
         : "Offline: sem telemetria em tempo real no momento.";
       $("m-ph").style.display = "";
       $("m-grid").style.display = "none";
+      $("m-health").textContent = "-";
+      $("m-health-s").textContent = "Saudavel: loop estavel";
+      $("m-heap").textContent = "-";
+      $("m-psram").textContent = "-";
+      $("m-temp").textContent = "-";
+      $("m-temp-unit").textContent = "";
+      $("m-temp-s").textContent = "Sensor interno indisponivel";
+      $("m-heap-s").textContent = "Frag. de memoria -";
+      $("m-psram-s").textContent = "PSRAM indisponivel";
+      setHealthVisualState(null);
+      updateProgressBar("m-health-bar", 0);
+      updateProgressBar("m-heap-bar", 0);
+      updateProgressBar("m-psram-bar", 0);
     }
     else {
       $("m-ph").style.display = "none";
       $("m-grid").style.display = "grid";
-      $("m-loop").textContent = fmtPercent(device.loopLoadPercent);
+      $("m-health").textContent = healthPercent != null ? String(healthPercent) : "-";
       $("m-heap").textContent = heapPercent != null ? String(heapPercent) : "-";
       $("m-psram").textContent = psramPercent != null ? String(psramPercent) : "-";
+      $("m-temp").textContent = formatTemperatureCelsius(device.chipTemperatureCelsius);
+      $("m-temp-unit").textContent = chipTemperatureAvailable ? "\u00B0C" : "";
+      $("m-temp-s").textContent = chipTemperatureAvailable
+        ? "Sensor interno do ESP32-S3"
+        : "Sensor interno indisponivel";
       $("m-heap-s").textContent = buildHeapSubLabel(device);
       $("m-psram-s").textContent = buildPsramSubLabel(device);
-      updateProgressBar("m-loop-bar", device.loopLoadPercent);
+      const healthState = setHealthVisualState(healthPercent);
+      $("m-health-s").textContent = healthState ? healthState.label : "Saudavel: loop estavel";
+      updateProgressBar("m-health-bar", healthPercent);
       updateProgressBar("m-heap-bar", heapPercent);
       updateProgressBar("m-psram-bar", psramPercent);
     }
@@ -514,6 +586,14 @@
       postHostMessage({ type: "test-led", deviceId: selectedDeviceId });
     };
 
+    const updateFirmwareHandler = () => {
+      if (!selectedDeviceId || !currentDevice || currentDevice.firmwareUpdateSupported !== true || currentDevice.firmwareUpdateAvailable !== true) {
+        return;
+      }
+
+      postHostMessage({ type: "update-firmware", deviceId: selectedDeviceId });
+    };
+
     const removeHandler = () => {
       if (!selectedDeviceId) {
         return;
@@ -522,6 +602,7 @@
       postHostMessage({ type: "remove-device", deviceId: selectedDeviceId });
     };
 
+    $("btn-fw").addEventListener("click", updateFirmwareHandler);
     $("btn-led").addEventListener("click", ledHandler);
     $("btn-rm").addEventListener("click", removeHandler);
 

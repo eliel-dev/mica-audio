@@ -500,7 +500,9 @@ public sealed partial class DeviceServerHost
             telemetry.BoardModel,
             telemetry.PanelType,
             telemetry.UptimeSeconds,
+            telemetry.LoopHealthyPercent,
             telemetry.LoopLoadPercent,
+            telemetry.ChipTemperatureCelsius,
             telemetry.FreeHeapBytes,
             telemetry.LargestHeapBlockBytes,
             telemetry.PsramAvailable,
@@ -688,6 +690,7 @@ public sealed partial class DeviceServerHost
             DeviceCommandType.ActivateApp => "activate_app",
             DeviceCommandType.SetAppConfig => "set_app_config",
             DeviceCommandType.SetBrightness => "set_brightness",
+            DeviceCommandType.UpdateFirmware => "update_firmware",
             _ => "unknown",
         };
     }

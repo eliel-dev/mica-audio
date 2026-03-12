@@ -160,6 +160,8 @@ public sealed partial class DeviceServerHost
             psramAvailable = true;
         }
 
+        var firmwareUpdateState = ResolveFirmwareUpdateState(snapshot);
+
         return new DeviceDashboardDto
         {
             DeviceId = snapshot.DeviceId,
@@ -173,10 +175,13 @@ public sealed partial class DeviceServerHost
             TestLedAvailable = snapshot.TestLedAvailable,
             TestLedEnabled = snapshot.TestLedEnabled,
             TestLedDuty = snapshot.TestLedDuty,
+            FirmwareVersion = snapshot.FirmwareVersion,
             BrightnessCap = snapshot.BrightnessCap,
             BrightnessRequested = snapshot.BrightnessRequested,
             BrightnessApplied = snapshot.BrightnessApplied,
+            LoopHealthyPercent = snapshot.LoopHealthyPercent,
             LoopLoadPercent = snapshot.LoopLoadPercent,
+            ChipTemperatureCelsius = snapshot.ChipTemperatureCelsius,
             HeapFreeBytes = snapshot.FreeHeapBytes,
             HeapLargestBlockBytes = snapshot.LargestHeapBlockBytes,
             HeapTotalBytes = snapshot.HeapTotalBytes,
@@ -193,7 +198,25 @@ public sealed partial class DeviceServerHost
             StreamInvalidFrameCount = snapshot.StreamInvalidFrameCount,
             StreamLastSequence = snapshot.StreamLastSequence,
             Hub75Fps = ComputeHub75Fps(snapshot.DeviceId, snapshot.StreamFramesApplied),
+            LatestFirmwareVersion = firmwareUpdateState.LatestFirmwareVersion,
+            FirmwareUpdateSupported = firmwareUpdateState.Supported,
+            FirmwareUpdateAvailable = firmwareUpdateState.Available,
         };
+    }
+
+    private FirmwareUpdateState ResolveFirmwareUpdateState(DeviceSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (!TryResolveOfficialFirmware(snapshot, out var package, out _)
+            || !string.Equals(package.ControlPlane, "mqtt", StringComparison.OrdinalIgnoreCase))
+        {
+            return new FirmwareUpdateState(null, Supported: false, Available: false);
+        }
+
+        return new FirmwareUpdateState(
+            package.FirmwareVersion,
+            Supported: true,
+            Available: !string.Equals(snapshot.FirmwareVersion, package.FirmwareVersion, StringComparison.OrdinalIgnoreCase));
     }
 
     private static int? ComputePercent(long? freeBytes, long? totalBytes)
@@ -308,6 +331,8 @@ public sealed partial class DeviceServerHost
 
     private sealed record DashboardFpsSample(uint? LastFramesApplied, DateTimeOffset LastSampleUtc, int? CurrentFps);
 
+    private sealed record FirmwareUpdateState(string? LatestFirmwareVersion, bool Supported, bool Available);
+
     private sealed class DeviceDashboardDto
     {
         public string DeviceId { get; init; } = string.Empty;
@@ -332,13 +357,19 @@ public sealed partial class DeviceServerHost
 
         public int? TestLedDuty { get; init; }
 
+        public string? FirmwareVersion { get; init; }
+
         public int? BrightnessCap { get; init; }
 
         public int? BrightnessRequested { get; init; }
 
         public int? BrightnessApplied { get; init; }
 
+        public int? LoopHealthyPercent { get; init; }
+
         public int? LoopLoadPercent { get; init; }
+
+        public double? ChipTemperatureCelsius { get; init; }
 
         public long? HeapFreeBytes { get; init; }
 
@@ -371,5 +402,11 @@ public sealed partial class DeviceServerHost
         public uint? StreamLastSequence { get; init; }
 
         public int? Hub75Fps { get; init; }
+
+        public string? LatestFirmwareVersion { get; init; }
+
+        public bool FirmwareUpdateAvailable { get; init; }
+
+        public bool FirmwareUpdateSupported { get; init; }
     }
 }

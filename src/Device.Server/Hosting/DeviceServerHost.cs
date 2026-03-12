@@ -39,6 +39,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     private readonly object gate = new();
     private readonly TimeProvider timeProvider;
+    private readonly IDeviceOfficialFirmwareCatalog? firmwareCatalog;
     private readonly DeviceSessionRegistry devices = new();
     private readonly DevicePairingState pairingState = new();
     private readonly PendingTrackedCommandStore pendingTrackedCommands = new();
@@ -49,14 +50,25 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private CancellationTokenSource? appCts;
 
     public DeviceServerHost()
-        : this(TimeProvider.System)
+        : this(TimeProvider.System, firmwareCatalog: null)
     {
     }
 
     public DeviceServerHost(TimeProvider timeProvider)
+        : this(timeProvider, firmwareCatalog: null)
+    {
+    }
+
+    public DeviceServerHost(IDeviceOfficialFirmwareCatalog? firmwareCatalog)
+        : this(TimeProvider.System, firmwareCatalog)
+    {
+    }
+
+    public DeviceServerHost(TimeProvider timeProvider, IDeviceOfficialFirmwareCatalog? firmwareCatalog)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
+        this.firmwareCatalog = firmwareCatalog;
     }
 
     public event EventHandler? DevicesChanged;

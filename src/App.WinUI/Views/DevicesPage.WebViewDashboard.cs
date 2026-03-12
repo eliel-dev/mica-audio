@@ -164,6 +164,10 @@ public sealed partial class DevicesPage
             case "remove-device":
                 await ExecuteRemoveDeviceAsync(message.DeviceId).ConfigureAwait(true);
                 break;
+
+            case "update-firmware":
+                await ExecuteUpdateFirmwareAsync(message.DeviceId).ConfigureAwait(true);
+                break;
         }
     }
 

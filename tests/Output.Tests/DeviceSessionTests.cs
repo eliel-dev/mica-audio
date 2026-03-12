@@ -41,7 +41,9 @@ public class DeviceSessionTests
             boardModel: "esp32s3_devkitc1",
             panelType: "hub75",
             uptimeSeconds: 321,
+            loopHealthyPercent: 94,
             loopLoadPercent: 40,
+            chipTemperatureCelsius: 46.5d,
             freeHeapBytes: 4096,
             largestHeapBlockBytes: 2048,
             psramAvailable: true,
@@ -54,6 +56,8 @@ public class DeviceSessionTests
         Assert.Equal(authUtc, session.Record.LastAuthUtc);
         Assert.Equal("192.168.0.10", session.Record.LastKnownIp);
         Assert.Equal(321, session.Record.UptimeSeconds);
+        Assert.Equal(94, session.Record.LoopHealthyPercent);
+        Assert.Equal(46.5d, session.Record.ChipTemperatureCelsius);
         Assert.Equal("Visualizer", session.Record.ActiveAppName);
         Assert.Equal("hub75", session.Record.PanelType);
     }

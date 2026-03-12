@@ -1,3 +1,4 @@
+/* DOCS: docs/wiki/reference/device-observability-dashboard.md */
 :root {
   --bg-gradient: linear-gradient(135deg, #2a2c30 0%, #17181a 100%);
   --surface-mica: rgba(255, 255, 255, 0.03);
@@ -122,6 +123,36 @@ input {
   gap: 8px;
 }
 
+.firmware-row {
+  display: grid;
+  gap: 8px;
+}
+
+.firmware-pill {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--stroke);
+  background: var(--surface-layer-alt);
+}
+
+.firmware-pill-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.firmware-pill strong {
+  display: block;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
 .section {
   padding: 16px 24px;
   border-top: 1px solid var(--stroke);
@@ -150,6 +181,7 @@ input {
   border: 1px solid var(--stroke);
   border-top-color: var(--stroke-top);
   border-radius: var(--card-radius);
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
 .brightness-card {
@@ -322,6 +354,16 @@ input {
   pointer-events: none;
 }
 
+.tbar-btn.accent {
+  background: rgba(96, 205, 255, 0.12);
+  border-color: rgba(96, 205, 255, 0.34);
+  color: var(--accent);
+}
+
+.tbar-btn.accent:hover {
+  background: rgba(96, 205, 255, 0.18);
+}
+
 .tbar-btn.danger {
   background: rgba(196, 43, 28, 0.2);
   border-color: rgba(196, 43, 28, 0.4);
@@ -343,7 +385,7 @@ input {
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -389,16 +431,50 @@ input {
   transition: width 180ms ease;
 }
 
-.metric-progress-fill.cpu {
-  background: #f6b000;
-}
-
 .metric-progress-fill.heap {
   background: var(--green);
 }
 
 .metric-progress-fill.psram {
   background: var(--purple);
+}
+
+.metric-progress-fill.health-ok {
+  background: var(--green);
+}
+
+.metric-progress-fill.health-warn {
+  background: var(--yellow);
+}
+
+.metric-progress-fill.health-bad {
+  background: #d94b4b;
+}
+
+.metric-card.health-ok {
+  border-color: rgba(78, 201, 78, 0.28);
+  background: linear-gradient(180deg, rgba(78, 201, 78, 0.12), var(--surface-layer));
+  box-shadow: inset 0 1px 0 rgba(78, 201, 78, 0.18);
+}
+
+.metric-card.health-warn {
+  border-color: rgba(246, 176, 0, 0.28);
+  background: linear-gradient(180deg, rgba(246, 176, 0, 0.12), var(--surface-layer));
+  box-shadow: inset 0 1px 0 rgba(246, 176, 0, 0.18);
+}
+
+.metric-card.health-bad {
+  border-color: rgba(217, 75, 75, 0.32);
+  background: linear-gradient(180deg, rgba(217, 75, 75, 0.14), var(--surface-layer));
+  box-shadow: inset 0 1px 0 rgba(217, 75, 75, 0.18);
+}
+
+.temperature-card .metric-value {
+  margin-bottom: 8px;
+}
+
+.temperature-card .metric-value small {
+  margin-left: 2px;
 }
 
 .metric-sub {
@@ -475,6 +551,12 @@ input {
 
   50% {
     opacity: 0.35;
+  }
+}
+
+@media (max-width: 1200px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

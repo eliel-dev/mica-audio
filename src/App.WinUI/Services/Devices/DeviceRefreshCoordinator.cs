@@ -123,7 +123,9 @@ internal sealed class DeviceRefreshCoordinator
             LastKnownIp = source.LastKnownIp,
             LastKnownRssi = source.LastKnownRssi,
             UptimeSeconds = source.UptimeSeconds,
+            LoopHealthyPercent = source.LoopHealthyPercent,
             LoopLoadPercent = source.LoopLoadPercent,
+            ChipTemperatureCelsius = source.ChipTemperatureCelsius,
             FreeHeapBytes = source.FreeHeapBytes,
             LargestHeapBlockBytes = source.LargestHeapBlockBytes,
             PsramAvailable = source.PsramAvailable,
@@ -183,7 +185,9 @@ internal sealed class DeviceRefreshCoordinator
                 || !string.Equals(a.LastKnownIp, b.LastKnownIp, StringComparison.OrdinalIgnoreCase)
                 || a.LastKnownRssi != b.LastKnownRssi
                 || a.UptimeSeconds != b.UptimeSeconds
+                || a.LoopHealthyPercent != b.LoopHealthyPercent
                 || a.LoopLoadPercent != b.LoopLoadPercent
+                || a.ChipTemperatureCelsius != b.ChipTemperatureCelsius
                 || a.FreeHeapBytes != b.FreeHeapBytes
                 || a.LargestHeapBlockBytes != b.LargestHeapBlockBytes
                 || a.PsramAvailable != b.PsramAvailable

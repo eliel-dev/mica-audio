@@ -3,10 +3,15 @@
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <PubSubClient.h>
+#include <Update.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
+#include <esp_err.h>
 #include <esp_heap_caps.h>
+#include <esp_ota_ops.h>
+#include <mbedtls/sha256.h>
+#include <math.h>
 #include <soc/soc_caps.h>
 #include "firmware_version.h"
 
@@ -38,9 +43,12 @@ constexpr unsigned long kWsAutoReconnectIntervalMs = 2000;
 constexpr unsigned long kWsFlapReportWindowMs = 60000;
 constexpr uint8_t kWsFlapReportThreshold = 3;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
+constexpr unsigned long kLoopHealthWindowMs = 5000;
 constexpr unsigned long kSerialHelloIntervalMs = 3000;
 constexpr size_t kSerialInputMaxLength = 1024;
 constexpr unsigned long kWifiConnectAttemptTimeoutMs = 20000;
+constexpr uint32_t kHealthyLoopThresholdUs = 25000;
+constexpr unsigned long kOtaSelfTestWindowMs = 10000;
 constexpr uint16_t kDefaultMqttPort = 5273;
 constexpr const char* kDefaultMqttRootTopic = "mica/v1/devices";
 constexpr uint16_t kMqttPacketBufferBytes = 32768;
@@ -89,6 +97,9 @@ constexpr const char* kWifiStateConnected = "connected";
 constexpr const char* kWifiStatePortal = "portal";
 constexpr const char* kWifiStateDisconnected = "disconnected";
 constexpr const char* kSerialProvisioningProtocol = "mica.serial.v1";
+constexpr const char* kPrefsOtaCommandId = "ota_cmd";
+constexpr const char* kPrefsOtaSourceVersion = "ota_src";
+constexpr const char* kPrefsOtaTargetVersion = "ota_tgt";
 
 #if defined(MICA_SECURITY_PROFILE_RELEASE)
 constexpr const char* kSecurityProfile = "release";
@@ -132,9 +143,11 @@ uint8_t gTestLedPulseDuty = 0;
 bool gMatrixReady = false;
 uint8_t gAppliedBrightness = 255;
 bool gFrameModeActive = false;
-uint64_t gLoopWorkTimeUs = 0;
 unsigned long gLoopWindowStartMs = 0;
-uint8_t gLoopLoadPercent = 0;
+uint32_t gLoopWindowIterationCount = 0;
+uint32_t gLoopWindowHealthyCount = 0;
+uint8_t gLoopHealthyPercent = 0;
+bool gLoopHealthyPercentReady = false;
 uint32_t gTelemetrySequence = 0;
 uint32_t gDeviceLogSequence = 0;
 bool gHasStreamLastSequence = false;
@@ -152,10 +165,47 @@ unsigned long gLastSerialHelloMs = 0;
 unsigned long gWsFlapWindowStartMs = 0;
 uint16_t gWsConnectCountInWindow = 0;
 uint16_t gWsDisconnectCountInWindow = 0;
+String gPendingOtaCommandId;
+String gPendingOtaSourceVersion;
+String gPendingOtaTargetVersion;
+String gPendingOtaFailureCode;
+String gPendingOtaFailureMessage;
+unsigned long gPendingOtaValidationStartedMs = 0;
+bool gPendingOtaPendingVerifyAnnounced = false;
+
+enum class PendingOtaBootState : uint8_t {
+  None = 0,
+  PendingVerify = 1,
+  ValidatedPendingReport = 2,
+  RolledBackPendingReport = 3,
+  FailedPendingReport = 4,
+};
+
+PendingOtaBootState gPendingOtaBootState = PendingOtaBootState::None;
+
+struct FirmwareReleaseInfo;
 
 void connectWebSocket();
 void connectMqtt();
 void handleControlCommandMessage(const JsonDocument& control);
+void sendCommandProgress(
+    const String& commandId,
+    uint8_t progressPercent,
+    const char* stage,
+    const String& message,
+    int successFlag = -1);
+bool hasPendingOtaContext();
+bool tryGetRunningOtaState(esp_ota_img_states_t& otaState);
+bool isRunningAppPendingVerify();
+void loadPendingOtaContext();
+void clearPendingOtaContext();
+bool persistPendingOtaContext(const String& commandId, const String& sourceVersion, const String& targetVersion);
+void initializePendingOtaBootState();
+void processPendingOtaSafeUpdate();
+void publishPendingOtaReportIfNeeded();
+void requestPendingOtaRollbackAndReboot(const char* errorCode, const String& errorMessage);
+bool tryFetchLatestFirmwareRelease(FirmwareReleaseInfo& info, const String& requestedVersion, String& errorCode, String& errorMessage);
+bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId, String& errorCode, String& errorMessage);
 
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
@@ -166,6 +216,124 @@ struct RgbColor {
   uint8_t g;
   uint8_t b;
 };
+
+struct FirmwareReleaseInfo {
+  String firmwareVersion;
+  String boardModel;
+  String panelType;
+  String profile;
+  String controlPlane;
+  String sha256;
+  uint32_t fileSizeBytes = 0;
+  String downloadPath;
+};
+
+bool hasPendingOtaContext() {
+  return gPendingOtaCommandId.length() > 0
+      && gPendingOtaSourceVersion.length() > 0
+      && gPendingOtaTargetVersion.length() > 0;
+}
+
+bool tryGetRunningOtaState(esp_ota_img_states_t& otaState) {
+  const esp_partition_t* runningPartition = esp_ota_get_running_partition();
+  if (runningPartition == nullptr) {
+    return false;
+  }
+
+  return esp_ota_get_state_partition(runningPartition, &otaState) == ESP_OK;
+}
+
+bool isRunningAppPendingVerify() {
+  esp_ota_img_states_t otaState = ESP_OTA_IMG_UNDEFINED;
+  return tryGetRunningOtaState(otaState) && otaState == ESP_OTA_IMG_PENDING_VERIFY;
+}
+
+void loadPendingOtaContext() {
+  gPendingOtaCommandId = gPrefs.getString(kPrefsOtaCommandId, "");
+  gPendingOtaSourceVersion = gPrefs.getString(kPrefsOtaSourceVersion, "");
+  gPendingOtaTargetVersion = gPrefs.getString(kPrefsOtaTargetVersion, "");
+  gPendingOtaFailureCode = "";
+  gPendingOtaFailureMessage = "";
+  gPendingOtaValidationStartedMs = 0;
+  gPendingOtaPendingVerifyAnnounced = false;
+  gPendingOtaBootState = PendingOtaBootState::None;
+}
+
+void clearPendingOtaContext() {
+  gPrefs.remove(kPrefsOtaCommandId);
+  gPrefs.remove(kPrefsOtaSourceVersion);
+  gPrefs.remove(kPrefsOtaTargetVersion);
+
+  gPendingOtaCommandId = "";
+  gPendingOtaSourceVersion = "";
+  gPendingOtaTargetVersion = "";
+  gPendingOtaFailureCode = "";
+  gPendingOtaFailureMessage = "";
+  gPendingOtaValidationStartedMs = 0;
+  gPendingOtaPendingVerifyAnnounced = false;
+  gPendingOtaBootState = PendingOtaBootState::None;
+}
+
+bool persistPendingOtaContext(const String& commandId, const String& sourceVersion, const String& targetVersion) {
+  if (commandId.isEmpty() || sourceVersion.isEmpty() || targetVersion.isEmpty()) {
+    return false;
+  }
+
+  const size_t commandWritten = gPrefs.putString(kPrefsOtaCommandId, commandId);
+  const size_t sourceWritten = gPrefs.putString(kPrefsOtaSourceVersion, sourceVersion);
+  const size_t targetWritten = gPrefs.putString(kPrefsOtaTargetVersion, targetVersion);
+  if (commandWritten == 0u || sourceWritten == 0u || targetWritten == 0u) {
+    return false;
+  }
+
+  gPendingOtaCommandId = commandId;
+  gPendingOtaSourceVersion = sourceVersion;
+  gPendingOtaTargetVersion = targetVersion;
+  gPendingOtaFailureCode = "";
+  gPendingOtaFailureMessage = "";
+  gPendingOtaValidationStartedMs = 0;
+  gPendingOtaPendingVerifyAnnounced = false;
+  gPendingOtaBootState = PendingOtaBootState::None;
+  return true;
+}
+
+void initializePendingOtaBootState() {
+  if (!hasPendingOtaContext()) {
+    return;
+  }
+
+  if (String(kFirmwareVersion).equalsIgnoreCase(gPendingOtaTargetVersion)) {
+    esp_ota_img_states_t otaState = ESP_OTA_IMG_UNDEFINED;
+    if (tryGetRunningOtaState(otaState) && otaState == ESP_OTA_IMG_PENDING_VERIFY) {
+      gPendingOtaBootState = PendingOtaBootState::PendingVerify;
+      gPendingOtaValidationStartedMs = millis();
+      Serial.printf("[ota] safe update pendente de validacao. target=%s\n", gPendingOtaTargetVersion.c_str());
+      return;
+    }
+
+    gPendingOtaBootState = PendingOtaBootState::ValidatedPendingReport;
+    Serial.printf("[ota] firmware OTA ativo e aguardando confirmacao tracked. target=%s\n", gPendingOtaTargetVersion.c_str());
+    return;
+  }
+
+  if (String(kFirmwareVersion).equalsIgnoreCase(gPendingOtaSourceVersion)) {
+    gPendingOtaBootState = PendingOtaBootState::RolledBackPendingReport;
+    gPendingOtaFailureCode = "ota_rolled_back";
+    gPendingOtaFailureMessage = String("Rollback automatico concluido; firmware atual voltou para ") + kFirmwareVersion + ".";
+    Serial.printf("[ota] rollback automatico detectado. source=%s target=%s\n",
+        gPendingOtaSourceVersion.c_str(),
+        gPendingOtaTargetVersion.c_str());
+    return;
+  }
+
+  gPendingOtaBootState = PendingOtaBootState::FailedPendingReport;
+  gPendingOtaFailureCode = "ota_context_mismatch";
+  gPendingOtaFailureMessage = String("Contexto OTA inconsistente para firmware atual ") + kFirmwareVersion + ".";
+  Serial.printf("[ota] contexto OTA inconsistente. current=%s source=%s target=%s\n",
+      kFirmwareVersion,
+      gPendingOtaSourceVersion.c_str(),
+      gPendingOtaTargetVersion.c_str());
+}
 
 RgbColor rainbowColorForColumn(uint16_t column, uint16_t columnCount) {
   if (columnCount <= 1) {
@@ -613,6 +781,327 @@ bool postJsonWithAuth(const String& path, JsonDocument& doc) {
   return code >= 200 && code < 300;
 }
 
+String normalizeLowerHex(const String& value) {
+  String normalized = value;
+  normalized.trim();
+  normalized.toLowerCase();
+  return normalized;
+}
+
+String bytesToLowerHex(const uint8_t* bytes, size_t length) {
+  const char* hex = "0123456789abcdef";
+  String result;
+  result.reserve(length * 2u);
+  for (size_t index = 0; index < length; index++) {
+    const uint8_t value = bytes[index];
+    result += hex[(value >> 4) & 0x0Fu];
+    result += hex[value & 0x0Fu];
+  }
+
+  return result;
+}
+
+bool beginHttpWithDeviceAuth(HTTPClient& http, const String& path) {
+  if (gDeviceId.isEmpty() || gToken.isEmpty() || gServerHost.isEmpty()) {
+    return false;
+  }
+
+  String normalizedPath = path;
+  if (!normalizedPath.startsWith("/")) {
+    normalizedPath = "/" + normalizedPath;
+  }
+
+  String url = "http://" + gServerHost + ":" + String(gServerPort) + normalizedPath;
+  if (!http.begin(url)) {
+    return false;
+  }
+
+  http.setConnectTimeout(5000);
+  http.setTimeout(15000);
+  http.addHeader("X-Device-Id", gDeviceId);
+  http.addHeader("X-Device-Token", gToken);
+  return true;
+}
+
+bool tryParseFirmwareReleaseInfo(const JsonDocument& document, FirmwareReleaseInfo& info) {
+  const char* firmwareVersion = document["firmwareVersion"] | "";
+  const char* boardModel = document["boardModel"] | "";
+  const char* panelType = document["panelType"] | "";
+  const char* profile = document["profile"] | "";
+  const char* controlPlane = document["controlPlane"] | "";
+  const char* sha256 = document["sha256"] | "";
+  const char* downloadPath = document["downloadPath"] | "";
+  const uint32_t fileSizeBytes = document["fileSizeBytes"] | 0u;
+
+  if (firmwareVersion[0] == '\0'
+      || boardModel[0] == '\0'
+      || panelType[0] == '\0'
+      || profile[0] == '\0'
+      || controlPlane[0] == '\0'
+      || sha256[0] == '\0'
+      || downloadPath[0] == '\0'
+      || fileSizeBytes == 0u) {
+    return false;
+  }
+
+  info.firmwareVersion = firmwareVersion;
+  info.boardModel = boardModel;
+  info.panelType = panelType;
+  info.profile = profile;
+  info.controlPlane = controlPlane;
+  info.sha256 = normalizeLowerHex(sha256);
+  info.fileSizeBytes = fileSizeBytes;
+  info.downloadPath = downloadPath;
+  return true;
+}
+
+bool validateFirmwareReleaseInfo(const FirmwareReleaseInfo& info, const String& requestedVersion, String& errorCode, String& errorMessage) {
+  if (!requestedVersion.isEmpty() && !info.firmwareVersion.equalsIgnoreCase(requestedVersion)) {
+    errorCode = "firmware_version_mismatch";
+    errorMessage = "Servidor retornou versao diferente da solicitada para OTA.";
+    return false;
+  }
+
+  if (!info.boardModel.equalsIgnoreCase(kBoardModel)
+      || !info.panelType.equalsIgnoreCase(kPanelType)
+      || !info.profile.equalsIgnoreCase(kFirmwareProfile)) {
+    errorCode = "firmware_incompatible";
+    errorMessage = "Firmware oficial nao corresponde ao hardware/perfil deste dispositivo.";
+    return false;
+  }
+
+  if (!info.controlPlane.equalsIgnoreCase("mqtt")) {
+    errorCode = "firmware_control_plane_invalid";
+    errorMessage = "Firmware oficial incompativel com o control plane atual.";
+    return false;
+  }
+
+  if (info.sha256.length() != 64) {
+    errorCode = "firmware_sha_invalid";
+    errorMessage = "Manifesto de firmware sem hash SHA-256 valido.";
+    return false;
+  }
+
+  if (info.fileSizeBytes == 0u) {
+    errorCode = "firmware_size_invalid";
+    errorMessage = "Manifesto de firmware sem tamanho valido.";
+    return false;
+  }
+
+  return true;
+}
+
+bool tryFetchLatestFirmwareRelease(FirmwareReleaseInfo& info, const String& requestedVersion, String& errorCode, String& errorMessage) {
+  errorCode = "";
+  errorMessage = "";
+
+  HTTPClient http;
+  if (!beginHttpWithDeviceAuth(http, "/api/v1/device/firmware/latest")) {
+    errorCode = "firmware_http_begin_failed";
+    errorMessage = "Nao foi possivel consultar o catalogo oficial de firmware.";
+    return false;
+  }
+
+  int code = http.GET();
+  if (code == HTTP_CODE_NOT_FOUND) {
+    errorCode = "firmware_not_found";
+    errorMessage = "Nao existe pacote oficial de firmware para este dispositivo.";
+    http.end();
+    return false;
+  }
+
+  if (code < 200 || code >= 300) {
+    errorCode = "firmware_http_error";
+    errorMessage = String("Falha ao consultar firmware oficial. HTTP ") + code + ".";
+    http.end();
+    return false;
+  }
+
+  JsonDocument response;
+  if (deserializeJson(response, http.getString()) != DeserializationError::Ok) {
+    errorCode = "firmware_manifest_invalid";
+    errorMessage = "Resposta de firmware oficial invalida.";
+    http.end();
+    return false;
+  }
+  http.end();
+
+  if (!tryParseFirmwareReleaseInfo(response, info)) {
+    errorCode = "firmware_manifest_invalid";
+    errorMessage = "Resposta de firmware oficial incompleta.";
+    return false;
+  }
+
+  return validateFirmwareReleaseInfo(info, requestedVersion, errorCode, errorMessage);
+}
+
+bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId, String& errorCode, String& errorMessage) {
+  errorCode = "";
+  errorMessage = "";
+
+  sendCommandProgress(commandId, 35, "metadata", "Firmware oficial validado.");
+  if (gWs.isConnected()) {
+    gWs.disconnect();
+  }
+
+  if (gMatrixReady) {
+    clearMatrix();
+    commitMatrixFrame();
+  }
+
+  HTTPClient http;
+  if (!beginHttpWithDeviceAuth(http, info.downloadPath)) {
+    errorCode = "firmware_download_begin_failed";
+    errorMessage = "Nao foi possivel iniciar o download OTA.";
+    return false;
+  }
+
+  int code = http.GET();
+  if (code < 200 || code >= 300) {
+    errorCode = "firmware_download_http_error";
+    errorMessage = String("Falha ao baixar firmware oficial. HTTP ") + code + ".";
+    http.end();
+    return false;
+  }
+
+  const int contentLength = http.getSize();
+  if (contentLength <= 0 || static_cast<uint32_t>(contentLength) != info.fileSizeBytes) {
+    errorCode = "firmware_download_size_mismatch";
+    errorMessage = "Download OTA retornou tamanho diferente do manifesto oficial.";
+    http.end();
+    return false;
+  }
+
+  if (!Update.begin(info.fileSizeBytes)) {
+    errorCode = "ota_begin_failed";
+    errorMessage = String("Nao foi possivel reservar espaco OTA. code=") + Update.getError();
+    http.end();
+    return false;
+  }
+
+  WiFiClient* stream = http.getStreamPtr();
+  if (stream == nullptr) {
+    Update.abort();
+    errorCode = "firmware_stream_unavailable";
+    errorMessage = "Fluxo HTTP indisponivel para OTA.";
+    http.end();
+    return false;
+  }
+
+  mbedtls_sha256_context shaContext;
+  mbedtls_sha256_init(&shaContext);
+  if (mbedtls_sha256_starts_ret(&shaContext, 0) != 0) {
+    Update.abort();
+    mbedtls_sha256_free(&shaContext);
+    errorCode = "firmware_sha_init_failed";
+    errorMessage = "Falha ao inicializar validacao SHA-256 da OTA.";
+    http.end();
+    return false;
+  }
+
+  uint8_t buffer[4096];
+  uint32_t totalRead = 0u;
+  unsigned long lastDataMs = millis();
+  uint8_t lastProgress = 35u;
+
+  while (totalRead < info.fileSizeBytes) {
+    const size_t availableBytes = stream->available();
+    if (availableBytes == 0u) {
+      if (!http.connected()) {
+        break;
+      }
+
+      if (millis() - lastDataMs > 15000u) {
+        Update.abort();
+        mbedtls_sha256_free(&shaContext);
+        errorCode = "firmware_download_timeout";
+        errorMessage = "Download OTA interrompido por timeout.";
+        http.end();
+        return false;
+      }
+
+      delay(1);
+      continue;
+    }
+
+    const size_t chunkSize = availableBytes < sizeof(buffer) ? availableBytes : sizeof(buffer);
+    const int readCount = stream->readBytes(buffer, chunkSize);
+    if (readCount <= 0) {
+      delay(1);
+      continue;
+    }
+
+    lastDataMs = millis();
+    if (mbedtls_sha256_update_ret(&shaContext, buffer, static_cast<size_t>(readCount)) != 0) {
+      Update.abort();
+      mbedtls_sha256_free(&shaContext);
+      errorCode = "firmware_sha_update_failed";
+      errorMessage = "Falha ao atualizar hash SHA-256 durante OTA.";
+      http.end();
+      return false;
+    }
+
+    if (Update.write(buffer, static_cast<size_t>(readCount)) != static_cast<size_t>(readCount)) {
+      Update.abort();
+      mbedtls_sha256_free(&shaContext);
+      errorCode = "ota_write_failed";
+      errorMessage = String("Falha ao gravar bloco OTA. code=") + Update.getError();
+      http.end();
+      return false;
+    }
+
+    totalRead += static_cast<uint32_t>(readCount);
+    const uint8_t progress = static_cast<uint8_t>(35u + ((static_cast<uint64_t>(totalRead) * 55u) / info.fileSizeBytes));
+    if (progress >= static_cast<uint8_t>(lastProgress + 5u) || totalRead >= info.fileSizeBytes) {
+      lastProgress = progress;
+      sendCommandProgress(commandId, progress > 90u ? 90u : progress, "downloading", "Baixando e gravando firmware...");
+    }
+  }
+
+  http.end();
+
+  if (totalRead != info.fileSizeBytes) {
+    Update.abort();
+    mbedtls_sha256_free(&shaContext);
+    errorCode = "firmware_download_incomplete";
+    errorMessage = "Download OTA terminou antes de receber todos os bytes esperados.";
+    return false;
+  }
+
+  uint8_t shaBytes[32];
+  if (mbedtls_sha256_finish_ret(&shaContext, shaBytes) != 0) {
+    Update.abort();
+    mbedtls_sha256_free(&shaContext);
+    errorCode = "firmware_sha_finish_failed";
+    errorMessage = "Falha ao finalizar hash SHA-256 da OTA.";
+    return false;
+  }
+
+  mbedtls_sha256_free(&shaContext);
+  const String computedSha256 = bytesToLowerHex(shaBytes, sizeof(shaBytes));
+  if (!computedSha256.equalsIgnoreCase(info.sha256)) {
+    Update.abort();
+    errorCode = "firmware_sha_mismatch";
+    errorMessage = "Hash SHA-256 divergente no firmware baixado.";
+    return false;
+  }
+
+  sendCommandProgress(commandId, 92, "flashing", "Validando e finalizando imagem OTA...");
+  if (!Update.end()) {
+    errorCode = "ota_end_failed";
+    errorMessage = String("Falha ao finalizar OTA. code=") + Update.getError();
+    return false;
+  }
+
+  if (!Update.isFinished()) {
+    errorCode = "ota_incomplete";
+    errorMessage = "OTA finalizada sem imagem completa.";
+    return false;
+  }
+
+  return true;
+}
+
 void normalizeMqttConfig() {
   if (gMqttHost.isEmpty()) {
     gMqttHost = gServerHost;
@@ -745,7 +1234,7 @@ void sendCommandProgress(
     uint8_t progressPercent,
     const char* stage,
     const String& message,
-    int successFlag = -1) {
+    int successFlag) {
   if (commandId.isEmpty() || !gMqtt.connected()) {
     return;
   }
@@ -801,6 +1290,111 @@ void postCommandAck(
   postJsonWithAuth("/api/v1/device/command-ack", ack);
 }
 
+void publishPendingOtaReportIfNeeded() {
+  if (!gMqtt.connected() || !hasPendingOtaContext()) {
+    return;
+  }
+
+  switch (gPendingOtaBootState) {
+    case PendingOtaBootState::PendingVerify:
+      if (!gPendingOtaPendingVerifyAnnounced) {
+        const String message = String("Primeiro boot apos OTA em validacao segura por ")
+            + (kOtaSelfTestWindowMs / 1000UL)
+            + " s.";
+        sendCommandProgress(gPendingOtaCommandId, 97, "pending-verify", message);
+        (void)publishDeviceLog("info", "command", "pending-verify", message, false);
+        gPendingOtaPendingVerifyAnnounced = true;
+      }
+      return;
+
+    case PendingOtaBootState::ValidatedPendingReport:
+      sendCommandProgress(
+          gPendingOtaCommandId,
+          100,
+          "validated",
+          String("Firmware validado com safe update mode: ") + kFirmwareVersion + ".",
+          1);
+      clearPendingOtaContext();
+      return;
+
+    case PendingOtaBootState::RolledBackPendingReport:
+      sendCommandProgress(
+          gPendingOtaCommandId,
+          100,
+          "rolled-back",
+          gPendingOtaFailureMessage.length() > 0
+              ? gPendingOtaFailureMessage
+              : String("Rollback automatico apos OTA. Firmware atual: ") + kFirmwareVersion + ".",
+          0);
+      clearPendingOtaContext();
+      return;
+
+    case PendingOtaBootState::FailedPendingReport:
+      sendCommandProgress(
+          gPendingOtaCommandId,
+          100,
+          "failed",
+          gPendingOtaFailureMessage.length() > 0
+              ? gPendingOtaFailureMessage
+              : "Falha ao concluir safe update mode.",
+          0);
+      clearPendingOtaContext();
+      return;
+
+    case PendingOtaBootState::None:
+    default:
+      return;
+  }
+}
+
+void requestPendingOtaRollbackAndReboot(const char* errorCode, const String& errorMessage) {
+  gPendingOtaFailureCode = (errorCode != nullptr && errorCode[0] != '\0') ? errorCode : "ota_self_test_failed";
+  gPendingOtaFailureMessage = errorMessage;
+  gPendingOtaBootState = PendingOtaBootState::FailedPendingReport;
+
+  Serial.printf("[ota] solicitando rollback: %s (%s)\n",
+      gPendingOtaFailureMessage.c_str(),
+      gPendingOtaFailureCode.c_str());
+  (void)publishDeviceLog("error", "command", gPendingOtaFailureCode.c_str(), gPendingOtaFailureMessage, false);
+
+  const esp_err_t rollbackError = esp_ota_mark_app_invalid_rollback_and_reboot();
+  Serial.printf("[ota] esp_ota_mark_app_invalid_rollback_and_reboot retornou %s\n", esp_err_to_name(rollbackError));
+  delay(200);
+  ESP.restart();
+}
+
+void processPendingOtaSafeUpdate() {
+  if (gPendingOtaBootState == PendingOtaBootState::PendingVerify) {
+    if (gPendingOtaValidationStartedMs == 0u) {
+      gPendingOtaValidationStartedMs = millis();
+    }
+
+    if (millis() - gPendingOtaValidationStartedMs >= kOtaSelfTestWindowMs) {
+      if (!String(kFirmwareVersion).equalsIgnoreCase(gPendingOtaTargetVersion)) {
+        requestPendingOtaRollbackAndReboot(
+            "ota_target_version_mismatch",
+            "Safe update mode detectou firmware diferente da versao alvo apos o reboot.");
+        return;
+      }
+
+      const esp_err_t validationError = esp_ota_mark_app_valid_cancel_rollback();
+      if (validationError != ESP_OK) {
+        requestPendingOtaRollbackAndReboot(
+            "ota_mark_valid_failed",
+            String("Falha ao confirmar a imagem OTA: ") + esp_err_to_name(validationError) + ".");
+        return;
+      }
+
+      gPendingOtaBootState = PendingOtaBootState::ValidatedPendingReport;
+      gPendingOtaPendingVerifyAnnounced = false;
+      gPendingOtaValidationStartedMs = 0u;
+      Serial.printf("[ota] imagem OTA validada com sucesso: %s\n", kFirmwareVersion);
+    }
+  }
+
+  publishPendingOtaReportIfNeeded();
+}
+
 bool trySanitizeLargestFreeBlock(uint32_t freeBytes, size_t largestRawBytes, uint32_t& largestSanitizedBytes) {
   if (freeBytes == 0 || largestRawBytes == 0) {
     return false;
@@ -819,36 +1413,39 @@ bool trySanitizeLargestFreeBlock(uint32_t freeBytes, size_t largestRawBytes, uin
   return true;
 }
 
-inline void accumulateLoopWorkTime(uint64_t& accumulator, uint32_t phaseStartUs) {
-  accumulator += static_cast<uint64_t>(micros() - phaseStartUs);
-}
-
-void updateLoopLoadPercent(uint64_t loopWorkTimeUs) {
-  gLoopWorkTimeUs += loopWorkTimeUs;
-
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#saude-oficial-do-loop
+void updateLoopHealthyPercent(uint32_t loopDurationUs) {
   const unsigned long nowMs = millis();
   if (gLoopWindowStartMs == 0) {
     gLoopWindowStartMs = nowMs;
-    return;
+  }
+
+  gLoopWindowIterationCount++;
+  if (loopDurationUs <= kHealthyLoopThresholdUs) {
+    gLoopWindowHealthyCount++;
   }
 
   const unsigned long windowElapsedMs = nowMs - gLoopWindowStartMs;
-  if (windowElapsedMs < 1000) {
+  if (windowElapsedMs < kLoopHealthWindowMs) {
     return;
   }
 
-  const uint64_t windowElapsedUs = static_cast<uint64_t>(windowElapsedMs) * 1000ULL;
-  uint64_t loadPercent = 0;
-  if (windowElapsedUs > 0) {
-    loadPercent = (gLoopWorkTimeUs * 100ULL) / windowElapsedUs;
+  uint32_t healthyPercent = 0;
+  if (gLoopWindowIterationCount > 0) {
+    healthyPercent = static_cast<uint32_t>(
+        (static_cast<uint64_t>(gLoopWindowHealthyCount) * 100ULL
+            + static_cast<uint64_t>(gLoopWindowIterationCount / 2u))
+        / static_cast<uint64_t>(gLoopWindowIterationCount));
   }
 
-  if (loadPercent > 100ULL) {
-    loadPercent = 100ULL;
+  if (healthyPercent > 100u) {
+    healthyPercent = 100u;
   }
 
-  gLoopLoadPercent = static_cast<uint8_t>(loadPercent);
-  gLoopWorkTimeUs = 0;
+  gLoopHealthyPercent = static_cast<uint8_t>(healthyPercent);
+  gLoopHealthyPercentReady = true;
+  gLoopWindowIterationCount = 0;
+  gLoopWindowHealthyCount = 0;
   gLoopWindowStartMs = nowMs;
 }
 
@@ -878,7 +1475,9 @@ void sendTelemetry(bool force) {
   telemetry["lastWifiEvent"] = gLastWifiEvent;
   telemetry["rssi"] = wifiConnected ? WiFi.RSSI() : -100;
   telemetry["uptimeSeconds"] = uptimeSeconds;
-  telemetry["loopLoadPercent"] = gLoopLoadPercent;
+  if (gLoopHealthyPercentReady) {
+    telemetry["loopHealthyPercent"] = gLoopHealthyPercent;
+  }
   telemetry["freeHeapBytes"] = freeHeapBytes;
   telemetry["streamFramesReceived"] = gStreamFramesReceived;
   telemetry["streamFramesApplied"] = gStreamFramesApplied;
@@ -917,6 +1516,10 @@ void sendTelemetry(bool force) {
   telemetry["ipAddress"] = WiFi.localIP().toString();
   telemetry["boardModel"] = kBoardModel;
   telemetry["panelType"] = kPanelType;
+  const float chipTemperatureCelsius = temperatureRead();
+  if (!isnan(chipTemperatureCelsius) && isfinite(chipTemperatureCelsius)) {
+    telemetry["chipTemperatureCelsius"] = chipTemperatureCelsius;
+  }
   if (gActiveAppId.length() > 0) {
     telemetry["activeAppId"] = gActiveAppId;
   }
@@ -1547,6 +2150,48 @@ void handleControlCommandMessage(const JsonDocument& control) {
     return;
   }
 
+  if (strcmp(command, "update_firmware") == 0) {
+    String requestedVersion = parameters["version"] | "";
+    FirmwareReleaseInfo releaseInfo;
+    String errorCode;
+    String errorMessage;
+
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+    if (isRunningAppPendingVerify()) {
+      errorCode = "ota_invalid_state_pending_verify";
+      errorMessage = "A imagem atual ainda nao foi validada pelo safe update mode; conclua ou aguarde o primeiro boot antes de nova OTA.";
+      (void)publishDeviceLog("warning", "command", errorCode.c_str(), errorMessage);
+      sendCommandProgress(commandId, 100, "failed", errorMessage, 0);
+      return;
+    }
+
+    if (!tryFetchLatestFirmwareRelease(releaseInfo, requestedVersion, errorCode, errorMessage)) {
+      (void)publishDeviceLog("warning", "command", errorCode.c_str(), errorMessage);
+      sendCommandProgress(commandId, 100, "failed", errorMessage, 0);
+      return;
+    }
+
+    if (!performFirmwareOta(releaseInfo, commandId, errorCode, errorMessage)) {
+      (void)publishDeviceLog("warning", "command", errorCode.c_str(), errorMessage);
+      sendCommandProgress(commandId, 100, "failed", errorMessage, 0);
+      return;
+    }
+
+    if (!persistPendingOtaContext(commandId, kFirmwareVersion, releaseInfo.firmwareVersion)) {
+      errorCode = "ota_context_persist_failed";
+      errorMessage = "Firmware baixado, mas nao foi possivel registrar o contexto do safe update mode antes do reboot.";
+      (void)publishDeviceLog("warning", "command", errorCode.c_str(), errorMessage);
+      sendCommandProgress(commandId, 100, "failed", errorMessage, 0);
+      return;
+    }
+
+    sendCommandProgress(commandId, 94, "rebooting", "Firmware aplicado. Reiniciando para validacao segura.");
+    (void)publishPresence("offline");
+    delay(250);
+    ESP.restart();
+    return;
+  }
+
   if (strcmp(command, "install_app") == 0) {
     String appId = parameters["appId"] | "";
     String appName = parameters["displayName"] | "";
@@ -1810,6 +2455,7 @@ void connectMqtt() {
   (void)publishDeviceLog("info", "mqtt", "connected", "Controle MQTT conectado.", false);
   (void)publishDeviceStats();
   sendTelemetry(true);
+  publishPendingOtaReportIfNeeded();
 }
 
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
@@ -1905,6 +2551,8 @@ void setup() {
   gActiveAppId = gPrefs.getString("activeAppId", "");
   gActiveAppName = gPrefs.getString("activeAppName", "");
   gActiveAppConfig = gPrefs.getString("activeAppConfig", "");
+  loadPendingOtaContext();
+  initializePendingOtaBootState();
 
   const bool missingServerConfig = gServerHost.isEmpty() || gServerPort == 0;
   const bool missingDeviceCredentials = gDeviceId.isEmpty() || gToken.isEmpty();
@@ -1958,41 +2606,32 @@ void setup() {
 }
 
 void loop() {
-  uint64_t loopWorkTimeUs = 0;
-  uint32_t phaseStartUs = micros();
+  const uint32_t loopStartedUs = micros();
   processSerialProvisioning();
-  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
+  processPendingOtaSafeUpdate();
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
 
   if (!wifiConnected) {
     if (gWifiDisconnectedSinceMs == 0) {
       gWifiDisconnectedSinceMs = millis();
-      phaseStartUs = micros();
       setConnectivityState(kWifiStateDisconnected, "wifi_disconnected", true);
-      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
       Serial.println("[wifi] desconectado, aguardando reconexao.");
     }
 
     if (!gProvisioningPortalActive
         && (millis() - gWifiDisconnectedSinceMs) > kWifiDisconnectProvisioningFallbackMs) {
       Serial.println("[wifi] fallback para provisioning apos queda prolongada.");
-      phaseStartUs = micros();
       (void)startProvisioningPortal("wifi_disconnected_fallback");
       gWifiDisconnectedSinceMs = 0;
       connectMqtt();
       connectWebSocket();
-      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
     } else {
       delay(120);
     }
 
-    phaseStartUs = micros();
     processSerialProvisioning();
-    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
-    phaseStartUs = micros();
     updateTestLed();
-    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
-    updateLoopLoadPercent(loopWorkTimeUs);
+    updateLoopHealthyPercent(static_cast<uint32_t>(micros() - loopStartedUs));
     return;
   }
 
@@ -2001,23 +2640,13 @@ void loop() {
   }
 
   if (gProvisioningPortalActive) {
-    phaseStartUs = micros();
     setProvisioningPortalActive(false, "portal_closed");
-    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
   }
 
-  phaseStartUs = micros();
   setConnectivityState(kWifiStateConnected, "wifi_connected");
-  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
-  phaseStartUs = micros();
   gMqtt.loop();
-  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
-  phaseStartUs = micros();
   gWs.loop();
-  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
-  phaseStartUs = micros();
   flushWsFlapDiagnostics(false);
-  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
 
   if (!gMqtt.connected()) {
     if (gMqttDisconnectedSinceMs == 0) {
@@ -2025,31 +2654,23 @@ void loop() {
     }
 
     if (millis() - gMqttDisconnectedSinceMs >= kMqttReconnectRetryMs) {
-      phaseStartUs = micros();
       connectMqtt();
-      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
       gMqttDisconnectedSinceMs = millis();
     }
   } else {
     gMqttDisconnectedSinceMs = 0;
-    phaseStartUs = micros();
     sendTelemetry(false);
-    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
   }
 
   if (!gWs.isConnected()) {
     if (gWsDisconnectedSinceMs == 0) {
       gWsDisconnectedSinceMs = millis();
-      phaseStartUs = micros();
       setConnectivityState(kWifiStateConnected, "ws_disconnected", false, false);
-      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
     }
 
     if (millis() - gWsDisconnectedSinceMs > kWsReconnectRetryMs) {
       Serial.println("[ws_disconnected] sem sessao por tempo prolongado; tentando reconectar websocket.");
-      phaseStartUs = micros();
       connectWebSocket();
-      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
       gWsDisconnectedSinceMs = millis();
     }
   } else {
@@ -2057,27 +2678,19 @@ void loop() {
   }
 
   if (millis() - gLastFrameMs > 15000) {
-    phaseStartUs = micros();
     memset(gBins, 0, sizeof(gBins));
     gLevel = 0;
     memset(gFrameRgb565, 0, sizeof(gFrameRgb565));
     gFrameModeActive = false;
-    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
   }
 
-  phaseStartUs = micros();
   updateTestLed();
-  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
-  phaseStartUs = micros();
   processSerialProvisioning();
-  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
-  phaseStartUs = micros();
   if (gFrameModeActive) {
     drawFrame128x64();
   } else {
     drawBars();
   }
-  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
 
-  updateLoopLoadPercent(loopWorkTimeUs);
+  updateLoopHealthyPercent(static_cast<uint32_t>(micros() - loopStartedUs));
 }

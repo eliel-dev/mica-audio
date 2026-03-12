@@ -156,7 +156,7 @@ internal static class DeviceServerTestHarness
         IMqttClient client,
         string deviceId,
         string commandId,
-        bool success,
+        bool? success = true,
         int progressPercent = 100,
         string stage = "done",
         string message = "ok")

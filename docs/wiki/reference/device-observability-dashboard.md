@@ -41,13 +41,19 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
   - `signalDbm`
   - `uptimeSeconds`
   - `telemetrySequence`
-  - `testLedAvailable`
-  - `testLedEnabled`
-  - `testLedDuty`
+- `testLedAvailable`
+- `testLedEnabled`
+- `testLedDuty`
+  - `firmwareVersion`
+  - `latestFirmwareVersion`
+  - `firmwareUpdateAvailable`
+  - `firmwareUpdateSupported`
   - `brightnessCap`
   - `brightnessRequested`
   - `brightnessApplied`
+  - `loopHealthyPercent`
   - `loopLoadPercent`
+  - `chipTemperatureCelsius`
   - `heapFreeBytes`
   - `heapLargestBlockBytes`
   - `heapTotalBytes`
@@ -73,16 +79,49 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
 
 ## Semantica operacional do dashboard
 
-- `loopLoadPercent` representa carga util do app no firmware:
-  - tempo gasto em renderizacao, telemetria, controle MQTT/WS e trabalho efetivo do loop;
-  - esperas deliberadas e periodos claramente ociosos ficam fora da amostra;
-  - o objetivo e evitar o falso `99%` constante de um loop bare-metal sempre ativo.
+- O card oficial de saude usa `loopHealthyPercent`:
+  - percentual de iteracoes do `loop()` concluidas em ate `25 ms`;
+  - calculo feito no firmware em janela fixa de `5 s`;
+  - thresholds visiveis no dashboard:
+    - `>= 90`: `Saudavel: loop estavel`;
+    - `>= 75 e < 90`: `Atencao: latencia moderada`;
+    - `< 75`: `Sobrecarregado: latencia elevada`.
+- `loopLoadPercent` permanece apenas como campo legado de compatibilidade no DTO e no snapshot:
+  - o dashboard HTML/WebView2 nao usa mais esse campo para saude;
+  - a permanencia evita quebra de round-trip com payloads antigos.
+- O dashboard ganhou um card adicional `Temperatura do chip`:
+  - usa `chipTemperatureCelsius`;
+  - mostra valor atual com ate `1` casa decimal em `degC`;
+  - quando ausente, renderiza `-` com subtitulo `Sensor interno indisponivel`.
+- O grafico inferior passou a usar historico de `loopHealthyPercent` e o titulo `Saude do dispositivo (historico)`.
+- O dashboard considera que ha metricas quando existir qualquer dado entre:
+  - `loopHealthyPercent`;
+  - memoria heap;
+  - memoria PSRAM;
+  - `chipTemperatureCelsius`.
+- A area de acoes agora mostra estado de firmware por device:
+  - `Firmware atual` vem de `snapshot.FirmwareVersion`;
+  - `Firmware oficial` vem do catalogo local de pacotes precompilados;
+  - o CTA `Atualizar firmware` so aparece quando existir pacote oficial compativel e a versao atual estiver vazia ou diferente da oficial.
+- O CTA de firmware fica acima de `Testar LEDs`:
+  - device online abre dialogo nativo com OTA como acao principal e fallback `Reflash por USB`;
+  - device offline mantem o CTA visivel, mas o dialogo oferece apenas o reflash oficial por USB;
+  - quando a versao atual nao existe no snapshot, a UI mostra `Versao atual nao identificada`.
+- O fluxo de OTA na UI usa o resultado final do comando tracked:
+  - `rebooting` e apenas progresso intermediario;
+  - sucesso real so acontece quando o firmware novo publica `validated`;
+  - `rolled-back` e `timeout` sao tratados como falha da atualizacao;
+  - polling de `FirmwareVersion` fica apenas como diagnostico auxiliar apos o sucesso tracked.
 - Memoria no dashboard HTML usa fallback hibrido:
   - com `heapFreePercent`/`psramFreePercent` reais, usa o DTO do servidor;
   - sem `stats`, calcula percentual localmente a partir de `freeHeapBytes` e `psramFreeBytes`;
   - baselines locais de compatibilidade visual:
     - heap: `320000` bytes;
     - PSRAM: `8000000` bytes.
+- A grade de metricas do dashboard HTML usa:
+  - `4` colunas em largura ampla;
+  - `2` colunas ate `1200 px`;
+  - `1` coluna abaixo de `860 px`.
 
 ## Bridge WinUI <-> HTML
 
@@ -92,6 +131,7 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
   - `clear-selection`
 - JS -> Host:
   - `ready`
+  - `update-firmware`
   - `set-brightness`
   - `test-led`
   - `remove-device`

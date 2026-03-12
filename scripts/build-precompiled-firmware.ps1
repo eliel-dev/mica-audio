@@ -262,12 +262,16 @@ function Write-AutoFirmwareVersionHeader {
 function Write-FirmwareManifest {
     param(
         [Parameter(Mandatory)][string]$DestinationPath,
+        [Parameter(Mandatory)][string]$FirmwarePath,
         [Parameter(Mandatory)][string]$FirmwareVersion,
         [Parameter(Mandatory)][string]$GitSha
     )
 
+    $sha256 = (Get-FileHash -Path $FirmwarePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $fileSizeBytes = (Get-Item $FirmwarePath).Length
+
     $manifest = [ordered]@{
-        schemaVersion   = 1
+        schemaVersion   = 2
         firmwareVersion = $FirmwareVersion
         gitSha          = $GitSha
         profile         = 'dma_exp'
@@ -275,6 +279,8 @@ function Write-FirmwareManifest {
         panelType       = 'hub75_p2_5_128x64_smd2121_scan32'
         controlPlane    = 'mqtt'
         builtAtUtc      = (Get-Date).ToUniversalTime().ToString('o')
+        sha256          = $sha256
+        fileSizeBytes   = $fileSizeBytes
     }
 
     $json = $manifest | ConvertTo-Json
@@ -305,7 +311,7 @@ try {
 
     Invoke-PioBuild -Env $target.Env
     Merge-Firmware -Env $target.Env -DestinationPath $destinationPath
-    Write-FirmwareManifest -DestinationPath $manifestPath -FirmwareVersion $firmwareVersion -GitSha $gitSha
+    Write-FirmwareManifest -DestinationPath $manifestPath -FirmwarePath $destinationPath -FirmwareVersion $firmwareVersion -GitSha $gitSha
 
     Write-Host '[build-precompiled-firmware] Concluido com sucesso.'
     $size = (Get-Item $destinationPath).Length

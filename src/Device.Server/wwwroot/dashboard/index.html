@@ -1,3 +1,4 @@
+<!-- DOCS: docs/wiki/reference/device-observability-dashboard.md -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -30,7 +31,7 @@
       </header>
 
       <section class="section">
-        <div class="sec-hd">Ações</div>
+        <div class="sec-hd">Acoes</div>
         <div class="actions-grid">
           <div class="brightness-card">
             <div class="brightness-head">
@@ -47,6 +48,24 @@
             </div>
           </div>
           <div class="action-btn-stack">
+            <div class="firmware-row" id="firmware-row" style="display:none;">
+              <div class="firmware-pill">
+                <span class="firmware-pill-label">Firmware atual</span>
+                <strong id="firmware-current">-</strong>
+              </div>
+              <div class="firmware-pill">
+                <span class="firmware-pill-label">Firmware oficial</span>
+                <strong id="firmware-latest">-</strong>
+              </div>
+            </div>
+            <button class="tbar-btn accent" id="btn-fw" type="button" style="display:none;">
+              <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M12 4.5v9M8.5 10l3.5 3.5 3.5-3.5M5.5 18.5h13" />
+                </svg>
+              </span>
+              <span>Atualizar firmware</span>
+            </button>
             <button class="tbar-btn" id="btn-led" type="button">
               <span class="btn-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">
@@ -70,22 +89,28 @@
       <section class="section">
         <div class="placeholder" id="m-ph">Selecione um dispositivo para ver a telemetria.</div>
         <div class="metrics-grid" id="m-grid">
-          <article class="metric-card">
-            <div class="metric-label">Uso do processador</div>
-            <div class="metric-value"><span id="m-loop">-</span> <small>%</small></div>
-            <div class="metric-progress"><span id="m-loop-bar" class="metric-progress-fill cpu"></span></div>
+          <article class="metric-card health-ok" id="m-health-card">
+            <div class="metric-label">Saude do dispositivo</div>
+            <div class="metric-value"><span id="m-health">-</span> <small>%</small></div>
+            <div class="metric-progress"><span id="m-health-bar" class="metric-progress-fill health-ok"></span></div>
+            <div class="metric-sub" id="m-health-s">Saudavel: loop estavel</div>
           </article>
           <article class="metric-card">
-            <div class="metric-label">Memória RAM livre</div>
+            <div class="metric-label">Memoria RAM livre</div>
             <div class="metric-value"><span id="m-heap">-</span> <small>%</small></div>
             <div class="metric-progress"><span id="m-heap-bar" class="metric-progress-fill heap"></span></div>
-            <div class="metric-sub" id="m-heap-s">Frag. de memória -</div>
+            <div class="metric-sub" id="m-heap-s">Frag. de memoria -</div>
           </article>
           <article class="metric-card">
-            <div class="metric-label">Memória extra livre</div>
+            <div class="metric-label">Memoria extra livre</div>
             <div class="metric-value"><span id="m-psram">-</span> <small>%</small></div>
             <div class="metric-progress"><span id="m-psram-bar" class="metric-progress-fill psram"></span></div>
-            <div class="metric-sub" id="m-psram-s">PSRAM indisponível</div>
+            <div class="metric-sub" id="m-psram-s">PSRAM indisponivel</div>
+          </article>
+          <article class="metric-card temperature-card" id="m-temp-card">
+            <div class="metric-label">Temperatura do chip</div>
+            <div class="metric-value"><span id="m-temp">-</span><small id="m-temp-unit"></small></div>
+            <div class="metric-sub" id="m-temp-s">Sensor interno indisponivel</div>
           </article>
         </div>
       </section>
@@ -107,17 +132,17 @@
               </span>
               <b id="s-rssi">-</b>
             </div>
-            <div class="metric-sub">força atual da conexão Wi-Fi</div>
+            <div class="metric-sub">forca atual da conexao Wi-Fi</div>
           </article>
         </div>
 
         <div class="chart-row">
           <article class="chart-card">
-            <div class="chart-lbl">Uso do processador (histórico)</div>
+            <div class="chart-lbl">Saude do dispositivo (historico)</div>
             <canvas id="chart-loop" width="720" height="240"></canvas>
           </article>
           <article class="chart-card">
-            <div class="chart-lbl">RAM disponível (histórico)</div>
+            <div class="chart-lbl">RAM disponivel (historico)</div>
             <canvas id="chart-heap" width="720" height="240"></canvas>
           </article>
         </div>

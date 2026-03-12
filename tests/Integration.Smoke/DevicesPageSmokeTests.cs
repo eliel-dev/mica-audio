@@ -72,6 +72,7 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetMethod("ExecuteTestLedAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("ExecuteSetBrightnessAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("ExecuteRemoveDeviceAsync", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("ExecuteUpdateFirmwareAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("ResolveCommandDevice", flags));
     }
 
@@ -91,6 +92,7 @@ public sealed class DevicesPageSmokeTests
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
 
         Assert.NotNull(typeof(DevicesPage).GetMethod("ShowNewDeviceWizardAsync", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("ShowUsbFirmwareRefreshWizardAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("RefreshWizardPortsAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("RunWizardOnboardingAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("SaveFirmwareAsync", flags));

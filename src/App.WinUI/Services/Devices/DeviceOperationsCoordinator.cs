@@ -13,6 +13,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FirmwareUpdateTimeout = TimeSpan.FromMinutes(5);
     private const int MaxLogEntries = 600;
     private const int MaxDeviceLogEntries = 100;
     private const int SafeBrightnessMin = 30;
@@ -142,7 +143,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         DeviceCommandType commandType,
         CancellationToken cancellationToken = default)
     {
-        return RunCommandCoreAsync(deviceId, commandType, parameters: null, cancellationToken);
+        return RunCommandCoreAsync(deviceId, commandType, parameters: null, timeoutOverride: null, cancellationToken);
     }
 
     public Task<CommandDispatchResult> RunCommandAsync(
@@ -151,7 +152,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         IReadOnlyDictionary<string, string>? parameters,
         CancellationToken cancellationToken = default)
     {
-        return RunCommandCoreAsync(deviceId, commandType, parameters, cancellationToken);
+        return RunCommandCoreAsync(deviceId, commandType, parameters, timeoutOverride: null, cancellationToken);
     }
 
     public Task<CommandDispatchResult> InstallAppAsync(string deviceId, DeviceAppCommandPayload payload, CancellationToken cancellationToken = default)
@@ -201,6 +202,20 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         return RunCommandAsync(deviceId, DeviceCommandType.TestLed, parameters: null, cancellationToken);
     }
 
+    public Task<CommandDispatchResult> UpdateFirmwareAsync(
+        string deviceId,
+        string targetVersion,
+        CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(targetVersion))
+        {
+            parameters["version"] = targetVersion.Trim();
+        }
+
+        return RunCommandCoreAsync(deviceId, DeviceCommandType.UpdateFirmware, parameters, FirmwareUpdateTimeout, cancellationToken);
+    }
+
     public Task<CommandDispatchResult> SetTestLedEnabledAsync(string deviceId, bool enabled, CancellationToken cancellationToken = default)
     {
         var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -231,6 +246,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         string deviceId,
         DeviceCommandType commandType,
         IReadOnlyDictionary<string, string>? parameters,
+        TimeSpan? timeoutOverride,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
@@ -278,7 +294,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         }
 
         var result = await commandDispatcher
-            .DispatchAsync(normalizedDeviceId, commandType, parameters, cancellationToken)
+            .DispatchAsync(normalizedDeviceId, commandType, parameters, timeoutOverride, cancellationToken)
             .ConfigureAwait(false);
 
         activity?.SetTag(AppObservability.CommandIdKey, result.CommandId);
