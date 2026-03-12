@@ -8,9 +8,12 @@ Definir o primeiro passo obrigatorio para qualquer IA antes de alterar codigo/do
 
 1. Ler `AGENTS.md`.
 2. Ler `docs/wiki/reference/ai-contract.v1.yaml`.
-3. Classificar a mudanca em `documental`, `funcional`, `estrutural` ou `firmware/protocolo`.
-4. Identificar arquivos-alvo no [Code index](../reference/code-index.md).
-5. Aplicar validacoes da [Matriz de validacao](validation-matrix.md).
+3. Se a tarefa envolver integracao do `ESP32-S3`, consultar obrigatoriamente as fontes oficiais da Espressif para `ESP-IDF v5.5.3` antes de decidir implementacao:
+   - `https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32s3/index.html`
+   - `https://github.com/espressif/esp-idf/blob/v5.5.3/docs/en/index.rst`
+4. Classificar a mudanca em `documental`, `funcional`, `estrutural` ou `firmware/protocolo`.
+5. Identificar arquivos-alvo no [Code index](../reference/code-index.md).
+6. Aplicar validacoes da [Matriz de validacao](validation-matrix.md).
 
 ## Regras de consistencia
 

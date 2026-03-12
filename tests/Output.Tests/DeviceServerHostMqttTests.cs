@@ -1,10 +1,13 @@
 using System.Buffers;
+using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
 using MQTTnet;
+using MQTTnet.Protocol;
 
 namespace Output.Tests;
 
@@ -153,7 +156,9 @@ public sealed class DeviceServerHostMqttTests
             firmwareVersion = "9.9.9",
             ipAddress = "192.168.1.77",
             uptimeSeconds = 123,
+            loopHealthyPercent = 91,
             brightnessApplied = 99,
+            chipTemperatureCelsius = 47.25,
         });
 
         var updated = await DeviceServerTestHarness.WaitForConditionAsync(() =>
@@ -165,12 +170,173 @@ public sealed class DeviceServerHostMqttTests
                 && snapshot.Status == DeviceStatus.Online
                 && snapshot.ControlPlaneState == DeviceControlPlaneState.MqttOnline
                 && snapshot.UptimeSeconds == 123
+                && snapshot.LoopHealthyPercent == 91
                 && snapshot.BrightnessApplied == 99
+                && snapshot.ChipTemperatureCelsius == 47.25d
                 && string.Equals(snapshot.FirmwareVersion, "9.9.9", StringComparison.Ordinal)
                 && string.Equals(snapshot.LastKnownIp, "192.168.1.77", StringComparison.Ordinal);
         }, TimeSpan.FromSeconds(5));
 
         Assert.True(updated, "Snapshot nao refletiu o status MQTT publicado no timeout esperado.");
+    }
+
+    [Fact]
+    public async Task MqttStatsPublish_ShouldUpdateSnapshotAndPersistRetainedState()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-stats");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.PublishStatsAsync(mqttClient, paired.DeviceId, new
+        {
+            deviceId = paired.DeviceId,
+            chipModel = "ESP32-S3",
+            chipRevision = 2,
+            chipCores = 2,
+            cpuFreqMHz = 240,
+            sdkVersion = "5.5.0",
+            heapTotalBytes = 327680,
+            psramTotalBytes = 8388608,
+            flashTotalBytes = 16777216,
+            sketchSizeBytes = 901120,
+            freeSketchBytes = 9437184,
+        });
+
+        var updated = await DeviceServerTestHarness.WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            return snapshot is not null
+                && string.Equals(snapshot.ChipModel, "ESP32-S3", StringComparison.Ordinal)
+                && snapshot.ChipRevision == 2
+                && snapshot.CpuFreqMHz == 240
+                && snapshot.HeapTotalBytes == 327680L
+                && snapshot.FreeSketchBytes == 9437184L;
+        }, TimeSpan.FromSeconds(5));
+
+        Assert.True(updated, "Snapshot nao refletiu o payload MQTT de stats.");
+    }
+
+    [Fact]
+    public async Task MqttDeviceLogPublish_ShouldEmitStructuredDeviceLogEvent()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-logs");
+
+        var received = new TaskCompletionSource<DeviceLogMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.DeviceLogReceived += (_, log) =>
+        {
+            if (string.Equals(log.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase))
+            {
+                received.TrySetResult(log);
+            }
+        };
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.PublishDeviceLogAsync(mqttClient, paired.DeviceId, new
+        {
+            deviceId = paired.DeviceId,
+            sequence = 5,
+            level = "error",
+            category = "mqtt",
+            eventCode = "mqtt_connect_failed",
+            message = "Falha ao autenticar no broker.",
+            uptimeSeconds = 45,
+            telemetrySequence = 7,
+        });
+
+        var logMessage = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(5u, logMessage.Sequence);
+        Assert.Equal("error", logMessage.Level);
+        Assert.Equal("mqtt", logMessage.Category);
+        Assert.Equal("mqtt_connect_failed", logMessage.EventCode);
+    }
+
+    [Fact]
+    public async Task MqttStatsAndLogs_ShouldRejectInvalidPayloads()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-invalid");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+
+        var invalidStats = await mqttClient.PublishAsync(new MqttApplicationMessageBuilder()
+            .WithTopic(DeviceServerTestHarness.GetStatsTopic(paired.DeviceId))
+            .WithPayload(Encoding.UTF8.GetBytes("{"))
+            .WithRetainFlag(true)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            .Build(), CancellationToken.None);
+        var invalidLogs = await mqttClient.PublishAsync(new MqttApplicationMessageBuilder()
+            .WithTopic(DeviceServerTestHarness.GetLogsTopic(paired.DeviceId))
+            .WithPayload(JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                deviceId = paired.DeviceId,
+                sequence = 0,
+                level = "info",
+                category = "wifi",
+                message = "",
+            }))
+            .WithRetainFlag(false)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            .Build(), CancellationToken.None);
+
+        Assert.Equal(MqttClientPublishReasonCode.UnspecifiedError, invalidStats.ReasonCode);
+        Assert.Equal(MqttClientPublishReasonCode.UnspecifiedError, invalidLogs.ReasonCode);
     }
 
     [Fact]
@@ -295,7 +461,7 @@ public sealed class DeviceServerHostMqttTests
     }
 
     [Fact]
-    public async Task RemoveDevice_ShouldClearRetainedStatusAndPresence()
+    public async Task RemoveDevice_ShouldClearRetainedStatusPresenceAndStats()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();
         var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
@@ -325,6 +491,12 @@ public sealed class DeviceServerHostMqttTests
             deviceId = target.DeviceId,
             uptimeSeconds = 55,
         });
+        await DeviceServerTestHarness.PublishStatsAsync(targetClient, target.DeviceId, new
+        {
+            deviceId = target.DeviceId,
+            chipModel = "ESP32-S3",
+            heapTotalBytes = 327680,
+        });
 
         var retainedReady = await DeviceServerTestHarness.WaitForConditionAsync(() =>
         {
@@ -351,8 +523,277 @@ public sealed class DeviceServerHostMqttTests
 
         await DeviceServerTestHarness.SubscribeAsync(inspectorClient, DeviceServerTestHarness.GetPresenceTopic(target.DeviceId));
         await DeviceServerTestHarness.SubscribeAsync(inspectorClient, DeviceServerTestHarness.GetStatusTopic(target.DeviceId));
+        await DeviceServerTestHarness.SubscribeAsync(inspectorClient, DeviceServerTestHarness.GetStatsTopic(target.DeviceId));
         await Task.Delay(500);
 
         Assert.Empty(retainedMessages);
+    }
+
+    [Fact]
+    public async Task AuthenticatedFirmwareEndpoints_ShouldExposeLatestMetadataAndDownloadArtifact()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "mica-audio-firmware-endpoints", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        var firmwarePath = Path.Combine(tempRoot, "firmware.bin");
+        var firmwareBytes = new byte[] { 0x10, 0x20, 0x30, 0x40 };
+        await File.WriteAllBytesAsync(firmwarePath, firmwareBytes);
+
+        var package = new DeviceOfficialFirmwarePackage(
+            "v2026.03.12-untagged-c2ba150",
+            PrecompiledFirmwareBoard,
+            PrecompiledFirmwarePanel,
+            "dma_exp",
+            "mqtt",
+            firmwarePath,
+            Path.Combine(tempRoot, "firmware.manifest.json"),
+            "abcd",
+            firmwareBytes.Length);
+
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        try
+        {
+            await using var host = new DeviceServerHost(new StaticFirmwareCatalog(package));
+            await host.StartAsync(new ServerConfig
+            {
+                ListenHost = "127.0.0.1",
+                PublicHost = "127.0.0.1",
+                Port = port,
+                MqttPort = mqttPort,
+                RestrictToPrivateNetworks = true,
+            });
+
+            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            var paired = await DeviceServerTestHarness.PairDeviceAsync(
+                host,
+                client,
+                "firmware-http",
+                boardModel: package.BoardModel,
+                panelType: package.PanelType);
+
+            using var latestRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/device/firmware/latest");
+            latestRequest.Headers.Add("X-Device-Id", paired.DeviceId);
+            latestRequest.Headers.Add("X-Device-Token", paired.Token);
+
+            using var latestResponse = await client.SendAsync(latestRequest);
+            latestResponse.EnsureSuccessStatusCode();
+            var latest = await latestResponse.Content.ReadFromJsonAsync<DeviceFirmwareReleaseInfo>();
+
+            Assert.NotNull(latest);
+            Assert.Equal(package.FirmwareVersion, latest!.FirmwareVersion);
+            Assert.Equal(package.FileSizeBytes, latest.FileSizeBytes);
+            Assert.Equal(package.Sha256, latest.Sha256);
+            Assert.Equal($"/api/v1/device/firmware/download?version={WebUtility.UrlEncode(package.FirmwareVersion)}", latest.DownloadPath);
+
+            using var downloadRequest = new HttpRequestMessage(HttpMethod.Get, latest.DownloadPath);
+            downloadRequest.Headers.Add("X-Device-Id", paired.DeviceId);
+            downloadRequest.Headers.Add("X-Device-Token", paired.Token);
+
+            using var downloadResponse = await client.SendAsync(downloadRequest);
+            downloadResponse.EnsureSuccessStatusCode();
+            Assert.Equal(package.FirmwareVersion, downloadResponse.Headers.GetValues("X-Firmware-Version").Single());
+            Assert.Equal(package.Sha256, downloadResponse.Headers.GetValues("X-Firmware-Sha256").Single());
+            Assert.Equal(firmwareBytes, await downloadResponse.Content.ReadAsByteArrayAsync());
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SendTrackedCommandAsync_ShouldWaitForValidatedFirmwareStage()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-update-firmware");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.SubscribeAsync(mqttClient, DeviceServerTestHarness.GetCommandsTopic(paired.DeviceId));
+
+        var seenCommand = new TaskCompletionSource<(string CommandId, string Command, string Version)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        mqttClient.ApplicationMessageReceivedAsync += async args =>
+        {
+            if (!string.Equals(args.ApplicationMessage.Topic, DeviceServerTestHarness.GetCommandsTopic(paired.DeviceId), StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            using var payload = JsonDocument.Parse(args.ApplicationMessage.Payload.ToArray());
+            var commandId = payload.RootElement.GetProperty("commandId").GetString() ?? string.Empty;
+            var command = payload.RootElement.GetProperty("command").GetString() ?? string.Empty;
+            var version = payload.RootElement.GetProperty("parameters").GetProperty("version").GetString() ?? string.Empty;
+            if (seenCommand.TrySetResult((commandId, command, version)))
+            {
+                await DeviceServerTestHarness.PublishCommandEventAsync(
+                    mqttClient,
+                    paired.DeviceId,
+                    commandId,
+                    success: null,
+                    progressPercent: 94,
+                    stage: "rebooting",
+                    message: "reiniciando");
+                await DeviceServerTestHarness.PublishCommandEventAsync(
+                    mqttClient,
+                    paired.DeviceId,
+                    commandId,
+                    success: null,
+                    progressPercent: 97,
+                    stage: "pending-verify",
+                    message: "validando");
+                await DeviceServerTestHarness.PublishCommandEventAsync(
+                    mqttClient,
+                    paired.DeviceId,
+                    commandId,
+                    success: true,
+                    progressPercent: 100,
+                    stage: "validated",
+                    message: "ok");
+            }
+        };
+
+        var result = await host.SendCommandTrackedAsync(
+            paired.DeviceId,
+            DeviceCommandType.UpdateFirmware,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["version"] = "v2026.03.12-untagged-c2ba150",
+            },
+            timeout: TimeSpan.FromSeconds(2));
+        var observed = await seenCommand.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(result.Accepted);
+        Assert.True(result.Success);
+        Assert.Equal("validated", result.Stage);
+        Assert.Equal("update_firmware", observed.Command);
+        Assert.Equal("v2026.03.12-untagged-c2ba150", observed.Version);
+    }
+
+    [Fact]
+    public async Task SendTrackedCommandAsync_ShouldFailWhenFirmwareRollsBack()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-update-firmware-rollback");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.SubscribeAsync(mqttClient, DeviceServerTestHarness.GetCommandsTopic(paired.DeviceId));
+
+        var seenCommand = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        mqttClient.ApplicationMessageReceivedAsync += async args =>
+        {
+            if (!string.Equals(args.ApplicationMessage.Topic, DeviceServerTestHarness.GetCommandsTopic(paired.DeviceId), StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            using var payload = JsonDocument.Parse(args.ApplicationMessage.Payload.ToArray());
+            var commandId = payload.RootElement.GetProperty("commandId").GetString() ?? string.Empty;
+            if (seenCommand.TrySetResult(commandId))
+            {
+                await DeviceServerTestHarness.PublishCommandEventAsync(
+                    mqttClient,
+                    paired.DeviceId,
+                    commandId,
+                    success: null,
+                    progressPercent: 94,
+                    stage: "rebooting",
+                    message: "reiniciando");
+                await DeviceServerTestHarness.PublishCommandEventAsync(
+                    mqttClient,
+                    paired.DeviceId,
+                    commandId,
+                    success: false,
+                    progressPercent: 100,
+                    stage: "rolled-back",
+                    message: "rollback");
+            }
+        };
+
+        var result = await host.SendCommandTrackedAsync(
+            paired.DeviceId,
+            DeviceCommandType.UpdateFirmware,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["version"] = "v2026.03.12-untagged-c2ba150",
+            },
+            timeout: TimeSpan.FromSeconds(2));
+        var commandId = await seenCommand.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(string.IsNullOrWhiteSpace(commandId));
+        Assert.True(result.Accepted);
+        Assert.True(result.Completed);
+        Assert.False(result.Success);
+        Assert.Equal("rolled-back", result.Stage);
+        Assert.Equal("device_reported_failure", result.ErrorCode);
+    }
+
+    private const string PrecompiledFirmwareBoard = "esp32s3_devkitc1";
+    private const string PrecompiledFirmwarePanel = "hub75_p2_5_128x64_smd2121_scan32";
+
+    private sealed class StaticFirmwareCatalog : IDeviceOfficialFirmwareCatalog
+    {
+        private readonly DeviceOfficialFirmwarePackage package;
+
+        public StaticFirmwareCatalog(DeviceOfficialFirmwarePackage package)
+        {
+            this.package = package;
+        }
+
+        public bool TryResolveLatest(
+            string? boardModel,
+            string? panelType,
+            string? profile,
+            out DeviceOfficialFirmwarePackage package,
+            out string failureReason)
+        {
+            if (string.Equals(boardModel, this.package.BoardModel, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(panelType, this.package.PanelType, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(profile, this.package.Profile, StringComparison.OrdinalIgnoreCase))
+            {
+                package = this.package;
+                failureReason = string.Empty;
+                return true;
+            }
+
+            package = default!;
+            failureReason = "firmware_not_found";
+            return false;
+        }
     }
 }

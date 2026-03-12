@@ -12,6 +12,8 @@ public interface IDeviceServerHost : IAsyncDisposable
 
     event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
 
+    event EventHandler<DeviceLogMessage>? DeviceLogReceived;
+
     Task StartAsync(ServerConfig config, CancellationToken cancellationToken = default);
 
     Task StopAsync();

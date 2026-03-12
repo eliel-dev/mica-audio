@@ -21,11 +21,16 @@ public sealed partial class DeviceServerHost
 
         var device = api.MapGroup("/device");
         device.MapGet("/config", (Delegate)HandleDeviceConfig);
+        device.MapGet("/firmware/latest", (Delegate)HandleDeviceFirmwareLatest);
+        device.MapGet("/firmware/download", (Delegate)HandleDeviceFirmwareDownload);
         device.MapPost("/command-ack", (Delegate)HandleCommandAckAsync)
             .RequireRateLimiting(CommandAckRatePolicy);
 
         var ws = localApp.MapGroup("/ws/v1");
         ws.Map("/stream", (RequestDelegate)HandleWebSocketAsync)
+            .RequireRateLimiting(WebSocketHandshakeRatePolicy);
+
+        localApp.Map("/ws/device/{deviceId}", (RequestDelegate)HandleDashboardWebSocketAsync)
             .RequireRateLimiting(WebSocketHandshakeRatePolicy);
     }
 

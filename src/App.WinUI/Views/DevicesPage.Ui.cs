@@ -30,6 +30,7 @@ public sealed partial class DevicesPage
     private Button NewDeviceButton = null!;
     private ColumnDefinition DevicesDetailsColumn = null!;
     private Grid DeviceDetailsGrid = null!;
+    private WebView2 DeviceDashboardWebView = null!;
     private TextBlock SelectedDeviceTitleText = null!;
     private TextBlock SelectedDeviceSubtitleText = null!;
     private TextBlock SelectedDeviceRegistrationText = null!;
@@ -68,7 +69,6 @@ public sealed partial class DevicesPage
     private TextBlock StreamGapCountText = null!;
     private TextBlock StreamInvalidCountText = null!;
     private TextBlock StreamLastSequenceText = null!;
-
     private TextBox DeviceLogsTextBox = null!;
     private ScrollViewer? DeviceLogsScrollViewer;
 
@@ -174,42 +174,45 @@ public sealed partial class DevicesPage
         DeviceDetailsGrid = new Grid
         {
             RowSpacing = 0,
+            Visibility = Visibility.Collapsed,
         };
-        DeviceDetailsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DeviceDetailsGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         Grid.SetColumn(DeviceDetailsGrid, 1);
 
-        var detailsCard = CreatePanelBorder(new Thickness(0), cornerRadius: PanelCornerRadius, elevated: false);
+        DeviceDashboardWebView = new WebView2
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            DefaultBackgroundColor = Color.FromArgb(0, 0, 0, 0),
+        };
 
-        var detailsHost = new Grid();
-        detailsHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        detailsHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        var detailsHost = new Grid
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+        };
+        detailsHost.Children.Add(DeviceDashboardWebView);
 
-        detailsHost.Children.Add(BuildDetailsHeader());
+        DeviceDetailsGrid.Children.Add(detailsHost);
 
-        var scroll = new ScrollViewer
+        return DeviceDetailsGrid;
+    }
+
+    private ScrollViewer BuildDashboardDetailsHost()
+    {
+        var scrollViewer = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
-        Grid.SetRow(scroll, 1);
 
         var contentStack = new StackPanel
         {
             Padding = new Thickness(0, 0, 0, 16),
         };
-        contentStack.Children.Add(BuildBrightnessSection());
         contentStack.Children.Add(BuildMetricsSection());
         contentStack.Children.Add(BuildStatusSection());
-        contentStack.Children.Add(BuildLogsSection());
 
-        scroll.Content = contentStack;
-        detailsHost.Children.Add(scroll);
-
-        detailsCard.Child = detailsHost;
-        DeviceDetailsGrid.Children.Add(detailsCard);
-
-        return DeviceDetailsGrid;
+        scrollViewer.Content = contentStack;
+        return scrollViewer;
     }
 
     private Border BuildDetailsHeader()
@@ -467,93 +470,6 @@ public sealed partial class DevicesPage
         return DashboardStatusSectionBorder;
     }
 
-    // DOCS: docs/wiki/guides/setup-new-device.md#tela-dispositivos
-    private Border BuildLogsSection()
-    {
-        var section = new Border
-        {
-            Padding = new Thickness(20, 12, 20, 20),
-            BorderThickness = new Thickness(0),
-            Background = ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32)),
-            Margin = new Thickness(0, 0, 0, 8),
-        };
-
-        var stack = new StackPanel { Spacing = 8 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Historico de eventos",
-            FontSize = 13,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        });
-
-        DeviceLogsTextBox = new TextBox
-        {
-            AcceptsReturn = true,
-            IsReadOnly = true,
-            TextWrapping = TextWrapping.NoWrap,
-            FontFamily = new FontFamily("Consolas"),
-            FontSize = 11.5,
-            VerticalContentAlignment = VerticalAlignment.Top,
-            MinHeight = 260,
-            MaxHeight = 320,
-            Text = "Selecione um dispositivo para ver o historico de eventos.",
-            BorderThickness = new Thickness(0),
-            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
-            Padding = new Thickness(0, 0, 0, 16),
-        };
-        DeviceLogsTextBox.Loaded += OnDeviceLogsTextBoxLoaded;
-        ScrollViewer.SetVerticalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Auto);
-        ScrollViewer.SetHorizontalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Disabled);
-
-        stack.Children.Add(DeviceLogsTextBox);
-        section.Child = stack;
-
-        return section;
-    }
-
-    private void OnDeviceLogsTextBoxLoaded(object sender, RoutedEventArgs e)
-    {
-        DeviceLogsScrollViewer ??= FindDescendant<ScrollViewer>(DeviceLogsTextBox);
-        ScrollDeviceLogsToOffset(scrollToEnd: true);
-    }
-
-    private void ScrollDeviceLogsToOffset(bool scrollToEnd)
-    {
-        _ = DispatcherQueue.TryEnqueue(() =>
-        {
-            DeviceLogsScrollViewer ??= FindDescendant<ScrollViewer>(DeviceLogsTextBox);
-            if (DeviceLogsScrollViewer is null)
-            {
-                return;
-            }
-
-            DeviceLogsScrollViewer.UpdateLayout();
-            var targetOffset = scrollToEnd ? DeviceLogsScrollViewer.ScrollableHeight : 0d;
-            DeviceLogsScrollViewer.ChangeView(null, targetOffset, null, true);
-        });
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var index = 0; index < count; index++)
-        {
-            var child = VisualTreeHelper.GetChild(root, index);
-            if (child is T match)
-            {
-                return match;
-            }
-
-            var nested = FindDescendant<T>(child);
-            if (nested is not null)
-            {
-                return nested;
-            }
-        }
-
-        return null;
-    }
-
     private Border BuildPairingFooter()
     {
         PairingFooterBorder = new Border
@@ -594,6 +510,49 @@ public sealed partial class DevicesPage
         Grid.SetRow(PairingFooterBorder, 1);
         return PairingFooterBorder;
     }
+
+    private void ScrollDeviceLogsToOffset(bool scrollToEnd)
+    {
+        if (DeviceLogsTextBox is null)
+        {
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            DeviceLogsScrollViewer ??= FindDescendant<ScrollViewer>(DeviceLogsTextBox);
+            if (DeviceLogsScrollViewer is null)
+            {
+                return;
+            }
+
+            DeviceLogsScrollViewer.UpdateLayout();
+            var targetOffset = scrollToEnd ? DeviceLogsScrollViewer.ScrollableHeight : 0d;
+            DeviceLogsScrollViewer.ChangeView(null, targetOffset, null, true);
+        });
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var nested = FindDescendant<T>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
     private Grid BuildWizardOverlay()
     {
         WizardOverlay = new Grid

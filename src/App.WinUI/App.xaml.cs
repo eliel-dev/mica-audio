@@ -138,8 +138,12 @@ public partial class App : Application
             configured.PrecompiledFirmwareDirectory = options.PrecompiledFirmwareDirectory;
         });
 
+        services.AddSingleton<PrecompiledFirmwareService>();
+        services.AddSingleton<IDeviceOfficialFirmwareCatalog, PrecompiledFirmwareCatalogAdapter>();
         services.AddSingleton<IDeviceRegistryStore, JsonDeviceRegistryStore>();
-        services.AddSingleton<DeviceServerHost>();
+        services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
+            TimeProvider.System,
+            sp.GetService<IDeviceOfficialFirmwareCatalog>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
         services.AddSingleton(sp => new DeviceIntegrationService(
             sp.GetRequiredService<IDeviceServerHost>(),
@@ -172,8 +176,6 @@ public partial class App : Application
             sp.GetRequiredService<ILogger<CityAutocompleteService>>()));
         services.AddSingleton<WeatherPreviewDataService.IWeatherForecastClient, OpenMeteoForecastClient>();
         services.AddSingleton<WeatherPreviewDataService>();
-        services.AddSingleton<PrecompiledFirmwareService>();
-
         services.AddSingleton<AppLogStore>();
         services.AddSingleton<WindowsMemoryFallbackProvider>();
         services.AddSingleton<HwinfoSharedMemorySource>();
@@ -234,7 +236,8 @@ public partial class App : Application
 
         services.AddTransient<SettingsPage>(sp => new SettingsPage(
             sp.GetRequiredService<SettingsRepository>(),
-            sp.GetRequiredService<AppSettingsDomainService>()));
+            sp.GetRequiredService<AppSettingsDomainService>(),
+            sp.GetRequiredService<DeviceOperationsCoordinator>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>

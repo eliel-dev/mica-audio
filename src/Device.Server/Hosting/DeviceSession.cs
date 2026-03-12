@@ -81,7 +81,9 @@ internal sealed class DeviceSession : IDisposable
         string? boardModel = null,
         string? panelType = null,
         int? uptimeSeconds = null,
+        int? loopHealthyPercent = null,
         int? loopLoadPercent = null,
+        double? chipTemperatureCelsius = null,
         long? freeHeapBytes = null,
         long? largestHeapBlockBytes = null,
         bool? psramAvailable = null,
@@ -118,7 +120,9 @@ internal sealed class DeviceSession : IDisposable
             boardModel,
             panelType,
             uptimeSeconds,
+            loopHealthyPercent,
             loopLoadPercent,
+            chipTemperatureCelsius,
             freeHeapBytes,
             largestHeapBlockBytes,
             psramAvailable,
@@ -141,6 +145,37 @@ internal sealed class DeviceSession : IDisposable
             brightnessApplied,
             testLedEnabled,
             testLedDuty);
+    }
+
+    public void MarkStats(
+        string? ip,
+        string? chipModel = null,
+        int? chipRevision = null,
+        int? chipCores = null,
+        int? cpuFreqMHz = null,
+        string? sdkVersion = null,
+        long? heapTotalBytes = null,
+        long? psramTotalBytes = null,
+        long? flashTotalBytes = null,
+        long? sketchSizeBytes = null,
+        long? freeSketchBytes = null)
+    {
+        var now = timeProvider.GetUtcNow();
+        LastActivityUtc = now;
+        Record = DeviceRecordMutations.MarkStats(
+            Record,
+            now,
+            ip,
+            chipModel,
+            chipRevision,
+            chipCores,
+            cpuFreqMHz,
+            sdkVersion,
+            heapTotalBytes,
+            psramTotalBytes,
+            flashTotalBytes,
+            sketchSizeBytes,
+            freeSketchBytes);
     }
 
     public void Touch()

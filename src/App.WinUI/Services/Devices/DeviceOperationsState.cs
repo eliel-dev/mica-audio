@@ -21,5 +21,5 @@ internal sealed class DeviceOperationsState
 
     public string ServerBaseAddress { get; init; } = "http://127.0.0.1:5272";
 
-    public IReadOnlyList<string> Logs { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<DeviceLogEntry> Logs { get; init; } = Array.Empty<DeviceLogEntry>();
 }

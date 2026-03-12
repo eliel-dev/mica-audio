@@ -70,6 +70,22 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
         Assert.Equal("cmd-capture", activity.GetTagItem(AppObservability.CommandIdKey));
     }
 
+    [Fact]
+    public async Task UpdateFirmwareAsync_ShouldSendVersionAndUseLongerTimeout()
+    {
+        var runtime = new CaptureRuntime();
+        runtime.SetDevices([CreateOnlineSnapshot("device-1")]);
+
+        using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
+        var result = await coordinator.UpdateFirmwareAsync("device-1", "v2026.03.12-untagged-c2ba150");
+
+        Assert.True(result.Success);
+        Assert.Equal(DeviceCommandType.UpdateFirmware, runtime.LastCommandType);
+        Assert.NotNull(runtime.LastParameters);
+        Assert.Equal("v2026.03.12-untagged-c2ba150", runtime.LastParameters!["version"]);
+        Assert.Equal(TimeSpan.FromMinutes(5), runtime.LastTimeout);
+    }
+
     private static DeviceSnapshot CreateOnlineSnapshot(string deviceId)
     {
         return new DeviceSnapshot
@@ -97,6 +113,12 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
             remove { }
         }
 
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+        {
+            add { }
+            remove { }
+        }
+
         public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
         {
             add { }
@@ -106,6 +128,7 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
         public string? LastDeviceId { get; private set; }
         public DeviceCommandType? LastCommandType { get; private set; }
         public Dictionary<string, string>? LastParameters { get; private set; }
+        public TimeSpan LastTimeout { get; private set; }
 
         public string GetServerBaseAddress() => "http://127.0.0.1:5272";
 
@@ -133,6 +156,7 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
             LastParameters = parameters is null
                 ? null
                 : new Dictionary<string, string>(parameters, StringComparer.OrdinalIgnoreCase);
+            LastTimeout = timeout;
 
             return Task.FromResult(new CommandDispatchResult
             {

@@ -6,8 +6,9 @@ namespace App.WinUI.Services.Devices;
 internal sealed class DeviceLogBook
 {
     private readonly object gate = new();
-    private readonly List<string> logs = new();
-    private readonly Dictionary<string, List<string>> deviceLogsById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<DeviceLogEntry> logs = new();
+    private readonly Dictionary<string, List<DeviceLogEntry>> deviceLogsById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, uint> lastDeviceSequenceById = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> awaitingFirstTelemetryByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly int maxLogEntries;
     private readonly int maxDeviceLogEntries;
@@ -18,7 +19,7 @@ internal sealed class DeviceLogBook
         this.maxDeviceLogEntries = maxDeviceLogEntries;
     }
 
-    public IReadOnlyList<string> GetGlobalLogs()
+    public IReadOnlyList<DeviceLogEntry> GetGlobalLogs()
     {
         lock (gate)
         {
@@ -26,25 +27,30 @@ internal sealed class DeviceLogBook
         }
     }
 
-    public IReadOnlyList<string> GetDeviceLogs(string deviceId)
+    public IReadOnlyList<DeviceLogEntry> GetDeviceLogs(string deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
         {
-            return Array.Empty<string>();
+            return Array.Empty<DeviceLogEntry>();
         }
 
         lock (gate)
         {
             if (!deviceLogsById.TryGetValue(deviceId.Trim(), out var entries) || entries.Count == 0)
             {
-                return Array.Empty<string>();
+                return Array.Empty<DeviceLogEntry>();
             }
 
             return entries.ToArray();
         }
     }
 
-    public bool AppendGlobal(string message)
+    public bool AppendGlobal(
+        string message,
+        DeviceLogSeverity severity = DeviceLogSeverity.Info,
+        string category = "server",
+        string? code = null,
+        DeviceLogSource source = DeviceLogSource.Server)
     {
         if (string.IsNullOrWhiteSpace(message))
         {
@@ -53,13 +59,19 @@ internal sealed class DeviceLogBook
 
         lock (gate)
         {
-            logs.Add($"[{DateTimeOffset.Now:HH:mm:ss}] {message}");
+            logs.Add(new DeviceLogEntry(DateTimeOffset.Now, deviceId: null, source, severity, category, code, message));
             TrimToLimit(logs, maxLogEntries);
             return true;
         }
     }
 
-    public bool AppendDevice(string deviceId, string message)
+    public bool AppendDevice(
+        string deviceId,
+        string message,
+        DeviceLogSeverity severity = DeviceLogSeverity.Info,
+        string category = "app",
+        string? code = null,
+        DeviceLogSource source = DeviceLogSource.App)
     {
         if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(message))
         {
@@ -68,8 +80,54 @@ internal sealed class DeviceLogBook
 
         lock (gate)
         {
-            AppendDeviceLocked(deviceId.Trim(), message, DateTimeOffset.Now);
+            AppendDeviceLocked(deviceId.Trim(), source, severity, category, code, message, DateTimeOffset.Now);
             return true;
+        }
+    }
+
+    public bool AppendDeviceFirmware(DeviceLogMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        if (string.IsNullOrWhiteSpace(message.DeviceId) || string.IsNullOrWhiteSpace(message.Message))
+        {
+            return false;
+        }
+
+        lock (gate)
+        {
+            var deviceId = message.DeviceId.Trim();
+            if (lastDeviceSequenceById.TryGetValue(deviceId, out var lastSequence)
+                && lastSequence == message.Sequence)
+            {
+                return false;
+            }
+
+            lastDeviceSequenceById[deviceId] = message.Sequence;
+            AppendDeviceLocked(
+                deviceId,
+                DeviceLogSource.Device,
+                MapSeverity(message.Level),
+                NormalizeToken(message.Category, "device"),
+                NormalizeOptional(message.EventCode),
+                message.Message,
+                DateTimeOffset.Now);
+            return true;
+        }
+    }
+
+    public void RemoveDevice(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            var normalized = deviceId.Trim();
+            deviceLogsById.Remove(normalized);
+            lastDeviceSequenceById.Remove(normalized);
+            awaitingFirstTelemetryByDevice.Remove(normalized);
         }
     }
 
@@ -107,13 +165,13 @@ internal sealed class DeviceLogBook
                 if (previousControlPlaneState != DeviceControlPlaneState.LegacyOnly
                     && currentControlPlaneState == DeviceControlPlaneState.LegacyOnly)
                 {
-                    AppendDeviceLocked(deviceId, "Firmware legado detectado; regrave para ativar controle MQTT.", now);
+                    AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Warning, "lifecycle", "legacy_detected", "Firmware legado detectado; regrave para ativar controle MQTT.", now);
                 }
 
                 if (previousControlPlaneState == DeviceControlPlaneState.LegacyOnly
                     && currentControlPlaneState == DeviceControlPlaneState.MqttOnline)
                 {
-                    AppendDeviceLocked(deviceId, "Control plane MQTT ativo; firmware compativel confirmado.", now);
+                    AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "lifecycle", "mqtt_online", "Control plane MQTT ativo; firmware compativel confirmado.", now);
                 }
 
                 var isOnline = current.Status == DeviceStatus.Online;
@@ -121,7 +179,7 @@ internal sealed class DeviceLogBook
                 {
                     if (isOnline)
                     {
-                        AppendDeviceLocked(deviceId, "Dispositivo autenticado e online.", now);
+                        AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "lifecycle", "online", "Dispositivo autenticado e online.", now);
                         awaitingFirstTelemetryByDevice.Add(deviceId);
                     }
                 }
@@ -130,17 +188,17 @@ internal sealed class DeviceLogBook
                     var wasOnline = previousSnapshot.Status == DeviceStatus.Online;
                     if (!wasOnline && isOnline)
                     {
-                        AppendDeviceLocked(deviceId, "Dispositivo autenticado e online.", now);
+                        AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "lifecycle", "online", "Dispositivo autenticado e online.", now);
                         if (previousSnapshot.Status == DeviceStatus.Offline)
                         {
-                            AppendDeviceLocked(deviceId, "Dispositivo voltou a aparecer apos ficar offline.", now);
+                            AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "lifecycle", "back_online", "Dispositivo voltou a aparecer apos ficar offline.", now);
                         }
 
                         awaitingFirstTelemetryByDevice.Add(deviceId);
                     }
                     else if (wasOnline && !isOnline)
                     {
-                        AppendDeviceLocked(deviceId, "Dispositivo ficou offline.", now);
+                        AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Warning, "lifecycle", "offline", "Dispositivo ficou offline.", now);
                         awaitingFirstTelemetryByDevice.Remove(deviceId);
                     }
                 }
@@ -149,7 +207,7 @@ internal sealed class DeviceLogBook
                     && awaitingFirstTelemetryByDevice.Contains(deviceId)
                     && HasFreshTelemetrySample(previousSnapshot, current))
                 {
-                    AppendDeviceLocked(deviceId, "Primeira telemetria recebida apos reconexao.", now);
+                    AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "telemetry", "first_after_reconnect", "Primeira telemetria recebida apos reconexao.", now);
                     awaitingFirstTelemetryByDevice.Remove(deviceId);
                 }
 
@@ -157,18 +215,18 @@ internal sealed class DeviceLogBook
                 {
                     if (!string.IsNullOrWhiteSpace(current.WifiState))
                     {
-                        AppendDeviceLocked(deviceId, $"Wi-Fi estado: {current.WifiState}.", now);
+                        AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "wifi", "state", $"Wi-Fi estado: {current.WifiState}.", now);
                     }
 
                     if (current.ProvisioningPortalActive == true)
                     {
-                        AppendDeviceLocked(deviceId, "Portal de provisioning ativo.", now);
+                        AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Warning, "portal", "active", "Portal de provisioning ativo.", now);
                     }
 
                     var currentConnectivityEvent = DeviceConnectivityEventClassifier.NormalizeForUi(current.LastWifiEvent);
                     if (DeviceConnectivityEventClassifier.ShouldSurfaceConnectivityEvent(currentConnectivityEvent))
                     {
-                        AppendDeviceLocked(deviceId, $"Evento conectividade: {currentConnectivityEvent}.", now);
+                        AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "wifi", "event", $"Evento conectividade: {currentConnectivityEvent}.", now);
                     }
                 }
                 else
@@ -176,14 +234,14 @@ internal sealed class DeviceLogBook
                     if (!string.Equals(previousSnapshot.WifiState, current.WifiState, StringComparison.OrdinalIgnoreCase)
                         && !string.IsNullOrWhiteSpace(current.WifiState))
                     {
-                        AppendDeviceLocked(deviceId, $"Wi-Fi estado: {current.WifiState}.", now);
+                        AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "wifi", "state", $"Wi-Fi estado: {current.WifiState}.", now);
                     }
 
                     if (previousSnapshot.ProvisioningPortalActive != current.ProvisioningPortalActive
                         && current.ProvisioningPortalActive.HasValue)
                     {
                         var portalState = current.ProvisioningPortalActive.Value ? "ativo" : "inativo";
-                        AppendDeviceLocked(deviceId, $"Portal de provisioning: {portalState}.", now);
+                        AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "portal", "state", $"Portal de provisioning: {portalState}.", now);
                     }
 
                     var previousConnectivityEvent = DeviceConnectivityEventClassifier.NormalizeForUi(previousSnapshot.LastWifiEvent);
@@ -191,7 +249,7 @@ internal sealed class DeviceLogBook
                     if (!string.Equals(previousConnectivityEvent, currentConnectivityEvent, StringComparison.OrdinalIgnoreCase)
                         && DeviceConnectivityEventClassifier.ShouldSurfaceConnectivityEvent(currentConnectivityEvent))
                     {
-                        AppendDeviceLocked(deviceId, $"Evento conectividade: {currentConnectivityEvent}.", now);
+                        AppendDeviceLocked(deviceId, DeviceLogSource.App, DeviceLogSeverity.Info, "wifi", "event", $"Evento conectividade: {currentConnectivityEvent}.", now);
                     }
                 }
             }
@@ -200,16 +258,33 @@ internal sealed class DeviceLogBook
         }
     }
 
-    private void AppendDeviceLocked(string deviceId, string message, DateTimeOffset now)
+    private void AppendDeviceLocked(
+        string deviceId,
+        DeviceLogSource source,
+        DeviceLogSeverity severity,
+        string category,
+        string? code,
+        string message,
+        DateTimeOffset now)
     {
         if (!deviceLogsById.TryGetValue(deviceId, out var entries))
         {
-            entries = new List<string>();
+            entries = new List<DeviceLogEntry>();
             deviceLogsById[deviceId] = entries;
         }
 
-        entries.Add($"[{now:HH:mm:ss}] {message}");
+        entries.Add(new DeviceLogEntry(now, deviceId, source, severity, category, code, message));
         TrimToLimit(entries, maxDeviceLogEntries);
+    }
+
+    private static DeviceLogSeverity MapSeverity(string? rawLevel)
+    {
+        return NormalizeToken(rawLevel, "info") switch
+        {
+            "warning" => DeviceLogSeverity.Warning,
+            "error" => DeviceLogSeverity.Error,
+            _ => DeviceLogSeverity.Info,
+        };
     }
 
     private static bool HasFreshTelemetrySample(DeviceSnapshot? previous, DeviceSnapshot current)
@@ -227,7 +302,13 @@ internal sealed class DeviceLogBook
         return !previous.LastTelemetryUtc.HasValue || current.LastTelemetryUtc > previous.LastTelemetryUtc;
     }
 
-    private static void TrimToLimit(List<string> entries, int limit)
+    private static string NormalizeToken(string? value, string fallback)
+        => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim().ToLowerInvariant();
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static void TrimToLimit<T>(List<T> entries, int limit)
     {
         if (entries.Count <= limit)
         {

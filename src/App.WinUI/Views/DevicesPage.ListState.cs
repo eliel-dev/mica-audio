@@ -13,11 +13,6 @@ public sealed partial class DevicesPage
     {
         currentState = state;
 
-        var refreshText = state.LastRefreshUtc == default
-            ? "sem atualizacao"
-            : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture);
-        ServerInfoText.Text = $"Servidor: {state.ServerBaseAddress} | mDNS: _micaaudio._tcp | Atualizado: {refreshText}";
-
         ApplySelectionDetails();
         ApplyButtonState();
     }

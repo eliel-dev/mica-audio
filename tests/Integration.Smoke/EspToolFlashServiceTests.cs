@@ -20,6 +20,7 @@ public sealed class EspToolFlashServiceTests
         Assert.Contains("--after", args);
         Assert.Contains("hard_reset", args);
         Assert.Contains("write_flash", args);
+        Assert.Contains("--erase-all", args);
         Assert.Contains("--no-compress", args);
         Assert.Contains("0x0", args);
         Assert.Contains(@"C:\fw\merged.bin", args);

@@ -41,7 +41,9 @@ public class DeviceSessionTests
             boardModel: "esp32s3_devkitc1",
             panelType: "hub75",
             uptimeSeconds: 321,
+            loopHealthyPercent: 94,
             loopLoadPercent: 40,
+            chipTemperatureCelsius: 46.5d,
             freeHeapBytes: 4096,
             largestHeapBlockBytes: 2048,
             psramAvailable: true,
@@ -54,8 +56,45 @@ public class DeviceSessionTests
         Assert.Equal(authUtc, session.Record.LastAuthUtc);
         Assert.Equal("192.168.0.10", session.Record.LastKnownIp);
         Assert.Equal(321, session.Record.UptimeSeconds);
+        Assert.Equal(94, session.Record.LoopHealthyPercent);
+        Assert.Equal(46.5d, session.Record.ChipTemperatureCelsius);
         Assert.Equal("Visualizer", session.Record.ActiveAppName);
         Assert.Equal("hub75", session.Record.PanelType);
+    }
+
+    [Fact]
+    public void MarkStats_ShouldPersistObservabilityFieldsWithoutResettingTelemetry()
+    {
+        var timeProvider = new ManualTimeProvider(new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero));
+        using var session = new DeviceSession(CreateRecord(timeProvider.GetUtcNow()), timeProvider, TimeSpan.FromMilliseconds(500));
+
+        session.MarkTelemetry(
+            ip: "192.168.0.20",
+            rssi: -48,
+            firmwareVersion: "1.0.0",
+            uptimeSeconds: 90,
+            loopLoadPercent: 18);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        session.MarkStats(
+            ip: "192.168.0.20",
+            chipModel: "ESP32-S3",
+            chipRevision: 2,
+            chipCores: 2,
+            cpuFreqMHz: 240,
+            sdkVersion: "5.5.0",
+            heapTotalBytes: 327680,
+            psramTotalBytes: 8388608,
+            flashTotalBytes: 16777216,
+            sketchSizeBytes: 901120,
+            freeSketchBytes: 9437184);
+
+        Assert.Equal(90, session.Record.UptimeSeconds);
+        Assert.Equal("ESP32-S3", session.Record.ChipModel);
+        Assert.Equal(2, session.Record.ChipRevision);
+        Assert.Equal(240, session.Record.CpuFreqMHz);
+        Assert.Equal(327680L, session.Record.HeapTotalBytes);
+        Assert.Equal(9437184L, session.Record.FreeSketchBytes);
     }
 
     [Fact]

@@ -1,0 +1,162 @@
+# Referencia - Dashboard de Observabilidade por Device
+
+## Objetivo
+
+Documentar o dashboard por device agora servido localmente em HTML/JS para o `WebView2` da `DevicesPage`, mantendo `Logs` em `Configuracoes` e usando um DTO proprio do servidor para a superficie web.
+
+## Superficie da UI
+
+- `DevicesPage`:
+  - painel esquerdo continua nativo em WinUI (`ListView`, previews inline, wizard USB);
+  - painel direito agora hospeda um `WebView2` full-size;
+  - sem selecao, a coluna direita continua colapsada.
+- `SettingsPage`:
+  - `Logs` permanecem em `Configuracoes`;
+  - `Estatisticas` seguem fora da UI por enquanto.
+
+## Transporte do dashboard
+
+- HTTP:
+  - `GET /dashboard`
+  - redireciona para `/dashboard/index.html`
+- Assets estaticos:
+  - `/dashboard/index.html`
+  - `/dashboard/dashboard.css`
+  - `/dashboard/dashboard.js`
+- WebSocket:
+  - `WS /ws/device/{deviceId}`
+  - envia snapshot inicial imediatamente;
+  - publica updates quando o host observar mudanca relevante do device.
+
+## DTO do dashboard
+
+- Nome interno:
+  - `DeviceDashboardDto`
+- Campos:
+  - `deviceId`
+  - `name`
+  - `online`
+  - `activeAppName`
+  - `wifiState`
+  - `signalDbm`
+  - `uptimeSeconds`
+  - `telemetrySequence`
+- `testLedAvailable`
+- `testLedEnabled`
+- `testLedDuty`
+  - `firmwareVersion`
+  - `latestFirmwareVersion`
+  - `firmwareUpdateAvailable`
+  - `firmwareUpdateSupported`
+  - `brightnessCap`
+  - `brightnessRequested`
+  - `brightnessApplied`
+  - `loopHealthyPercent`
+  - `loopLoadPercent`
+  - `chipTemperatureCelsius`
+  - `heapFreeBytes`
+  - `heapLargestBlockBytes`
+  - `heapTotalBytes`
+  - `heapFreePercent`
+  - `heapFragmentationPercent`
+  - `psramAvailable`
+  - `psramFreeBytes`
+  - `psramLargestBlockBytes`
+  - `psramTotalBytes`
+  - `psramFreePercent`
+  - `streamFramesReceived`
+  - `streamFramesApplied`
+  - `streamSequenceGapCount`
+  - `streamInvalidFrameCount`
+  - `streamLastSequence`
+  - `hub75Fps`
+- Regras:
+  - `online` vem de `snapshot.Status == Online`;
+  - percentuais de heap/PSRAM sao calculados no servidor quando os totais reais estiverem disponiveis em `stats`;
+  - `heapFragmentationPercent` usa `1 - largest/free`;
+  - `hub75Fps` e calculado no servidor com cache por `deviceId`, usando delta de `StreamFramesApplied`;
+  - ausencia de dado continua sendo `null`.
+
+## Semantica operacional do dashboard
+
+- O card oficial de saude usa `loopHealthyPercent`:
+  - percentual de iteracoes do `loop()` concluidas em ate `25 ms`;
+  - calculo feito no firmware em janela fixa de `5 s`;
+  - thresholds visiveis no dashboard:
+    - `>= 90`: `Saudavel: loop estavel`;
+    - `>= 75 e < 90`: `Atencao: latencia moderada`;
+    - `< 75`: `Sobrecarregado: latencia elevada`.
+- `loopLoadPercent` permanece apenas como campo legado de compatibilidade no DTO e no snapshot:
+  - o dashboard HTML/WebView2 nao usa mais esse campo para saude;
+  - a permanencia evita quebra de round-trip com payloads antigos.
+- O dashboard ganhou um card adicional `Temperatura do chip`:
+  - usa `chipTemperatureCelsius`;
+  - mostra valor atual com ate `1` casa decimal em `degC`;
+  - quando ausente, renderiza `-` com subtitulo `Sensor interno indisponivel`.
+- O grafico inferior passou a usar historico de `loopHealthyPercent` e o titulo `Saude do dispositivo (historico)`.
+- O dashboard considera que ha metricas quando existir qualquer dado entre:
+  - `loopHealthyPercent`;
+  - memoria heap;
+  - memoria PSRAM;
+  - `chipTemperatureCelsius`.
+- A area de acoes agora mostra estado de firmware por device:
+  - `Firmware atual` vem de `snapshot.FirmwareVersion`;
+  - `Firmware oficial` vem do catalogo local de pacotes precompilados;
+  - o CTA `Atualizar firmware` so aparece quando existir pacote oficial compativel e a versao atual estiver vazia ou diferente da oficial.
+- O CTA de firmware fica acima de `Testar LEDs`:
+  - device online abre dialogo nativo com OTA como acao principal e fallback `Reflash por USB`;
+  - device offline mantem o CTA visivel, mas o dialogo oferece apenas o reflash oficial por USB;
+  - quando a versao atual nao existe no snapshot, a UI mostra `Versao atual nao identificada`.
+- O fluxo de OTA na UI usa o resultado final do comando tracked:
+  - `rebooting` e apenas progresso intermediario;
+  - sucesso real so acontece quando o firmware novo publica `validated`;
+  - `rolled-back` e `timeout` sao tratados como falha da atualizacao;
+  - polling de `FirmwareVersion` fica apenas como diagnostico auxiliar apos o sucesso tracked.
+- Memoria no dashboard HTML usa fallback hibrido:
+  - com `heapFreePercent`/`psramFreePercent` reais, usa o DTO do servidor;
+  - sem `stats`, calcula percentual localmente a partir de `freeHeapBytes` e `psramFreeBytes`;
+  - baselines locais de compatibilidade visual:
+    - heap: `320000` bytes;
+    - PSRAM: `8000000` bytes.
+- A grade de metricas do dashboard HTML usa:
+  - `4` colunas em largura ampla;
+  - `2` colunas ate `1200 px`;
+  - `1` coluna abaixo de `860 px`.
+
+## Bridge WinUI <-> HTML
+
+- Host -> JS:
+  - `ready-ack`
+  - `select-device`
+  - `clear-selection`
+- JS -> Host:
+  - `ready`
+  - `update-firmware`
+  - `set-brightness`
+  - `test-led`
+  - `remove-device`
+- Regras:
+  - a pagina HTML navega uma unica vez;
+  - troca de device usa `postMessage`, sem recarregar o documento;
+  - o slider faz preview local no JS e o commit real continua no host WinUI;
+  - `remove-device` continua usando `ContentDialog` nativo no host.
+
+## Logs e estatisticas fora do dashboard
+
+- `Logs` estruturados continuam no `DeviceLogBook` e sao exibidos apenas na `SettingsPage`.
+- `stats` MQTT continuam persistidos em `DeviceRecord` e `DeviceSnapshot`.
+- O dashboard HTML consome somente o DTO projetado pelo servidor; ele nao conhece `DeviceSnapshot` nem `DeviceLogEntry`.
+
+## Referencias de codigo
+
+- [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
+- [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
+- [DevicesPage WebView dashboard](../../../src/App.WinUI/Views/DevicesPage.WebViewDashboard.cs#L1)
+- [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
+- [SettingsPage observability](../../../src/App.WinUI/Views/SettingsPage.Observability.cs#L1)
+- [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [DeviceServerHost routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1)
+- [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
+- [Dashboard index](../../../src/Device.Server/wwwroot/dashboard/index.html#L1)
+- [Dashboard CSS](../../../src/Device.Server/wwwroot/dashboard/dashboard.css#L1)
+- [Dashboard JS](../../../src/Device.Server/wwwroot/dashboard/dashboard.js#L1)

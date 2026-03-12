@@ -7,15 +7,23 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 ## Responsabilidades
 
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
-- Broker MQTT embutido para `commands`, `command-events`, `status` e `presence`.
+- Broker MQTT embutido para `commands`, `command-events`, `status`, `presence`, `stats` e `logs`.
 - WebSocket `/ws/v1/stream` exclusivamente para stream visual binario.
+- Dashboard local para `WebView2` via `GET /dashboard` + `WS /ws/device/{deviceId}` com DTO dedicado.
 - Sessao de comandos rastreados com timeout.
 - Normalizacao interna de `ServerConfig` para limites, timeouts e CIDRs.
 - Controle temporal deterministico via `TimeProvider` no pairing, snapshots e timeouts tracked.
 - Encaminhamento de comandos de operacao do device (`test_led`, `set_brightness`, `install/activate/set_app_config`).
+- Encaminhamento de `update_firmware` com progresso tracked via `command-events`.
 - Controle de acesso de rede e rate limiting por endpoint critico.
 - Persistencia de metadados de hardware (`BoardModel`, `PanelType`) por dispositivo.
-- Pass-through de telemetria de conectividade (`wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`).
+- Pass-through de telemetria operacional e de conectividade (`loopHealthyPercent`, `loopLoadPercent` legado, `chipTemperatureCelsius`, `wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`).
+- Persistencia round-trip de estatisticas estruturadas do firmware (`chip/sdk/heap/flash/sketch`).
+- Encaminhamento de logs estruturados do firmware para a UI via `DeviceLogReceived`.
+- Resolucao do firmware oficial por `boardModel + panelType + profile` a partir do pacote precompilado local do app.
+- Endpoints autenticados para OTA:
+  - `GET /api/v1/device/firmware/latest`
+  - `GET /api/v1/device/firmware/download?version=...`
 
 ## Fluxo de execucao
 
@@ -23,11 +31,12 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 2. Dispositivo pareia via HTTP e recebe token + endpoint MQTT.
 3. `PairDeviceRequest` pode informar `BoardModel` e `PanelType`.
 4. Device autentica no broker MQTT com `clientId = username = deviceId` e `password = token`.
-5. `presence` e `status` MQTT alimentam online/offline e o snapshot operacional do device.
+5. `presence`, `status` e `stats` MQTT alimentam online/offline e o snapshot operacional do device.
 6. O snapshot tambem expoe `ControlPlaneState` para diferenciar `MqttOnline`, `LegacyOnly` e `Offline`.
 7. App envia comandos tracked (`SendCommandTrackedAsync`) via `mica/v1/devices/{deviceId}/commands`.
 8. `PendingTrackedCommandStore` e `PendingTrackedCommand` correlacionam `command-events` por `commandId`.
-9. `BroadcastFrame` distribui stream para sockets WS conectados.
+9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
+10. `BroadcastFrame` distribui stream para sockets WS conectados.
 
 ## Politicas de seguranca
 
@@ -43,6 +52,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 
 3. Autenticacao:
 - HTTP (`/api/v1/*`): aceita somente `X-Device-Token` ou `Authorization: Bearer`.
+- `latest/download` de firmware reaproveitam a mesma autenticacao de device (`X-Device-Id` + `X-Device-Token` ou bearer).
 - WebSocket (`/ws/v1/stream`): aceita `X-Device-Id` + `X-Device-Token` (ou `Authorization: Bearer`).
 - MQTT: exige `clientId = username = deviceId` e `password = token`.
 - Query token legado em WS permanece disponivel apenas por compatibilidade quando `AllowLegacyWebSocketQueryToken=true`.
@@ -94,13 +104,65 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
   - `mica.device.command.failure.count`
 - `DeviceServerHost.LogMessage` continua alimentando a UI, mas agora tambem replica a mensagem para a trilha estruturada de engenharia.
 
+## Atualizacao 2026-03 - Observabilidade nativa por device
+
+- O broker MQTT do host ganhou dois canais adicionais:
+  - `mica/v1/devices/{deviceId}/stats`
+  - `mica/v1/devices/{deviceId}/logs`
+- `stats` e retained e atualiza `DeviceRecord`/`DeviceSnapshot` com identidade e capacidade do firmware.
+- `logs` nao e retained e chega ao app como `DeviceLogMessage`, ja normalizado pelo host.
+- Payload invalido de `stats/logs` e rejeitado em `HandleMqttInterceptingPublishAsync(...)`.
+- A referencia de contrato desta entrega esta em [device-observability-dashboard](../reference/device-observability-dashboard.md#objetivo).
+
+## Atualizacao 2026-03 - Dashboard local servido para WebView2
+
+- O host passou a copiar `wwwroot/dashboard/*` para o output do processo.
+- `GET /dashboard` e tratado antes do middleware de static files e redireciona para `/dashboard/index.html`.
+- O JavaScript servido localmente conecta em `WS /ws/device/{deviceId}`.
+- O websocket do dashboard:
+  - nao reutiliza autenticacao de device;
+  - continua limitado a loopback/rede permitida pela politica global do host;
+  - envia um DTO pronto para renderizacao, sem expor `DeviceSnapshot` bruto ao HTML.
+- O DTO do dashboard inclui:
+  - identidade do device e app ativo;
+  - `firmwareVersion`, `latestFirmwareVersion`, `firmwareUpdateSupported` e `firmwareUpdateAvailable`;
+  - brilho solicitado/aplicado/cap;
+  - `loopHealthyPercent` como metrica oficial de saude do device;
+  - `chipTemperatureCelsius` como leitura atual do sensor interno do chip;
+  - percentuais de heap e PSRAM calculados no servidor;
+  - `hub75Fps`, calculado pelo host a partir do delta de `StreamFramesApplied`.
+
+## Atualizacao 2026-03 - Catalogo oficial + OTA por device
+
+- O host passou a aceitar um catalogo neutro de firmware oficial (`IDeviceOfficialFirmwareCatalog`) alimentado pelo pacote precompilado local do app.
+- A comparacao de update e deliberadamente simples:
+  - sem pacote oficial compativel -> sem CTA;
+  - `FirmwareVersion` vazio ou diferente da versao oficial -> update disponivel;
+  - `FirmwareVersion` igual -> device atualizado.
+- O mesmo catalogo alimenta tres superficies:
+  - DTO do dashboard (`latestFirmwareVersion`, `firmwareUpdateSupported`, `firmwareUpdateAvailable`);
+  - dialogo nativo no `WebView2` via bridge `update-firmware`;
+  - endpoints OTA autenticados consumidos pelo firmware.
+- O comando wire novo `update_firmware` segue o mesmo pipeline tracked de `commands` + `command-events`.
+- O fluxo tracked de OTA foi ajustado para `Safe update mode`:
+  - `rebooting` nao conclui mais o comando;
+  - o host considera sucesso apenas quando recebe `validated`;
+  - `rolled-back` encerra o comando como falha reportada pelo device;
+  - `timeout` continua sendo falha quando nao houver confirmacao final no prazo.
+- O device reutiliza o mesmo `commandId` antes e depois do reboot:
+  - a imagem nova publica `pending-verify` e depois `validated`;
+  - a imagem antiga pode publicar `rolled-back` quando o bootloader reverter a OTA.
+
 ## Referencias de codigo
 
 - [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1) - assinatura: `public interface IDeviceServerHost`
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Advanced](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [DeviceServerHost.Firmware](../../../src/Device.Server/Hosting/DeviceServerHost.Firmware.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Mqtt](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [DeviceServerHost.Dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [DeviceOfficialFirmwareCatalog](../../../src/Device.Server/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
 - [DeviceServerObservability](../../../src/Device.Server/Hosting/DeviceServerObservability.cs#L1) - assinatura: `internal static class DeviceServerObservability`
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1) - assinatura: `internal sealed class DeviceServerRuntimeConfig`
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1) - assinatura: `internal static class DeviceMqttTopics`
@@ -111,6 +173,9 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1) - assinatura: `public sealed class DevicePresenceMessage`
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1) - assinatura: `public sealed class DeviceTelemetryMessage`
+- [DeviceFirmwareReleaseInfo](../../../src/Device.Protocol/Models/DeviceFirmwareReleaseInfo.cs#L1) - assinatura: `public sealed class DeviceFirmwareReleaseInfo`
+- [DeviceStatsMessage](../../../src/Device.Protocol/Models/DeviceStatsMessage.cs#L1) - assinatura: `public sealed class DeviceStatsMessage`
+- [DeviceLogMessage](../../../src/Device.Protocol/Models/DeviceLogMessage.cs#L1) - assinatura: `public sealed class DeviceLogMessage`
 - [DeviceRecord](../../../src/Device.Protocol/Models/DeviceRecord.cs#L1) - assinatura: `public sealed class DeviceRecord`
 - [DeviceSnapshot](../../../src/Device.Protocol/Models/DeviceSnapshot.cs#L1) - assinatura: `public sealed class DeviceSnapshot`
 - [ServerConfig](../../../src/Device.Protocol/Contracts/ServerConfig.cs#L1) - assinatura: `public sealed class ServerConfig`
@@ -161,14 +226,18 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 
 - A mensagem de telemetria WS agora transporta tambem:
   - `uptimeSeconds`
+  - `loopHealthyPercent`
   - `loopLoadPercent`
+  - `chipTemperatureCelsius`
   - `freeHeapBytes`
   - `largestHeapBlockBytes`
   - `psramAvailable`
   - `freePsramBytes`
   - `largestPsramBlockBytes`
   - `wifiConnected`
+- O payload MQTT `status` e o modelo `DeviceTelemetryMessage` compartilham o mesmo contrato para esses campos.
 - O servidor mantem comportamento pass-through para esses campos (sem clamp ou renormalizacao no host).
+- `loopLoadPercent` permanece apenas como compatibilidade de leitura; o dashboard WebView2 usa `loopHealthyPercent` para o card e o historico de saude.
 - Sanitizacao de `largest*BlockBytes` permanece restrita ao firmware emissor.
 - Detalhes de contrato e semantica: [device-telemetry-v2-fields](../reference/device-telemetry-v2-fields.md#objetivo).
 

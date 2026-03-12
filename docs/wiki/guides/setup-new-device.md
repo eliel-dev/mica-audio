@@ -55,7 +55,7 @@ Documentar o fluxo oficial e estavel de onboarding:
 1. Resolve firmware oficial `esp32s3-devkitc1-128x64-dma_exp_merged.bin`.
 2. Valida manifesto sidecar `esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json`.
 3. So prossegue com flash quando o manifesto declarar `controlPlane = mqtt`.
-4. Flasha o ESP32-S3 via `esptool`.
+4. Flasha o ESP32-S3 via `esptool`, sempre com apagamento total da flash antes da gravacao.
 5. Gera `pair code` e mostra em modal.
 6. Finaliza wizard e orienta provisioning via AP.
 7. O portal AP permite confirmar ou editar manualmente o campo `Servidor` antes do pareamento.
@@ -67,20 +67,27 @@ Documentar o fluxo oficial e estavel de onboarding:
 Comando canonico usado no onboarding (bundle local ou fallback `python -m esptool`):
 
 ```powershell
-python -m esptool --chip esp32s3 --port COMx --baud 115200 --before default_reset --after hard_reset write_flash --no-compress 0x0 firmware.bin
+python -m esptool --chip esp32s3 --port COMx --baud 115200 --before default_reset --after hard_reset write_flash --erase-all --no-compress 0x0 firmware.bin
 ```
 
 Regras fechadas:
 
 1. Usa `--before default_reset` e `--after hard_reset`.
-2. Usa `--no-compress` (nao usa `-z`).
-3. Nao executa `erase_flash` automatico.
+2. Usa `write_flash --erase-all` para apagar toda a flash antes de gravar.
+3. Usa `--no-compress` (nao usa `-z`).
+4. O wipe total e obrigatorio no wizard USB, mesmo que o device ja tenha configuracao anterior.
+
+Consequencia operacional:
+
+1. Credenciais, host salvo, pareamento e qualquer configuracao local anterior do ESP32 sao apagados em todo flash iniciado pelo wizard.
+2. O processo pode demorar mais do que um write sem erase, por desenho.
 
 ## Progresso de flash no wizard
 
 1. Durante `Flashing`, o wizard exibe barra `0..100` + `%`.
 2. O percentual exibido vem da saida do `esptool` (`NN%` ou `NN %`).
-3. Em falha, o ultimo percentual permanece visivel junto da mensagem de erro.
+3. Antes da escrita, o wizard informa que a flash inteira esta sendo apagada.
+4. Em falha, o ultimo percentual permanece visivel junto da mensagem de erro.
 
 ## Contrato serial `mica.serial.v1` (compatibilidade)
 

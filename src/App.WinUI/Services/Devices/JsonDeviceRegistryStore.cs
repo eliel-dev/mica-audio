@@ -98,7 +98,9 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
             UptimeSeconds = record.UptimeSeconds,
+            LoopHealthyPercent = record.LoopHealthyPercent,
             LoopLoadPercent = record.LoopLoadPercent,
+            ChipTemperatureCelsius = record.ChipTemperatureCelsius,
             FreeHeapBytes = record.FreeHeapBytes,
             LargestHeapBlockBytes = record.LargestHeapBlockBytes,
             PsramAvailable = record.PsramAvailable,
@@ -120,6 +122,16 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
             PanelType = record.PanelType,
+            ChipModel = record.ChipModel,
+            ChipRevision = record.ChipRevision,
+            ChipCores = record.ChipCores,
+            CpuFreqMHz = record.CpuFreqMHz,
+            SdkVersion = record.SdkVersion,
+            HeapTotalBytes = record.HeapTotalBytes,
+            PsramTotalBytes = record.PsramTotalBytes,
+            FlashTotalBytes = record.FlashTotalBytes,
+            SketchSizeBytes = record.SketchSizeBytes,
+            FreeSketchBytes = record.FreeSketchBytes,
         };
     }
 
@@ -143,7 +155,9 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
             UptimeSeconds = record.UptimeSeconds,
+            LoopHealthyPercent = record.LoopHealthyPercent,
             LoopLoadPercent = record.LoopLoadPercent,
+            ChipTemperatureCelsius = record.ChipTemperatureCelsius,
             FreeHeapBytes = record.FreeHeapBytes,
             LargestHeapBlockBytes = record.LargestHeapBlockBytes,
             PsramAvailable = record.PsramAvailable,
@@ -165,6 +179,16 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
             PanelType = record.PanelType,
+            ChipModel = record.ChipModel,
+            ChipRevision = record.ChipRevision,
+            ChipCores = record.ChipCores,
+            CpuFreqMHz = record.CpuFreqMHz,
+            SdkVersion = record.SdkVersion,
+            HeapTotalBytes = record.HeapTotalBytes,
+            PsramTotalBytes = record.PsramTotalBytes,
+            FlashTotalBytes = record.FlashTotalBytes,
+            SketchSizeBytes = record.SketchSizeBytes,
+            FreeSketchBytes = record.FreeSketchBytes,
         };
     }
 
@@ -262,7 +286,11 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
 
         public int? UptimeSeconds { get; init; }
 
+        public int? LoopHealthyPercent { get; init; }
+
         public int? LoopLoadPercent { get; init; }
+
+        public double? ChipTemperatureCelsius { get; init; }
 
         public long? FreeHeapBytes { get; init; }
 
@@ -305,5 +333,25 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         public string? BoardModel { get; init; }
 
         public string? PanelType { get; init; }
+
+        public string? ChipModel { get; init; }
+
+        public int? ChipRevision { get; init; }
+
+        public int? ChipCores { get; init; }
+
+        public int? CpuFreqMHz { get; init; }
+
+        public string? SdkVersion { get; init; }
+
+        public long? HeapTotalBytes { get; init; }
+
+        public long? PsramTotalBytes { get; init; }
+
+        public long? FlashTotalBytes { get; init; }
+
+        public long? SketchSizeBytes { get; init; }
+
+        public long? FreeSketchBytes { get; init; }
     }
 }

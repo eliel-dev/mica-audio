@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -170,7 +171,12 @@ internal sealed partial class PrecompiledFirmwareService
             return false;
         }
 
-        artifact = new ResolvedFirmwareArtifact(option, sourcePath, manifestPath, manifest);
+        if (!TryNormalizeManifest(manifest, sourcePath, out var normalizedManifest, out error))
+        {
+            return false;
+        }
+
+        artifact = new ResolvedFirmwareArtifact(option, sourcePath, manifestPath, normalizedManifest);
         return true;
     }
 
@@ -251,6 +257,98 @@ internal sealed partial class PrecompiledFirmwareService
         await source.CopyToAsync(destination, cancellationToken).ConfigureAwait(false);
 
         Log($"Firmware copiado para: {destinationPath}");
+    }
+
+    private static bool TryNormalizeManifest(
+        FirmwareArtifactManifest manifest,
+        string firmwarePath,
+        out FirmwareArtifactManifest normalizedManifest,
+        out string error)
+    {
+        normalizedManifest = manifest;
+        error = string.Empty;
+
+        long actualFileSize;
+        try
+        {
+            actualFileSize = new FileInfo(firmwarePath).Length;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            error = $"Falha ao ler metadados do firmware: {ex.Message}";
+            return false;
+        }
+
+        if (actualFileSize <= 0)
+        {
+            error = "Arquivo de firmware invalido: tamanho zero.";
+            return false;
+        }
+
+        if (manifest.FileSizeBytes > 0 && manifest.FileSizeBytes != actualFileSize)
+        {
+            error = "Manifesto do firmware com tamanho divergente do binario oficial.";
+            return false;
+        }
+
+        string sha256;
+        var normalizedSha256 = manifest.Sha256.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedSha256))
+        {
+            if (!TryComputeSha256(firmwarePath, out sha256, out error))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            normalizedSha256 = normalizedSha256.ToLowerInvariant();
+            if (!TryComputeSha256(firmwarePath, out sha256, out error))
+            {
+                return false;
+            }
+
+            if (!string.Equals(normalizedSha256, sha256, StringComparison.Ordinal))
+            {
+                error = "Manifesto do firmware com hash divergente do binario oficial.";
+                return false;
+            }
+        }
+
+        normalizedManifest = new FirmwareArtifactManifest
+        {
+            SchemaVersion = manifest.SchemaVersion,
+            FirmwareVersion = manifest.FirmwareVersion,
+            GitSha = manifest.GitSha,
+            Profile = manifest.Profile,
+            BoardModel = manifest.BoardModel,
+            PanelType = manifest.PanelType,
+            ControlPlane = manifest.ControlPlane,
+            BuiltAtUtc = manifest.BuiltAtUtc,
+            Sha256 = sha256,
+            FileSizeBytes = actualFileSize,
+        };
+
+        return true;
+    }
+
+    private static bool TryComputeSha256(string firmwarePath, out string sha256, out string error)
+    {
+        sha256 = string.Empty;
+        error = string.Empty;
+
+        try
+        {
+            using var stream = File.OpenRead(firmwarePath);
+            var hash = SHA256.HashData(stream);
+            sha256 = Convert.ToHexString(hash).ToLowerInvariant();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            error = $"Falha ao calcular hash SHA-256 do firmware: {ex.Message}";
+            return false;
+        }
     }
 
     private void Log(string message)

@@ -18,7 +18,9 @@ public sealed class DeviceTelemetryMessageTests
               "deviceId": "mp-01",
               "rssi": -56,
               "uptimeSeconds": 7200,
+              "loopHealthyPercent": 92,
               "loopLoadPercent": 47,
+              "chipTemperatureCelsius": 48.5,
               "freeHeapBytes": 195584,
               "largestHeapBlockBytes": 120320,
               "psramAvailable": true,
@@ -47,7 +49,9 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Equal("mp-01", telemetry!.DeviceId);
         Assert.Equal(-56, telemetry.Rssi);
         Assert.Equal(7200, telemetry.UptimeSeconds);
+        Assert.Equal(92, telemetry.LoopHealthyPercent);
         Assert.Equal(47, telemetry.LoopLoadPercent);
+        Assert.Equal(48.5d, telemetry.ChipTemperatureCelsius);
         Assert.Equal(195584L, telemetry.FreeHeapBytes);
         Assert.Equal(120320L, telemetry.LargestHeapBlockBytes);
         Assert.True(telemetry.PsramAvailable);
@@ -87,7 +91,9 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Equal("mp-legacy", telemetry!.DeviceId);
         Assert.Equal(-62, telemetry.Rssi);
         Assert.Null(telemetry.UptimeSeconds);
+        Assert.Null(telemetry.LoopHealthyPercent);
         Assert.Null(telemetry.LoopLoadPercent);
+        Assert.Null(telemetry.ChipTemperatureCelsius);
         Assert.Null(telemetry.FreeHeapBytes);
         Assert.Null(telemetry.LargestHeapBlockBytes);
         Assert.Null(telemetry.PsramAvailable);
