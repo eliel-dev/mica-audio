@@ -11,6 +11,11 @@ public sealed partial class DevicesPage
 {
     private void UpdateDeviceLogs(string? deviceId, IReadOnlyList<string> entries, string placeholder)
     {
+        if (DeviceLogsTextBox is null)
+        {
+            return;
+        }
+
         var header = string.IsNullOrWhiteSpace(deviceId)
             ? "Logs do dispositivo"
             : $"Logs do dispositivo Â· {deviceId}";

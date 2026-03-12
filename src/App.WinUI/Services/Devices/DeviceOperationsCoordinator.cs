@@ -20,6 +20,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
 
     private readonly IDeviceOperationsRuntime integration;
     private readonly DeviceLogBook logBook = new(MaxLogEntries, MaxDeviceLogEntries);
+    private readonly DeviceTelemetryHistoryBook telemetryHistoryBook = new(maxSamples: 60);
     private readonly DeviceCommandTracker commandTracker = new();
     private readonly DeviceRefreshCoordinator refreshCoordinator = new();
     private readonly DeviceLifecycleThresholdProvider lifecycleThresholdProvider;
@@ -51,6 +52,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
 
         integration.DevicesChanged += OnDevicesChanged;
         integration.LogMessage += OnLogMessage;
+        integration.DeviceLogReceived += OnDeviceLogReceived;
         integration.CommandProgressChanged += OnHostCommandProgressChanged;
     }
 
@@ -79,8 +81,11 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         };
     }
 
-    public IReadOnlyList<string> GetDeviceLogs(string deviceId)
+    public IReadOnlyList<DeviceLogEntry> GetDeviceLogs(string deviceId)
         => logBook.GetDeviceLogs(deviceId);
+
+    public DeviceTelemetryHistorySnapshot GetDeviceTelemetryHistory(string deviceId)
+        => telemetryHistoryBook.GetHistory(deviceId);
 
     public void SetDevicesPageVisible(bool visible)
     {
@@ -124,8 +129,9 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
             return false;
         }
 
-        AppendDeviceLog(normalizedDeviceId, "Dispositivo removido do registro local.");
-        AppendLog($"Dispositivo removido do registro local: {normalizedDeviceId}");
+        logBook.RemoveDevice(normalizedDeviceId);
+        telemetryHistoryBook.RemoveDevice(normalizedDeviceId);
+        AppendLog($"Dispositivo removido do registro local: {normalizedDeviceId}", category: "device", code: "removed", source: DeviceLogSource.App);
         RequestRefresh();
         return true;
     }
@@ -217,6 +223,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         lifecycleThresholdProvider.Dispose();
         integration.DevicesChanged -= OnDevicesChanged;
         integration.LogMessage -= OnLogMessage;
+        integration.DeviceLogReceived -= OnDeviceLogReceived;
         integration.CommandProgressChanged -= OnHostCommandProgressChanged;
     }
 
@@ -263,8 +270,8 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         }
 
         RaiseStateChanged();
-        AppendDeviceLog(normalizedDeviceId, $"Comando iniciado ({operationLabel}).");
-        AppendLog($"Comando iniciado ({operationLabel}) para {normalizedDeviceId}.");
+        AppendDeviceLog(normalizedDeviceId, $"Comando iniciado ({operationLabel}).", category: "command", code: "started");
+        AppendLog($"Comando iniciado ({operationLabel}) para {normalizedDeviceId}.", category: "command", code: "started", source: DeviceLogSource.App);
         if (logger is not null)
         {
             LogDeviceCommandStarted(logger, commandType, normalizedDeviceId);
@@ -297,8 +304,9 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         RaiseStateChanged();
 
         var resultMessage = DeviceOperationsText.BuildResultLogMessage(result);
-        AppendDeviceLog(normalizedDeviceId, resultMessage);
-        AppendLog(resultMessage);
+        var resultSeverity = result.Success ? DeviceLogSeverity.Info : DeviceLogSeverity.Warning;
+        AppendDeviceLog(normalizedDeviceId, resultMessage, severity: resultSeverity, category: "command", code: result.Stage);
+        AppendLog(resultMessage, severity: resultSeverity, category: "command", code: result.Stage, source: DeviceLogSource.App);
         return result;
     }
 
@@ -336,7 +344,20 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
 
     private void OnLogMessage(object? sender, string message)
     {
-        AppendLog(message);
+        AppendLog(message, category: "server", source: DeviceLogSource.Server);
+    }
+
+    private void OnDeviceLogReceived(object? sender, DeviceLogMessage log)
+    {
+        if (logBook.AppendDeviceFirmware(log))
+        {
+            if (log.Level.Equals("error", StringComparison.OrdinalIgnoreCase))
+            {
+                CentralLogStore?.Append(LogCategory.Devices, LogSeverity.Error, log.Message, log.DeviceId);
+            }
+
+            RaiseStateChanged();
+        }
     }
 
     private void OnHostCommandProgressChanged(object? sender, DeviceCommandProgressMessage progress)
@@ -346,9 +367,10 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
             return;
         }
 
-        AppendDeviceLog(normalizedDeviceId, progressMessage);
+        var severity = progress.Success is false ? DeviceLogSeverity.Warning : DeviceLogSeverity.Info;
+        AppendDeviceLog(normalizedDeviceId, progressMessage, severity: severity, category: "command", code: progress.Stage);
         RaiseStateChanged();
-        AppendLog(progressMessage);
+        AppendLog(progressMessage, severity: severity, category: "command", code: progress.Stage, source: DeviceLogSource.App);
     }
 
     private async Task RefreshDevicesAsync(bool forcePublish)
@@ -370,6 +392,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
             if (update.Changed)
             {
                 logBook.RecordLifecycleEvents(update.PreviousSnapshot, update.CurrentSnapshot, DateTimeOffset.Now);
+                telemetryHistoryBook.RecordSnapshots(update.CurrentSnapshot);
                 DeviceListChanged?.Invoke(this, EventArgs.Empty);
             }
 
@@ -380,7 +403,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         }
         catch (Exception ex)
         {
-            AppendLog($"Falha ao atualizar lista de dispositivos: {ex.Message}");
+            AppendLog($"Falha ao atualizar lista de dispositivos: {ex.Message}", severity: DeviceLogSeverity.Error, category: "refresh", code: "refresh_failed", source: DeviceLogSource.App);
         }
         finally
         {
@@ -388,22 +411,41 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         }
     }
 
-    private void AppendDeviceLog(string deviceId, string message)
+    private void AppendDeviceLog(
+        string deviceId,
+        string message,
+        DeviceLogSeverity severity = DeviceLogSeverity.Info,
+        string category = "app",
+        string? code = null,
+        DeviceLogSource source = DeviceLogSource.App)
     {
-        if (logBook.AppendDevice(deviceId, message))
+        if (logBook.AppendDevice(deviceId, message, severity, category, code, source))
         {
             RaiseStateChanged();
         }
     }
 
-    private void AppendLog(string message)
+    private void AppendLog(
+        string message,
+        DeviceLogSeverity severity = DeviceLogSeverity.Info,
+        string category = "server",
+        string? code = null,
+        DeviceLogSource source = DeviceLogSource.Server)
     {
-        if (logBook.AppendGlobal(message))
+        if (logBook.AppendGlobal(message, severity, category, code, source))
         {
-            CentralLogStore?.Append(LogCategory.Devices, LogSeverity.Info, message);
+            CentralLogStore?.Append(LogCategory.Devices, MapSeverity(severity), message);
             RaiseStateChanged();
         }
     }
+
+    private static LogSeverity MapSeverity(DeviceLogSeverity severity)
+        => severity switch
+        {
+            DeviceLogSeverity.Warning => LogSeverity.Warning,
+            DeviceLogSeverity.Error => LogSeverity.Error,
+            _ => LogSeverity.Info,
+        };
 
     private void RaiseStateChanged()
     {
@@ -428,6 +470,8 @@ internal interface IDeviceOperationsRuntime
     event EventHandler? DevicesChanged;
 
     event EventHandler<string>? LogMessage;
+
+    event EventHandler<DeviceLogMessage>? DeviceLogReceived;
 
     event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
 
@@ -466,6 +510,12 @@ internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
     {
         add => integration.LogMessage += value;
         remove => integration.LogMessage -= value;
+    }
+
+    public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+    {
+        add => integration.DeviceLogReceived += value;
+        remove => integration.DeviceLogReceived -= value;
     }
 
     public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged

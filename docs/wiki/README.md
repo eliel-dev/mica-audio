@@ -20,6 +20,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 
 - Quero mexer em captura/analise/render: [architecture/01-system-overview.md](architecture/01-system-overview.md)
 - Quero operar dispositivos e setup de firmware: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
+- Quero entender o dashboard nativo de observabilidade por device: [reference/device-observability-dashboard.md](reference/device-observability-dashboard.md)
 - Quero configurar novo dispositivo: [guides/setup-new-device.md](guides/setup-new-device.md)
 - Quero baixar firmware pre-compilado: [guides/build-export-firmware.md](guides/build-export-firmware.md)
 - Quero debugar falha de download/salvamento de firmware: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
@@ -96,6 +97,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [HTTP API v1](reference/http-api-v1.md)
 - [WS protocol v1](reference/ws-protocol-v1.md)
 - [Device telemetry v2 fields](reference/device-telemetry-v2-fields.md)
+- [Dashboard nativo de observabilidade por device](reference/device-observability-dashboard.md)
 - [Troubleshooting matrix](reference/troubleshooting-matrix.md)
 - [Docs health](reference/docs-health.md)
 - [Glossario](reference/glossary.md)

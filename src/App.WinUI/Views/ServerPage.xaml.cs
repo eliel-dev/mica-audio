@@ -98,7 +98,7 @@ public sealed partial class ServerPage : Page
         UpdateLogs(state.Logs);
     }
 
-    private void UpdateLogs(IReadOnlyList<string> entries)
+    private void UpdateLogs(IReadOnlyList<DeviceLogEntry> entries)
     {
         var totalCount = entries.Count + localLogs.Count;
         if (totalCount == 0)
@@ -113,14 +113,14 @@ public sealed partial class ServerPage : Page
             return;
         }
 
-        var tail = localLogs.Count > 0 ? localLogs[^1] : entries[^1];
+        var tail = localLogs.Count > 0 ? localLogs[^1] : DeviceLogEntryFormatter.Format(entries[^1], includeDeviceId: true);
         if (lastRenderedLogCount == totalCount && string.Equals(lastRenderedLogTail, tail, StringComparison.Ordinal))
         {
             return;
         }
 
         var merged = new List<string>(entries.Count + localLogs.Count);
-        merged.AddRange(entries);
+        merged.AddRange(entries.Select(entry => DeviceLogEntryFormatter.Format(entry, includeDeviceId: true)));
         merged.AddRange(localLogs);
 
         LogsTextBox.Text = string.Join("\r\n", merged) + "\r\n";

@@ -89,50 +89,12 @@ public sealed partial class DevicesPage
         if (selectedVisual is null)
         {
             SetDetailsPaneVisible(false);
-            SelectedDeviceTitleText.Text = "Nenhum dispositivo selecionado";
-            SelectedDeviceSubtitleText.Text = "-";
-            SelectedDeviceRegistrationText.Text = "-";
-            SelectedDeviceAppText.Text = "App ativo: -";
-            SelectedDeviceSignalText.Text = "Sinal -";
-            TestLedButton.Label = "Testar LED";
-            ApplyDashboard(selectionDeviceId: null, hasSelection: false, snapshot: null, DeviceMetricsFormatter.Build(null));
-            UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Selecione um dispositivo para ver logs do dispositivo.");
+            _ = PushDashboardSelectionAsync();
             return;
         }
 
         SetDetailsPaneVisible(true);
-
-        var selected = selectedVisual.Source;
-        SelectedDeviceTitleText.Text = selected.Name;
-        SelectedDeviceSubtitleText.Text = selected.StatusLine;
-        SelectedDeviceRegistrationText.Text = BuildRegistrationLine(selected);
-        SelectedDeviceAppText.Text = DevicePreviewVisibilityPolicy.BuildSelectedAppLabel(selected.Status, selected.AppName);
-
-        var selectedSnapshot = FindDeviceSnapshot(selected.DeviceId);
-        SelectedDeviceSignalText.Text = BuildSelectedSignalLabel(selectedSnapshot);
-        var testLedAvailable = selectedSnapshot?.TestLedAvailable != false;
-        TestLedButton.Label = testLedAvailable ? "Testar LED" : "LED indisponivel";
-        try
-        {
-            var metrics = DeviceMetricsFormatter.Build(selectedSnapshot);
-            ApplyDashboard(selectionDeviceId: selected.DeviceId, hasSelection: true, snapshot: selectedSnapshot, metrics);
-        }
-        catch (Exception ex)
-        {
-            LogRenderException("selection", selected.DeviceId, selectedSnapshot, ex);
-            ApplyOfflineDashboardFallback(
-                hasSelection: true,
-                snapshot: selectedSnapshot,
-                metrics: DeviceMetricsFormatter.Build(selectedSnapshot),
-                placeholder: OfflineDashboardFallbackText);
-            lastRenderedDashboardSignature = BuildOfflineDashboardSignature(selected.DeviceId, selectedSnapshot);
-        }
-
-        var deviceLogs = DeviceOps?.GetDeviceLogs(selected.DeviceId) ?? Array.Empty<string>();
-        var logsPlaceholder = deviceLogs.Count == 0
-            ? "Sem eventos para este dispositivo ainda."
-            : string.Empty;
-        UpdateDeviceLogs(selected.DeviceId, deviceLogs, logsPlaceholder);
+        _ = PushDashboardSelectionAsync();
     }
 
     private void SetDetailsPaneVisible(bool visible)
@@ -143,28 +105,9 @@ public sealed partial class DevicesPage
             : new GridLength(0);
     }
 
-    private void ApplyButtonState()
+    private static void ApplyButtonState()
     {
-        var selected = GetSelectedDeviceItem();
-        var selectedSnapshot = selected is null ? null : FindDeviceSnapshot(selected.DeviceId);
-        var canRunCommand = selected is not null
-            && selected.Presence.CanRunCommands
-            && !currentState.CommandInProgress;
-        var canRemove = selected is not null && !currentState.CommandInProgress;
-        var testLedAvailable = selectedSnapshot?.TestLedAvailable != false;
-
-        TestLedButton.IsEnabled = canRunCommand && testLedAvailable;
-        if (selected is null)
-        {
-            TestLedButton.Label = "Testar LED";
-        }
-        else
-        {
-            TestLedButton.Label = testLedAvailable ? "Testar LED" : "LED indisponivel";
-        }
-
-        DashboardBrightnessSlider.IsEnabled = canRunCommand;
-        RemoveDeviceButton.IsEnabled = canRemove;
+        // O dashboard embutido decide o estado visual dos controles a partir do DTO servido localmente.
     }
 
     private static string BuildRegistrationLine(DeviceListItem selected)

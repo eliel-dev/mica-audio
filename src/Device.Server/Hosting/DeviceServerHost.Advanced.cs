@@ -356,6 +356,19 @@ public sealed partial class DeviceServerHost
         }
     }
 
+    private static bool TryHandleStatsPayload(DeviceSession state, byte[] payload, string? remoteIp)
+    {
+        try
+        {
+            var stats = JsonSerializer.Deserialize<DeviceStatsMessage>(payload, JsonOptions);
+            return stats is not null && TryApplyStats(state, stats, remoteIp);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool TryHandlePresencePayload(DeviceSession state, byte[] payload, string? remoteIp)
     {
         try
@@ -379,6 +392,32 @@ public sealed partial class DeviceServerHost
                 return false;
             }
 
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private bool TryHandleLogPayload(DeviceSession state, byte[] payload)
+    {
+        try
+        {
+            var log = JsonSerializer.Deserialize<DeviceLogMessage>(payload, JsonOptions);
+            if (log is null || string.IsNullOrWhiteSpace(log.Message))
+            {
+                return false;
+            }
+
+            var normalized = NormalizeDeviceLog(state, log);
+            if (normalized is null)
+            {
+                return false;
+            }
+
+            state.Touch();
+            PublishDeviceLog(normalized);
             return true;
         }
         catch
@@ -487,6 +526,86 @@ public sealed partial class DeviceServerHost
         return true;
     }
 
+    private static bool TryApplyStats(DeviceSession state, DeviceStatsMessage stats, string? remoteIp)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(stats);
+
+        state.MarkStats(
+            remoteIp,
+            stats.ChipModel,
+            stats.ChipRevision,
+            stats.ChipCores,
+            stats.CpuFreqMHz,
+            stats.SdkVersion,
+            stats.HeapTotalBytes,
+            stats.PsramTotalBytes,
+            stats.FlashTotalBytes,
+            stats.SketchSizeBytes,
+            stats.FreeSketchBytes);
+        return true;
+    }
+
+    private static DeviceLogMessage? NormalizeDeviceLog(DeviceSession state, DeviceLogMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(message);
+
+        if (message.Sequence == 0)
+        {
+            return null;
+        }
+
+        var level = NormalizeLogLevel(message.Level);
+        var category = NormalizeLogCategory(message.Category);
+        if (string.IsNullOrWhiteSpace(level) || string.IsNullOrWhiteSpace(category))
+        {
+            return null;
+        }
+
+        return new DeviceLogMessage
+        {
+            DeviceId = string.IsNullOrWhiteSpace(message.DeviceId) ? state.Record.DeviceId : message.DeviceId,
+            Sequence = message.Sequence,
+            Level = level,
+            Category = category,
+            EventCode = NormalizeOptional(message.EventCode),
+            Message = message.Message.Trim(),
+            UptimeSeconds = message.UptimeSeconds,
+            TelemetrySequence = message.TelemetrySequence,
+        };
+    }
+
+    private static string? NormalizeLogLevel(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "info";
+        }
+
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "info" or "warning" or "error" => normalized,
+            _ => null,
+        };
+    }
+
+    private static string? NormalizeLogCategory(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "device";
+        }
+
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "device" or "wifi" or "mqtt" or "portal" or "ws" or "stream" or "command" => normalized,
+            _ => null,
+        };
+    }
+
     private void TryCompletePending(string commandId, CommandDispatchResult result)
     {
         PendingTrackedCommand? pending;
@@ -534,6 +653,11 @@ public sealed partial class DeviceServerHost
         }
 
         CommandProgressChanged?.Invoke(this, progress);
+    }
+
+    private void PublishDeviceLog(DeviceLogMessage log)
+    {
+        DeviceLogReceived?.Invoke(this, log);
     }
 
     private static bool TryGetAppId(IReadOnlyDictionary<string, string>? parameters, out string? appId)

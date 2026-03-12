@@ -124,6 +124,12 @@ public sealed class DeviceIntegrationServiceLegacyWsSettingTests
             remove { }
         }
 
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+        {
+            add { }
+            remove { }
+        }
+
         public Task StartAsync(ServerConfig config, CancellationToken cancellationToken = default)
         {
             LastStartConfig = config;

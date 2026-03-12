@@ -117,12 +117,13 @@
   - a mudanca persiste em `settings.json`;
   - o status local informa se o ambiente ficou em fallback solido.
 
-## Atualizacao 2026-03 - SettingsPage simplificada e arquivo unico de erros
+## Atualizacao 2026-03 - SettingsPage com observabilidade do device
 
-- A `SettingsPage` deixou de ser um viewer de logs.
-- `Configuracoes` agora ficou reduzido a uma unica superficie `Geral`, com:
-  - toggle de Mica;
-  - card `Logs de erro` com atalho para abrir a pasta do `crash.log`.
+- `Configuracoes` agora concentra duas trilhas:
+  - `Geral`, com toggle de Mica e card `Logs de erro`;
+  - `Observabilidade do device`, com combo de selecao local e `Logs`; as estatisticas estruturadas ficaram ocultas para curadoria posterior do dashboard.
+- O device alvo em `Configuracoes` nao sincroniza com a selecao atual da `DevicesPage`.
+- A `DevicesPage` voltou a ficar focada apenas no dashboard seguro do device selecionado.
 - O contrato de logging do app foi simplificado:
   - `crash.log` em `%LocalAppData%\MicaAudio` virou o arquivo unico de erro;
   - `AppLogStore` continua mantendo eventos em memoria para uso interno;
@@ -232,6 +233,20 @@
   - `mica.ui.error.count`
 - `AppLogStore` e `crash.log` continuam sendo a superficie local para o usuario; a nova trilha estruturada serve diagnostico tecnico e correlacao.
 
+## Atualizacao 2026-03 - DevicesPage com dashboard WebView2 local
+
+- O painel direito da `DevicesPage` deixou de renderizar cards WinUI e agora hospeda um `WebView2` full-size.
+- O `WebView2` navega para `http://127.0.0.1:{porta}/dashboard?embedded=1`, usando a mesma instancia local do `DeviceServerHost` iniciada pelo app.
+- A troca de device selecionado nao recarrega a pagina:
+  - o host WinUI envia `select-device` e `clear-selection` via `CoreWebView2.PostWebMessageAsJson(...)`;
+  - o JavaScript abre/fecha `WS /ws/device/{deviceId}` e atualiza o dashboard em tempo real.
+- As acoes continuam nativas no host:
+  - `set-brightness`
+  - `test-led`
+  - `remove-device`, preservando o `ContentDialog` nativo de confirmacao.
+- `Logs` continuam somente em `Configuracoes`, com `ComboBox` local de device e `Expander` `Logs`.
+- A referencia de contrato desta entrega esta em [device-observability-dashboard](../reference/device-observability-dashboard.md#objetivo).
+
 ## Referencias de codigo
 
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)
@@ -246,7 +261,11 @@
 - [ShellPageContentFactory](../../../src/App.WinUI/Views/ShellPageContentFactory.cs#L1)
 - [MonitoringPage](../../../src/App.WinUI/Views/MonitoringPage.xaml.cs#L1)
 - [MonitoringPage UI](../../../src/App.WinUI/Views/MonitoringPage.Ui.cs#L1)
+- [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
+- [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
+- [DevicesPage WebView dashboard](../../../src/App.WinUI/Views/DevicesPage.WebViewDashboard.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
+- [SettingsPage observability](../../../src/App.WinUI/Views/SettingsPage.Observability.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppCacheKeys](../../../src/App.WinUI/Infrastructure/Cache/AppCacheKeys.cs#L1)
 - [AppObservability](../../../src/App.WinUI/Infrastructure/Observability/AppObservability.cs#L1)
@@ -351,15 +370,15 @@
 
 ## Atualizacao 2026-03 - Paridade visual com HTML canonico
 
-- A `DevicesPage` agora segue contrato visual 1:1 do arquivo canonicamente aprovado em `C:\Users\eliels\Pictures\nice\mica-dashboard.html`.
+- A `DevicesPage` agora usa um dashboard HTML/JS servido localmente para seguir o contrato visual do arquivo aprovado em `C:\Users\eliels\Documents\nice\mica-dashboard.html`.
 - Estrutura fixa do detalhe:
   - header do dispositivo com `RSSI` + acoes verticais (`Testar LED` e `Remover`);
-  - bloco de brilho (`30..160`) com status/aplicado/heartbeat;
+  - bloco de brilho (`30..160`);
   - grade de metricas (CPU/RAM/PSRAM);
-  - secao de status textual com rede, portal, ultimo evento e stream;
-  - historico de eventos (logs).
-- O wizard foi migrado para overlay custom (sem `ContentDialog`) para controlar dimensoes/padding/radius iguais ao HTML.
-- O fluxo tecnico de onboarding USB nao foi alterado: a mudanca foi de composicao visual.
+  - cards auxiliares `FPS atual do HUB75` e `Sinal`;
+  - charts HTML/Canvas para historico de `Loop load` e `Heap`.
+- A selecao do device passa por `postMessage` do host WinUI; o HTML abre `WS /ws/device/{deviceId}` para DTO dedicado do dashboard.
+- O wizard continua em overlay custom e o fluxo tecnico de onboarding USB nao mudou.
 
 ## Atualizacao 2026-03 - Hotfix de estabilidade ao selecionar device offline
 

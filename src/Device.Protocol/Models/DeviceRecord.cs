@@ -85,4 +85,24 @@ public sealed class DeviceRecord
     public string? BoardModel { get; init; }
 
     public string? PanelType { get; init; }
+
+    public string? ChipModel { get; init; }
+
+    public int? ChipRevision { get; init; }
+
+    public int? ChipCores { get; init; }
+
+    public int? CpuFreqMHz { get; init; }
+
+    public string? SdkVersion { get; init; }
+
+    public long? HeapTotalBytes { get; init; }
+
+    public long? PsramTotalBytes { get; init; }
+
+    public long? FlashTotalBytes { get; init; }
+
+    public long? SketchSizeBytes { get; init; }
+
+    public long? FreeSketchBytes { get; init; }
 }

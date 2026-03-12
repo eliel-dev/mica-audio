@@ -9,7 +9,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | Campo | Tipo | Semantica |
 | --- | --- | --- |
 | `uptimeSeconds` | `int?` | uptime do firmware em segundos |
-| `loopLoadPercent` | `int?` | carga aproximada do loop principal (0..100 no emissor) |
+| `loopLoadPercent` | `int?` | carga util aproximada do app no loop principal (0..100 no emissor), excluindo esperas deliberadas |
 | `freeHeapBytes` | `long?` | heap livre em bytes |
 | `largestHeapBlockBytes` | `long?` | maior bloco contiguo de heap livre |
 | `psramAvailable` | `bool?` | indica se o build/device possui PSRAM utilizavel |

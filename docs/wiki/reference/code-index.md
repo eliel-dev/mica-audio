@@ -25,21 +25,30 @@ Pontos principais do cutover HUB75 128x64:
 - [MonitoringPage](../../../src/App.WinUI/Views/MonitoringPage.xaml.cs#L1)
 - [MonitoringPage UI](../../../src/App.WinUI/Views/MonitoringPage.Ui.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
+- [SettingsPage observability](../../../src/App.WinUI/Views/SettingsPage.Observability.cs#L1)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
+- [Board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)
+- [Particao local 3MB APP / 9.9MB FATFS](../../../firmware/esp32s3-devkitc1/partitions/mica_app3M_fat9M_16MB.csv#L1)
+- [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L1)
+- [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
 - [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1)
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1)
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1)
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1)
 - [DeviceControlPlaneState](../../../src/Device.Protocol/Models/DeviceControlPlaneState.cs#L1)
+- [DeviceStatsMessage](../../../src/Device.Protocol/Models/DeviceStatsMessage.cs#L1)
+- [DeviceLogMessage](../../../src/Device.Protocol/Models/DeviceLogMessage.cs#L1)
 
 Notas ativas:
 
 - Firmware oficial unico: `dma_exp` (DevKitC-1 128x64).
+- O env oficial `esp32s3_devkitc1_dma_exp` agora usa board local N16R8 (`16MB + OPI PSRAM + 3MB APP / 9.9MB FATFS`) para evitar drift do board padrao `N8` do PlatformIO.
 - O portal AP do firmware voltou a expor `Servidor` editavel; aceita URL completa ou `host[:porta]` e preserva host salvo valido em erro manual.
 
 Pontos de UI para operacao de devices:
@@ -49,6 +58,7 @@ Pontos de UI para operacao de devices:
 - [DevicesPage list state](../../../src/App.WinUI/Views/DevicesPage.ListState.cs#L1)
 - [DevicesPage preview pump](../../../src/App.WinUI/Views/DevicesPage.PreviewPump.cs#L1)
 - [DevicesPage dashboard](../../../src/App.WinUI/Views/DevicesPage.Dashboard.cs#L1)
+- [DevicesPage WebView dashboard](../../../src/App.WinUI/Views/DevicesPage.WebViewDashboard.cs#L1)
 - [DevicesPage selection](../../../src/App.WinUI/Views/DevicesPage.Selection.cs#L1)
 - [DevicesPage UI programatica](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
 - [DeviceListRowControl](../../../src/App.WinUI/Views/Controls/DeviceListRowControl.cs#L1)
@@ -64,11 +74,14 @@ Pontos de estado e visibilidade de devices:
 - [DeviceCommandDispatcher](../../../src/App.WinUI/Services/Devices/DeviceCommandDispatcher.cs#L1)
 - [DeviceCommandTracker](../../../src/App.WinUI/Services/Devices/DeviceCommandTracker.cs#L1)
 - [DeviceLogBook](../../../src/App.WinUI/Services/Devices/DeviceLogBook.cs#L1)
+- [DeviceLogEntry](../../../src/App.WinUI/Services/Devices/DeviceLogEntry.cs#L1)
+- [DeviceTelemetryHistoryBook](../../../src/App.WinUI/Services/Devices/DeviceTelemetryHistoryBook.cs#L1)
 - [DeviceLifecycleThresholdProvider](../../../src/App.WinUI/Services/Devices/DeviceLifecycleThresholdProvider.cs#L1)
 - [DeviceListVisibilityPolicy](../../../src/App.WinUI/Services/Devices/DeviceListVisibilityPolicy.cs#L1)
 - [DeviceListRenderDiff](../../../src/App.WinUI/Services/Devices/DeviceListRenderDiff.cs#L1)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
 - [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1)
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1)
@@ -89,11 +102,14 @@ Observacoes ativas:
 - A DevicesPage diferencia App ativo (online) de Ultimo app conhecido (offline), com acoes no card de resumo (`Testar LED` e `Remover`).
 - O botao `Remover` consolida o fluxo: online tenta revogar/reiniciar e remove local; offline remove apenas local.
 - A DevicesPage usa apenas miniatura inline da lista para preview de app; o painel da direita nao tem preview maior.
-- A DevicesPage usa painel seguro de status + logs por device selecionado, e nao monta mais o dashboard avancado estilo ESP-Dash no caminho padrao.
+- A DevicesPage agora usa `WebView2` no painel direito e carrega o dashboard HTML local em `/dashboard`, mantendo a lista de devices e o wizard USB no shell WinUI nativo.
+- O dashboard HTML recebe selecao via `postMessage`, consome `WS /ws/device/{deviceId}` e preserva no host WinUI as acoes reais de brilho, teste de LED e remocao.
+- `Logs` estruturados continuam em `Configuracoes`; o dashboard principal fica focado em visualizacao/controle do device selecionado.
 - O DeviceServerHost aplica grace curto de detach WS (500ms) e detach por identidade de socket para reduzir flapping em reconexao rapida.
 - O online/offline oficial da UI agora vem do control plane MQTT; WS isolado nao basta mais para marcar device online.
 - O snapshot tambem diferencia `LegacyOnly` para firmware que ainda usa WS-texto/HTTP no control plane.
 - O hot path visual continua em `Esp32S3LedOutput -> DeviceServerHost.BroadcastFrame -> /ws/v1/stream`.
+- O host local agora tambem expõe `GET /dashboard` e `WS /ws/device/{deviceId}` com DTO dedicado para o WebView.
 
 Pontos centrais do pipeline de analise e captura:
 
@@ -143,7 +159,7 @@ Observacoes ativas do runtime do app:
 - `ShellPage` agora tambem resolve a sessao `Monitoramento`, que le sensores locais do PC via HWiNFO64 Shared Memory sem misturar com o runtime de devices.
 - `AppStartupDiagnostics` e `MainPage.Startup` concentram breadcrumbs, fallback de preset legado e guard de bootstrap da UI.
 - `App` aplica `MicaBackdrop` com base em `AppSettings.UseMicaBackdrop` e consegue alternar entre Mica e superficie solida em runtime sem restart.
-- `SettingsPage` foi simplificada para uma unica superficie `Geral`, sem viewer de logs; o card `Logs de erro` apenas abre a pasta do `crash.log`.
+- `SettingsPage` concentra `Geral` + `Observabilidade do device`; o combo local escolhe o alvo do `Expander` `Logs` sem sincronizar com a `DevicesPage`, enquanto `Estatisticas` seguem fora da UI.
 - `AppLogStore` deixou de persistir log operacional completo em `app-logs.json` e agora grava em disco apenas entradas `Error`, no mesmo `crash.log` canonico do app.
 - `MonitoringPage` usa leitura local do HWiNFO64 via `HwinfoSharedMemorySource`, com 6 cards compostos orientados a hardware e lista pesquisavel de leituras agrupadas por sensor.
 - A reducao de escopo do fix de startup manteve a protecao concentrada na `MainPage`: presets sao sanitizados apenas no caminho de rebuild do analyzer.

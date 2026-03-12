@@ -9,6 +9,7 @@ using WinRT.Interop;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/guides/setup-new-device.md#contrato-visual-do-wizard
 public sealed partial class DevicesPage
 {
     private async void OnDownloadFirmwareClicked(object sender, RoutedEventArgs e)
@@ -35,7 +36,7 @@ public sealed partial class DevicesPage
 
         wizardOperationInFlight = false;
         WizardStatusText.Text = string.Empty;
-        WizardSummaryNoteText.Text = "Selecione a porta COM para gravar o firmware. O Wi-Fi sera configurado no AP do ESP32 apos o flash.";
+        WizardSummaryNoteText.Text = "Selecione a porta COM para apagar toda a flash e gravar o firmware. O processo remove configuracoes anteriores do ESP32 e pode demorar mais. O Wi-Fi sera configurado no AP do ESP32 apos o flash.";
         WizardPortComboBox.ItemsSource = Array.Empty<SerialPortDescriptor>();
         WizardPortComboBox.SelectedIndex = -1;
         ResetWizardFlashProgressUi();

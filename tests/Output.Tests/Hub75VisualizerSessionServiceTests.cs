@@ -234,6 +234,12 @@ public sealed class Hub75VisualizerSessionServiceTests
             remove { }
         }
 
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+        {
+            add { }
+            remove { }
+        }
+
         public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
         {
             add { }

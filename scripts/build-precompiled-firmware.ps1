@@ -1,3 +1,5 @@
+# DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#perfil-oficial
+# DOCS: docs/wiki/reference/code-index.md
 param(
     [switch]$SkipToolInstall
 )
@@ -10,6 +12,7 @@ $firmwareRoot = Join-Path $repoRoot 'firmware/esp32s3-devkitc1'
 $outputRoot = Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
 $autoVersionHeaderPath = Join-Path $firmwareRoot 'src/firmware_version.auto.h'
 $target = [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin' }
+$manifestPath = Join-Path $outputRoot 'esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json'
 $platformIoCommand = @()
 
 function Invoke-External {
@@ -230,6 +233,15 @@ function Resolve-FirmwareVersion {
     return "v$utcDate-$tagToken-$commitToken"
 }
 
+function Resolve-GitSha {
+    $commit = Try-GetGitLine -Args @('-C', $repoRoot, 'rev-parse', '--short', 'HEAD')
+    if ([string]::IsNullOrWhiteSpace($commit)) {
+        return 'nocommit'
+    }
+
+    return $commit
+}
+
 function Write-AutoFirmwareVersionHeader {
     param(
         [Parameter(Mandatory)][string]$HeaderPath,
@@ -246,8 +258,33 @@ function Write-AutoFirmwareVersionHeader {
 
     Set-Content -Path $HeaderPath -Value $content -Encoding ascii
 }
+
+function Write-FirmwareManifest {
+    param(
+        [Parameter(Mandatory)][string]$DestinationPath,
+        [Parameter(Mandatory)][string]$FirmwareVersion,
+        [Parameter(Mandatory)][string]$GitSha
+    )
+
+    $manifest = [ordered]@{
+        schemaVersion   = 1
+        firmwareVersion = $FirmwareVersion
+        gitSha          = $GitSha
+        profile         = 'dma_exp'
+        boardModel      = 'esp32s3_devkitc1'
+        panelType       = 'hub75_p2_5_128x64_smd2121_scan32'
+        controlPlane    = 'mqtt'
+        builtAtUtc      = (Get-Date).ToUniversalTime().ToString('o')
+    }
+
+    $json = $manifest | ConvertTo-Json
+    Set-Content -Path $DestinationPath -Value $json -Encoding utf8
+    Write-Host "[build-precompiled-firmware] Manifesto atualizado: $DestinationPath"
+}
+
 $destinationPath = Join-Path $outputRoot $target.OutputFile
 $firmwareVersion = Resolve-FirmwareVersion
+$gitSha = Resolve-GitSha
 
 try {
     if (-not (Test-Path $firmwareRoot)) {
@@ -268,6 +305,7 @@ try {
 
     Invoke-PioBuild -Env $target.Env
     Merge-Firmware -Env $target.Env -DestinationPath $destinationPath
+    Write-FirmwareManifest -DestinationPath $manifestPath -FirmwareVersion $firmwareVersion -GitSha $gitSha
 
     Write-Host '[build-precompiled-firmware] Concluido com sucesso.'
     $size = (Get-Item $destinationPath).Length

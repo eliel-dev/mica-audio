@@ -23,4 +23,11 @@
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="wwwroot\dashboard\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

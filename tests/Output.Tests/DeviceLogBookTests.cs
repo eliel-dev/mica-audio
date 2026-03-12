@@ -16,8 +16,8 @@ public sealed class DeviceLogBookTests
 
         var logs = book.GetGlobalLogs();
         Assert.Equal(2, logs.Count);
-        Assert.DoesNotContain(logs, line => line.Contains("linha-1", StringComparison.Ordinal));
-        Assert.Contains(logs, line => line.Contains("linha-3", StringComparison.Ordinal));
+        Assert.DoesNotContain(logs, entry => entry.Message.Contains("linha-1", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("linha-3", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -31,8 +31,8 @@ public sealed class DeviceLogBookTests
 
         var logs = book.GetDeviceLogs("device-1");
         Assert.Equal(2, logs.Count);
-        Assert.DoesNotContain(logs, line => line.Contains('a'));
-        Assert.Contains(logs, line => line.Contains('c'));
+        Assert.DoesNotContain(logs, entry => entry.Message.Contains('a'));
+        Assert.Contains(logs, entry => entry.Message.Contains('c'));
     }
 
     [Fact]
@@ -53,9 +53,9 @@ public sealed class DeviceLogBookTests
             now);
 
         var logs = book.GetDeviceLogs("device-1");
-        Assert.Contains(logs, line => line.Contains("Dispositivo autenticado e online.", StringComparison.Ordinal));
-        Assert.Contains(logs, line => line.Contains("Dispositivo voltou a aparecer apos ficar offline.", StringComparison.Ordinal));
-        Assert.Contains(logs, line => line.Contains("Primeira telemetria recebida apos reconexao.", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Dispositivo autenticado e online.", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Dispositivo voltou a aparecer apos ficar offline.", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Primeira telemetria recebida apos reconexao.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -76,7 +76,44 @@ public sealed class DeviceLogBookTests
             now);
 
         var logs = book.GetDeviceLogs("device-1");
-        Assert.DoesNotContain(logs, line => line.Contains("ws_disconnected", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(logs, entry => entry.Message.Contains("ws_disconnected", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AppendDeviceFirmware_ShouldMergeStructuredEntries_AndIgnoreDuplicateSequence()
+    {
+        var book = new DeviceLogBook(maxLogEntries: 10, maxDeviceLogEntries: 10);
+
+        var first = new DeviceLogMessage
+        {
+            DeviceId = "device-1",
+            Sequence = 7,
+            Level = "warning",
+            Category = "mqtt",
+            EventCode = "mqtt_retry",
+            Message = "Broker indisponivel.",
+        };
+
+        var duplicate = new DeviceLogMessage
+        {
+            DeviceId = "device-1",
+            Sequence = 7,
+            Level = "warning",
+            Category = "mqtt",
+            EventCode = "mqtt_retry",
+            Message = "Broker indisponivel.",
+        };
+
+        Assert.True(book.AppendDeviceFirmware(first));
+        Assert.False(book.AppendDeviceFirmware(duplicate));
+
+        var logs = book.GetDeviceLogs("device-1");
+        var entry = Assert.Single(logs);
+        Assert.Equal(DeviceLogSource.Device, entry.Source);
+        Assert.Equal(DeviceLogSeverity.Warning, entry.Severity);
+        Assert.Equal("mqtt", entry.Category);
+        Assert.Equal("mqtt_retry", entry.Code);
+        Assert.Equal("Broker indisponivel.", entry.Message);
     }
 
     private static DeviceSnapshot CreateSnapshot(

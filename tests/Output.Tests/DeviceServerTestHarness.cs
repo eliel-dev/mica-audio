@@ -132,6 +132,26 @@ internal static class DeviceServerTestHarness
             .Build(), CancellationToken.None);
     }
 
+    public static async Task PublishStatsAsync(IMqttClient client, string deviceId, object payload)
+    {
+        await client.PublishAsync(new MqttApplicationMessageBuilder()
+            .WithTopic(GetStatsTopic(deviceId))
+            .WithPayload(JsonSerializer.SerializeToUtf8Bytes(payload))
+            .WithRetainFlag(true)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            .Build(), CancellationToken.None);
+    }
+
+    public static async Task PublishDeviceLogAsync(IMqttClient client, string deviceId, object payload)
+    {
+        await client.PublishAsync(new MqttApplicationMessageBuilder()
+            .WithTopic(GetLogsTopic(deviceId))
+            .WithPayload(JsonSerializer.SerializeToUtf8Bytes(payload))
+            .WithRetainFlag(false)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            .Build(), CancellationToken.None);
+    }
+
     public static async Task PublishCommandEventAsync(
         IMqttClient client,
         string deviceId,
@@ -174,6 +194,10 @@ internal static class DeviceServerTestHarness
     public static string GetStatusTopic(string deviceId) => $"{DefaultMqttRootTopic}/{deviceId}/status";
 
     public static string GetPresenceTopic(string deviceId) => $"{DefaultMqttRootTopic}/{deviceId}/presence";
+
+    public static string GetStatsTopic(string deviceId) => $"{DefaultMqttRootTopic}/{deviceId}/stats";
+
+    public static string GetLogsTopic(string deviceId) => $"{DefaultMqttRootTopic}/{deviceId}/logs";
 
     public static string DecodePayload(MqttApplicationMessageReceivedEventArgs args)
     {

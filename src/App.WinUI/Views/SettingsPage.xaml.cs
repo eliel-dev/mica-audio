@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using App.WinUI.Services.Devices;
 using App.WinUI.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -8,11 +9,12 @@ using Windows.UI;
 
 namespace App.WinUI.Views;
 
-// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-settingspage-simplificada-e-arquivo-unico-de-erros
+// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-settingspage-com-observabilidade-do-device
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
+    private readonly DeviceOperationsCoordinator deviceOps;
     private AppSettings currentSettings = new();
     private bool suppressMicaBackdropChanged;
     private ToggleSwitch micaBackdropToggle = null!;
@@ -22,20 +24,29 @@ public sealed partial class SettingsPage : Page
 
     internal SettingsPage(
         SettingsRepository settingsRepository,
-        AppSettingsDomainService settingsDomainService)
+        AppSettingsDomainService settingsDomainService,
+        DeviceOperationsCoordinator deviceOps)
     {
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
+        this.deviceOps = deviceOps;
 
         InitializeComponent();
         Content = BuildLayout();
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         UpdateErrorLogsInfo();
         await LoadGeneralSettingsAsync();
+        ActivateDeviceObservability();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        DeactivateDeviceObservability();
     }
 
     private async Task LoadGeneralSettingsAsync()
@@ -176,6 +187,7 @@ public sealed partial class SettingsPage : Page
         });
         contentStack.Children.Add(BuildWindowAppearanceCard());
         contentStack.Children.Add(BuildErrorLogsCard());
+        contentStack.Children.Add(BuildDeviceObservabilityCard());
 
         scrollViewer.Content = contentStack;
         contentBorder.Child = scrollViewer;

@@ -151,6 +151,16 @@ internal sealed class DeviceRefreshCoordinator
             ActiveAppName = source.ActiveAppName,
             BoardModel = source.BoardModel,
             PanelType = source.PanelType,
+            ChipModel = source.ChipModel,
+            ChipRevision = source.ChipRevision,
+            ChipCores = source.ChipCores,
+            CpuFreqMHz = source.CpuFreqMHz,
+            SdkVersion = source.SdkVersion,
+            HeapTotalBytes = source.HeapTotalBytes,
+            PsramTotalBytes = source.PsramTotalBytes,
+            FlashTotalBytes = source.FlashTotalBytes,
+            SketchSizeBytes = source.SketchSizeBytes,
+            FreeSketchBytes = source.FreeSketchBytes,
         };
     }
 
@@ -195,6 +205,16 @@ internal sealed class DeviceRefreshCoordinator
                 || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal)
                 || !string.Equals(a.BoardModel, b.BoardModel, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.PanelType, b.PanelType, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(a.ChipModel, b.ChipModel, StringComparison.OrdinalIgnoreCase)
+                || a.ChipRevision != b.ChipRevision
+                || a.ChipCores != b.ChipCores
+                || a.CpuFreqMHz != b.CpuFreqMHz
+                || !string.Equals(a.SdkVersion, b.SdkVersion, StringComparison.OrdinalIgnoreCase)
+                || a.HeapTotalBytes != b.HeapTotalBytes
+                || a.PsramTotalBytes != b.PsramTotalBytes
+                || a.FlashTotalBytes != b.FlashTotalBytes
+                || a.SketchSizeBytes != b.SketchSizeBytes
+                || a.FreeSketchBytes != b.FreeSketchBytes
                 || a.IsRegistered != b.IsRegistered
                 || a.FirstSeenUtc != b.FirstSeenUtc
                 || a.LastTelemetryUtc != b.LastTelemetryUtc

@@ -7,8 +7,9 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 ## Responsabilidades
 
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
-- Broker MQTT embutido para `commands`, `command-events`, `status` e `presence`.
+- Broker MQTT embutido para `commands`, `command-events`, `status`, `presence`, `stats` e `logs`.
 - WebSocket `/ws/v1/stream` exclusivamente para stream visual binario.
+- Dashboard local para `WebView2` via `GET /dashboard` + `WS /ws/device/{deviceId}` com DTO dedicado.
 - Sessao de comandos rastreados com timeout.
 - Normalizacao interna de `ServerConfig` para limites, timeouts e CIDRs.
 - Controle temporal deterministico via `TimeProvider` no pairing, snapshots e timeouts tracked.
@@ -16,6 +17,8 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Controle de acesso de rede e rate limiting por endpoint critico.
 - Persistencia de metadados de hardware (`BoardModel`, `PanelType`) por dispositivo.
 - Pass-through de telemetria de conectividade (`wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`).
+- Persistencia round-trip de estatisticas estruturadas do firmware (`chip/sdk/heap/flash/sketch`).
+- Encaminhamento de logs estruturados do firmware para a UI via `DeviceLogReceived`.
 
 ## Fluxo de execucao
 
@@ -23,11 +26,12 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 2. Dispositivo pareia via HTTP e recebe token + endpoint MQTT.
 3. `PairDeviceRequest` pode informar `BoardModel` e `PanelType`.
 4. Device autentica no broker MQTT com `clientId = username = deviceId` e `password = token`.
-5. `presence` e `status` MQTT alimentam online/offline e o snapshot operacional do device.
+5. `presence`, `status` e `stats` MQTT alimentam online/offline e o snapshot operacional do device.
 6. O snapshot tambem expoe `ControlPlaneState` para diferenciar `MqttOnline`, `LegacyOnly` e `Offline`.
 7. App envia comandos tracked (`SendCommandTrackedAsync`) via `mica/v1/devices/{deviceId}/commands`.
 8. `PendingTrackedCommandStore` e `PendingTrackedCommand` correlacionam `command-events` por `commandId`.
-9. `BroadcastFrame` distribui stream para sockets WS conectados.
+9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
+10. `BroadcastFrame` distribui stream para sockets WS conectados.
 
 ## Politicas de seguranca
 
@@ -94,6 +98,31 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
   - `mica.device.command.failure.count`
 - `DeviceServerHost.LogMessage` continua alimentando a UI, mas agora tambem replica a mensagem para a trilha estruturada de engenharia.
 
+## Atualizacao 2026-03 - Observabilidade nativa por device
+
+- O broker MQTT do host ganhou dois canais adicionais:
+  - `mica/v1/devices/{deviceId}/stats`
+  - `mica/v1/devices/{deviceId}/logs`
+- `stats` e retained e atualiza `DeviceRecord`/`DeviceSnapshot` com identidade e capacidade do firmware.
+- `logs` nao e retained e chega ao app como `DeviceLogMessage`, ja normalizado pelo host.
+- Payload invalido de `stats/logs` e rejeitado em `HandleMqttInterceptingPublishAsync(...)`.
+- A referencia de contrato desta entrega esta em [device-observability-dashboard](../reference/device-observability-dashboard.md#objetivo).
+
+## Atualizacao 2026-03 - Dashboard local servido para WebView2
+
+- O host passou a copiar `wwwroot/dashboard/*` para o output do processo.
+- `GET /dashboard` e tratado antes do middleware de static files e redireciona para `/dashboard/index.html`.
+- O JavaScript servido localmente conecta em `WS /ws/device/{deviceId}`.
+- O websocket do dashboard:
+  - nao reutiliza autenticacao de device;
+  - continua limitado a loopback/rede permitida pela politica global do host;
+  - envia um DTO pronto para renderizacao, sem expor `DeviceSnapshot` bruto ao HTML.
+- O DTO do dashboard inclui:
+  - identidade do device e app ativo;
+  - brilho solicitado/aplicado/cap;
+  - percentuais de heap e PSRAM calculados no servidor;
+  - `hub75Fps`, calculado pelo host a partir do delta de `StreamFramesApplied`.
+
 ## Referencias de codigo
 
 - [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1) - assinatura: `public interface IDeviceServerHost`
@@ -101,6 +130,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [DeviceServerHost.Advanced](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Mqtt](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [DeviceServerHost.Dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerObservability](../../../src/Device.Server/Hosting/DeviceServerObservability.cs#L1) - assinatura: `internal static class DeviceServerObservability`
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1) - assinatura: `internal sealed class DeviceServerRuntimeConfig`
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1) - assinatura: `internal static class DeviceMqttTopics`
@@ -111,6 +141,8 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1) - assinatura: `public sealed class DevicePresenceMessage`
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1) - assinatura: `public sealed class DeviceTelemetryMessage`
+- [DeviceStatsMessage](../../../src/Device.Protocol/Models/DeviceStatsMessage.cs#L1) - assinatura: `public sealed class DeviceStatsMessage`
+- [DeviceLogMessage](../../../src/Device.Protocol/Models/DeviceLogMessage.cs#L1) - assinatura: `public sealed class DeviceLogMessage`
 - [DeviceRecord](../../../src/Device.Protocol/Models/DeviceRecord.cs#L1) - assinatura: `public sealed class DeviceRecord`
 - [DeviceSnapshot](../../../src/Device.Protocol/Models/DeviceSnapshot.cs#L1) - assinatura: `public sealed class DeviceSnapshot`
 - [ServerConfig](../../../src/Device.Protocol/Contracts/ServerConfig.cs#L1) - assinatura: `public sealed class ServerConfig`

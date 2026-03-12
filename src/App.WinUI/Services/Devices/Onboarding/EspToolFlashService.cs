@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace App.WinUI.Services.Devices.Onboarding;
 
-// DOCS: docs/wiki/guides/setup-new-device.md#passos
+// DOCS: docs/wiki/guides/setup-new-device.md#perfil-oficial-do-comando-de-flash
 internal sealed partial class EspToolFlashService : IEspToolFlashService
 {
     private const int MaxCapturedOutputLines = 12;
@@ -72,7 +72,7 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
         progress?.Report(new DeviceOnboardingProgress
         {
             Stage = DeviceOnboardingStage.Flashing,
-            Message = $"Iniciando gravacao do firmware em {portName}...",
+            Message = $"Apagando toda a flash e gravando o firmware em {portName}...",
             Percent = 0,
         });
 
@@ -264,6 +264,7 @@ internal sealed partial class EspToolFlashService : IEspToolFlashService
             "--before", "default_reset",
             "--after", "hard_reset",
             "write_flash",
+            "--erase-all",
             "--no-compress",
             "0x0",
             firmwarePath,

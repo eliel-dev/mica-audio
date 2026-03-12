@@ -189,6 +189,8 @@ public sealed partial class DeviceServerHost
             DeviceMqttChannel.CommandEvents => TryHandleCommandEventPayload(state, payload),
             DeviceMqttChannel.Status => TryHandleTelemetryPayload(state, payload, remoteIp),
             DeviceMqttChannel.Presence => TryHandlePresencePayload(state, payload, remoteIp),
+            DeviceMqttChannel.Stats => TryHandleStatsPayload(state, payload, remoteIp),
+            DeviceMqttChannel.Logs => TryHandleLogPayload(state, payload),
             _ => false,
         };
 
@@ -251,6 +253,14 @@ public sealed partial class DeviceServerHost
             await PublishApplicationMessageAsync(
                     server,
                     DeviceMqttTopics.Presence(runtimeConfig.MqttRootTopic, deviceId),
+                    Array.Empty<byte>(),
+                    retain: true,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+
+            await PublishApplicationMessageAsync(
+                    server,
+                    DeviceMqttTopics.Stats(runtimeConfig.MqttRootTopic, deviceId),
                     Array.Empty<byte>(),
                     retain: true,
                     CancellationToken.None)

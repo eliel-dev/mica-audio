@@ -24,6 +24,7 @@
 
 namespace {
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
+// DOCS: docs/wiki/reference/device-telemetry-v2-fields.md
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 145;
 constexpr size_t kStreamFrame128x64Rgb565Size = 16400;
@@ -131,10 +132,11 @@ uint8_t gTestLedPulseDuty = 0;
 bool gMatrixReady = false;
 uint8_t gAppliedBrightness = 255;
 bool gFrameModeActive = false;
-uint64_t gLoopBusyTimeUs = 0;
+uint64_t gLoopWorkTimeUs = 0;
 unsigned long gLoopWindowStartMs = 0;
 uint8_t gLoopLoadPercent = 0;
 uint32_t gTelemetrySequence = 0;
+uint32_t gDeviceLogSequence = 0;
 bool gHasStreamLastSequence = false;
 uint32_t gStreamLastSequence = 0;
 uint32_t gStreamFramesReceived = 0;
@@ -256,6 +258,50 @@ void logConnectivityState(const char* eventOverride = nullptr) {
       eventName);
 }
 
+bool publishDeviceLog(
+    const char* level,
+    const char* category,
+    const char* eventCode,
+    const String& message,
+    bool includeTelemetrySequence = true);
+
+bool publishDeviceLog(
+    const char* level,
+    const char* category,
+    const char* eventCode,
+    const char* message,
+    bool includeTelemetrySequence = true) {
+  return publishDeviceLog(
+      level,
+      category,
+      eventCode,
+      String(message == nullptr ? "" : message),
+      includeTelemetrySequence);
+}
+
+void publishConnectivityLog(const char* wifiState, const char* lastEvent, bool changedOrForced) {
+  if (!changedOrForced || lastEvent == nullptr || lastEvent[0] == '\0') {
+    return;
+  }
+
+  const char* category = "wifi";
+  String message;
+  if (strncmp(lastEvent, "portal_", 7) == 0) {
+    category = "portal";
+    message = String("Portal de provisioning: ") + (gProvisioningPortalActive ? "ativo" : "inativo");
+  } else if (strncmp(lastEvent, "ws_", 3) == 0) {
+    category = "ws";
+    message = String("Sessao websocket: ") + lastEvent;
+  } else if (strncmp(lastEvent, "mqtt_", 5) == 0) {
+    category = "mqtt";
+    message = String("Controle MQTT: ") + lastEvent;
+  } else {
+    message = String("Wi-Fi state=") + (wifiState == nullptr ? gWifiState : wifiState) + " event=" + lastEvent;
+  }
+
+  (void)publishDeviceLog("info", category, lastEvent, message, false);
+}
+
 void flushWsFlapDiagnostics(bool force = false) {
   if (gWsFlapWindowStartMs == 0) {
     return;
@@ -274,6 +320,13 @@ void flushWsFlapDiagnostics(bool force = false) {
         gWsConnectCountInWindow,
         gWsDisconnectCountInWindow,
         kWsAutoReconnectIntervalMs);
+    (void)publishDeviceLog(
+        "warning",
+        "ws",
+        "flapping",
+        String("WS flapping detectado: connects=") + gWsConnectCountInWindow
+            + " disconnects=" + gWsDisconnectCountInWindow,
+        false);
   }
 
   gWsFlapWindowStartMs = now;
@@ -309,6 +362,10 @@ void setConnectivityState(const char* wifiState, const char* lastEvent, bool for
 
   if (changed || forceLog) {
     logConnectivityState(publishEvent ? nullptr : lastEvent);
+    publishConnectivityLog(
+        wifiState != nullptr && wifiState[0] != '\0' ? wifiState : gWifiState.c_str(),
+        lastEvent,
+        true);
   }
 }
 
@@ -592,6 +649,60 @@ bool publishMqttDocument(const String& topic, JsonDocument& doc, bool retained) 
   return gMqtt.publish(topic.c_str(), payload.c_str(), retained);
 }
 
+bool publishDeviceStats() {
+  if (!gMqtt.connected() || gDeviceId.isEmpty()) {
+    return false;
+  }
+
+  JsonDocument stats;
+  stats["deviceId"] = gDeviceId;
+  stats["chipModel"] = ESP.getChipModel();
+  stats["chipRevision"] = ESP.getChipRevision();
+  stats["chipCores"] = ESP.getChipCores();
+  stats["cpuFreqMHz"] = ESP.getCpuFreqMHz();
+  stats["sdkVersion"] = ESP.getSdkVersion();
+  stats["heapTotalBytes"] = ESP.getHeapSize();
+  stats["psramTotalBytes"] = ESP.getPsramSize();
+  stats["flashTotalBytes"] = ESP.getFlashChipSize();
+  stats["sketchSizeBytes"] = ESP.getSketchSize();
+  stats["freeSketchBytes"] = ESP.getFreeSketchSpace();
+  return publishMqttDocument(buildDeviceMqttTopic("stats"), stats, true);
+}
+
+bool publishDeviceLog(
+    const char* level,
+    const char* category,
+    const char* eventCode,
+    const String& message,
+    bool includeTelemetrySequence) {
+  if (!gMqtt.connected() || gDeviceId.isEmpty()) {
+    return false;
+  }
+
+  String normalizedMessage = message;
+  normalizedMessage.trim();
+  if (normalizedMessage.length() == 0) {
+    return false;
+  }
+
+  JsonDocument log;
+  log["deviceId"] = gDeviceId;
+  log["sequence"] = ++gDeviceLogSequence;
+  log["level"] = (level != nullptr && level[0] != '\0') ? level : "info";
+  log["category"] = (category != nullptr && category[0] != '\0') ? category : "device";
+  if (eventCode != nullptr && eventCode[0] != '\0') {
+    log["eventCode"] = eventCode;
+  }
+
+  log["message"] = normalizedMessage;
+  log["uptimeSeconds"] = millis() / 1000UL;
+  if (includeTelemetrySequence && gTelemetrySequence > 0) {
+    log["telemetrySequence"] = gTelemetrySequence;
+  }
+
+  return publishMqttDocument(buildDeviceMqttTopic("logs"), log, false);
+}
+
 String buildPresencePayload(const char* state) {
   JsonDocument presence;
   presence["deviceId"] = gDeviceId;
@@ -619,6 +730,7 @@ void disconnectMqtt(bool publishOffline) {
   }
 
   if (publishOffline) {
+    (void)publishDeviceLog("warning", "mqtt", "disconnect", "Controle MQTT desconectando.", false);
     (void)publishPresence("offline");
     delay(20);
   }
@@ -653,6 +765,13 @@ void sendCommandProgress(
   }
 
   (void)publishMqttDocument(buildDeviceMqttTopic("command-events"), progress, false);
+  if (successFlag == 0 || successFlag == 1 || progressPercent >= 100) {
+    (void)publishDeviceLog(
+        successFlag == 0 ? "error" : "info",
+        "command",
+        stage,
+        message.length() > 0 ? message : "Atualizacao de comando concluida.");
+  }
 }
 
 void postCommandAck(
@@ -700,10 +819,12 @@ bool trySanitizeLargestFreeBlock(uint32_t freeBytes, size_t largestRawBytes, uin
   return true;
 }
 
-void updateLoopLoadPercent(uint32_t loopStartUs) {
-  const uint32_t nowUs = micros();
-  const uint32_t elapsedUs = nowUs - loopStartUs;
-  gLoopBusyTimeUs += static_cast<uint64_t>(elapsedUs);
+inline void accumulateLoopWorkTime(uint64_t& accumulator, uint32_t phaseStartUs) {
+  accumulator += static_cast<uint64_t>(micros() - phaseStartUs);
+}
+
+void updateLoopLoadPercent(uint64_t loopWorkTimeUs) {
+  gLoopWorkTimeUs += loopWorkTimeUs;
 
   const unsigned long nowMs = millis();
   if (gLoopWindowStartMs == 0) {
@@ -719,7 +840,7 @@ void updateLoopLoadPercent(uint32_t loopStartUs) {
   const uint64_t windowElapsedUs = static_cast<uint64_t>(windowElapsedMs) * 1000ULL;
   uint64_t loadPercent = 0;
   if (windowElapsedUs > 0) {
-    loadPercent = (gLoopBusyTimeUs * 100ULL) / windowElapsedUs;
+    loadPercent = (gLoopWorkTimeUs * 100ULL) / windowElapsedUs;
   }
 
   if (loadPercent > 100ULL) {
@@ -727,7 +848,7 @@ void updateLoopLoadPercent(uint32_t loopStartUs) {
   }
 
   gLoopLoadPercent = static_cast<uint8_t>(loadPercent);
-  gLoopBusyTimeUs = 0;
+  gLoopWorkTimeUs = 0;
   gLoopWindowStartMs = nowMs;
 }
 
@@ -804,6 +925,17 @@ void sendTelemetry(bool force) {
   }
 
   (void)publishMqttDocument(buildDeviceMqttTopic("status"), telemetry, true);
+}
+
+void registerInvalidStreamFrame(const char* reason) {
+  gStreamInvalidFrameCount++;
+  if (gStreamInvalidFrameCount == 1 || (gStreamInvalidFrameCount % 25u) == 0u) {
+    (void)publishDeviceLog(
+        "warning",
+        "stream",
+        reason,
+        String("Frame de stream invalido detectado. total=") + gStreamInvalidFrameCount);
+  }
 }
 
 void clearTestLed() {
@@ -1243,6 +1375,12 @@ void processSerialProvisioning() {
 
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
 bool startProvisioningPortal(const char* reason) {
+  (void)publishDeviceLog(
+      "warning",
+      "portal",
+      reason == nullptr ? "portal_open" : reason,
+      String("Abrindo portal de provisioning. motivo=") + (reason == nullptr ? "-" : reason),
+      false);
   disconnectMqtt(true);
   gWs.disconnect();
   gLastTelemetryMs = 0;
@@ -1315,6 +1453,10 @@ void handleControlCommandMessage(const JsonDocument& control) {
   String commandId = control["commandId"] | "";
   JsonObjectConst parameters = control["parameters"].as<JsonObjectConst>();
 
+  if (command != nullptr && command[0] != '\0') {
+    (void)publishDeviceLog("info", "command", command, String("Comando recebido via MQTT: ") + command);
+  }
+
   if (strcmp(command, "enter_provisioning") == 0) {
     sendCommandProgress(commandId, 20, "received", "Comando recebido.");
     sendCommandProgress(commandId, 100, "enter-provisioning", "Entrando em provisioning.", 1);
@@ -1341,6 +1483,7 @@ void handleControlCommandMessage(const JsonDocument& control) {
     if (!enabledValue.isNull()) {
       bool enabled = false;
       if (!tryParseBooleanParameter(enabledValue, enabled)) {
+        (void)publishDeviceLog("warning", "command", "test_led_invalid_enabled", "Parametro enabled invalido para test_led.");
         sendCommandProgress(commandId, 100, "invalid", "Parametro enabled invalido.", 0);
         return;
       }
@@ -1366,6 +1509,7 @@ void handleControlCommandMessage(const JsonDocument& control) {
     }
 
     if (!isTestLedAvailable()) {
+      (void)publishDeviceLog("warning", "command", "test_led_unavailable", "Nenhum LED de teste disponivel neste hardware.");
       sendCommandProgress(commandId, 100, "test-led-unavailable", "Nenhum LED de teste disponivel neste hardware.", 0);
       return;
     }
@@ -1380,12 +1524,14 @@ void handleControlCommandMessage(const JsonDocument& control) {
 
     sendCommandProgress(commandId, 20, "received", "Comando recebido.");
     if (brightnessRaw.length() == 0) {
+      (void)publishDeviceLog("warning", "command", "set_brightness_missing", "Parametro brightness ausente.");
       sendCommandProgress(commandId, 100, "invalid", "brightness ausente.", 0);
       return;
     }
 
     const int brightnessValue = brightnessRaw.toInt();
     if (brightnessValue == 0 && brightnessRaw != "0") {
+      (void)publishDeviceLog("warning", "command", "set_brightness_invalid", "Parametro brightness invalido.");
       sendCommandProgress(commandId, 100, "invalid", "brightness invalido.", 0);
       return;
     }
@@ -1408,6 +1554,7 @@ void handleControlCommandMessage(const JsonDocument& control) {
 
     sendCommandProgress(commandId, 20, "received", "Comando recebido.");
     if (appId.length() == 0) {
+      (void)publishDeviceLog("warning", "command", "install_app_missing_appid", "appId ausente para install_app.");
       sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
       return;
     }
@@ -1431,6 +1578,7 @@ void handleControlCommandMessage(const JsonDocument& control) {
 
     sendCommandProgress(commandId, 20, "received", "Comando recebido.");
     if (appId.length() == 0) {
+      (void)publishDeviceLog("warning", "command", "activate_app_missing_appid", "appId ausente para activate_app.");
       sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
       return;
     }
@@ -1451,6 +1599,7 @@ void handleControlCommandMessage(const JsonDocument& control) {
 
     sendCommandProgress(commandId, 20, "received", "Comando recebido.");
     if (appId.length() == 0) {
+      (void)publishDeviceLog("warning", "command", "set_app_config_missing_appid", "appId ausente para set_app_config.");
       sendCommandProgress(commandId, 100, "invalid", "appId ausente.", 0);
       return;
     }
@@ -1465,6 +1614,7 @@ void handleControlCommandMessage(const JsonDocument& control) {
     return;
   }
 
+  (void)publishDeviceLog("warning", "command", "unknown_command", String("Comando desconhecido: ") + command);
   sendCommandProgress(commandId, 100, "unknown", "Comando desconhecido.", 0);
 }
 
@@ -1507,12 +1657,12 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
   if (type == WStype_BIN) {
     if (payload == nullptr || len < 2) {
-      gStreamInvalidFrameCount++;
+      registerInvalidStreamFrame("payload_short");
       return;
     }
 
     if (payload[0] != kStreamVersion) {
-      gStreamInvalidFrameCount++;
+      registerInvalidStreamFrame("version_invalid");
       return;
     }
 
@@ -1528,7 +1678,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
     const uint8_t messageType = payload[1];
     if (messageType == kStreamBinsMessageType) {
       if (len < kStreamFrameSize) {
-        gStreamInvalidFrameCount++;
+        registerInvalidStreamFrame("bins_short");
         return;
       }
 
@@ -1553,7 +1703,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
     if (messageType == kStreamFrame128x64Rgb565MessageType) {
       if (len < kStreamFrame128x64Rgb565Size) {
-        gStreamInvalidFrameCount++;
+        registerInvalidStreamFrame("frame_short");
         return;
       }
 
@@ -1581,7 +1731,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
       return;
     }
 
-    gStreamInvalidFrameCount++;
+    registerInvalidStreamFrame("message_type_unknown");
 
     return;
   }
@@ -1657,6 +1807,8 @@ void connectMqtt() {
   gMqttDisconnectedSinceMs = 0;
   (void)gMqtt.subscribe(buildDeviceMqttTopic("commands").c_str(), 1);
   (void)publishPresence("online");
+  (void)publishDeviceLog("info", "mqtt", "connected", "Controle MQTT conectado.", false);
+  (void)publishDeviceStats();
   sendTelemetry(true);
 }
 
@@ -1806,31 +1958,41 @@ void setup() {
 }
 
 void loop() {
-  const uint32_t loopStartUs = micros();
+  uint64_t loopWorkTimeUs = 0;
+  uint32_t phaseStartUs = micros();
   processSerialProvisioning();
+  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
 
   if (!wifiConnected) {
     if (gWifiDisconnectedSinceMs == 0) {
       gWifiDisconnectedSinceMs = millis();
+      phaseStartUs = micros();
       setConnectivityState(kWifiStateDisconnected, "wifi_disconnected", true);
+      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
       Serial.println("[wifi] desconectado, aguardando reconexao.");
     }
 
     if (!gProvisioningPortalActive
         && (millis() - gWifiDisconnectedSinceMs) > kWifiDisconnectProvisioningFallbackMs) {
       Serial.println("[wifi] fallback para provisioning apos queda prolongada.");
+      phaseStartUs = micros();
       (void)startProvisioningPortal("wifi_disconnected_fallback");
       gWifiDisconnectedSinceMs = 0;
       connectMqtt();
       connectWebSocket();
+      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
     } else {
       delay(120);
     }
 
+    phaseStartUs = micros();
     processSerialProvisioning();
+    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
+    phaseStartUs = micros();
     updateTestLed();
-    updateLoopLoadPercent(loopStartUs);
+    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
+    updateLoopLoadPercent(loopWorkTimeUs);
     return;
   }
 
@@ -1839,13 +2001,23 @@ void loop() {
   }
 
   if (gProvisioningPortalActive) {
+    phaseStartUs = micros();
     setProvisioningPortalActive(false, "portal_closed");
+    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
   }
 
+  phaseStartUs = micros();
   setConnectivityState(kWifiStateConnected, "wifi_connected");
+  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
+  phaseStartUs = micros();
   gMqtt.loop();
+  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
+  phaseStartUs = micros();
   gWs.loop();
+  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
+  phaseStartUs = micros();
   flushWsFlapDiagnostics(false);
+  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
 
   if (!gMqtt.connected()) {
     if (gMqttDisconnectedSinceMs == 0) {
@@ -1853,23 +2025,31 @@ void loop() {
     }
 
     if (millis() - gMqttDisconnectedSinceMs >= kMqttReconnectRetryMs) {
+      phaseStartUs = micros();
       connectMqtt();
+      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
       gMqttDisconnectedSinceMs = millis();
     }
   } else {
     gMqttDisconnectedSinceMs = 0;
+    phaseStartUs = micros();
     sendTelemetry(false);
+    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
   }
 
   if (!gWs.isConnected()) {
     if (gWsDisconnectedSinceMs == 0) {
       gWsDisconnectedSinceMs = millis();
+      phaseStartUs = micros();
       setConnectivityState(kWifiStateConnected, "ws_disconnected", false, false);
+      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
     }
 
     if (millis() - gWsDisconnectedSinceMs > kWsReconnectRetryMs) {
       Serial.println("[ws_disconnected] sem sessao por tempo prolongado; tentando reconectar websocket.");
+      phaseStartUs = micros();
       connectWebSocket();
+      accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
       gWsDisconnectedSinceMs = millis();
     }
   } else {
@@ -1877,19 +2057,27 @@ void loop() {
   }
 
   if (millis() - gLastFrameMs > 15000) {
+    phaseStartUs = micros();
     memset(gBins, 0, sizeof(gBins));
     gLevel = 0;
     memset(gFrameRgb565, 0, sizeof(gFrameRgb565));
     gFrameModeActive = false;
+    accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
   }
 
+  phaseStartUs = micros();
   updateTestLed();
+  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
+  phaseStartUs = micros();
   processSerialProvisioning();
+  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
+  phaseStartUs = micros();
   if (gFrameModeActive) {
     drawFrame128x64();
   } else {
     drawBars();
   }
+  accumulateLoopWorkTime(loopWorkTimeUs, phaseStartUs);
 
-  updateLoopLoadPercent(loopStartUs);
+  updateLoopLoadPercent(loopWorkTimeUs);
 }

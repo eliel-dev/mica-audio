@@ -273,6 +273,12 @@ public sealed class Hub75PriorityArbitrationTests
             remove { }
         }
 
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+        {
+            add { }
+            remove { }
+        }
+
         public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
         {
             add { }

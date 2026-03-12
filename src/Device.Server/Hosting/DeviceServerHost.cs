@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.FileProviders;
 using MQTTnet.Server;
 
 namespace Device.Server.Hosting;
@@ -63,6 +64,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     public event EventHandler<string>? LogMessage;
 
     public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
+
+    public event EventHandler<DeviceLogMessage>? DeviceLogReceived;
 
     public async Task StartAsync(ServerConfig config, CancellationToken cancellationToken = default)
     {
@@ -148,6 +151,22 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             }
 
             await next().ConfigureAwait(false);
+        });
+        localApp.Use(async (ctx, next) =>
+        {
+            if (ctx.Request.Path.Equals("/dashboard", StringComparison.OrdinalIgnoreCase)
+                || ctx.Request.Path.Equals("/dashboard/", StringComparison.OrdinalIgnoreCase))
+            {
+                await HandleDashboardAsync(ctx).ConfigureAwait(false);
+                return;
+            }
+
+            await next().ConfigureAwait(false);
+        });
+        localApp.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(Path.Combine(AppContext.BaseDirectory, "wwwroot")),
+            OnPrepareResponse = static context => context.Context.Response.Headers["Cache-Control"] = "no-store",
         });
 
         MapRoutes(localApp);

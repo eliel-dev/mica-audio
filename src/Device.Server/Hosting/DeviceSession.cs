@@ -143,6 +143,37 @@ internal sealed class DeviceSession : IDisposable
             testLedDuty);
     }
 
+    public void MarkStats(
+        string? ip,
+        string? chipModel = null,
+        int? chipRevision = null,
+        int? chipCores = null,
+        int? cpuFreqMHz = null,
+        string? sdkVersion = null,
+        long? heapTotalBytes = null,
+        long? psramTotalBytes = null,
+        long? flashTotalBytes = null,
+        long? sketchSizeBytes = null,
+        long? freeSketchBytes = null)
+    {
+        var now = timeProvider.GetUtcNow();
+        LastActivityUtc = now;
+        Record = DeviceRecordMutations.MarkStats(
+            Record,
+            now,
+            ip,
+            chipModel,
+            chipRevision,
+            chipCores,
+            cpuFreqMHz,
+            sdkVersion,
+            heapTotalBytes,
+            psramTotalBytes,
+            flashTotalBytes,
+            sketchSizeBytes,
+            freeSketchBytes);
+    }
+
     public void Touch()
     {
         LastActivityUtc = timeProvider.GetUtcNow();

@@ -1,10 +1,12 @@
 using System.Buffers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
 using MQTTnet;
+using MQTTnet.Protocol;
 
 namespace Output.Tests;
 
@@ -174,6 +176,165 @@ public sealed class DeviceServerHostMqttTests
     }
 
     [Fact]
+    public async Task MqttStatsPublish_ShouldUpdateSnapshotAndPersistRetainedState()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-stats");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.PublishStatsAsync(mqttClient, paired.DeviceId, new
+        {
+            deviceId = paired.DeviceId,
+            chipModel = "ESP32-S3",
+            chipRevision = 2,
+            chipCores = 2,
+            cpuFreqMHz = 240,
+            sdkVersion = "5.5.0",
+            heapTotalBytes = 327680,
+            psramTotalBytes = 8388608,
+            flashTotalBytes = 16777216,
+            sketchSizeBytes = 901120,
+            freeSketchBytes = 9437184,
+        });
+
+        var updated = await DeviceServerTestHarness.WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            return snapshot is not null
+                && string.Equals(snapshot.ChipModel, "ESP32-S3", StringComparison.Ordinal)
+                && snapshot.ChipRevision == 2
+                && snapshot.CpuFreqMHz == 240
+                && snapshot.HeapTotalBytes == 327680L
+                && snapshot.FreeSketchBytes == 9437184L;
+        }, TimeSpan.FromSeconds(5));
+
+        Assert.True(updated, "Snapshot nao refletiu o payload MQTT de stats.");
+    }
+
+    [Fact]
+    public async Task MqttDeviceLogPublish_ShouldEmitStructuredDeviceLogEvent()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-logs");
+
+        var received = new TaskCompletionSource<DeviceLogMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.DeviceLogReceived += (_, log) =>
+        {
+            if (string.Equals(log.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase))
+            {
+                received.TrySetResult(log);
+            }
+        };
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.PublishDeviceLogAsync(mqttClient, paired.DeviceId, new
+        {
+            deviceId = paired.DeviceId,
+            sequence = 5,
+            level = "error",
+            category = "mqtt",
+            eventCode = "mqtt_connect_failed",
+            message = "Falha ao autenticar no broker.",
+            uptimeSeconds = 45,
+            telemetrySequence = 7,
+        });
+
+        var logMessage = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(5u, logMessage.Sequence);
+        Assert.Equal("error", logMessage.Level);
+        Assert.Equal("mqtt", logMessage.Category);
+        Assert.Equal("mqtt_connect_failed", logMessage.EventCode);
+    }
+
+    [Fact]
+    public async Task MqttStatsAndLogs_ShouldRejectInvalidPayloads()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-invalid");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+
+        var invalidStats = await mqttClient.PublishAsync(new MqttApplicationMessageBuilder()
+            .WithTopic(DeviceServerTestHarness.GetStatsTopic(paired.DeviceId))
+            .WithPayload(Encoding.UTF8.GetBytes("{"))
+            .WithRetainFlag(true)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            .Build(), CancellationToken.None);
+        var invalidLogs = await mqttClient.PublishAsync(new MqttApplicationMessageBuilder()
+            .WithTopic(DeviceServerTestHarness.GetLogsTopic(paired.DeviceId))
+            .WithPayload(JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                deviceId = paired.DeviceId,
+                sequence = 0,
+                level = "info",
+                category = "wifi",
+                message = "",
+            }))
+            .WithRetainFlag(false)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            .Build(), CancellationToken.None);
+
+        Assert.Equal(MqttClientPublishReasonCode.UnspecifiedError, invalidStats.ReasonCode);
+        Assert.Equal(MqttClientPublishReasonCode.UnspecifiedError, invalidLogs.ReasonCode);
+    }
+
+    [Fact]
     public async Task SendTrackedCommandAsync_ShouldTimeout_WhenDeviceStaysSilent()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();
@@ -295,7 +456,7 @@ public sealed class DeviceServerHostMqttTests
     }
 
     [Fact]
-    public async Task RemoveDevice_ShouldClearRetainedStatusAndPresence()
+    public async Task RemoveDevice_ShouldClearRetainedStatusPresenceAndStats()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();
         var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
@@ -325,6 +486,12 @@ public sealed class DeviceServerHostMqttTests
             deviceId = target.DeviceId,
             uptimeSeconds = 55,
         });
+        await DeviceServerTestHarness.PublishStatsAsync(targetClient, target.DeviceId, new
+        {
+            deviceId = target.DeviceId,
+            chipModel = "ESP32-S3",
+            heapTotalBytes = 327680,
+        });
 
         var retainedReady = await DeviceServerTestHarness.WaitForConditionAsync(() =>
         {
@@ -351,6 +518,7 @@ public sealed class DeviceServerHostMqttTests
 
         await DeviceServerTestHarness.SubscribeAsync(inspectorClient, DeviceServerTestHarness.GetPresenceTopic(target.DeviceId));
         await DeviceServerTestHarness.SubscribeAsync(inspectorClient, DeviceServerTestHarness.GetStatusTopic(target.DeviceId));
+        await DeviceServerTestHarness.SubscribeAsync(inspectorClient, DeviceServerTestHarness.GetStatsTopic(target.DeviceId));
         await Task.Delay(500);
 
         Assert.Empty(retainedMessages);

@@ -27,6 +27,9 @@ public sealed partial class DeviceServerHost
         var ws = localApp.MapGroup("/ws/v1");
         ws.Map("/stream", (RequestDelegate)HandleWebSocketAsync)
             .RequireRateLimiting(WebSocketHandshakeRatePolicy);
+
+        localApp.Map("/ws/device/{deviceId}", (RequestDelegate)HandleDashboardWebSocketAsync)
+            .RequireRateLimiting(WebSocketHandshakeRatePolicy);
     }
 
     private IResult HandleHealth()

@@ -218,6 +218,12 @@ public class Esp32S3LedOutputTests
             remove { }
         }
 
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+        {
+            add { }
+            remove { }
+        }
+
         public Task StartAsync(Device.Protocol.Contracts.ServerConfig config, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task StopAsync() => Task.CompletedTask;
         public PairingCodeInfo CreatePairingCode(TimeSpan ttl) => new() { Code = "000000", ExpiresAtUtc = DateTimeOffset.UtcNow.Add(ttl) };

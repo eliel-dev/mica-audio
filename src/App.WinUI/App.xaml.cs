@@ -234,7 +234,8 @@ public partial class App : Application
 
         services.AddTransient<SettingsPage>(sp => new SettingsPage(
             sp.GetRequiredService<SettingsRepository>(),
-            sp.GetRequiredService<AppSettingsDomainService>()));
+            sp.GetRequiredService<AppSettingsDomainService>(),
+            sp.GetRequiredService<DeviceOperationsCoordinator>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>

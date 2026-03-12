@@ -43,11 +43,8 @@ internal sealed partial class DeviceIntegrationService : IAsyncDisposable
         this.logger = logger;
 
         serverHost.DevicesChanged += OnDevicesChanged;
-        serverHost.LogMessage += (_, msg) =>
-        {
-            LogServerHostMessage(this.logger, msg);
-            LogMessage?.Invoke(this, msg);
-        };
+        serverHost.LogMessage += OnServerHostLogMessage;
+        serverHost.DeviceLogReceived += OnDeviceLogReceived;
     }
 
     public IDeviceServerHost Host => serverHost;
@@ -55,6 +52,8 @@ internal sealed partial class DeviceIntegrationService : IAsyncDisposable
     public event EventHandler? DevicesChanged;
 
     public event EventHandler<string>? LogMessage;
+
+    public event EventHandler<DeviceLogMessage>? DeviceLogReceived;
 
     public string GetServerBaseAddress() => $"http://{publicHost}:{ServerPort}";
 
@@ -121,8 +120,21 @@ internal sealed partial class DeviceIntegrationService : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         serverHost.DevicesChanged -= OnDevicesChanged;
+        serverHost.LogMessage -= OnServerHostLogMessage;
+        serverHost.DeviceLogReceived -= OnDeviceLogReceived;
         await StopAsync().ConfigureAwait(false);
         await serverHost.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private void OnServerHostLogMessage(object? sender, string message)
+    {
+        LogServerHostMessage(logger, message);
+        LogMessage?.Invoke(this, message);
+    }
+
+    private void OnDeviceLogReceived(object? sender, DeviceLogMessage log)
+    {
+        DeviceLogReceived?.Invoke(this, log);
     }
 
     private void OnDevicesChanged(object? sender, EventArgs e)

@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.Web.WebView2.Core;
 using Output.Led;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -65,6 +66,11 @@ public sealed partial class DevicesPage : Page
     private bool wizardOperationInFlight;
     private string? lastAppliedPreviewConfigSignature;
     private int previewConfigRefreshVersion;
+    private bool dashboardWebViewInitialized;
+    private bool dashboardWebViewReady;
+    private bool dashboardWebViewEventsHooked;
+    private Uri? dashboardWebViewUri;
+    private string? lastDashboardPostedDeviceId;
 
     internal DevicesPage(
         DevicesPageViewModel viewModel,
@@ -112,8 +118,7 @@ public sealed partial class DevicesPage : Page
     {
         if (DeviceOps is null)
         {
-            ApplyDashboard(selectionDeviceId: null, hasSelection: false, snapshot: null, DeviceMetricsFormatter.Build(null));
-            UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Servico de dispositivos indisponivel.");
+            SetDetailsPaneVisible(false);
             return;
         }
 
@@ -154,8 +159,12 @@ public sealed partial class DevicesPage : Page
         suppressBrightnessSliderEvents = false;
         suppressDeviceSelectionChanged = false;
         brightnessCommitPending = false;
+        dashboardWebViewReady = false;
+        lastDashboardPostedDeviceId = null;
+        dashboardWebViewUri = null;
         lastAppliedPreviewConfigSignature = null;
         previewConfigRefreshVersion++;
+        DetachDashboardWebViewBridge();
         HideNewDeviceWizard();
         ClearRenderedItems();
     }
@@ -253,21 +262,7 @@ public sealed partial class DevicesPage : Page
 
     private async void OnTestLedClicked(object sender, RoutedEventArgs e)
     {
-        var selected = GetSelectedDeviceItem();
-        var ops = DeviceOps;
-        if (selected is null || ops is null)
-        {
-            return;
-        }
-
-        var result = await ops.TriggerTestLedAsync(selected.DeviceId).ConfigureAwait(false);
-        if (result.Accepted && result.Completed && result.Success)
-        {
-            return;
-        }
-
-        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
-        AddLocalLog($"Falha ao acionar teste de LED em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
+        await ExecuteTestLedAsync().ConfigureAwait(false);
     }
 
     private void OnBrightnessSliderValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -294,7 +289,99 @@ public sealed partial class DevicesPage : Page
 
     private async void OnRemoveDeviceClicked(object sender, RoutedEventArgs e)
     {
+        await ExecuteRemoveDeviceAsync().ConfigureAwait(false);
+    }
+
+    private void OnCopyHostClicked(object sender, RoutedEventArgs e)
+    {
+        var data = new DataPackage();
+        data.SetText(currentState.ServerBaseAddress);
+        Clipboard.SetContent(data);
+    }
+
+    private async Task RunSelectedCommandAsync(DeviceCommandType commandType)
+    {
         var selected = GetSelectedDeviceItem();
+        if (selected is null || DeviceOps is null)
+        {
+            return;
+        }
+
+        await DeviceOps.RunCommandAsync(selected.DeviceId, commandType).ConfigureAwait(false);
+    }
+
+    private async Task CommitBrightnessIfPendingAsync()
+    {
+        if (!brightnessCommitPending || suppressBrightnessSliderEvents || DashboardBrightnessSlider is null)
+        {
+            return;
+        }
+
+        brightnessCommitPending = false;
+        await ExecuteSetBrightnessAsync(Math.Clamp((int)Math.Round(DashboardBrightnessSlider.Value), SafeBrightnessMin, SafeBrightnessMax))
+            .ConfigureAwait(false);
+    }
+
+    private DeviceListItem? ResolveCommandDevice(string? requestedDeviceId = null)
+    {
+        var selected = GetSelectedDeviceItem();
+        if (selected is not null
+            && (string.IsNullOrWhiteSpace(requestedDeviceId)
+                || string.Equals(selected.DeviceId, requestedDeviceId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return selected;
+        }
+
+        if (string.IsNullOrWhiteSpace(requestedDeviceId))
+        {
+            return null;
+        }
+
+        return allItems.FirstOrDefault(item =>
+            string.Equals(item.DeviceId, requestedDeviceId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task ExecuteTestLedAsync(string? requestedDeviceId = null)
+    {
+        var selected = ResolveCommandDevice(requestedDeviceId);
+        var ops = DeviceOps;
+        if (selected is null || ops is null)
+        {
+            return;
+        }
+
+        var result = await ops.TriggerTestLedAsync(selected.DeviceId).ConfigureAwait(false);
+        if (result.Accepted && result.Completed && result.Success)
+        {
+            return;
+        }
+
+        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
+        AddLocalLog($"Falha ao acionar teste de LED em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
+    }
+
+    private async Task ExecuteSetBrightnessAsync(int brightness, string? requestedDeviceId = null)
+    {
+        var selected = ResolveCommandDevice(requestedDeviceId);
+        var ops = DeviceOps;
+        if (selected is null || ops is null || selected.Status != DeviceStatus.Online)
+        {
+            return;
+        }
+
+        var result = await ops.SetBrightnessAsync(selected.DeviceId, Math.Clamp(brightness, SafeBrightnessMin, SafeBrightnessMax)).ConfigureAwait(false);
+        if (result.Accepted && result.Completed && result.Success)
+        {
+            return;
+        }
+
+        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
+        AddLocalLog($"Falha ao ajustar brilho em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
+    }
+
+    private async Task ExecuteRemoveDeviceAsync(string? requestedDeviceId = null)
+    {
+        var selected = ResolveCommandDevice(requestedDeviceId);
         var ops = DeviceOps;
         if (selected is null || ops is null)
         {
@@ -335,86 +422,41 @@ public sealed partial class DevicesPage : Page
             }
         }
 
-        if (ops.RemoveDevice(selected.DeviceId))
+        if (!ops.RemoveDevice(selected.DeviceId))
         {
-            selectedDeviceId = null;
-            SetListSelectedItem(null);
+            PairingCodeText.Severity = InfoBarSeverity.Error;
+            PairingCodeText.Message = "Falha ao remover dispositivo.";
+            AddLocalLog($"Falha ao remover dispositivo: {selected.DeviceId}");
+            return;
+        }
 
-            if (isOnline)
+        selectedDeviceId = null;
+        SetListSelectedItem(null);
+
+        if (isOnline)
+        {
+            if (revokeSucceeded)
             {
-                if (revokeSucceeded)
-                {
-                    PairingCodeText.Severity = InfoBarSeverity.Success;
-                    PairingCodeText.Message = $"Dispositivo revogado e removido: {selected.DeviceId}";
-                    AddLocalLog($"Dispositivo revogado e removido localmente: {selected.DeviceId}");
-                }
-                else
-                {
-                    PairingCodeText.Severity = InfoBarSeverity.Warning;
-                    PairingCodeText.Message = $"Dispositivo removido localmente; revogacao nao concluida: {selected.DeviceId}";
-                    AddLocalLog($"Dispositivo removido localmente, mas revogacao falhou: {selected.DeviceId} ({revokeFailureMessage ?? "erro desconhecido"})");
-                }
+                PairingCodeText.Severity = InfoBarSeverity.Success;
+                PairingCodeText.Message = $"Dispositivo revogado e removido: {selected.DeviceId}";
+                AddLocalLog($"Dispositivo revogado e removido localmente: {selected.DeviceId}");
             }
             else
             {
-                PairingCodeText.Severity = InfoBarSeverity.Success;
-                PairingCodeText.Message = $"Dispositivo removido: {selected.DeviceId}";
-                AddLocalLog($"Dispositivo removido localmente: {selected.DeviceId}");
+                PairingCodeText.Severity = InfoBarSeverity.Warning;
+                PairingCodeText.Message = $"Dispositivo removido localmente; revogacao nao concluida: {selected.DeviceId}";
+                AddLocalLog($"Dispositivo removido localmente, mas revogacao falhou: {selected.DeviceId} ({revokeFailureMessage ?? "erro desconhecido"})");
             }
-
-            ApplySelectionDetails();
-            ApplyButtonState();
-            return;
         }
-
-        PairingCodeText.Severity = InfoBarSeverity.Error;
-        PairingCodeText.Message = "Falha ao remover dispositivo.";
-        AddLocalLog($"Falha ao remover dispositivo: {selected.DeviceId}");
-    }
-
-    private void OnCopyHostClicked(object sender, RoutedEventArgs e)
-    {
-        var data = new DataPackage();
-        data.SetText(currentState.ServerBaseAddress);
-        Clipboard.SetContent(data);
-    }
-
-    private async Task RunSelectedCommandAsync(DeviceCommandType commandType)
-    {
-        var selected = GetSelectedDeviceItem();
-        if (selected is null || DeviceOps is null)
+        else
         {
-            return;
+            PairingCodeText.Severity = InfoBarSeverity.Success;
+            PairingCodeText.Message = $"Dispositivo removido: {selected.DeviceId}";
+            AddLocalLog($"Dispositivo removido localmente: {selected.DeviceId}");
         }
 
-        await DeviceOps.RunCommandAsync(selected.DeviceId, commandType).ConfigureAwait(false);
-    }
-
-    private async Task CommitBrightnessIfPendingAsync()
-    {
-        if (!brightnessCommitPending || suppressBrightnessSliderEvents)
-        {
-            return;
-        }
-
-        var selected = GetSelectedDeviceItem();
-        var ops = DeviceOps;
-        if (selected is null || ops is null || selected.Status != DeviceStatus.Online)
-        {
-            brightnessCommitPending = false;
-            return;
-        }
-
-        brightnessCommitPending = false;
-        var brightness = Math.Clamp((int)Math.Round(DashboardBrightnessSlider.Value), SafeBrightnessMin, SafeBrightnessMax);
-        var result = await ops.SetBrightnessAsync(selected.DeviceId, brightness).ConfigureAwait(false);
-        if (result.Accepted && result.Completed && result.Success)
-        {
-            return;
-        }
-
-        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
-        AddLocalLog($"Falha ao ajustar brilho em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
+        ApplySelectionDetails();
+        ApplyButtonState();
     }
 
     private sealed class DeviceListItem
