@@ -29,6 +29,12 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | `brightnessApplied` | `int?` | brilho efetivamente aplicado no painel |
 | `testLedEnabled` | `bool?` | estado legado/compatibilidade do LED auxiliar continuo |
 | `testLedDuty` | `int?` | duty atual do LED auxiliar em escala 8-bit (quando aplicavel) |
+| `streamFramesReceived` | `uint?` | quantidade de payloads de stream aceitos pelo firmware (`bins` ou `frame`) |
+| `streamFramesApplied` | `uint?` | quantidade de payloads novos efetivamente exibidos ao menos uma vez no painel HUB75 |
+| `hub75PresentFrames` | `uint?` | contador monotono de `flipDMABuffer()` realmente apresentados no HUB75 |
+| `streamSequenceGapCount` | `uint?` | quantidade acumulada de lacunas de sequencia detectadas no stream |
+| `streamInvalidFrameCount` | `uint?` | quantidade acumulada de payloads invalidos rejeitados |
+| `streamLastSequence` | `uint?` | ultimo numero de sequencia aceito do stream |
 
 ## Regras de sanitizacao e pass-through
 
@@ -38,6 +44,8 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 4. `loopLoadPercent` continua aceito apenas para leitura/round-trip de compatibilidade.
 5. `chipTemperatureCelsius` so deve ser emitido quando a leitura do sensor interno vier valida (`finite`).
 6. `wifiState` usa valores canonicos em minusculo para facilitar consumo no dashboard.
+7. `streamFramesApplied` representa payload novo efetivamente exibido ao menos uma vez; reapresentacoes do mesmo conteudo nao incrementam esse contador.
+8. `hub75PresentFrames` representa a cadencia fisica de apresentacao do HUB75; cada flip real incrementa esse contador monotono.
 
 ## Persistencia local
 
@@ -57,6 +65,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 - O estado de update de firmware no dashboard nao e telemetria crua:
   - `firmwareVersion` continua vindo do device;
   - `latestFirmwareVersion`, `firmwareUpdateSupported` e `firmwareUpdateAvailable` sao derivados no host a partir do catalogo oficial de firmware embarcado no app.
+- `hub75Fps` e calculado no host a partir do delta de `hub75PresentFrames`, portanto reflete a cadencia real de apresentacao do painel.
 - Barras derivadas de fragmentacao sao exibidas apenas quando os dados sao coerentes.
 - `RSSI` deve aparecer apenas quando o `snapshot.Status` esta online; para offline a UI exibe estado de rede sem sinal numerico.
 - O card de logs usa `GetDeviceLogs(deviceId)` e exibe somente o device selecionado.

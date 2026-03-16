@@ -44,6 +44,8 @@ public sealed class DeviceServerHostDashboardTests
         Assert.Contains("id=\"firmware-current\"", htmlBody, StringComparison.Ordinal);
         Assert.Contains("id=\"firmware-latest\"", htmlBody, StringComparison.Ordinal);
         Assert.Contains("id=\"btn-fw\"", htmlBody, StringComparison.Ordinal);
+        Assert.Contains("Firmware atual", htmlBody, StringComparison.Ordinal);
+        Assert.Contains("Ultimo release", htmlBody, StringComparison.Ordinal);
         Assert.Contains("id=\"chart-loop\"", htmlBody, StringComparison.Ordinal);
         Assert.Contains("id=\"chart-heap\"", htmlBody, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"btn-led-secondary\"", htmlBody, StringComparison.Ordinal);
@@ -60,6 +62,8 @@ public sealed class DeviceServerHostDashboardTests
         Assert.Contains("chipTemperatureCelsius", js, StringComparison.Ordinal);
         Assert.Contains("firmwareUpdateAvailable", js, StringComparison.Ordinal);
         Assert.Contains("latestFirmwareVersion", js, StringComparison.Ordinal);
+        Assert.Contains("Firmware atual nao identificado", js, StringComparison.Ordinal);
+        Assert.Contains("Sem release oficial", js, StringComparison.Ordinal);
         Assert.Contains("update-firmware", js, StringComparison.Ordinal);
         Assert.DoesNotContain("device.loopLoadPercent", js, StringComparison.Ordinal);
         Assert.Contains("style.display = selectedDeviceId ? \"block\" : \"none\"", js, StringComparison.Ordinal);
@@ -129,6 +133,7 @@ public sealed class DeviceServerHostDashboardTests
             activeAppName = "visualizer-hub75",
             streamFramesReceived = 60,
             streamFramesApplied = 60,
+            hub75PresentFrames = 60,
             streamSequenceGapCount = 0,
             streamInvalidFrameCount = 0,
             streamLastSequence = 60,
@@ -187,7 +192,8 @@ public sealed class DeviceServerHostDashboardTests
             brightnessApplied = 100,
             activeAppName = "visualizer-hub75",
             streamFramesReceived = 120,
-            streamFramesApplied = 120,
+            streamFramesApplied = 60,
+            hub75PresentFrames = 81,
             streamSequenceGapCount = 0,
             streamInvalidFrameCount = 0,
             streamLastSequence = 120,
@@ -197,7 +203,7 @@ public sealed class DeviceServerHostDashboardTests
         Assert.Equal(8u, secondPayload.RootElement.GetProperty("telemetrySequence").GetUInt32());
         Assert.Equal(74, secondPayload.RootElement.GetProperty("loopHealthyPercent").GetInt32());
         Assert.Equal(50d, secondPayload.RootElement.GetProperty("chipTemperatureCelsius").GetDouble());
-        Assert.Equal(120u, secondPayload.RootElement.GetProperty("streamFramesApplied").GetUInt32());
+        Assert.Equal(60u, secondPayload.RootElement.GetProperty("streamFramesApplied").GetUInt32());
         Assert.True(secondPayload.RootElement.GetProperty("hub75Fps").GetInt32() > 0);
     }
 

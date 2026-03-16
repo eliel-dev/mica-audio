@@ -32,6 +32,7 @@ public sealed class DeviceTelemetryMessageTests
               "auxLedAvailable": true,
               "testLedAvailable": true,
               "lastWifiEvent": "ws_connected",
+              "hub75PresentFrames": 480,
               "telemetrySequence": 42,
               "brightnessCap": 120,
               "brightnessRequested": 180,
@@ -63,6 +64,7 @@ public sealed class DeviceTelemetryMessageTests
         Assert.True(telemetry.AuxLedAvailable);
         Assert.True(telemetry.TestLedAvailable);
         Assert.Equal("ws_connected", telemetry.LastWifiEvent);
+        Assert.Equal(480u, telemetry.Hub75PresentFrames);
         Assert.Equal(42u, telemetry.TelemetrySequence);
         Assert.Equal(120, telemetry.BrightnessCap);
         Assert.Equal(180, telemetry.BrightnessRequested);
@@ -105,6 +107,7 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Null(telemetry.AuxLedAvailable);
         Assert.Null(telemetry.TestLedAvailable);
         Assert.Null(telemetry.LastWifiEvent);
+        Assert.Null(telemetry.Hub75PresentFrames);
         Assert.Null(telemetry.TelemetrySequence);
         Assert.Null(telemetry.BrightnessCap);
         Assert.Null(telemetry.BrightnessRequested);

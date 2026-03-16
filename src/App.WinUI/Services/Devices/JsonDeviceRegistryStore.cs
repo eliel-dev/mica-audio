@@ -112,6 +112,12 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             AuxLedAvailable = record.AuxLedAvailable,
             TestLedAvailable = record.TestLedAvailable,
             LastWifiEvent = record.LastWifiEvent,
+            StreamFramesReceived = record.StreamFramesReceived,
+            StreamFramesApplied = record.StreamFramesApplied,
+            Hub75PresentFrames = record.Hub75PresentFrames,
+            StreamSequenceGapCount = record.StreamSequenceGapCount,
+            StreamInvalidFrameCount = record.StreamInvalidFrameCount,
+            StreamLastSequence = record.StreamLastSequence,
             TelemetrySequence = record.TelemetrySequence,
             BrightnessCap = record.BrightnessCap,
             BrightnessRequested = record.BrightnessRequested,
@@ -169,6 +175,12 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             AuxLedAvailable = record.AuxLedAvailable,
             TestLedAvailable = record.TestLedAvailable,
             LastWifiEvent = record.LastWifiEvent,
+            StreamFramesReceived = record.StreamFramesReceived,
+            StreamFramesApplied = record.StreamFramesApplied,
+            Hub75PresentFrames = record.Hub75PresentFrames,
+            StreamSequenceGapCount = record.StreamSequenceGapCount,
+            StreamInvalidFrameCount = record.StreamInvalidFrameCount,
+            StreamLastSequence = record.StreamLastSequence,
             TelemetrySequence = record.TelemetrySequence,
             BrightnessCap = record.BrightnessCap,
             BrightnessRequested = record.BrightnessRequested,
@@ -313,6 +325,18 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         public bool? TestLedAvailable { get; init; }
 
         public string? LastWifiEvent { get; init; }
+
+        public uint? StreamLastSequence { get; init; }
+
+        public uint? StreamFramesReceived { get; init; }
+
+        public uint? StreamFramesApplied { get; init; }
+
+        public uint? Hub75PresentFrames { get; init; }
+
+        public uint? StreamSequenceGapCount { get; init; }
+
+        public uint? StreamInvalidFrameCount { get; init; }
 
         public uint? TelemetrySequence { get; init; }
 

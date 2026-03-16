@@ -105,9 +105,13 @@ public sealed partial class DevicesPage
             : new GridLength(0);
     }
 
-    private static void ApplyButtonState()
+    // DOCS: docs/wiki/reference/device-observability-dashboard.md
+    private void ApplyButtonState()
     {
-        // O dashboard embutido decide o estado visual dos controles a partir do DTO servido localmente.
+        if (CopyDashboardLinkButton is not null)
+        {
+            CopyDashboardLinkButton.IsEnabled = BuildDashboardShareUri(currentState.ServerBaseAddress, GetSelectedDeviceId()) is not null;
+        }
     }
 
     private static string BuildRegistrationLine(DeviceListItem selected)

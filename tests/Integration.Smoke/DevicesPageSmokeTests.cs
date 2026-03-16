@@ -14,6 +14,7 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetField("NewDeviceButton", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DeviceDetailsGrid", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DeviceDashboardWebView", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("CopyDashboardLinkButton", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardOverlay", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardPortPanel", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardPortComboBox", flags));
@@ -40,6 +41,8 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetMethod("DetachDashboardWebViewBridge", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("OnDashboardWebMessageReceived", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("BuildDashboardWebViewUri", staticFlags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("BuildDashboardShareUri", staticFlags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("OnCopyDashboardLinkClicked", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("ApplySelectionDetails", flags));
 
         Assert.Null(typeof(DevicesPage).GetMethod("BuildDetailsTabHost", flags));
@@ -62,6 +65,36 @@ public sealed class DevicesPageSmokeTests
         Assert.Equal(5272, uri.Port);
         Assert.Equal("/dashboard", uri.AbsolutePath);
         Assert.Equal("?embedded=1", uri.Query);
+    }
+
+    [Fact]
+    public void BuildDashboardShareUri_ShouldKeepLanHostAndPinSelectedDevice()
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Static;
+
+        var method = typeof(DevicesPage).GetMethod("BuildDashboardShareUri", flags);
+        Assert.NotNull(method);
+
+        var uri = method!.Invoke(null, ["http://192.168.1.50:5272", "mp-device-01"]) as Uri;
+
+        Assert.NotNull(uri);
+        Assert.Equal("192.168.1.50", uri!.Host);
+        Assert.Equal(5272, uri.Port);
+        Assert.Equal("/dashboard", uri.AbsolutePath);
+        Assert.Equal("?deviceId=mp-device-01", uri.Query);
+    }
+
+    [Fact]
+    public void BuildDashboardShareUri_ShouldRejectLoopbackHosts()
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Static;
+
+        var method = typeof(DevicesPage).GetMethod("BuildDashboardShareUri", flags);
+        Assert.NotNull(method);
+
+        var uri = method!.Invoke(null, ["http://127.0.0.1:5272", "mp-device-01"]) as Uri;
+
+        Assert.Null(uri);
     }
 
     [Fact]

@@ -37,6 +37,7 @@ public sealed partial class DevicesPage
     private TextBlock SelectedDeviceAppText = null!;
     private TextBlock ServerInfoText = null!;
     private TextBlock SelectedDeviceSignalText = null!;
+    private AppBarButton CopyDashboardLinkButton = null!;
     private AppBarButton TestLedButton = null!;
     private AppBarButton RemoveDeviceButton = null!;
 
@@ -99,14 +100,16 @@ public sealed partial class DevicesPage
             Background = ResolveBrush("AppSurfaceBaseBrush", Color.FromArgb(255, 11, 15, 20)),
         };
 
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        root.Children.Add(BuildGlobalActionsBar());
 
         var shell = new Grid { ColumnSpacing = 8 };
         shell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(340) });
         DevicesDetailsColumn = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
         shell.ColumnDefinitions.Add(DevicesDetailsColumn);
-        Grid.SetRow(shell, 0);
+        Grid.SetRow(shell, 1);
 
         shell.Children.Add(BuildDeviceListPanel());
         shell.Children.Add(BuildDetailsPanel());
@@ -128,6 +131,64 @@ public sealed partial class DevicesPage
         PairingCodeText.RegisterPropertyChangedCallback(InfoBar.MessageProperty, (_, _) => SyncPairingFooter());
         PairingCodeText.RegisterPropertyChangedCallback(InfoBar.SeverityProperty, (_, _) => SyncPairingFooter());
         SyncPairingFooter();
+    }
+
+    // DOCS: docs/wiki/reference/device-observability-dashboard.md
+    private Border BuildGlobalActionsBar()
+    {
+        var host = CreatePanelBorder(new Thickness(4), cornerRadius: PanelCornerRadius, elevated: true);
+
+        var commandBar = new CommandBar
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+            DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
+            OverflowButtonVisibility = CommandBarOverflowButtonVisibility.Auto,
+        };
+
+        var downloadFirmwareButton = new AppBarButton
+        {
+            Label = "Baixar firmware",
+            Icon = new SymbolIcon(Symbol.Download),
+        };
+        downloadFirmwareButton.Click += OnDownloadFirmwareClicked;
+
+        var pairingButton = new AppBarButton
+        {
+            Label = "Parear",
+            Icon = new SymbolIcon(Symbol.Add),
+        };
+        pairingButton.Click += OnGeneratePairingCodeClicked;
+
+        var refreshButton = new AppBarButton
+        {
+            Label = "Atualizar",
+            Icon = new SymbolIcon(Symbol.Refresh),
+        };
+        refreshButton.Click += OnRefreshClicked;
+
+        CopyDashboardLinkButton = new AppBarButton
+        {
+            Label = "Copiar link do dashboard",
+            Icon = new SymbolIcon(Symbol.Copy),
+            IsEnabled = false,
+        };
+        CopyDashboardLinkButton.Click += OnCopyDashboardLinkClicked;
+
+        var copyHostButton = new AppBarButton
+        {
+            Label = "Copiar host",
+            Icon = new SymbolIcon(Symbol.Copy),
+        };
+        copyHostButton.Click += OnCopyHostClicked;
+
+        commandBar.PrimaryCommands.Add(downloadFirmwareButton);
+        commandBar.PrimaryCommands.Add(pairingButton);
+        commandBar.PrimaryCommands.Add(refreshButton);
+        commandBar.PrimaryCommands.Add(CopyDashboardLinkButton);
+        commandBar.PrimaryCommands.Add(copyHostButton);
+
+        host.Child = commandBar;
+        return host;
     }
 
     private Border BuildDeviceListPanel()

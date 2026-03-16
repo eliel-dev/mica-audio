@@ -1,4 +1,5 @@
-# DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#perfil-oficial
+# DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---versionamento-do-release-oficial
+# DOCS: docs/wiki/modules/server-build-and-artifacts.md#manifesto-oficial
 # DOCS: docs/wiki/reference/code-index.md
 param(
     [switch]$SkipToolInstall
@@ -213,7 +214,7 @@ function Try-GetGitLine {
 }
 
 function Resolve-FirmwareVersion {
-    $utcDate = (Get-Date).ToUniversalTime().ToString('yyyy.MM.dd')
+    $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy.MM.dd-HHmmss'Z'")
 
     $tag = Try-GetGitLine -Args @('-C', $repoRoot, 'tag', '--points-at', 'HEAD')
     if ([string]::IsNullOrWhiteSpace($tag)) {
@@ -230,7 +231,7 @@ function Resolve-FirmwareVersion {
 
     $tagToken = Normalize-VersionToken -Value $tag
     $commitToken = Normalize-VersionToken -Value $commit
-    return "v$utcDate-$tagToken-$commitToken"
+    return "v$utcTimestamp-$tagToken-$commitToken"
 }
 
 function Resolve-GitSha {

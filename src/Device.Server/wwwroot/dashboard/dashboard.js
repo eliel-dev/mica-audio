@@ -8,6 +8,7 @@
   const PSRAM_TOTAL_BYTES_FALLBACK = 8000000;
   const HISTORY_POINTS = 30;
   const HEALTH_TONES = ["health-ok", "health-warn", "health-bad"];
+  const HOST_BRIDGE_AVAILABLE = !!(window.chrome && window.chrome.webview);
   const healthHistory = new Map();
   const heapHistory = new Map();
   const lastTelemetrySequence = new Map();
@@ -53,9 +54,17 @@
   }
 
   function postHostMessage(message) {
-    if (window.chrome && window.chrome.webview) {
+    if (HOST_BRIDGE_AVAILABLE) {
       window.chrome.webview.postMessage(message);
     }
+  }
+
+  function applyStandaloneMode() {
+    const readonly = !HOST_BRIDGE_AVAILABLE;
+    $("action-mode-note").style.display = readonly ? "" : "none";
+    document.querySelector(".brightness-card").classList.toggle("readonly", readonly);
+    $("btn-led").style.display = readonly ? "none" : "";
+    $("btn-rm").style.display = readonly ? "none" : "";
   }
 
   function triggerDetailAnimation() {
@@ -112,13 +121,13 @@
   function formatCurrentFirmwareVersion(value) {
     return typeof value === "string" && value.trim().length > 0
       ? value.trim()
-      : "Versao atual nao identificada";
+      : "Firmware atual nao identificado";
   }
 
   function formatLatestFirmwareVersion(value) {
     return typeof value === "string" && value.trim().length > 0
       ? value.trim()
-      : "Sem pacote oficial";
+      : "Sem release oficial";
   }
 
   function resolveHealthState(percent) {
@@ -391,6 +400,8 @@
     $("btn-fw").disabled = true;
     $("btn-led").disabled = true;
     $("btn-rm").disabled = true;
+    $("slider-bright").disabled = true;
+    applyStandaloneMode();
     $("m-ph").textContent = "Selecione um dispositivo para ver a telemetria.";
     $("m-ph").style.display = "";
     $("m-grid").style.display = "none";
@@ -422,10 +433,13 @@
     setWifiIconState($("d-rssi-icon"), device.wifiState, device.signalDbm);
     setWifiIconState($("s-rssi-icon"), device.wifiState, device.signalDbm);
 
-    const ledEnabled = !!selectedDeviceId && device.testLedAvailable !== false;
-    const firmwareUpdateAvailable = !!selectedDeviceId && device.firmwareUpdateSupported === true && device.firmwareUpdateAvailable === true;
+    const embeddedMode = HOST_BRIDGE_AVAILABLE;
+    const ledEnabled = embeddedMode && !!selectedDeviceId && device.testLedAvailable !== false;
+    const firmwareUpdateAvailable = embeddedMode && !!selectedDeviceId && device.firmwareUpdateSupported === true && device.firmwareUpdateAvailable === true;
+    $("btn-led").style.display = embeddedMode ? "" : "none";
+    $("btn-rm").style.display = embeddedMode ? "" : "none";
     $("btn-led").disabled = !ledEnabled;
-    $("btn-rm").disabled = !selectedDeviceId;
+    $("btn-rm").disabled = !embeddedMode || !selectedDeviceId;
     $("btn-fw").style.display = firmwareUpdateAvailable ? "" : "none";
     $("btn-fw").disabled = !firmwareUpdateAvailable;
 
@@ -439,7 +453,8 @@
 
     const brightnessValue = normalizeBrightness(device.brightnessRequested ?? device.brightnessApplied ?? 120);
     setBrightnessUi(brightnessValue);
-    $("slider-bright").disabled = !device.online;
+    $("slider-bright").disabled = !embeddedMode || !device.online;
+    applyStandaloneMode();
 
     const healthPercent = typeof device.loopHealthyPercent === "number"
       ? clamp(Math.round(device.loopHealthyPercent), 0, 100)
@@ -560,7 +575,7 @@
   }
 
   function commitBrightness() {
-    if (!selectedDeviceId) {
+    if (!HOST_BRIDGE_AVAILABLE || !selectedDeviceId) {
       return;
     }
 
@@ -614,7 +629,7 @@
   }
 
   function wireHostBridge() {
-    if (!(window.chrome && window.chrome.webview)) {
+    if (!HOST_BRIDGE_AVAILABLE) {
       return;
     }
 
@@ -652,7 +667,8 @@
     wireActions();
     wireHostBridge();
     initStandaloneSelection();
-    if (!readyAcknowledged && !(window.chrome && window.chrome.webview)) {
+    applyStandaloneMode();
+    if (!readyAcknowledged && !HOST_BRIDGE_AVAILABLE) {
       readyAcknowledged = true;
     }
     resetVisualState();

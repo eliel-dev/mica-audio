@@ -52,12 +52,114 @@
 2. `boards/mica_esp32_s3_devkitc1_n16r8.json` para o perfil oficial da placa
 3. `partitions/mica_app3M_fat9M_16MB.csv` para o layout oficial `3MB APP / 9.9MB FATFS`
 4. `main.cpp` para parsing do stream e desenho
-5. `scripts/build-precompiled-firmware.ps1` para gerar `BIN + manifesto` embarcados no app
+5. `firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py` para preservar o override de payload WS no build oficial
+6. `firmware/esp32s3-devkitc1/scripts/patch_hub75_bulk_rgb565.py` para expor o writer bulk RGB565 na dependencia HUB75 pinada
+7. `scripts/build-precompiled-firmware.ps1` para gerar `BIN + manifesto` embarcados no app
+
+## Atualizacao 2026-03 - HUB75 128x64 single-canvas mapping
+
+- O contrato visual oficial continua sendo um unico canvas `128x64`, igual ao preview WinUI e ao stream `Frame128x64 RGB565`.
+- Para o painel `hub75_p2_5_128x64_smd2121_scan32`, a linha `E` e obrigatoria no firmware oficial do DevKitC-1.
+- O pinout operacional alinhado com a bancada validada ficou:
+  - `RGB = {4, 5, 6, 7, 15, 16}`
+  - `A/B/C/D/E = {18, 8, 3, 42, 17}`
+  - `LAT = 40`, `OE = 2`, `CLK = 41`
+- O firmware passou a falhar cedo se um painel `128x64` for inicializado sem `E` ou com conflito entre `E` e `CLK/LAT/OE`.
+- O boot serial do display agora registra o pinout HUB75 efetivo para diagnostico rapido de campo.
 
 ## Atualizacao 2026-03 - Buffer WS para frame 128x64
 
-- O build do firmware define `WEBSOCKETS_MAX_DATA_SIZE=32768` em `platformio.ini`.
-- O objetivo e suportar com margem payloads binarios grandes do stream `frame 128x64 RGB565` sem queda de conexao por limite de frame no cliente WS.
+- O build oficial passou a patchar a dependencia `WebSockets` via `extra_script` versionado para preservar `WEBSOCKETS_MAX_DATA_SIZE=32768`.
+- O objetivo e suportar com margem payloads binarios grandes do stream `frame 128x64 RGB565` (`16400` bytes) sem queda de conexao por limite de frame no cliente WS.
+- O firmware agora valida isso em build via `static_assert` e registra no boot o limite WS efetivo ao lado do tamanho do payload `Frame128x64`.
+
+## Atualizacao 2026-03 - HUB75 anti-flicker com double buffer
+
+- O firmware oficial do HUB75 passou a ativar `config.double_buff = true` no `MatrixPanel_I2S_DMA`.
+- `commitMatrixFrame()` agora executa `flipDMABuffer()` de verdade no perfil `dma_exp`.
+- O painel deixou de ser limpo e redesenhado continuamente sem necessidade:
+  - o firmware marca o frame como `dirty` quando chegam bins/frame novos;
+  - em `Frame128x64`, a apresentacao continua orientada a frame novo;
+  - em `Bins128`, o firmware reapresenta continuamente o ultimo buffer na cadencia suportada pelo painel para recuperar fluidez visual;
+  - a cadencia minima de flip deixou de ser um cap fixo e passou a ser derivada de `calculated_refresh_rate` da propria biblioteca.
+- O timeout de silencio do stream (`15 s`) agora apaga o painel uma unica vez e evita clears repetidos em todo loop.
+- `streamFramesApplied` passou a significar payload novo efetivamente exibido ao menos uma vez no painel, nao apenas payload recebido do stream.
+- A taxa real de flip do HUB75 deixou de depender desse contador; ela agora e exposta separadamente por `hub75PresentFrames`.
+
+## Atualizacao 2026-03 - HUB75 upstream baseline fluidity recovery
+
+- O build oficial do firmware passou a fixar a dependencia `ESP32-HUB75-MatrixPanel-DMA` em `3.0.13` (`a6221865c71fd5aeba885c31b81fe41bd36c5705`) para evitar drift do `git` flutuante e manter o baseline upstream usado como referencia de estabilidade para paines `1/32`.
+- O perfil oficial do painel `hub75_p2_5_128x64_smd2121_scan32` continua usando `PIXEL_COLOR_DEPTH_BITS=6`, em linha com a recomendacao da README da biblioteca para matrizes `64x64` ou maiores.
+- O `HUB75_I2S_CFG` oficial agora assume explicitamente:
+  - `driver = SHIFTREG`
+  - `double_buff = true`
+  - `i2sspeed = HZ_10M`
+  - `clkphase = false`
+  - sem forcamento de `min_refresh_rate`
+- O firmware passou a aplicar `setLatBlanking(2)` no painel oficial:
+  - a README da upstream recomenda esse ajuste quando houver ghosting com clone/deslocamento horizontal;
+  - valores maiores so reduzem brilho e nao entram no baseline oficial.
+- O boot serial agora registra os valores efetivos que importam para diagnostico de campo:
+  - `driver`
+  - `color depth`
+  - `calculated_refresh_rate`
+  - `latch blanking`
+  - `clkphase`
+  - `double buffer`
+  - intervalo efetivo de apresentacao derivado do `calculated_refresh_rate`
+- O antigo tuning `6-bit / 144 Hz` deixou de ser baseline oficial:
+  - o projeto prioriza primeiro a fluidez e a integridade visual no hardware real;
+  - retuning fino de refresh/driver so volta a ser considerado depois que o baseline upstream estiver estavel no painel.
+
+## Atualizacao 2026-03 - HUB75 60 FPS com pacing fisico correto
+
+- O firmware oficial deixou de limitar `flipDMABuffer()` com `1000 / calculated_refresh_rate` em milissegundos:
+  - esse arredondamento podia permitir flips acima da taxa fisica real do painel;
+  - o pacing agora e calculado em microssegundos com arredondamento para cima.
+- O perfil oficial passou a usar tres intervalos explicitos:
+  - `physical_present_interval_us = ceil(1_000_000 / calculated_refresh_rate)`
+  - `target_present_interval_us = ceil(1_000_000 / 60)`
+  - `effective_present_interval_us = max(target, physical)`
+- Consequencia operacional:
+  - o firmware tenta apresentar a `60 FPS` apenas quando o painel realmente suporta essa cadencia;
+  - se o refresh fisico calculado for menor, o firmware respeita o limite do painel em vez de flipar acima dele.
+- O boot serial agora registra:
+  - `calculated_refresh_rate`
+  - `physical_present_interval_us`
+  - `target_present_interval_us`
+  - `effective_present_interval_us`
+  - `double_buffer`
+  - `latch_blanking`
+- O render path do HUB75 passou a usar caches em SRAM interna:
+  - `hub75PresentFrames` conta cada `flipDMABuffer()` realmente apresentado;
+  - `Bins128` usa diff por coluna/segmento, evitando redraw bruto da matriz inteira;
+  - `Frame128x64` usa buffer sombra por DMA buffer + diff por linha/pixel, com LUTs para `RGB565 -> RGB888`.
+- No host/dashboard:
+  - `streamFramesApplied` continua representando payload novo efetivamente exibido ao menos uma vez;
+  - `hub75Fps` passa a derivar de `hub75PresentFrames`, refletindo presents reais em vez de apenas payloads novos.
+- PSRAM continua apenas como telemetria/capacidade do device:
+  - o perfil oficial nao habilita `SPIRAM_FRAMEBUFFER` nem `SPIRAM_DMA_BUFFER`;
+  - a decisao segue a documentacao da biblioteca upstream, que associa esse caminho a tradeoffs de clock/banda.
+
+## Atualizacao 2026-03 - HUB75 bulk RGB565 back-buffer fix
+
+- A dependencia `ESP32-HUB75-MatrixPanel-DMA` `3.0.13` continua sem expor `getBackBuffer()` publico nem `drawPixelRGB565()`.
+- O build oficial passou a aplicar um patch versionado sobre a lib pinada:
+  - `firmware/esp32s3-devkitc1/scripts/patch_hub75_bulk_rgb565.py`
+- Esse patch adiciona `writeFrameRGB565(const uint16_t* frame565)` como API publica minima da lib, sem expor `fb`, `frame_buffer` ou `back_buffer_id`.
+- Na `3.0.13`, o destino real de escrita e o framebuffer apontado por `fb`:
+  - `back_buffer_id` indica qual buffer nao esta sendo exibido antes do `flip`;
+  - `flipDMABuffer()` entrega esse id ao DMA e so depois alterna `back_buffer_id`/`fb` para o proximo buffer gravavel;
+  - por isso o writer bulk nao deve escolher o alvo por `getRowDataPtr(..., back_buffer_id)`, e sim escrever explicitamente no `target_fb` capturado antes do flip.
+- O caminho `drawFrame128x64()` do firmware agora:
+  - escreve o frame inteiro no back buffer BCM da lib em uma unica chamada;
+  - evita `rgb565ToRgb888`, `drawMatrixPixel` e diff por pixel;
+  - continua atualizando `gMatrixShadowFrames[...]` por `memcpy` para preservar a volta correta ao renderer de barras.
+- O writer bulk agora registra em serial, de forma limitada, o `target_buffer_id`, o `back_buffer_id` observado e `ROWS_PER_FRAME` para auditoria do ownership do back buffer no hardware real.
+- O mapeamento escolhido prioriza throughput:
+  - `RGB565` e expandido para `6` bitplanes BCM com `R/B 5->6` via replicacao simples de bit;
+  - nao usa `lumConvTab` nem replica a curva/gamma antiga da lib nesse caminho.
+- O patch falha cedo se as assinaturas esperadas da header/cpp mudarem, evitando drift silencioso no build oficial.
 
 ## Atualizacao 2026-03 - MQTT cutover do control plane
 
@@ -154,13 +256,16 @@
   - o hotfix nao depende mais de modo continuo na UI.
 - Telemetria expoe `telemetrySequence`, `brightnessCap`, `brightnessRequested`, `brightnessApplied`, `testLedEnabled`, `testLedDuty` e `testLedAvailable`.
 
-## Atualizacao 2026-03 - RSK-004 versionamento automatico do firmware
+## Atualizacao 2026-03 - Versionamento do release oficial
 
 - `kFirmwareVersion` agora usa macro `MICA_FIRMWARE_VERSION`.
 - Fallback estatico: `src/firmware_version.h`.
-- Build precompilado gera `src/firmware_version.auto.h` com carimbo `UTC date + tag + short commit`.
+- Build precompilado gera `src/firmware_version.auto.h` com carimbo `UTC timestamp + tag + short commit`.
+- Formato oficial do pacote embarcado:
+  - `vyyyy.MM.dd-HHmmssZ-<tag>-<sha>`
+- O objetivo do timestamp e diferenciar duas geracoes do mesmo commit no mesmo dia sem criar campo extra de release.
 - O arquivo auto-gerado e temporario (limpo ao final do script de build).
-- O pacote oficial regenerado nesta entrega ficou em `v2026.03.12-untagged-8fc3a7e`.
+- O dashboard e o dialogo de update exibem esse valor como `Ultimo release`.
 
 ## Atualizacao 2026-03 - Hotfix P0 Wi-Fi/AP + LED auxiliar seguro
 
@@ -203,6 +308,7 @@
 
 - [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
+- [patch_websockets_max_data_size.py](../../../firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py#L1)
 - [board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)
 - [particao local 3MB APP / 9.9MB FATFS](../../../firmware/esp32s3-devkitc1/partitions/mica_app3M_fat9M_16MB.csv#L1)
 - [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L1)

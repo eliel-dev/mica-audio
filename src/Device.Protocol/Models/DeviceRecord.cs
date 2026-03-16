@@ -67,6 +67,8 @@ public sealed class DeviceRecord
 
     public uint? StreamFramesApplied { get; init; }
 
+    public uint? Hub75PresentFrames { get; init; }
+
     public uint? StreamSequenceGapCount { get; init; }
 
     public uint? StreamInvalidFrameCount { get; init; }

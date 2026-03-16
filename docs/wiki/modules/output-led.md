@@ -13,6 +13,7 @@
 - O app pode suprimir o envio continuo de `Bins128` e usar `Frame128x64` como caminho autoritativo para renderers 2D mais artisticos.
 - Esse caminho preserva o firmware atual: o ESP32 ja suporta `messageType = 2` e apenas desenha o frame recebido.
 - `Bins128` continua disponivel como caminho de menor custo para renderers que preferem throughput.
+- `AudioMotion Clone` passou a priorizar paridade visual no HUB75 e agora segue o caminho `Frame128x64`.
 
 ## Atualizacao 2026-03 - Factory de payload e roteamento do pipeline
 

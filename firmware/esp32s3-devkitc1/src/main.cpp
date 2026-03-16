@@ -29,10 +29,16 @@
 
 namespace {
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-128x64-single-canvas-mapping
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---buffer-ws-para-frame-128x64
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-anti-flicker-com-double-buffer
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-upstream-baseline-fluidity-recovery
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-60-fps-com-pacing-fisico-correto
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 145;
 constexpr size_t kStreamFrame128x64Rgb565Size = 16400;
+constexpr size_t kExpectedWebSocketMaxDataSize = 32768;
 constexpr uint8_t kStreamVersion = 2;
 constexpr uint8_t kStreamBinsMessageType = 1;
 constexpr uint8_t kStreamFrame128x64Rgb565MessageType = 2;
@@ -45,6 +51,7 @@ constexpr uint8_t kWsFlapReportThreshold = 3;
 constexpr unsigned long kTelemetryIntervalMs = 2000;
 constexpr unsigned long kLoopHealthWindowMs = 5000;
 constexpr unsigned long kSerialHelloIntervalMs = 3000;
+constexpr unsigned long kMatrixSignalTimeoutMs = 15000;
 constexpr size_t kSerialInputMaxLength = 1024;
 constexpr unsigned long kWifiConnectAttemptTimeoutMs = 20000;
 constexpr uint32_t kHealthyLoopThresholdUs = 25000;
@@ -56,12 +63,41 @@ constexpr uint8_t kMatrixWidth = MICA_MATRIX_WIDTH;
 constexpr uint8_t kMatrixHeight = MICA_MATRIX_HEIGHT;
 constexpr uint8_t kMatrixHalfHeight = kMatrixHeight / 2;
 constexpr size_t kMatrixPixelCount = static_cast<size_t>(kMatrixWidth) * static_cast<size_t>(kMatrixHeight);
+constexpr uint8_t kHub75ColorDepthBits = 6;
+constexpr uint8_t kHub75LatchBlankingPulses = 2;
+constexpr uint8_t kHub75TargetPresentFps = 60;
+constexpr uint8_t kMatrixShadowBufferCount = 2;
+constexpr uint32_t kMicrosPerSecond = 1000000UL;
+constexpr uint32_t kHub75TargetPresentIntervalUs =
+    (kMicrosPerSecond + kHub75TargetPresentFps - 1u) / kHub75TargetPresentFps;
+constexpr uint32_t kHub75FallbackPresentIntervalUs = 20000UL;
 static_assert((kMatrixHeight % 2) == 0, "MICA_MATRIX_HEIGHT must be even.");
+#if defined(MICA_PROFILE_DMA_EXP) && defined(PIXEL_COLOR_DEPTH_BITS)
+static_assert(
+    PIXEL_COLOR_DEPTH_BITS == kHub75ColorDepthBits,
+    "PIXEL_COLOR_DEPTH_BITS must stay aligned with the official HUB75 baseline profile.");
+#endif
+#if !defined(WEBSOCKETS_MAX_DATA_SIZE)
+#error WEBSOCKETS_MAX_DATA_SIZE must be defined by WebSockets.h.
+#endif
+static_assert(
+    WEBSOCKETS_MAX_DATA_SIZE >= kExpectedWebSocketMaxDataSize,
+    "WEBSOCKETS_MAX_DATA_SIZE must stay >= 32768 for HUB75 frame transport.");
+static_assert(
+    WEBSOCKETS_MAX_DATA_SIZE > kStreamFrame128x64Rgb565Size,
+    "Frame128x64Rgb565 payload does not fit in the current WebSockets max frame size.");
+
+enum class MatrixBufferMode : uint8_t {
+  Unknown = 0,
+  Clear = 1,
+  Bars = 2,
+  Frame = 3,
+};
 
 constexpr const char* kBoardModel = "esp32s3_devkitc1";
 constexpr const char* kBoardDisplayName = "ESP32-S3 DevKitC-1";
 constexpr uint8_t kMatrixRgbPins[6] = {4, 5, 6, 7, 15, 16};
-constexpr uint8_t kMatrixAddrPins[5] = {18, 8, 3, 42, 41};
+constexpr uint8_t kMatrixAddrPins[5] = {18, 8, 3, 42, 17};
 constexpr uint8_t kMatrixClockPin = 41;
 constexpr uint8_t kMatrixLatchPin = 40;
 constexpr uint8_t kMatrixOePin = 2;
@@ -141,8 +177,13 @@ bool gOnboardTestLedAvailable = false;
 uint8_t gTestLedDuty = 0;
 uint8_t gTestLedPulseDuty = 0;
 bool gMatrixReady = false;
+bool gMatrixFrameDirty = false;
+bool gPendingMatrixPresentCountsAsApplied = false;
+bool gMatrixSignalTimedOut = false;
 uint8_t gAppliedBrightness = 255;
 bool gFrameModeActive = false;
+uint32_t gLastMatrixPresentUs = 0;
+uint32_t gHub75PresentFrames = 0;
 unsigned long gLoopWindowStartMs = 0;
 uint32_t gLoopWindowIterationCount = 0;
 uint32_t gLoopWindowHealthyCount = 0;
@@ -172,6 +213,14 @@ String gPendingOtaFailureCode;
 String gPendingOtaFailureMessage;
 unsigned long gPendingOtaValidationStartedMs = 0;
 bool gPendingOtaPendingVerifyAnnounced = false;
+uint8_t gRgb5To8Lut[32] = {0};
+uint8_t gRgb6To8Lut[64] = {0};
+uint16_t gMatrixShadowFrames[kMatrixShadowBufferCount][kMatrixPixelCount] = {};
+uint8_t gMatrixShadowBarHeights[kMatrixShadowBufferCount][kMatrixWidth] = {};
+MatrixBufferMode gMatrixBufferModes[kMatrixShadowBufferCount] = {
+    MatrixBufferMode::Unknown,
+    MatrixBufferMode::Unknown};
+uint8_t gMatrixShadowBackBufferIndex = 0;
 
 enum class PendingOtaBootState : uint8_t {
   None = 0,
@@ -209,6 +258,7 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
 
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
+constexpr HUB75_I2S_CFG::shift_driver kHub75BaselineDriver = HUB75_I2S_CFG::SHIFTREG;
 #endif
 
 struct RgbColor {
@@ -227,6 +277,76 @@ struct FirmwareReleaseInfo {
   uint32_t fileSizeBytes = 0;
   String downloadPath;
 };
+
+constexpr uint32_t ceilDivideU32(uint32_t numerator, uint32_t denominator) {
+  return denominator == 0 ? 0u : (numerator + denominator - 1u) / denominator;
+}
+
+size_t matrixPixelIndex(uint8_t x, uint8_t y) {
+  return static_cast<size_t>(y) * static_cast<size_t>(kMatrixWidth) + static_cast<size_t>(x);
+}
+
+uint16_t rgb888ToRgb565(uint8_t r, uint8_t g, uint8_t b) {
+  return static_cast<uint16_t>(((r & 0xF8u) << 8) | ((g & 0xFCu) << 3) | (b >> 3));
+}
+
+void initializeColorConversionLookups() {
+  for (uint8_t value = 0; value < 32; value++) {
+    gRgb5To8Lut[value] = static_cast<uint8_t>((static_cast<uint16_t>(value) * 255u + 15u) / 31u);
+  }
+
+  for (uint8_t value = 0; value < 64; value++) {
+    gRgb6To8Lut[value] = static_cast<uint8_t>((static_cast<uint16_t>(value) * 255u + 31u) / 63u);
+  }
+}
+
+void clearMatrixShadowBuffer(uint8_t bufferIndex) {
+  if (bufferIndex >= kMatrixShadowBufferCount) {
+    return;
+  }
+
+  memset(gMatrixShadowFrames[bufferIndex], 0, sizeof(gMatrixShadowFrames[bufferIndex]));
+  memset(gMatrixShadowBarHeights[bufferIndex], 0, sizeof(gMatrixShadowBarHeights[bufferIndex]));
+  gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Clear;
+}
+
+void resetMatrixShadowState() {
+  for (uint8_t bufferIndex = 0; bufferIndex < kMatrixShadowBufferCount; bufferIndex++) {
+    clearMatrixShadowBuffer(bufferIndex);
+  }
+
+  gMatrixShadowBackBufferIndex = 0;
+}
+
+void setMatrixShadowPixel(uint8_t x, uint8_t y, uint16_t rgb565) {
+  if (x >= kMatrixWidth || y >= kMatrixHeight) {
+    return;
+  }
+
+  gMatrixShadowFrames[gMatrixShadowBackBufferIndex][matrixPixelIndex(x, y)] = rgb565;
+}
+
+void fillMatrixShadowRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t rgb565) {
+  if (w <= 0 || h <= 0) {
+    return;
+  }
+
+  const int16_t xStart = x < 0 ? 0 : x;
+  const int16_t yStart = y < 0 ? 0 : y;
+  const int16_t xEnd = (x + w) > static_cast<int16_t>(kMatrixWidth) ? static_cast<int16_t>(kMatrixWidth) : static_cast<int16_t>(x + w);
+  const int16_t yEnd = (y + h) > static_cast<int16_t>(kMatrixHeight) ? static_cast<int16_t>(kMatrixHeight) : static_cast<int16_t>(y + h);
+  if (xStart >= xEnd || yStart >= yEnd) {
+    return;
+  }
+
+  for (int16_t row = yStart; row < yEnd; row++) {
+    uint16_t* shadowRow =
+        gMatrixShadowFrames[gMatrixShadowBackBufferIndex] + (static_cast<size_t>(row) * static_cast<size_t>(kMatrixWidth));
+    for (int16_t column = xStart; column < xEnd; column++) {
+      shadowRow[column] = rgb565;
+    }
+  }
+}
 
 bool hasPendingOtaContext() {
   return gPendingOtaCommandId.length() > 0
@@ -363,14 +483,10 @@ RgbColor rainbowColorForColumn(uint16_t column, uint16_t columnCount) {
 }
 
 RgbColor rgb565ToRgb888(uint16_t rgb565) {
-  const uint8_t r5 = static_cast<uint8_t>((rgb565 >> 11) & 0x1Fu);
-  const uint8_t g6 = static_cast<uint8_t>((rgb565 >> 5) & 0x3Fu);
-  const uint8_t b5 = static_cast<uint8_t>(rgb565 & 0x1Fu);
-
-  const uint8_t r = static_cast<uint8_t>((static_cast<uint16_t>(r5) * 255u + 15u) / 31u);
-  const uint8_t g = static_cast<uint8_t>((static_cast<uint16_t>(g6) * 255u + 31u) / 63u);
-  const uint8_t b = static_cast<uint8_t>((static_cast<uint16_t>(b5) * 255u + 15u) / 31u);
-  return {r, g, b};
+  return {
+      gRgb5To8Lut[(rgb565 >> 11) & 0x1Fu],
+      gRgb6To8Lut[(rgb565 >> 5) & 0x3Fu],
+      gRgb5To8Lut[rgb565 & 0x1Fu]};
 }
 
 bool isReservedHub75Pin(int pin) {
@@ -695,6 +811,7 @@ void clearMatrix() {
 #if defined(MICA_PROFILE_DMA_EXP)
   if (gMatrix != nullptr) {
     gMatrix->clearScreen();
+    clearMatrixShadowBuffer(gMatrixShadowBackBufferIndex);
   }
 #endif
 }
@@ -704,17 +821,157 @@ void drawMatrixPixel(uint8_t x, uint8_t y, const RgbColor& color) {
 #if defined(MICA_PROFILE_DMA_EXP)
   if (gMatrix != nullptr) {
     gMatrix->drawPixelRGB888(x, y, color.r, color.g, color.b);
+    setMatrixShadowPixel(x, y, rgb888ToRgb565(color.r, color.g, color.b));
   }
 #endif
 }
 
-void commitMatrixFrame() {
+void fillMatrixRect(int16_t x, int16_t y, int16_t w, int16_t h, const RgbColor& color) {
+  if (!gMatrixReady || w <= 0 || h <= 0) {
+    return;
+  }
+
+  const int16_t xStart = x < 0 ? 0 : x;
+  const int16_t yStart = y < 0 ? 0 : y;
+  const int16_t xEnd = (x + w) > static_cast<int16_t>(kMatrixWidth) ? static_cast<int16_t>(kMatrixWidth) : static_cast<int16_t>(x + w);
+  const int16_t yEnd = (y + h) > static_cast<int16_t>(kMatrixHeight) ? static_cast<int16_t>(kMatrixHeight) : static_cast<int16_t>(y + h);
+  if (xStart >= xEnd || yStart >= yEnd) {
+    return;
+  }
+
+#if defined(MICA_PROFILE_DMA_EXP)
+  if (gMatrix != nullptr) {
+    gMatrix->fillRect(
+        xStart,
+        yStart,
+        xEnd - xStart,
+        yEnd - yStart,
+        rgb888ToRgb565(color.r, color.g, color.b));
+    fillMatrixShadowRect(xStart, yStart, xEnd - xStart, yEnd - yStart, rgb888ToRgb565(color.r, color.g, color.b));
+  }
+#endif
+}
+
+bool commitMatrixFrame() {
+#if defined(MICA_PROFILE_DMA_EXP)
+  if (gMatrix != nullptr) {
+    gMatrix->flipDMABuffer();
+    gLastMatrixPresentUs = micros();
+    gHub75PresentFrames++;
+    gMatrixShadowBackBufferIndex ^= 1u;
+    return true;
+  }
+#endif
+
+  return false;
+}
+
+uint32_t getPhysicalPresentIntervalUs() {
+#if defined(MICA_PROFILE_DMA_EXP)
+  if (gMatrix != nullptr && gMatrix->calculated_refresh_rate > 0) {
+    const uint32_t refreshRate = static_cast<uint32_t>(gMatrix->calculated_refresh_rate);
+    const uint32_t intervalUs = ceilDivideU32(kMicrosPerSecond, refreshRate);
+    return intervalUs == 0 ? 1u : intervalUs;
+  }
+#endif
+
+  return kHub75FallbackPresentIntervalUs;
+}
+
+uint32_t getEffectiveMatrixPresentIntervalUs() {
+  const uint32_t physicalPresentIntervalUs = getPhysicalPresentIntervalUs();
+  return physicalPresentIntervalUs > kHub75TargetPresentIntervalUs
+      ? physicalPresentIntervalUs
+      : kHub75TargetPresentIntervalUs;
+}
+
+bool shouldPresentMatrixFrame(uint32_t nowUs) {
+  return gLastMatrixPresentUs == 0
+      || static_cast<uint32_t>(nowUs - gLastMatrixPresentUs) >= getEffectiveMatrixPresentIntervalUs();
+}
+
+void markMatrixFrameDirty(bool countAsAppliedFrame) {
+  gMatrixFrameDirty = true;
+  if (countAsAppliedFrame) {
+    gPendingMatrixPresentCountsAsApplied = true;
+  }
+}
+
+#if defined(MICA_PROFILE_DMA_EXP)
+const char* hub75DriverName(HUB75_I2S_CFG::shift_driver driver) {
+  switch (driver) {
+    case HUB75_I2S_CFG::SHIFTREG:
+      return "SHIFTREG";
+    case HUB75_I2S_CFG::FM6124:
+      return "FM6124";
+    case HUB75_I2S_CFG::FM6126A:
+      return "FM6126A";
+    case HUB75_I2S_CFG::ICN2038S:
+      return "ICN2038S";
+    case HUB75_I2S_CFG::MBI5124:
+      return "MBI5124";
+    default:
+      return "UNKNOWN";
+  }
+}
+#endif
+
+bool validateMatrixPinConfiguration() {
+  if (kMatrixHeight < 64) {
+    return true;
+  }
+
+  const int ePin = static_cast<int>(kMatrixAddrPins[4]);
+  if (ePin < 0) {
+    Serial.println("Pinout HUB75 invalido: painel 128x64 exige linha E.");
+    return false;
+  }
+
+  if (ePin == static_cast<int>(kMatrixClockPin)
+      || ePin == static_cast<int>(kMatrixLatchPin)
+      || ePin == static_cast<int>(kMatrixOePin)) {
+    Serial.printf(
+        "Pinout HUB75 invalido: linha E=%d conflita com CLK/LAT/OE.\n",
+        ePin);
+    return false;
+  }
+
+  return true;
+}
+
+void logMatrixPinout() {
+  Serial.printf(
+      "HUB75 pinout RGB={%u,%u,%u,%u,%u,%u} ADDR={%u,%u,%u,%u,%u} LAT=%u OE=%u CLK=%u\n",
+      static_cast<unsigned>(kMatrixRgbPins[0]),
+      static_cast<unsigned>(kMatrixRgbPins[1]),
+      static_cast<unsigned>(kMatrixRgbPins[2]),
+      static_cast<unsigned>(kMatrixRgbPins[3]),
+      static_cast<unsigned>(kMatrixRgbPins[4]),
+      static_cast<unsigned>(kMatrixRgbPins[5]),
+      static_cast<unsigned>(kMatrixAddrPins[0]),
+      static_cast<unsigned>(kMatrixAddrPins[1]),
+      static_cast<unsigned>(kMatrixAddrPins[2]),
+      static_cast<unsigned>(kMatrixAddrPins[3]),
+      static_cast<unsigned>(kMatrixAddrPins[4]),
+      static_cast<unsigned>(kMatrixLatchPin),
+      static_cast<unsigned>(kMatrixOePin),
+      static_cast<unsigned>(kMatrixClockPin));
 }
 
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#pontos-de-alteracao-frequente
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-128x64-single-canvas-mapping
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-anti-flicker-com-double-buffer
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-upstream-baseline-fluidity-recovery
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-60-fps-com-pacing-fisico-correto
 bool initMatrixDisplay() {
 
 #if defined(MICA_PROFILE_DMA_EXP)
+  if (!validateMatrixPinConfiguration()) {
+    return false;
+  }
+
+  logMatrixPinout();
+
   HUB75_I2S_CFG::i2s_pins pinMap = {
       static_cast<int8_t>(kMatrixRgbPins[0]),
       static_cast<int8_t>(kMatrixRgbPins[1]),
@@ -726,14 +983,27 @@ bool initMatrixDisplay() {
       static_cast<int8_t>(kMatrixAddrPins[1]),
       static_cast<int8_t>(kMatrixAddrPins[2]),
       static_cast<int8_t>(kMatrixAddrPins[3]),
-      static_cast<int8_t>(-1),
+      static_cast<int8_t>(kMatrixAddrPins[4]),
       static_cast<int8_t>(kMatrixLatchPin),
       static_cast<int8_t>(kMatrixOePin),
       static_cast<int8_t>(kMatrixClockPin)};
 
   HUB75_I2S_CFG config(kMatrixWidth, kMatrixHeight, 1, pinMap);
+  config.double_buff = true;
   config.i2sspeed = HUB75_I2S_CFG::HZ_10M;
   config.clkphase = false;
+  config.driver = kHub75BaselineDriver;
+  config.latch_blanking = kHub75LatchBlankingPulses;
+  config.setPixelColorDepthBits(kHub75ColorDepthBits);
+  Serial.printf(
+      "[hub75] config matrix=%ux%u driver=%s color_depth=%u i2s=10MHz clkphase=%u double_buffer=%u latch_blanking=%u\n",
+      static_cast<unsigned>(kMatrixWidth),
+      static_cast<unsigned>(kMatrixHeight),
+      hub75DriverName(config.driver),
+      static_cast<unsigned>(config.getPixelColorDepthBits()),
+      config.clkphase ? 1u : 0u,
+      config.double_buff ? 1u : 0u,
+      static_cast<unsigned>(config.latch_blanking));
 
   gMatrix = new MatrixPanel_I2S_DMA(config);
   if (gMatrix == nullptr) {
@@ -747,14 +1017,31 @@ bool initMatrixDisplay() {
     gMatrix = nullptr;
     return false;
   }
+
+  const uint8_t effectiveLatchBlanking = gMatrix->setLatBlanking(kHub75LatchBlankingPulses);
+  Serial.printf(
+      "[hub75] active driver=%s calculated_refresh_rate=%dHz latch_blanking=%u physical_present_interval_us=%lu target_present_interval_us=%lu effective_present_interval_us=%lu clkphase=%u double_buffer=%u\n",
+      hub75DriverName(config.driver),
+      gMatrix->calculated_refresh_rate,
+      static_cast<unsigned>(effectiveLatchBlanking),
+      static_cast<unsigned long>(getPhysicalPresentIntervalUs()),
+      static_cast<unsigned long>(kHub75TargetPresentIntervalUs),
+      static_cast<unsigned long>(getEffectiveMatrixPresentIntervalUs()),
+      config.clkphase ? 1u : 0u,
+      config.double_buff ? 1u : 0u);
 #endif
 
   gMatrixReady = true;
   gAppliedBrightness = 0;
+  resetMatrixShadowState();
   setMatrixBrightness(resolveAppliedBrightness());
   updateTestLedDutyFromBrightness(gAppliedBrightness);
   clearMatrix();
-  commitMatrixFrame();
+  (void)commitMatrixFrame();
+  clearMatrix();
+  (void)commitMatrixFrame();
+  gLastMatrixPresentUs = 0;
+  gHub75PresentFrames = 0;
   return true;
 }
 
@@ -1481,6 +1768,7 @@ void sendTelemetry(bool force) {
   telemetry["freeHeapBytes"] = freeHeapBytes;
   telemetry["streamFramesReceived"] = gStreamFramesReceived;
   telemetry["streamFramesApplied"] = gStreamFramesApplied;
+  telemetry["hub75PresentFrames"] = gHub75PresentFrames;
   telemetry["streamSequenceGapCount"] = gStreamSequenceGapCount;
   telemetry["streamInvalidFrameCount"] = gStreamInvalidFrameCount;
   telemetry["telemetrySequence"] = ++gTelemetrySequence;
@@ -2342,7 +2630,8 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
       gStreamBrightness = payload[143];
       gFrameModeActive = false;
       gLastFrameMs = millis();
-      gStreamFramesApplied++;
+      gMatrixSignalTimedOut = false;
+      markMatrixFrameDirty(true);
       return;
     }
 
@@ -2372,7 +2661,8 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 
       gFrameModeActive = true;
       gLastFrameMs = millis();
-      gStreamFramesApplied++;
+      gMatrixSignalTimedOut = false;
+      markMatrixFrameDirty(true);
       return;
     }
 
@@ -2459,65 +2749,91 @@ void connectMqtt() {
 }
 
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
-void drawBars() {
+bool drawBars() {
   if (!gMatrixReady) {
-    return;
+    return false;
   }
 
-  setMatrixBrightness(resolveAppliedBrightness());
-  updateTestLedDutyFromBrightness(gAppliedBrightness);
-  clearMatrix();
+  const uint8_t bufferIndex = gMatrixShadowBackBufferIndex;
+  uint8_t* renderedHeights = gMatrixShadowBarHeights[bufferIndex];
+  if (gMatrixBufferModes[bufferIndex] != MatrixBufferMode::Bars) {
+    clearMatrix();
+    memset(renderedHeights, 0, sizeof(gMatrixShadowBarHeights[bufferIndex]));
+  }
 
   const uint16_t columnCount = (kBinsCount < kMatrixWidth) ? kBinsCount : kMatrixWidth;
-  for (uint16_t x = 0; x < columnCount; x++) {
-    const uint16_t binIndex = (x * kBinsCount) / columnCount;
-    const uint8_t amplitude = gBins[binIndex];
-    const uint8_t barHeight =
-        static_cast<uint8_t>((static_cast<uint16_t>(amplitude) * kMatrixHalfHeight + 254u) / 255u);
-
-    if (barHeight == 0) {
-      continue;
+  for (uint16_t x = 0; x < kMatrixWidth; x++) {
+    uint8_t targetHeight = 0;
+    RgbColor targetColor = {0, 0, 0};
+    if (x < columnCount) {
+      const uint16_t binIndex = (x * kBinsCount) / columnCount;
+      const uint8_t amplitude = gBins[binIndex];
+      targetHeight =
+          static_cast<uint8_t>((static_cast<uint16_t>(amplitude) * kMatrixHalfHeight + 254u) / 255u);
+      targetColor = rainbowColorForColumn(x, columnCount);
     }
 
-    const RgbColor color = rainbowColorForColumn(x, columnCount);
-    for (uint8_t offset = 0; offset < barHeight; offset++) {
-      const uint8_t topY = static_cast<uint8_t>((kMatrixHalfHeight - 1u) - offset);
-      const uint8_t bottomY = static_cast<uint8_t>(kMatrixHalfHeight + offset);
-      drawMatrixPixel(static_cast<uint8_t>(x), topY, color);
-
-      if (bottomY < kMatrixHeight) {
-        drawMatrixPixel(static_cast<uint8_t>(x), bottomY, color);
-      }
+    const uint8_t previousHeight = renderedHeights[x];
+    if (targetHeight > previousHeight) {
+      const uint8_t deltaHeight = static_cast<uint8_t>(targetHeight - previousHeight);
+      fillMatrixRect(
+          static_cast<int16_t>(x),
+          static_cast<int16_t>(kMatrixHalfHeight - targetHeight),
+          1,
+          deltaHeight,
+          targetColor);
+      fillMatrixRect(
+          static_cast<int16_t>(x),
+          static_cast<int16_t>(kMatrixHalfHeight + previousHeight),
+          1,
+          deltaHeight,
+          targetColor);
+    } else if (targetHeight < previousHeight) {
+      const uint8_t deltaHeight = static_cast<uint8_t>(previousHeight - targetHeight);
+      const RgbColor black = {0, 0, 0};
+      fillMatrixRect(
+          static_cast<int16_t>(x),
+          static_cast<int16_t>(kMatrixHalfHeight - previousHeight),
+          1,
+          deltaHeight,
+          black);
+      fillMatrixRect(
+          static_cast<int16_t>(x),
+          static_cast<int16_t>(kMatrixHalfHeight + targetHeight),
+          1,
+          deltaHeight,
+          black);
     }
+
+    renderedHeights[x] = targetHeight;
   }
 
-  commitMatrixFrame();
+  gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Bars;
+  return commitMatrixFrame();
 }
 
-void drawFrame128x64() {
+bool drawFrame128x64() {
   if (!gMatrixReady) {
-    return;
+    return false;
   }
 
-  setMatrixBrightness(resolveAppliedBrightness());
-  updateTestLedDutyFromBrightness(gAppliedBrightness);
-  clearMatrix();
-
-  for (uint8_t y = 0; y < kMatrixHeight; y++) {
-    for (uint8_t x = 0; x < kMatrixWidth; x++) {
-      const size_t index = static_cast<size_t>(y) * static_cast<size_t>(kMatrixWidth) + static_cast<size_t>(x);
-      const RgbColor color = rgb565ToRgb888(gFrameRgb565[index]);
-      drawMatrixPixel(x, y, color);
-    }
-  }
-
-  commitMatrixFrame();
+  const uint8_t bufferIndex = gMatrixShadowBackBufferIndex;
+  // Bulk RGB565 path writes the full frame directly into the HUB75 BCM back buffer.
+  gMatrix->writeFrameRGB565(gFrameRgb565);
+  memcpy(gMatrixShadowFrames[bufferIndex], gFrameRgb565, sizeof(gFrameRgb565));
+  memset(gMatrixShadowBarHeights[bufferIndex], 0, sizeof(gMatrixShadowBarHeights[bufferIndex]));
+  gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Frame;
+  return commitMatrixFrame();
 }
 }  // namespace
 
 void setup() {
   Serial.begin(115200);
   Serial.println("[boot] inicializando firmware.");
+  Serial.printf(
+      "[ws] max_data_size=%u frame128x64_payload=%u\n",
+      static_cast<unsigned>(WEBSOCKETS_MAX_DATA_SIZE),
+      static_cast<unsigned>(kStreamFrame128x64Rgb565Size));
   if (strcmp(kSecurityProfile, "dev") == 0) {
     Serial.printf("MicaAudio firmware board=%s profile=%s security=%s\\n", kBoardModel, kFirmwareProfile, kSecurityProfile);
   }
@@ -2530,6 +2846,8 @@ void setup() {
   gTestLedEnabled = gPrefs.getBool("testLedEnabled", false);
   gStreamBrightness = gBrightnessCap;
   gAppliedBrightness = resolveAppliedBrightness();
+  initializeColorConversionLookups();
+  resetMatrixShadowState();
   initializeOnboardTestLed();
   initializeAuxLed();
 
@@ -2677,19 +2995,41 @@ void loop() {
     gWsDisconnectedSinceMs = 0;
   }
 
-  if (millis() - gLastFrameMs > 15000) {
+  const unsigned long nowMs = millis();
+  if ((nowMs - gLastFrameMs) > kMatrixSignalTimeoutMs && !gMatrixSignalTimedOut) {
     memset(gBins, 0, sizeof(gBins));
     gLevel = 0;
     memset(gFrameRgb565, 0, sizeof(gFrameRgb565));
     gFrameModeActive = false;
+    gMatrixSignalTimedOut = true;
+    gPendingMatrixPresentCountsAsApplied = false;
+    markMatrixFrameDirty(false);
   }
 
+  setMatrixBrightness(resolveAppliedBrightness());
+  updateTestLedDutyFromBrightness(gAppliedBrightness);
   updateTestLed();
   processSerialProvisioning();
-  if (gFrameModeActive) {
-    drawFrame128x64();
-  } else {
-    drawBars();
+
+  const uint32_t nowUs = micros();
+  if (gMatrixReady && shouldPresentMatrixFrame(nowUs)) {
+    bool presented = false;
+    if (gFrameModeActive) {
+      if (gMatrixFrameDirty) {
+        presented = drawFrame128x64();
+      }
+    } else if (!gMatrixSignalTimedOut || gMatrixFrameDirty) {
+      presented = drawBars();
+    }
+
+    if (presented) {
+      gMatrixFrameDirty = false;
+      if (gPendingMatrixPresentCountsAsApplied) {
+        gStreamFramesApplied++;
+      }
+
+      gPendingMatrixPresentCountsAsApplied = false;
+    }
   }
 
   updateLoopHealthyPercent(static_cast<uint32_t>(micros() - loopStartedUs));

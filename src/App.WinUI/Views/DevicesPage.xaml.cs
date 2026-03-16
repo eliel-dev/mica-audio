@@ -299,6 +299,35 @@ public sealed partial class DevicesPage : Page
         Clipboard.SetContent(data);
     }
 
+    private void OnCopyDashboardLinkClicked(object sender, RoutedEventArgs e)
+    {
+        var selectedDeviceId = GetSelectedDeviceId();
+        if (string.IsNullOrWhiteSpace(selectedDeviceId))
+        {
+            PairingCodeText.Severity = InfoBarSeverity.Warning;
+            PairingCodeText.Message = "Selecione um dispositivo para copiar o link do dashboard.";
+            AddLocalLog("Nao foi possivel copiar o link do dashboard: nenhum dispositivo selecionado.");
+            return;
+        }
+
+        var dashboardUri = BuildDashboardShareUri(currentState.ServerBaseAddress, selectedDeviceId);
+        if (dashboardUri is null)
+        {
+            PairingCodeText.Severity = InfoBarSeverity.Warning;
+            PairingCodeText.Message = "Servidor local ainda nao esta acessivel na rede.";
+            AddLocalLog("Nao foi possivel copiar o link do dashboard: URL local nao compartilhavel.");
+            return;
+        }
+
+        var data = new DataPackage();
+        data.SetText(dashboardUri.ToString());
+        Clipboard.SetContent(data);
+
+        PairingCodeText.Severity = InfoBarSeverity.Success;
+        PairingCodeText.Message = $"Link do dashboard copiado: {dashboardUri}";
+        AddLocalLog($"Link do dashboard copiado: {dashboardUri}");
+    }
+
     private async Task RunSelectedCommandAsync(DeviceCommandType commandType)
     {
         var selected = GetSelectedDeviceItem();

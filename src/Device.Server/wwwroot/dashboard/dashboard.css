@@ -123,6 +123,16 @@ input {
   gap: 8px;
 }
 
+.action-mode-note {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--stroke);
+  background: var(--surface-layer-alt);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .firmware-row {
   display: grid;
   gap: 8px;
@@ -187,6 +197,10 @@ input {
 .brightness-card {
   min-width: 260px;
   padding: 16px;
+}
+
+.brightness-card.readonly {
+  opacity: 0.74;
 }
 
 .brightness-head {

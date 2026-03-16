@@ -140,6 +140,7 @@ internal sealed class DeviceRefreshCoordinator
             StreamLastSequence = source.StreamLastSequence,
             StreamFramesReceived = source.StreamFramesReceived,
             StreamFramesApplied = source.StreamFramesApplied,
+            Hub75PresentFrames = source.Hub75PresentFrames,
             StreamSequenceGapCount = source.StreamSequenceGapCount,
             StreamInvalidFrameCount = source.StreamInvalidFrameCount,
             FirmwareVersion = source.FirmwareVersion,
@@ -199,6 +200,12 @@ internal sealed class DeviceRefreshCoordinator
                 || a.AuxLedAvailable != b.AuxLedAvailable
                 || a.TestLedAvailable != b.TestLedAvailable
                 || !string.Equals(a.LastWifiEvent, b.LastWifiEvent, StringComparison.OrdinalIgnoreCase)
+                || a.StreamLastSequence != b.StreamLastSequence
+                || a.StreamFramesReceived != b.StreamFramesReceived
+                || a.StreamFramesApplied != b.StreamFramesApplied
+                || a.Hub75PresentFrames != b.Hub75PresentFrames
+                || a.StreamSequenceGapCount != b.StreamSequenceGapCount
+                || a.StreamInvalidFrameCount != b.StreamInvalidFrameCount
                 || a.TelemetrySequence != b.TelemetrySequence
                 || a.BrightnessCap != b.BrightnessCap
                 || a.BrightnessRequested != b.BrightnessRequested

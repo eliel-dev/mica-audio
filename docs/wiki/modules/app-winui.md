@@ -247,6 +247,13 @@
 - `Logs` continuam somente em `Configuracoes`, com `ComboBox` local de device e `Expander` `Logs`.
 - A referencia de contrato desta entrega esta em [device-observability-dashboard](../reference/device-observability-dashboard.md#objetivo).
 
+## Atualizacao 2026-03 - Link do dashboard do device para celular
+
+- A `DevicesPage` agora oferece `Copiar link do dashboard` na barra superior.
+- O link compartilhavel usa o host LAN resolvido por `DeviceIntegrationService`, preserva a porta local do host e fixa o device selecionado em `/dashboard?deviceId=<id>`.
+- O dashboard embutido continua em `127.0.0.1 + embedded=1`; apenas o link externo usa o host de rede local.
+- No navegador externo, o dashboard entra em modo leitura para nao expor controles que dependem da bridge do `WebView2`.
+
 ## Referencias de codigo
 
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)

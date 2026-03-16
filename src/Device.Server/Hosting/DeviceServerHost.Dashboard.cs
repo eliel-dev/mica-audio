@@ -197,7 +197,7 @@ public sealed partial class DeviceServerHost
             StreamSequenceGapCount = snapshot.StreamSequenceGapCount,
             StreamInvalidFrameCount = snapshot.StreamInvalidFrameCount,
             StreamLastSequence = snapshot.StreamLastSequence,
-            Hub75Fps = ComputeHub75Fps(snapshot.DeviceId, snapshot.StreamFramesApplied),
+            Hub75Fps = ComputeHub75Fps(snapshot.DeviceId, snapshot.Hub75PresentFrames),
             LatestFirmwareVersion = firmwareUpdateState.LatestFirmwareVersion,
             FirmwareUpdateSupported = firmwareUpdateState.Supported,
             FirmwareUpdateAvailable = firmwareUpdateState.Available,
@@ -239,9 +239,9 @@ public sealed partial class DeviceServerHost
         return Math.Clamp((int)Math.Round((1d - (largestBlockBytes.Value / (double)freeBytes.Value)) * 100d), 0, 100);
     }
 
-    private int? ComputeHub75Fps(string deviceId, uint? framesApplied)
+    private int? ComputeHub75Fps(string deviceId, uint? presentFrames)
     {
-        if (!framesApplied.HasValue)
+        if (!presentFrames.HasValue)
         {
             RemoveDashboardFpsSample(deviceId);
             return null;
@@ -252,15 +252,15 @@ public sealed partial class DeviceServerHost
             var now = timeProvider.GetUtcNow();
             if (!dashboardFpsSamples.TryGetValue(deviceId, out var sample))
             {
-                dashboardFpsSamples[deviceId] = new DashboardFpsSample(framesApplied, now, null);
+                dashboardFpsSamples[deviceId] = new DashboardFpsSample(presentFrames, now, null);
                 return null;
             }
 
-            if (!sample.LastFramesApplied.HasValue || framesApplied.Value < sample.LastFramesApplied.Value)
+            if (!sample.LastPresentFrames.HasValue || presentFrames.Value < sample.LastPresentFrames.Value)
             {
                 dashboardFpsSamples[deviceId] = sample with
                 {
-                    LastFramesApplied = framesApplied,
+                    LastPresentFrames = presentFrames,
                     LastSampleUtc = now,
                     CurrentFps = null,
                 };
@@ -273,11 +273,11 @@ public sealed partial class DeviceServerHost
                 return sample.CurrentFps;
             }
 
-            var deltaFrames = framesApplied.Value - sample.LastFramesApplied.Value;
+            var deltaFrames = presentFrames.Value - sample.LastPresentFrames.Value;
             var currentFps = Math.Max(0, (int)Math.Round(deltaFrames / elapsedSeconds));
             dashboardFpsSamples[deviceId] = sample with
             {
-                LastFramesApplied = framesApplied,
+                LastPresentFrames = presentFrames,
                 LastSampleUtc = now,
                 CurrentFps = currentFps,
             };
@@ -329,7 +329,7 @@ public sealed partial class DeviceServerHost
         }
     }
 
-    private sealed record DashboardFpsSample(uint? LastFramesApplied, DateTimeOffset LastSampleUtc, int? CurrentFps);
+    private sealed record DashboardFpsSample(uint? LastPresentFrames, DateTimeOffset LastSampleUtc, int? CurrentFps);
 
     private sealed record FirmwareUpdateState(string? LatestFirmwareVersion, bool Supported, bool Available);
 

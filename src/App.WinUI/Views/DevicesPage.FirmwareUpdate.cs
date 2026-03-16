@@ -24,7 +24,7 @@ public sealed partial class DevicesPage
         if (!TryResolveLatestFirmwareArtifact(snapshot, out var artifact, out var error))
         {
             PairingCodeText.Severity = InfoBarSeverity.Warning;
-            PairingCodeText.Message = "Firmware oficial indisponivel para este dispositivo.";
+            PairingCodeText.Message = "Release oficial indisponivel para este dispositivo.";
             AddLocalLog(error);
             return;
         }
@@ -32,8 +32,8 @@ public sealed partial class DevicesPage
         if (!IsFirmwareUpdateAvailable(snapshot, artifact.Manifest.FirmwareVersion))
         {
             PairingCodeText.Severity = InfoBarSeverity.Informational;
-            PairingCodeText.Message = $"Firmware ja atualizado em {artifact.Manifest.FirmwareVersion}.";
-            AddLocalLog($"Atualizacao ignorada para {snapshot.DeviceId}: firmware ja esta em {artifact.Manifest.FirmwareVersion}.");
+            PairingCodeText.Message = $"Dispositivo ja esta no ultimo release {artifact.Manifest.FirmwareVersion}.";
+            AddLocalLog($"Atualizacao ignorada para {snapshot.DeviceId}: device ja esta no ultimo release {artifact.Manifest.FirmwareVersion}.");
             return;
         }
 
@@ -53,7 +53,7 @@ public sealed partial class DevicesPage
     private async Task<FirmwareUpdateAction> ShowFirmwareUpdateDialogAsync(DeviceSnapshot snapshot, ResolvedFirmwareArtifact artifact)
     {
         var currentVersion = string.IsNullOrWhiteSpace(snapshot.FirmwareVersion)
-            ? "Versao atual nao identificada"
+            ? "Firmware atual nao identificado"
             : snapshot.FirmwareVersion;
         var latestVersion = artifact.Manifest.FirmwareVersion;
         var online = snapshot.Status == DeviceStatus.Online;
@@ -65,12 +65,12 @@ public sealed partial class DevicesPage
             {
                 new TextBlock
                 {
-                    Text = $"Atual: {currentVersion}",
+                    Text = $"Firmware atual: {currentVersion}",
                     TextWrapping = TextWrapping.Wrap,
                 },
                 new TextBlock
                 {
-                    Text = $"Oficial: {latestVersion}",
+                    Text = $"Ultimo release: {latestVersion}",
                     TextWrapping = TextWrapping.Wrap,
                 },
                 new TextBlock
@@ -131,7 +131,7 @@ public sealed partial class DevicesPage
         var targetVersion = artifact.Manifest.FirmwareVersion;
         PairingCodeText.Severity = InfoBarSeverity.Informational;
         PairingCodeText.Message = $"OTA iniciada para {snapshot.DeviceId}; aguardando validacao segura de {targetVersion}.";
-        AddLocalLog($"Iniciando OTA para {snapshot.DeviceId}: atual={snapshot.FirmwareVersion ?? "desconhecida"} oficial={targetVersion}; aguardando safe update mode.");
+        AddLocalLog($"Iniciando OTA para {snapshot.DeviceId}: atual={snapshot.FirmwareVersion ?? "desconhecida"} releaseOficial={targetVersion}; aguardando safe update mode.");
 
         var result = await ops.UpdateFirmwareAsync(snapshot.DeviceId, targetVersion).ConfigureAwait(true);
         if (!(result.Accepted && result.Completed && result.Success))
@@ -200,7 +200,7 @@ public sealed partial class DevicesPage
             || string.IsNullOrWhiteSpace(snapshot.PanelType)
             || string.IsNullOrWhiteSpace(snapshot.Profile))
         {
-            error = "Metadados do dispositivo insuficientes para resolver firmware oficial.";
+            error = "Metadados do dispositivo insuficientes para resolver o release oficial.";
             return false;
         }
 

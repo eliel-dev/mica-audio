@@ -27,10 +27,12 @@ public sealed class DashboardAssetSmokeTests
         Assert.Contains("id=\"firmware-current\"", html, StringComparison.Ordinal);
         Assert.Contains("id=\"firmware-latest\"", html, StringComparison.Ordinal);
         Assert.Contains("id=\"btn-fw\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"action-mode-note\"", html, StringComparison.Ordinal);
+        Assert.Contains("Controles disponiveis apenas no app desktop.", html, StringComparison.Ordinal);
         Assert.Contains("Saude do dispositivo", html, StringComparison.Ordinal);
         Assert.Contains("Temperatura do chip", html, StringComparison.Ordinal);
         Assert.Contains("Firmware atual", html, StringComparison.Ordinal);
-        Assert.Contains("Firmware oficial", html, StringComparison.Ordinal);
+        Assert.Contains("Ultimo release", html, StringComparison.Ordinal);
         Assert.Contains("Atualizar firmware", html, StringComparison.Ordinal);
         Assert.Contains("id=\"chart-loop\"", html, StringComparison.Ordinal);
         Assert.Contains("id=\"chart-heap\"", html, StringComparison.Ordinal);
@@ -47,6 +49,10 @@ public sealed class DashboardAssetSmokeTests
         Assert.Contains("chipTemperatureCelsius", js, StringComparison.Ordinal);
         Assert.Contains("firmwareUpdateAvailable", js, StringComparison.Ordinal);
         Assert.Contains("latestFirmwareVersion", js, StringComparison.Ordinal);
+        Assert.Contains("Firmware atual nao identificado", js, StringComparison.Ordinal);
+        Assert.Contains("Sem release oficial", js, StringComparison.Ordinal);
+        Assert.Contains("HOST_BRIDGE_AVAILABLE", js, StringComparison.Ordinal);
+        Assert.Contains("applyStandaloneMode", js, StringComparison.Ordinal);
         Assert.Contains("update-firmware", js, StringComparison.Ordinal);
         Assert.DoesNotContain("device.loopLoadPercent", js, StringComparison.Ordinal);
     }

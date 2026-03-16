@@ -27,7 +27,7 @@ internal sealed class PrecompiledFirmwareCatalogAdapter : IDeviceOfficialFirmwar
             || string.IsNullOrWhiteSpace(panelType)
             || string.IsNullOrWhiteSpace(profile))
         {
-            failureReason = "Metadados do dispositivo insuficientes para resolver firmware oficial.";
+            failureReason = "Metadados do dispositivo insuficientes para resolver o release oficial.";
             return false;
         }
 

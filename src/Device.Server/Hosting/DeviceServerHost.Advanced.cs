@@ -517,6 +517,7 @@ public sealed partial class DeviceServerHost
             telemetry.StreamLastSequence,
             telemetry.StreamFramesReceived,
             telemetry.StreamFramesApplied,
+            telemetry.Hub75PresentFrames,
             telemetry.StreamSequenceGapCount,
             telemetry.StreamInvalidFrameCount,
             telemetry.TelemetrySequence,

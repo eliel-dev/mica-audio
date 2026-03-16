@@ -17,8 +17,11 @@ O catalogo ativo nao expoe mais Matrix Portal S3, painel `64x32` nem o perfil `s
   - `panelType`
   - `profile`
   - `controlPlane`
+- O `firmwareVersion` do pacote oficial agora usa carimbo `UTC timestamp + tag + short commit`:
+  - formato: `vyyyy.MM.dd-HHmmssZ-<tag>-<sha>`
+  - duas geracoes no mesmo dia passam a produzir IDs distintos.
 - O host local reutiliza esse manifesto para:
-  - informar `Firmware oficial` no dashboard;
+  - informar `Ultimo release` no dashboard;
   - decidir `firmwareUpdateAvailable`;
   - servir metadata/download OTA autenticados para o ESP32.
 

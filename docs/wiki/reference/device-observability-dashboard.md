@@ -74,7 +74,8 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
   - `online` vem de `snapshot.Status == Online`;
   - percentuais de heap/PSRAM sao calculados no servidor quando os totais reais estiverem disponiveis em `stats`;
   - `heapFragmentationPercent` usa `1 - largest/free`;
-  - `hub75Fps` e calculado no servidor com cache por `deviceId`, usando delta de `StreamFramesApplied`;
+  - `hub75Fps` e calculado no servidor com cache por `deviceId`, usando delta de `Hub75PresentFrames`;
+  - `streamFramesApplied` representa payload novo efetivamente exibido ao menos uma vez;
   - ausencia de dado continua sendo `null`.
 
 ## Semantica operacional do dashboard
@@ -101,12 +102,19 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
   - `chipTemperatureCelsius`.
 - A area de acoes agora mostra estado de firmware por device:
   - `Firmware atual` vem de `snapshot.FirmwareVersion`;
-  - `Firmware oficial` vem do catalogo local de pacotes precompilados;
-  - o CTA `Atualizar firmware` so aparece quando existir pacote oficial compativel e a versao atual estiver vazia ou diferente da oficial.
+  - `Ultimo release` vem do catalogo local de pacotes precompilados;
+  - `Ultimo release` significa o pacote oficial de firmware embarcado no app, nao uma tag separada de GitHub;
+  - quando a versao atual nao existe no snapshot, a UI mostra `Firmware atual nao identificado`;
+  - quando nao existir pacote oficial compativel, a UI mostra `Sem release oficial`;
+  - o CTA `Atualizar firmware` so aparece quando existir pacote oficial compativel e a versao atual estiver vazia ou diferente do ultimo release.
 - O CTA de firmware fica acima de `Testar LEDs`:
   - device online abre dialogo nativo com OTA como acao principal e fallback `Reflash por USB`;
   - device offline mantem o CTA visivel, mas o dialogo oferece apenas o reflash oficial por USB;
-  - quando a versao atual nao existe no snapshot, a UI mostra `Versao atual nao identificada`.
+  - o dialogo nativo usa os rotulos `Firmware atual` e `Ultimo release`.
+- A barra superior da tela de dispositivos expõe `Copiar link do dashboard`:
+  - gera um link LAN para o device selecionado com `/dashboard?deviceId=<id>`;
+  - usa o host/porta publicos do app, sem reescrever para `127.0.0.1`;
+  - nao usa `embedded=1`.
 - O fluxo de OTA na UI usa o resultado final do comando tracked:
   - `rebooting` e apenas progresso intermediario;
   - sucesso real so acontece quando o firmware novo publica `validated`;
@@ -118,6 +126,10 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
   - baselines locais de compatibilidade visual:
     - heap: `320000` bytes;
     - PSRAM: `8000000` bytes.
+- O bloco de stream/HUB75 agora tem a semantica:
+  - `streamFramesReceived`: payloads aceitos do stream;
+  - `streamFramesApplied`: payloads novos efetivamente exibidos ao menos uma vez;
+  - `hub75Fps`: taxa de apresentacao efetiva do HUB75, nao apenas chegada de payload.
 - A grade de metricas do dashboard HTML usa:
   - `4` colunas em largura ampla;
   - `2` colunas ate `1200 px`;
@@ -146,6 +158,21 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
 - `Logs` estruturados continuam no `DeviceLogBook` e sao exibidos apenas na `SettingsPage`.
 - `stats` MQTT continuam persistidos em `DeviceRecord` e `DeviceSnapshot`.
 - O dashboard HTML consome somente o DTO projetado pelo servidor; ele nao conhece `DeviceSnapshot` nem `DeviceLogEntry`.
+
+## Atualizacao 2026-03 - Link direto do dashboard no celular
+
+- A acao global da `DevicesPage` para acesso externo ao dashboard agora e `Copiar link do dashboard`.
+- O link compartilhavel usa:
+  - o host/porta de `currentState.ServerBaseAddress`;
+  - a rota `/dashboard`;
+  - a query `?deviceId=<idDoDeviceSelecionado>`.
+- O fluxo externo nao usa `127.0.0.1` e nao usa `embedded=1`.
+- O botao fica desabilitado sem device selecionado ou quando o host ainda nao for compartilhavel na LAN.
+- Fora do `WebView2`, o dashboard entra em modo leitura:
+  - auto-seleciona o device via `?deviceId=...`;
+  - mantem telemetria e historicos;
+  - oculta ou desabilita brilho e comandos;
+  - mostra a nota `Controles disponiveis apenas no app desktop`.
 
 ## Referencias de codigo
 

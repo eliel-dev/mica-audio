@@ -114,6 +114,26 @@ public sealed partial class DevicesPage
         return builder.Uri;
     }
 
+    private static Uri? BuildDashboardShareUri(string? serverBaseAddress, string? deviceId)
+    {
+        if (!Uri.TryCreate(serverBaseAddress, UriKind.Absolute, out var baseAddress)
+            || string.IsNullOrWhiteSpace(deviceId)
+            || baseAddress.IsLoopback
+            || string.Equals(baseAddress.Host, "0.0.0.0", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(baseAddress.Host, "::", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var builder = new UriBuilder(baseAddress)
+        {
+            Path = "/dashboard",
+            Query = $"deviceId={Uri.EscapeDataString(deviceId.Trim())}",
+        };
+
+        return builder.Uri;
+    }
+
     private void OnDashboardNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
     {
         if (!args.IsSuccess)

@@ -1,12 +1,12 @@
 ﻿{
     "schemaVersion":  2,
-    "firmwareVersion":  "v2026.03.12-untagged-8fc3a7e",
-    "gitSha":  "8fc3a7e",
+    "firmwareVersion":  "v2026.03.14-030215Z-untagged-06bd344",
+    "gitSha":  "06bd344",
     "profile":  "dma_exp",
     "boardModel":  "esp32s3_devkitc1",
     "panelType":  "hub75_p2_5_128x64_smd2121_scan32",
     "controlPlane":  "mqtt",
-    "builtAtUtc":  "2026-03-12T18:15:29.5989963Z",
-    "sha256":  "dc1e727947432e909ce70f8bda7121073e6e4d3ee611d0b7de6b0764eba72a3a",
-    "fileSizeBytes":  1152080
+    "builtAtUtc":  "2026-03-14T03:02:28.4214774Z",
+    "sha256":  "43483549124d2095a66b7e3f64cb2585d8a165b3be48305f6db157c2a5c36042",
+    "fileSizeBytes":  1157280
 }
