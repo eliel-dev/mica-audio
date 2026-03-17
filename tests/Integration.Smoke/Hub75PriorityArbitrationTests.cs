@@ -196,16 +196,45 @@ public sealed class Hub75PriorityArbitrationTests
         Assert.Null(playbackService.TargetDeviceId);
     }
 
+    [Fact]
+    public async Task StartAsync_InLocalOnlyMode_ShouldKeepPreviewStateWithoutTakingOverDevice()
+    {
+        var runtime = new FakeDeviceOperationsRuntime();
+        using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
+        using var visualizerSessionService = new Hub75VisualizerSessionService(coordinator);
+        using var panelsDeviceSessionService = new PanelsDeviceSessionService(coordinator);
+        await using var host = new DeviceServerHost();
+        using var playbackService = CreatePlaybackService(host, panelsDeviceSessionService, visualizerSessionService, enableMatrixTransport: false);
+        var panel = CreatePanel("panel-local");
+
+        runtime.SetDevices([
+            CreateSnapshot("device-1", DeviceStatus.Online, "analogclock", "Relogio"),
+        ]);
+
+        await WaitForDeviceAsync(coordinator, "device-1");
+        await playbackService.StartAsync(panel, "device-1");
+
+        await WaitForConditionAsync(() => playbackService.IsRunning, TimeSpan.FromSeconds(3));
+
+        Assert.Equal(0, runtime.CountActivateCommands("device-1", PanelsDeviceSessionService.PanelsAppId));
+        Assert.Equal(panel.PanelId, playbackService.GetActivePanelSnapshot()?.PanelId);
+        Assert.Equal("device-1", playbackService.TargetDeviceId);
+
+        await playbackService.StopAsync();
+    }
+
     private static PanelsPlaybackService CreatePlaybackService(
         DeviceServerHost host,
         PanelsDeviceSessionService panelsDeviceSessionService,
-        Hub75VisualizerSessionService visualizerSessionService)
+        Hub75VisualizerSessionService visualizerSessionService,
+        bool enableMatrixTransport = true)
     {
         return new PanelsPlaybackService(
             host,
             new PanelsFrameComposer(),
             panelsDeviceSessionService,
-            visualizerSessionService);
+            visualizerSessionService,
+            enableMatrixTransport);
     }
 
     private static PanelDefinition CreatePanel(string panelId)

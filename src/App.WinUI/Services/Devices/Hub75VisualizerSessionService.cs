@@ -2,7 +2,7 @@ using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
-// DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
+// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-toggle-hub75-como-gate-e-runtime-em-background
 internal sealed class Hub75VisualizerSessionService : IDisposable
 {
     public const string VisualizerAppId = "visualizer-hub75";
@@ -16,7 +16,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly SemaphoreSlim reconcileGate = new(1, 1);
     private readonly object stateGate = new();
-    private readonly Dictionary<string, DeviceSessionState> sessionsByDeviceId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DeviceActivationState> activationByDeviceId = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? delayedReconcileCts;
     private DateTimeOffset delayedReconcileAtUtc = DateTimeOffset.MinValue;
 
@@ -45,26 +45,14 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
     {
         ThrowIfDisposed();
 
-        var disableTransition = false;
         lock (stateGate)
         {
-            disableTransition = hub75Enabled && !enabled;
             hub75Enabled = enabled;
 
-            if (disableTransition)
+            if (!enabled)
             {
-                foreach (var state in sessionsByDeviceId.Values)
-                {
-                    if (string.IsNullOrWhiteSpace(state.PreviousAppId))
-                    {
-                        continue;
-                    }
-
-                    state.NextAttemptUtc = DateTimeOffset.MinValue;
-                    state.RetryCount = 0;
-                    state.LastErrorCode = null;
-                    state.Status = DeviceSessionStatus.RestorePending;
-                }
+                activationByDeviceId.Clear();
+                CancelDelayedReconcileLocked();
             }
         }
 
@@ -83,7 +71,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
 
         lock (stateGate)
         {
-            sessionsByDeviceId.Clear();
+            activationByDeviceId.Clear();
             CancelDelayedReconcileLocked();
         }
     }
@@ -171,7 +159,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
                 {
                     lock (stateGate)
                     {
-                        RegisterFailureLocked(command.DeviceId, command.Action, nowUtc, errorCode: null);
+                        RegisterFailureLocked(command.DeviceId, nowUtc, errorCode: null);
                     }
 
                     System.Diagnostics.Debug.WriteLine($"[Hub75VisualizerSessionService] Falha ao enviar comando para {command.DeviceId}: {ex.Message}");
@@ -180,7 +168,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
 
                 lock (stateGate)
                 {
-                    ApplyResultLocked(command, result, nowUtc);
+                    ApplyResultLocked(command.DeviceId, result, nowUtc);
                 }
 
                 if (result.Accepted && result.Success)
@@ -210,9 +198,13 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
 
     private ReconcilePlan BuildCommandsLocked(IReadOnlyList<DeviceSnapshot> snapshot, DateTimeOffset nowUtc)
     {
-        var plans = new List<DeviceCommandPlan>();
-        var onlineByDeviceId = new Dictionary<string, DeviceSnapshot>(StringComparer.OrdinalIgnoreCase);
+        if (!hub75Enabled)
+        {
+            activationByDeviceId.Clear();
+            return new ReconcilePlan([], null);
+        }
 
+        var plans = new List<DeviceCommandPlan>();
         foreach (var device in snapshot)
         {
             if (device.Status != DeviceStatus.Online || string.IsNullOrWhiteSpace(device.DeviceId))
@@ -220,110 +212,51 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
                 continue;
             }
 
-            onlineByDeviceId[device.DeviceId.Trim()] = device;
-        }
+            var deviceId = device.DeviceId.Trim();
+            var state = GetOrCreateStateLocked(deviceId);
 
-        if (hub75Enabled)
-        {
-            foreach (var (deviceId, device) in onlineByDeviceId)
+            if (IsVisualizerApp(device.ActiveAppId))
             {
-                var state = GetOrCreateStateLocked(deviceId);
-                CapturePreviousAppIfNeeded(state, device);
-
-                if (IsVisualizerApp(device.ActiveAppId))
-                {
-                    state.RetryCount = 0;
-                    state.NextAttemptUtc = DateTimeOffset.MinValue;
-                    state.Status = DeviceSessionStatus.Idle;
-                    state.LastErrorCode = null;
-                    continue;
-                }
-
-                if (nowUtc < state.NextAttemptUtc)
-                {
-                    state.Status = DeviceSessionStatus.ActivationPending;
-                    continue;
-                }
-
-                state.Status = DeviceSessionStatus.ActivationPending;
-                plans.Add(new DeviceCommandPlan(deviceId, VisualizerAppId, VisualizerAppName, DeviceSessionAction.ActivateVisualizer));
-                state.NextAttemptUtc = nowUtc + DispatchCooldown;
-            }
-
-            return new ReconcilePlan(plans, GetNextRetryUtcLocked(nowUtc));
-        }
-
-        foreach (var (deviceId, state) in sessionsByDeviceId.ToArray())
-        {
-            if (string.IsNullOrWhiteSpace(state.PreviousAppId))
-            {
-                sessionsByDeviceId.Remove(deviceId);
-                continue;
-            }
-
-            if (!onlineByDeviceId.TryGetValue(deviceId, out var device))
-            {
-                state.Status = DeviceSessionStatus.RestorePending;
-                continue;
-            }
-
-            if (string.Equals(Normalize(device.ActiveAppId), state.PreviousAppId, StringComparison.OrdinalIgnoreCase))
-            {
-                sessionsByDeviceId.Remove(deviceId);
+                state.RetryCount = 0;
+                state.NextAttemptUtc = DateTimeOffset.MinValue;
+                state.Status = DeviceSessionStatus.Idle;
+                state.LastErrorCode = null;
                 continue;
             }
 
             if (nowUtc < state.NextAttemptUtc)
             {
-                state.Status = DeviceSessionStatus.RestorePending;
+                state.Status = DeviceSessionStatus.ActivationPending;
                 continue;
             }
 
-            state.Status = DeviceSessionStatus.RestorePending;
-            plans.Add(new DeviceCommandPlan(deviceId, state.PreviousAppId, state.PreviousAppName, DeviceSessionAction.RestorePrevious));
+            state.Status = DeviceSessionStatus.ActivationPending;
+            plans.Add(new DeviceCommandPlan(deviceId, VisualizerAppId, VisualizerAppName));
             state.NextAttemptUtc = nowUtc + DispatchCooldown;
         }
 
         return new ReconcilePlan(plans, GetNextRetryUtcLocked(nowUtc));
     }
 
-    private DeviceSessionState GetOrCreateStateLocked(string deviceId)
+    private DeviceActivationState GetOrCreateStateLocked(string deviceId)
     {
-        if (sessionsByDeviceId.TryGetValue(deviceId, out var state))
+        if (activationByDeviceId.TryGetValue(deviceId, out var state))
         {
             return state;
         }
 
-        state = new DeviceSessionState
+        state = new DeviceActivationState
         {
             DeviceId = deviceId,
         };
 
-        sessionsByDeviceId[deviceId] = state;
+        activationByDeviceId[deviceId] = state;
         return state;
     }
 
-    private static void CapturePreviousAppIfNeeded(DeviceSessionState state, DeviceSnapshot snapshot)
+    private void ApplyResultLocked(string deviceId, CommandDispatchResult result, DateTimeOffset nowUtc)
     {
-        if (!string.IsNullOrWhiteSpace(state.PreviousAppId))
-        {
-            return;
-        }
-
-        var currentAppId = Normalize(snapshot.ActiveAppId);
-        if (string.IsNullOrWhiteSpace(currentAppId)
-            || string.Equals(currentAppId, VisualizerAppId, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        state.PreviousAppId = currentAppId;
-        state.PreviousAppName = Normalize(snapshot.ActiveAppName);
-    }
-
-    private void ApplyResultLocked(DeviceCommandPlan command, CommandDispatchResult result, DateTimeOffset nowUtc)
-    {
-        if (!sessionsByDeviceId.TryGetValue(command.DeviceId, out var state))
+        if (!activationByDeviceId.TryGetValue(deviceId, out var state))
         {
             return;
         }
@@ -334,25 +267,15 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
             state.NextAttemptUtc = nowUtc + DispatchCooldown;
             state.Status = DeviceSessionStatus.Idle;
             state.LastErrorCode = null;
-
-            if (command.Action == DeviceSessionAction.RestorePrevious)
-            {
-                sessionsByDeviceId.Remove(command.DeviceId);
-            }
-
             return;
         }
 
-        RegisterFailureLocked(command.DeviceId, command.Action, nowUtc, result.ErrorCode);
+        RegisterFailureLocked(deviceId, nowUtc, result.ErrorCode);
     }
 
-    private void RegisterFailureLocked(
-        string deviceId,
-        DeviceSessionAction action,
-        DateTimeOffset nowUtc,
-        string? errorCode)
+    private void RegisterFailureLocked(string deviceId, DateTimeOffset nowUtc, string? errorCode)
     {
-        if (!sessionsByDeviceId.TryGetValue(deviceId, out var state))
+        if (!activationByDeviceId.TryGetValue(deviceId, out var state))
         {
             return;
         }
@@ -360,9 +283,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
         state.RetryCount = Math.Clamp(state.RetryCount + 1, 1, 32);
         state.NextAttemptUtc = nowUtc + ComputeRetryDelay(state.RetryCount, errorCode);
         state.LastErrorCode = errorCode;
-        state.Status = action == DeviceSessionAction.RestorePrevious
-            ? DeviceSessionStatus.RestoreFailed
-            : DeviceSessionStatus.ActivationFailed;
+        state.Status = DeviceSessionStatus.ActivationFailed;
     }
 
     private static TimeSpan ComputeRetryDelay(int retryCount, string? errorCode)
@@ -387,17 +308,14 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
     private DateTimeOffset? GetNextRetryUtcLocked(DateTimeOffset nowUtc)
     {
         DateTimeOffset? nextRetryUtc = null;
-        foreach (var state in sessionsByDeviceId.Values)
+        foreach (var state in activationByDeviceId.Values)
         {
             if (state.NextAttemptUtc <= nowUtc)
             {
                 continue;
             }
 
-            if (state.Status is not DeviceSessionStatus.ActivationPending
-                and not DeviceSessionStatus.ActivationFailed
-                and not DeviceSessionStatus.RestorePending
-                and not DeviceSessionStatus.RestoreFailed)
+            if (state.Status is not DeviceSessionStatus.ActivationPending and not DeviceSessionStatus.ActivationFailed)
             {
                 continue;
             }
@@ -499,36 +417,20 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
     }
 
-    private readonly record struct DeviceCommandPlan(
-        string DeviceId,
-        string TargetAppId,
-        string? TargetAppName,
-        DeviceSessionAction Action);
+    private readonly record struct DeviceCommandPlan(string DeviceId, string TargetAppId, string? TargetAppName);
 
     private readonly record struct ReconcilePlan(List<DeviceCommandPlan> Commands, DateTimeOffset? NextRetryUtc);
-
-    private enum DeviceSessionAction
-    {
-        ActivateVisualizer,
-        RestorePrevious,
-    }
 
     private enum DeviceSessionStatus
     {
         Idle,
         ActivationPending,
         ActivationFailed,
-        RestorePending,
-        RestoreFailed,
     }
 
-    private sealed class DeviceSessionState
+    private sealed class DeviceActivationState
     {
         public required string DeviceId { get; init; }
-
-        public string? PreviousAppId { get; set; }
-
-        public string? PreviousAppName { get; set; }
 
         public DateTimeOffset NextAttemptUtc { get; set; }
 

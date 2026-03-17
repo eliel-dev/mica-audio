@@ -21,7 +21,7 @@ public sealed class AudioMotionCloneRenderer : IRenderer, IRendererCapabilitiesP
         },
         BarCountMode = RendererBarCountMode.Native,
         IntegrationMode = RendererIntegrationMode.Explicit,
-        HubTransportMode = RendererHubTransportMode.Frame128x64,
+        HubTransportMode = RendererHubTransportMode.Bins128,
         UnsupportedControlsHint = "No modo AudioMotion Clone, a quantidade de barras e automatica pela largura da tela.",
     };
 

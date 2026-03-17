@@ -4,11 +4,6 @@ using System.Text.RegularExpressions;
 
 namespace App.WinUI.Infrastructure.Serial;
 
-internal interface ISerialPortCatalogService
-{
-    Task<IReadOnlyList<SerialPortDescriptor>> ListAsync(bool includeAllPorts, CancellationToken cancellationToken = default);
-}
-
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
 internal sealed class SerialPortCatalogService : ISerialPortCatalogService
 {

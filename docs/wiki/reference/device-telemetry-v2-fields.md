@@ -35,6 +35,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | `streamSequenceGapCount` | `uint?` | quantidade acumulada de lacunas de sequencia detectadas no stream |
 | `streamInvalidFrameCount` | `uint?` | quantidade acumulada de payloads invalidos rejeitados |
 | `streamLastSequence` | `uint?` | ultimo numero de sequencia aceito do stream |
+| `networkPollDeferCount` | `uint?` | quantidade monotona de etapas elegiveis de rede adiadas para a iteracao seguinte por esgotamento do budget cooperativo do `loop()` |
 
 ## Regras de sanitizacao e pass-through
 
@@ -46,6 +47,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 6. `wifiState` usa valores canonicos em minusculo para facilitar consumo no dashboard.
 7. `streamFramesApplied` representa payload novo efetivamente exibido ao menos uma vez; reapresentacoes do mesmo conteudo nao incrementam esse contador.
 8. `hub75PresentFrames` representa a cadencia fisica de apresentacao do HUB75; cada flip real incrementa esse contador monotono.
+9. `networkPollDeferCount` e emitido apenas pelo firmware nesta entrega e serve como diagnostico bruto do budget cooperativo de rede no `loop()`.
 
 ## Persistencia local
 

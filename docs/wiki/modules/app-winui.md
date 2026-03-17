@@ -82,6 +82,39 @@
   - sem estado visual intermediario;
   - apenas retomada automatica quando a prioridade do visualizador termina.
 
+## Atualizacao 2026-03 - Toggle HUB75 como gate e runtime em background
+
+- O toggle `Modo HUB75` da `MainPage` passou a ser a fonte unica de verdade para o device output do visualizador:
+  - abrir a pagina do visualizador nao inicia mais stream para o ESP32 por si so;
+  - o preview local e o `MainCanvas` continuam independentes do envio remoto.
+- A `MainPage` agora separa tres conceitos que antes estavam misturados:
+  - `hub75ModeEnabled` para sessao remota + stream ao HUB75;
+  - `ShouldShowHubPreviewPanel()` para o preview local no app;
+  - `isPageVisible` para invalidações visuais do XAML.
+- Quando o toggle fica ativo, o runtime do visualizador continua vivo ao navegar para outra pagina:
+  - a pagina permanece cacheada por `ShellPageContentFactory`;
+  - captura/audio e frame pumping nao sao encerrados no `Unloaded`;
+  - apenas a invalidacao visual local e pausada enquanto a pagina nao esta visivel.
+- Ao desligar o toggle:
+  - o app deixa de arbitrar o `visualizer-hub75`;
+  - nao restaura app anterior generico no device;
+  - se existir painel suspenso, apenas esse painel e retomado;
+  - se nao existir painel suspenso, o app envia um frame preto para apagar o HUB75 e encerra o stream remoto.
+
+## Atualizacao 2026-03 - Shipping mode HUB75 padrao em Bins128
+
+- O desktop voltou a operar com `RendererHubTransportMode.Bins128` como modo shipping/default:
+  - `AudioPipelineFrameProcessor` continua emitindo `Type 1` com FFT real no caminho normal;
+  - `Frame128x64` permanece implementado, mas deixa de ser o caminho normal do app.
+- A `MainPage` continua renderizando o preview WinUI completo localmente, mas o HUB75 fisico recebe a interpretacao `Bins128` do firmware para o fluxo de audio.
+- O toggle `Modo HUB75` continua sendo o gate unico do device output, porem so ativa sessao remota quando o conteudo atual e `Audio`:
+  - `GIF` no visualizador principal deixa de manter sessao/takeover no device;
+  - ao sair de `Audio` para `GIF`, a sessao `visualizer-hub75` e encerrada e qualquer painel suspenso pode voltar.
+- `Apps` do fluxo legado permanecem fora do shipping path do HUB75 neste modo, mas `Paineis` continuam com transporte fisico proprio:
+  - o visualizador principal fica em `Bins128`;
+  - a sessao `Paineis` preserva takeover por `deviceId` e stream `Frame128x64`;
+  - a arbitragem continua sendo `Visualizador HUB75` com prioridade sobre `Paineis`, seguida de retomada do painel suspenso.
+
 ## Atualizacao 2026-03 - Menu de configuracao Fluent 2 no Visualizador
 
 - A `MainPage` manteve a metafora de painel lateral de configuracao, mas a composicao interna foi redesenhada como uma settings pane Fluent 2.
@@ -117,18 +150,19 @@
   - a mudanca persiste em `settings.json`;
   - o status local informa se o ambiente ficou em fallback solido.
 
-## Atualizacao 2026-03 - SettingsPage com observabilidade do device
+## Atualizacao 2026-03 - Monitor serial em Configuracoes
 
 - `Configuracoes` agora concentra duas trilhas:
   - `Geral`, com toggle de Mica e card `Logs de erro`;
-  - `Observabilidade do device`, com combo de selecao local e `Logs`; as estatisticas estruturadas ficaram ocultas para curadoria posterior do dashboard.
-- O device alvo em `Configuracoes` nao sincroniza com a selecao atual da `DevicesPage`.
-- A `DevicesPage` voltou a ficar focada apenas no dashboard seguro do device selecionado.
+  - `Monitor serial`, com porta `COM` manual, `Conectar/Desconectar`, `Limpar`, `Auto-scroll` e terminal monoespacado em estilo Arduino IDE.
+- O monitor serial em `Configuracoes` e independente da selecao atual da `DevicesPage` e trabalha sempre em `115200` baud neste v1.
+- A `DevicesPage` continua focada apenas no dashboard seguro do device selecionado.
 - O contrato de logging do app foi simplificado:
   - `crash.log` em `%LocalAppData%\MicaAudio` virou o arquivo unico de erro;
   - `AppLogStore` continua mantendo eventos em memoria para uso interno;
   - apenas entradas `Error` passam a ser persistidas em disco;
 - `Info` e `Warning` deixam de ser gravados em `app-logs.json`.
+- `DeviceLogBook` e logs estruturados continuam no backend para diagnostico interno, mas deixaram de ser a superficie exibida na `SettingsPage`.
 
 ## Atualizacao 2026-03 - Monitoramento local com HWiNFO64
 
@@ -244,7 +278,7 @@
   - `set-brightness`
   - `test-led`
   - `remove-device`, preservando o `ContentDialog` nativo de confirmacao.
-- `Logs` continuam somente em `Configuracoes`, com `ComboBox` local de device e `Expander` `Logs`.
+- `Configuracoes` agora hospeda um monitor serial local por `COM` manual; o dashboard web continua sem incorporar console serial bruto.
 - A referencia de contrato desta entrega esta em [device-observability-dashboard](../reference/device-observability-dashboard.md#objetivo).
 
 ## Atualizacao 2026-03 - Link do dashboard do device para celular

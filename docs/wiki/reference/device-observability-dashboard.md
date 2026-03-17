@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Documentar o dashboard por device agora servido localmente em HTML/JS para o `WebView2` da `DevicesPage`, mantendo `Logs` em `Configuracoes` e usando um DTO proprio do servidor para a superficie web.
+Documentar o dashboard por device agora servido localmente em HTML/JS para o `WebView2` da `DevicesPage`, mantendo o console serial bruto fora do dashboard web e usando um DTO proprio do servidor para a superficie web.
 
 ## Superficie da UI
 
@@ -11,7 +11,7 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
   - painel direito agora hospeda um `WebView2` full-size;
   - sem selecao, a coluna direita continua colapsada.
 - `SettingsPage`:
-  - `Logs` permanecem em `Configuracoes`;
+  - `Monitor serial` permanece em `Configuracoes`, por `COM` manual;
   - `Estatisticas` seguem fora da UI por enquanto.
 
 ## Transporte do dashboard
@@ -155,7 +155,8 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
 
 ## Logs e estatisticas fora do dashboard
 
-- `Logs` estruturados continuam no `DeviceLogBook` e sao exibidos apenas na `SettingsPage`.
+- `Logs` estruturados continuam no `DeviceLogBook`, mas nao sao mais a superficie mostrada na `SettingsPage`.
+- `Configuracoes` agora mostra um `Monitor serial` local e cru, independente do `deviceId` do dashboard.
 - `stats` MQTT continuam persistidos em `DeviceRecord` e `DeviceSnapshot`.
 - O dashboard HTML consome somente o DTO projetado pelo servidor; ele nao conhece `DeviceSnapshot` nem `DeviceLogEntry`.
 

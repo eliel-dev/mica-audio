@@ -30,6 +30,7 @@ public sealed class VisualizerEngine
             [RendererIds.Waterfall] = new WaterfallRenderer(),
             [RendererIds.NeonGlow] = new NeonGlowBarsRenderer(),
             [RendererIds.AudioMotionClone] = new AudioMotionCloneRenderer(),
+            [RendererIds.WaveMirror] = new WaveMirrorRenderer(),
             [RendererIds.VizzyBlobNeon] = new VizzyBlobNeonRenderer(),
             [RendererIds.VizzyOrbitRings] = new VizzyOrbitRingsRenderer(),
             [RendererIds.PolarArcs] = new PolarArcsRenderer(),

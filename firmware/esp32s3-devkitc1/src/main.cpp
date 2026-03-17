@@ -55,6 +55,7 @@ constexpr unsigned long kMatrixSignalTimeoutMs = 15000;
 constexpr size_t kSerialInputMaxLength = 1024;
 constexpr unsigned long kWifiConnectAttemptTimeoutMs = 20000;
 constexpr uint32_t kHealthyLoopThresholdUs = 25000;
+constexpr uint32_t kNetworkPollBudgetUs = 8000;
 constexpr unsigned long kOtaSelfTestWindowMs = 10000;
 constexpr uint16_t kDefaultMqttPort = 5273;
 constexpr const char* kDefaultMqttRootTopic = "mica/v1/devices";
@@ -197,6 +198,7 @@ uint32_t gStreamFramesReceived = 0;
 uint32_t gStreamFramesApplied = 0;
 uint32_t gStreamSequenceGapCount = 0;
 uint32_t gStreamInvalidFrameCount = 0;
+uint32_t gNetworkPollDeferCount = 0;
 bool gProvisioningPortalActive = false;
 String gWifiState = kWifiStateConnecting;
 String gLastWifiEvent = "boot";
@@ -1700,6 +1702,10 @@ bool trySanitizeLargestFreeBlock(uint32_t freeBytes, size_t largestRawBytes, uin
   return true;
 }
 
+uint32_t elapsedMicrosSince(uint32_t startUs) {
+  return static_cast<uint32_t>(micros() - startUs);
+}
+
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#saude-oficial-do-loop
 void updateLoopHealthyPercent(uint32_t loopDurationUs) {
   const unsigned long nowMs = millis();
@@ -1771,6 +1777,7 @@ void sendTelemetry(bool force) {
   telemetry["hub75PresentFrames"] = gHub75PresentFrames;
   telemetry["streamSequenceGapCount"] = gStreamSequenceGapCount;
   telemetry["streamInvalidFrameCount"] = gStreamInvalidFrameCount;
+  telemetry["networkPollDeferCount"] = gNetworkPollDeferCount;
   telemetry["telemetrySequence"] = ++gTelemetrySequence;
   telemetry["brightnessCap"] = gBrightnessCap;
   telemetry["brightnessRequested"] = gStreamBrightness;
@@ -2927,72 +2934,127 @@ void loop() {
   const uint32_t loopStartedUs = micros();
   processSerialProvisioning();
   processPendingOtaSafeUpdate();
-  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  const uint32_t networkBudgetStartUs = micros();
+  bool networkBudgetExhausted = false;
+  auto shouldRunNetworkStep = [&](bool eligible) -> bool {
+    if (!eligible) {
+      return false;
+    }
 
+    if (networkBudgetExhausted) {
+      gNetworkPollDeferCount++;
+      return false;
+    }
+
+    return true;
+  };
+  auto finishNetworkStep = [&]() {
+    if (elapsedMicrosSince(networkBudgetStartUs) >= kNetworkPollBudgetUs) {
+      networkBudgetExhausted = true;
+    }
+  };
+
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
   if (!wifiConnected) {
-    if (gWifiDisconnectedSinceMs == 0) {
+    if (shouldRunNetworkStep(gWifiDisconnectedSinceMs == 0)) {
       gWifiDisconnectedSinceMs = millis();
       setConnectivityState(kWifiStateDisconnected, "wifi_disconnected", true);
       Serial.println("[wifi] desconectado, aguardando reconexao.");
+      finishNetworkStep();
     }
 
-    if (!gProvisioningPortalActive
-        && (millis() - gWifiDisconnectedSinceMs) > kWifiDisconnectProvisioningFallbackMs) {
+    const bool shouldStartProvisioningFallback =
+        !gProvisioningPortalActive
+        && gWifiDisconnectedSinceMs != 0
+        && (millis() - gWifiDisconnectedSinceMs) > kWifiDisconnectProvisioningFallbackMs;
+    bool provisioningStarted = false;
+    if (shouldRunNetworkStep(shouldStartProvisioningFallback)) {
       Serial.println("[wifi] fallback para provisioning apos queda prolongada.");
       (void)startProvisioningPortal("wifi_disconnected_fallback");
       gWifiDisconnectedSinceMs = 0;
-      connectMqtt();
-      connectWebSocket();
+      provisioningStarted = true;
+      finishNetworkStep();
+    }
+
+    if (provisioningStarted) {
+      if (shouldRunNetworkStep(true)) {
+        connectMqtt();
+        finishNetworkStep();
+      }
+      if (shouldRunNetworkStep(true)) {
+        connectWebSocket();
+        finishNetworkStep();
+      }
+    }
+  } else {
+    if (gWifiDisconnectedSinceMs != 0) {
+      gWifiDisconnectedSinceMs = 0;
+    }
+
+    if (shouldRunNetworkStep(gProvisioningPortalActive)) {
+      setProvisioningPortalActive(false, "portal_closed");
+      finishNetworkStep();
+    }
+
+    if (shouldRunNetworkStep(true)) {
+      setConnectivityState(kWifiStateConnected, "wifi_connected");
+      finishNetworkStep();
+    }
+    if (shouldRunNetworkStep(true)) {
+      gMqtt.loop();
+      finishNetworkStep();
+    }
+    if (shouldRunNetworkStep(true)) {
+      gWs.loop();
+      finishNetworkStep();
+    }
+    if (shouldRunNetworkStep(true)) {
+      flushWsFlapDiagnostics(false);
+      finishNetworkStep();
+    }
+
+    if (!gMqtt.connected()) {
+      if (gMqttDisconnectedSinceMs == 0) {
+        gMqttDisconnectedSinceMs = millis();
+      }
+
+      const bool shouldReconnectMqtt = (millis() - gMqttDisconnectedSinceMs) >= kMqttReconnectRetryMs;
+      if (shouldRunNetworkStep(shouldReconnectMqtt)) {
+        connectMqtt();
+        gMqttDisconnectedSinceMs = millis();
+        finishNetworkStep();
+      }
     } else {
-      delay(120);
+      gMqttDisconnectedSinceMs = 0;
+
+      const bool telemetryDue =
+          !gDeviceId.isEmpty()
+          && (millis() - gLastTelemetryMs) >= kTelemetryIntervalMs;
+      if (shouldRunNetworkStep(telemetryDue)) {
+        sendTelemetry(false);
+        finishNetworkStep();
+      }
     }
 
-    processSerialProvisioning();
-    updateTestLed();
-    updateLoopHealthyPercent(static_cast<uint32_t>(micros() - loopStartedUs));
-    return;
-  }
+    if (!gWs.isConnected()) {
+      if (shouldRunNetworkStep(gWsDisconnectedSinceMs == 0)) {
+        gWsDisconnectedSinceMs = millis();
+        setConnectivityState(kWifiStateConnected, "ws_disconnected", false, false);
+        finishNetworkStep();
+      }
 
-  if (gWifiDisconnectedSinceMs != 0) {
-    gWifiDisconnectedSinceMs = 0;
-  }
-
-  if (gProvisioningPortalActive) {
-    setProvisioningPortalActive(false, "portal_closed");
-  }
-
-  setConnectivityState(kWifiStateConnected, "wifi_connected");
-  gMqtt.loop();
-  gWs.loop();
-  flushWsFlapDiagnostics(false);
-
-  if (!gMqtt.connected()) {
-    if (gMqttDisconnectedSinceMs == 0) {
-      gMqttDisconnectedSinceMs = millis();
+      const bool shouldReconnectWs =
+          gWsDisconnectedSinceMs != 0
+          && (millis() - gWsDisconnectedSinceMs) > kWsReconnectRetryMs;
+      if (shouldRunNetworkStep(shouldReconnectWs)) {
+        Serial.println("[ws_disconnected] sem sessao por tempo prolongado; tentando reconectar websocket.");
+        connectWebSocket();
+        gWsDisconnectedSinceMs = millis();
+        finishNetworkStep();
+      }
+    } else {
+      gWsDisconnectedSinceMs = 0;
     }
-
-    if (millis() - gMqttDisconnectedSinceMs >= kMqttReconnectRetryMs) {
-      connectMqtt();
-      gMqttDisconnectedSinceMs = millis();
-    }
-  } else {
-    gMqttDisconnectedSinceMs = 0;
-    sendTelemetry(false);
-  }
-
-  if (!gWs.isConnected()) {
-    if (gWsDisconnectedSinceMs == 0) {
-      gWsDisconnectedSinceMs = millis();
-      setConnectivityState(kWifiStateConnected, "ws_disconnected", false, false);
-    }
-
-    if (millis() - gWsDisconnectedSinceMs > kWsReconnectRetryMs) {
-      Serial.println("[ws_disconnected] sem sessao por tempo prolongado; tentando reconectar websocket.");
-      connectWebSocket();
-      gWsDisconnectedSinceMs = millis();
-    }
-  } else {
-    gWsDisconnectedSinceMs = 0;
   }
 
   const unsigned long nowMs = millis();
@@ -3009,7 +3071,6 @@ void loop() {
   setMatrixBrightness(resolveAppliedBrightness());
   updateTestLedDutyFromBrightness(gAppliedBrightness);
   updateTestLed();
-  processSerialProvisioning();
 
   const uint32_t nowUs = micros();
   if (gMatrixReady && shouldPresentMatrixFrame(nowUs)) {
@@ -3032,5 +3093,5 @@ void loop() {
     }
   }
 
-  updateLoopHealthyPercent(static_cast<uint32_t>(micros() - loopStartedUs));
+  updateLoopHealthyPercent(elapsedMicrosSince(loopStartedUs));
 }

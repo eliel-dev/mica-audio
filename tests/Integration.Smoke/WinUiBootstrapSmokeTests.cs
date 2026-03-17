@@ -1,5 +1,6 @@
 using System.Reflection;
 using App.WinUI;
+using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
@@ -23,6 +24,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<DeviceOperationsCoordinator>());
         Assert.NotNull(provider.GetService<IAppCatalogService>());
         Assert.NotNull(provider.GetService<IAppModifierStateStore>());
+        Assert.NotNull(provider.GetService<ISerialMonitorService>());
         Assert.NotNull(provider.GetService<MainPageViewModel>());
         Assert.NotNull(provider.GetService<DevicesPageViewModel>());
         Assert.NotNull(provider.GetService<PanelsPageViewModel>());
@@ -32,6 +34,20 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<PanelsFrameComposer>());
         Assert.NotNull(provider.GetService<PanelsPlaybackService>());
         Assert.NotNull(provider.GetService<PanelsDeviceSessionService>());
+    }
+
+    [Fact]
+    public void BuildServiceProvider_ShouldEnableMatrixTransportForPanelsPlaybackService()
+    {
+        var provider = App.WinUI.App.BuildServiceProvider();
+        var service = provider.GetRequiredService<PanelsPlaybackService>();
+
+        var field = typeof(PanelsPlaybackService).GetField(
+            "enableMatrixTransport",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        Assert.NotNull(field);
+        Assert.True(Assert.IsType<bool>(field!.GetValue(service)));
     }
 
     [Fact]

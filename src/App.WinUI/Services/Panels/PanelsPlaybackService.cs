@@ -20,6 +20,7 @@ internal sealed class PanelsPlaybackService : IDisposable
     private readonly PanelsFrameComposer composer;
     private readonly PanelsDeviceSessionService deviceSessionService;
     private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
+    private readonly bool enableMatrixTransport;
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
     private readonly object stateGate = new();
 
@@ -37,12 +38,14 @@ internal sealed class PanelsPlaybackService : IDisposable
         DeviceServerHost host,
         PanelsFrameComposer composer,
         PanelsDeviceSessionService deviceSessionService,
-        Hub75VisualizerSessionService hub75VisualizerSessionService)
+        Hub75VisualizerSessionService hub75VisualizerSessionService,
+        bool enableMatrixTransport = true)
     {
         this.host = host;
         this.composer = composer;
         this.deviceSessionService = deviceSessionService;
         this.hub75VisualizerSessionService = hub75VisualizerSessionService;
+        this.enableMatrixTransport = enableMatrixTransport;
     }
 
     public event EventHandler? StateChanged;
@@ -57,7 +60,7 @@ internal sealed class PanelsPlaybackService : IDisposable
             {
                 return loopCts is not null
                     && compositionSession is not null
-                    && !string.IsNullOrWhiteSpace(targetDeviceId);
+                    && (!enableMatrixTransport || !string.IsNullOrWhiteSpace(targetDeviceId));
             }
         }
     }
@@ -125,7 +128,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
         ThrowIfDisposed();
 
-        if (hub75VisualizerSessionService.IsHub75Enabled)
+        if (enableMatrixTransport && hub75VisualizerSessionService.IsHub75Enabled)
         {
             throw new InvalidOperationException("O visualizador HUB75 tem prioridade enquanto estiver ativo.");
         }
@@ -145,6 +148,11 @@ internal sealed class PanelsPlaybackService : IDisposable
     public async Task SuspendAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+
+        if (!enableMatrixTransport)
+        {
+            return;
+        }
 
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -180,6 +188,11 @@ internal sealed class PanelsPlaybackService : IDisposable
     public async Task ResumeSuspendedAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+
+        if (!enableMatrixTransport)
+        {
+            return;
+        }
 
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -261,24 +274,27 @@ internal sealed class PanelsPlaybackService : IDisposable
 
         try
         {
-            if (resumeSuppressedSession)
+            if (enableMatrixTransport && resumeSuppressedSession)
             {
                 await deviceSessionService.ResumeAsync(cancellationToken).ConfigureAwait(false);
             }
-            else
+            else if (enableMatrixTransport)
             {
                 await deviceSessionService.StartAsync(normalizedDeviceId, cancellationToken).ConfigureAwait(false);
             }
 
-            output = new Esp32S3LedOutput(host);
-            output.Start(new LedOutputConfig
+            if (enableMatrixTransport)
             {
-                Width = LedDefaults.MatrixWidth,
-                Height = LedDefaults.MatrixHeight,
-                Brightness = LedDefaults.Brightness,
-                TargetDeviceId = normalizedDeviceId,
-            });
-            output.SetBrightness(LedDefaults.Brightness);
+                output = new Esp32S3LedOutput(host);
+                output.Start(new LedOutputConfig
+                {
+                    Width = LedDefaults.MatrixWidth,
+                    Height = LedDefaults.MatrixHeight,
+                    Brightness = LedDefaults.Brightness,
+                    TargetDeviceId = normalizedDeviceId,
+                });
+                output.SetBrightness(LedDefaults.Brightness);
+            }
 
             cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -318,7 +334,7 @@ internal sealed class PanelsPlaybackService : IDisposable
 
     private async Task RunLoopAsync(
         PanelsFrameComposer.PanelCompositionSession session,
-        Esp32S3LedOutput output,
+        Esp32S3LedOutput? output,
         CancellationToken cancellationToken)
     {
         try
@@ -389,7 +405,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         localSession?.Dispose();
         RaiseFrameUpdated(BlackFrame);
 
-        if (restoreDevice)
+        if (enableMatrixTransport && restoreDevice)
         {
             await deviceSessionService.StopAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -399,7 +415,7 @@ internal sealed class PanelsPlaybackService : IDisposable
 
     private Task SendFrameAsync(
         PanelsFrameComposer.PanelCompositionSession session,
-        Esp32S3LedOutput output,
+        Esp32S3LedOutput? output,
         DateTimeOffset utcNow)
     {
         var frame = session.RenderFrame(utcNow);
@@ -408,7 +424,7 @@ internal sealed class PanelsPlaybackService : IDisposable
             latestFrame = frame;
         }
 
-        output.Send(LedPayloadFactory.CreateFramePayload(frame, PanelsDeviceSessionService.PanelsAppId));
+        output?.Send(LedPayloadFactory.CreateFramePayload(frame, PanelsDeviceSessionService.PanelsAppId));
         RaiseFrameUpdated(frame);
         return Task.CompletedTask;
     }

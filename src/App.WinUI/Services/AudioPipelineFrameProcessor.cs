@@ -75,6 +75,12 @@ internal sealed class AudioPipelineFrameProcessor
         outputRouter.Dispatch(LedPayloadFactory.CreateFramePayload(frame128x64, presetId), forceSimulator);
     }
 
+    public void SendHubBins(float[] bins128, float level = 0f, bool forceSimulator = false, string presetId = "hub75-bins")
+    {
+        ArgumentNullException.ThrowIfNull(bins128);
+        outputRouter.Dispatch(LedPayloadFactory.CreateBinsPayload(bins128, presetId, level), forceSimulator);
+    }
+
     public void Process(in PcmFrame pcmFrame)
     {
         IAnalyzer currentAnalyzer;

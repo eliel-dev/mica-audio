@@ -12,6 +12,7 @@
     <PackageReference Include="coverlet.collector" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.3.0" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
@@ -45,6 +46,9 @@
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Http\ExternalHttpClients.cs" Link="Shared\Infrastructure\ExternalHttpClients.cs" />
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Observability\AppObservability.cs" Link="Shared\Infrastructure\AppObservability.cs" />
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Observability\ObservabilityOptions.cs" Link="Shared\Infrastructure\ObservabilityOptions.cs" />
+    <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialPortCatalogContracts.cs" Link="Shared\Serial\SerialPortCatalogContracts.cs" />
+    <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialPortDescriptor.cs" Link="Shared\Serial\SerialPortDescriptor.cs" />
+    <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialMonitorService.cs" Link="Shared\Serial\SerialMonitorService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\GifScaleMode.cs" Link="Shared\GifScaleMode.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75FrameFormatter.cs" Link="Shared\Hub75FrameFormatter.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75GifDecoder.cs" Link="Shared\Hub75GifDecoder.cs" />

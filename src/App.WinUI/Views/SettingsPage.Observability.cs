@@ -1,6 +1,4 @@
-using System.Globalization;
-using App.WinUI.Services.Devices;
-using Device.Protocol.Models;
+using App.WinUI.Infrastructure.Serial;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -10,924 +8,367 @@ namespace App.WinUI.Views;
 
 public sealed partial class SettingsPage
 {
-    private bool deviceObservabilityActive;
-    private bool suppressObservedDeviceSelectionChanged;
-    private DeviceOperationsState currentDeviceOperationsState = new();
-    private string? selectedObservedDeviceId;
-    private string? currentObservedDeviceLogsDeviceId;
-    private IReadOnlyList<DeviceLogEntry> currentObservedDeviceLogEntries = Array.Empty<DeviceLogEntry>();
+    private bool serialMonitorActive;
+    private bool suppressSerialMonitorPortSelectionChanged;
+    private IReadOnlyList<SerialMonitorLine> currentSerialMonitorLines = Array.Empty<SerialMonitorLine>();
+    private ComboBox serialMonitorPortComboBox = null!;
+    private Button serialMonitorConnectButton = null!;
+    private Button serialMonitorClearButton = null!;
+    private ToggleSwitch serialMonitorAutoFollowToggle = null!;
+    private TextBlock serialMonitorStatusText = null!;
+    private ListView serialMonitorListView = null!;
+    private TextBlock serialMonitorPlaceholderText = null!;
 
-    private ComboBox observedDeviceComboBox = null!;
-    private TextBlock observedDeviceSummaryText = null!;
-    private TextBlock observedStatisticsStatusText = null!;
-    private StackPanel observedStatisticsContentPanel = null!;
-    private TextBlock observedStatsIdentityFirmwareText = null!;
-    private TextBlock observedStatsIdentityChipText = null!;
-    private TextBlock observedStatsIdentitySdkText = null!;
-    private TextBlock observedStatsIdentityBoardText = null!;
-    private TextBlock observedStatsCapacityHeapText = null!;
-    private TextBlock observedStatsCapacityPsramText = null!;
-    private TextBlock observedStatsCapacityFlashText = null!;
-    private TextBlock observedStatsCapacitySketchText = null!;
-    private TextBlock observedStatsStreamSummaryText = null!;
-    private TextBlock observedStatsStreamFramesText = null!;
-    private TextBlock observedStatsStreamIntegrityText = null!;
-    private TextBlock observedStatsStreamHeartbeatText = null!;
-    private TextBlock observedRssiHistorySummaryText = null!;
-    private TextBlock observedLoopHistorySummaryText = null!;
-    private TextBlock observedHeapHistorySummaryText = null!;
-    private TextBlock observedPsramHistorySummaryText = null!;
-    private StackPanel observedRssiHistoryBarsPanel = null!;
-    private StackPanel observedLoopHistoryBarsPanel = null!;
-    private StackPanel observedHeapHistoryBarsPanel = null!;
-    private StackPanel observedPsramHistoryBarsPanel = null!;
-    private TextBlock observedDeviceLogsHeaderText = null!;
-    private TextBlock observedDeviceLogsHintText = null!;
-    private ComboBox observedDeviceLogsSeverityComboBox = null!;
-    private TextBox observedDeviceLogsSearchBox = null!;
-    private ToggleSwitch observedDeviceLogsAutoFollowToggle = null!;
-    private ListView observedDeviceLogsListView = null!;
-    private TextBlock observedDeviceLogsPlaceholderText = null!;
-
-    private void ActivateDeviceObservability()
+    private async Task ActivateSerialMonitorAsync()
     {
-        if (deviceObservabilityActive)
+        if (serialMonitorActive)
         {
             return;
         }
 
-        deviceOps.StateChanged += OnDeviceOperationsStateChanged;
-        deviceObservabilityActive = true;
-        ApplyDeviceObservabilityState(deviceOps.GetStateSnapshot());
+        serialMonitorService.StateChanged += OnSerialMonitorStateChanged;
+        serialMonitorActive = true;
+        await serialMonitorService.RefreshPortsAsync().ConfigureAwait(true);
+        RefreshSerialMonitorView(serialMonitorService.GetStateSnapshot());
     }
 
-    private void DeactivateDeviceObservability()
+    private async Task DeactivateSerialMonitorAsync()
     {
-        if (!deviceObservabilityActive)
+        if (!serialMonitorActive)
         {
             return;
         }
 
-        deviceOps.StateChanged -= OnDeviceOperationsStateChanged;
-        deviceObservabilityActive = false;
+        serialMonitorService.StateChanged -= OnSerialMonitorStateChanged;
+        serialMonitorActive = false;
+        await serialMonitorService.DisconnectAsync().ConfigureAwait(true);
     }
 
-    private void OnDeviceOperationsStateChanged(object? sender, EventArgs e)
+    private void OnSerialMonitorStateChanged(object? sender, EventArgs e)
     {
-        _ = DispatcherQueue.TryEnqueue(() => ApplyDeviceObservabilityState(deviceOps.GetStateSnapshot()));
+        _ = DispatcherQueue.TryEnqueue(() => RefreshSerialMonitorView(serialMonitorService.GetStateSnapshot()));
     }
 
     private Border BuildDeviceObservabilityCard()
     {
-        var content = new StackPanel
-        {
-            Spacing = 12,
-        };
-
-        content.Children.Add(new TextBlock
-        {
-            Text = "Device alvo",
-            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
-        });
-
-        observedDeviceComboBox = new ComboBox
-        {
-            PlaceholderText = "Nenhum device disponivel",
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-        observedDeviceComboBox.SelectionChanged += OnObservedDeviceSelectionChanged;
-        content.Children.Add(observedDeviceComboBox);
-
-        observedDeviceSummaryText = new TextBlock
-        {
-            Opacity = 0.72,
-            TextWrapping = TextWrapping.Wrap,
-            Text = "Carregando devices conhecidos...",
-        };
-        content.Children.Add(observedDeviceSummaryText);
-
-        var logsExpander = new Expander
-        {
-            Header = "Logs",
-            IsExpanded = false,
-            Content = BuildObservedLogsContent(),
-        };
-        content.Children.Add(logsExpander);
-
         return CreateCard(
-            "Observabilidade do device",
-            "Escolha um device para ver os logs estruturados desta sessao, sem depender da selecao atual da DevicesPage. As estatisticas ficaram ocultas temporariamente para curadoria do dashboard principal.",
-            content);
+            "Monitor serial",
+            "Acompanhe a saida crua do firmware via COM manual, em um monitor no estilo Arduino IDE, sem depender da selecao de devices MQTT.",
+            BuildSerialMonitorContent());
     }
 
-    // DOCS: docs/wiki/reference/device-observability-dashboard.md#estatisticas-fora-da-ui-por-enquanto
-    private StackPanel BuildObservedStatisticsContent()
+    // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-monitor-serial-em-configuracoes
+    private StackPanel BuildSerialMonitorContent()
     {
         var host = new StackPanel
         {
             Spacing = 12,
-            Margin = new Thickness(0, 12, 0, 0),
         };
 
-        observedStatisticsStatusText = new TextBlock
-        {
-            Text = "Selecione um device acima para ver estatisticas e historico de telemetria.",
-            Opacity = 0.82,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        host.Children.Add(observedStatisticsStatusText);
-
-        observedStatisticsContentPanel = new StackPanel
-        {
-            Spacing = 12,
-            Visibility = Visibility.Collapsed,
-        };
-
-        observedStatisticsContentPanel.Children.Add(CreateSurfaceCard(BuildObservedStatisticsIdentityCard()));
-        observedStatisticsContentPanel.Children.Add(CreateSurfaceCard(BuildObservedStatisticsCapacityCard()));
-        observedStatisticsContentPanel.Children.Add(CreateSurfaceCard(BuildObservedStatisticsStreamCard()));
-        observedStatisticsContentPanel.Children.Add(CreateSurfaceCard(BuildObservedHistoryCard("RSSI Wi-Fi", Color.FromArgb(255, 86, 156, 214), out observedRssiHistorySummaryText, out observedRssiHistoryBarsPanel)));
-        observedStatisticsContentPanel.Children.Add(CreateSurfaceCard(BuildObservedHistoryCard("Carga do loop", Color.FromArgb(255, 78, 201, 176), out observedLoopHistorySummaryText, out observedLoopHistoryBarsPanel)));
-        observedStatisticsContentPanel.Children.Add(CreateSurfaceCard(BuildObservedHistoryCard("Heap livre", Color.FromArgb(255, 108, 203, 95), out observedHeapHistorySummaryText, out observedHeapHistoryBarsPanel)));
-        observedStatisticsContentPanel.Children.Add(CreateSurfaceCard(BuildObservedHistoryCard("PSRAM livre", Color.FromArgb(255, 155, 89, 182), out observedPsramHistorySummaryText, out observedPsramHistoryBarsPanel)));
-
-        host.Children.Add(observedStatisticsContentPanel);
-        return host;
-    }
-
-    // DOCS: docs/wiki/reference/device-observability-dashboard.md#logs-em-configuracoes
-    private StackPanel BuildObservedLogsContent()
-    {
-        var host = new StackPanel
-        {
-            Spacing = 12,
-            Margin = new Thickness(0, 12, 0, 0),
-        };
-
-        observedDeviceLogsHeaderText = new TextBlock
-        {
-            Text = "Logs do device",
-            FontSize = 16,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        };
-        host.Children.Add(observedDeviceLogsHeaderText);
-
-        observedDeviceLogsHintText = new TextBlock
-        {
-            Text = "Eventos do app e do firmware para o device selecionado no combo acima.",
-            Opacity = 0.78,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        host.Children.Add(observedDeviceLogsHintText);
-
-        var filters = new Grid
+        var actionsGrid = new Grid
         {
             ColumnSpacing = 12,
         };
-        filters.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        filters.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        filters.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        observedDeviceLogsSeverityComboBox = new ComboBox
+        serialMonitorPortComboBox = new ComboBox
         {
-            MinWidth = 150,
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
-        observedDeviceLogsSeverityComboBox.Items.Add(new ComboBoxItem { Content = "Todos", Tag = "all" });
-        observedDeviceLogsSeverityComboBox.Items.Add(new ComboBoxItem { Content = "Info", Tag = "info" });
-        observedDeviceLogsSeverityComboBox.Items.Add(new ComboBoxItem { Content = "Avisos", Tag = "warning" });
-        observedDeviceLogsSeverityComboBox.Items.Add(new ComboBoxItem { Content = "Erros", Tag = "error" });
-        observedDeviceLogsSeverityComboBox.SelectedIndex = 0;
-        observedDeviceLogsSeverityComboBox.SelectionChanged += OnObservedDeviceLogsFilterChanged;
-        filters.Children.Add(observedDeviceLogsSeverityComboBox);
-
-        observedDeviceLogsSearchBox = new TextBox
-        {
-            PlaceholderText = "Buscar por mensagem, categoria ou codigo",
+            PlaceholderText = "Nenhuma porta COM detectada",
+            MinWidth = 280,
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            DisplayMemberPath = nameof(SerialPortDescriptor.Label),
         };
-        observedDeviceLogsSearchBox.TextChanged += OnObservedDeviceLogsSearchTextChanged;
-        Grid.SetColumn(observedDeviceLogsSearchBox, 1);
-        filters.Children.Add(observedDeviceLogsSearchBox);
+        serialMonitorPortComboBox.SelectionChanged += OnSerialMonitorPortSelectionChanged;
+        serialMonitorPortComboBox.DropDownOpened += OnSerialMonitorPortDropDownOpened;
+        actionsGrid.Children.Add(serialMonitorPortComboBox);
 
-        observedDeviceLogsAutoFollowToggle = new ToggleSwitch
+        serialMonitorConnectButton = new Button
         {
-            Header = "Auto-follow",
+            Content = "Conectar",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Style = Application.Current.Resources["AppChromeButtonStyle"] as Style,
+        };
+        serialMonitorConnectButton.Click += OnSerialMonitorConnectClicked;
+        Grid.SetColumn(serialMonitorConnectButton, 1);
+        actionsGrid.Children.Add(serialMonitorConnectButton);
+
+        serialMonitorClearButton = new Button
+        {
+            Content = "Limpar",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Style = Application.Current.Resources["AppChromeButtonStyle"] as Style,
+            IsEnabled = false,
+        };
+        serialMonitorClearButton.Click += OnSerialMonitorClearClicked;
+        Grid.SetColumn(serialMonitorClearButton, 2);
+        actionsGrid.Children.Add(serialMonitorClearButton);
+
+        host.Children.Add(actionsGrid);
+
+        var statusGrid = new Grid
+        {
+            ColumnSpacing = 12,
+        };
+        statusGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        statusGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        serialMonitorStatusText = new TextBlock
+        {
+            Opacity = 0.78,
+            TextWrapping = TextWrapping.Wrap,
+            Text = "Carregando portas COM disponiveis...",
+        };
+        statusGrid.Children.Add(serialMonitorStatusText);
+
+        serialMonitorAutoFollowToggle = new ToggleSwitch
+        {
+            Header = "Auto-scroll",
             IsOn = true,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
-        Grid.SetColumn(observedDeviceLogsAutoFollowToggle, 2);
-        filters.Children.Add(observedDeviceLogsAutoFollowToggle);
+        Grid.SetColumn(serialMonitorAutoFollowToggle, 1);
+        statusGrid.Children.Add(serialMonitorAutoFollowToggle);
 
-        host.Children.Add(filters);
-        host.Children.Add(CreateSurfaceCard(BuildObservedDeviceLogsSurface(), padding: 0));
+        host.Children.Add(statusGrid);
+        host.Children.Add(BuildSerialMonitorSurface());
         return host;
     }
 
-    private Grid BuildObservedDeviceLogsSurface()
+    private Border BuildSerialMonitorSurface()
     {
         var surface = new Grid
         {
-            MinHeight = 260,
+            MinHeight = 320,
         };
 
-        observedDeviceLogsListView = new ListView
+        serialMonitorListView = new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
             IsItemClickEnabled = false,
             Margin = new Thickness(0),
             Padding = new Thickness(0),
             BorderThickness = new Thickness(0),
-            MinHeight = 260,
-            MaxHeight = 360,
+            MinHeight = 320,
+            MaxHeight = 460,
+            Background = new SolidColorBrush(Color.FromArgb(255, 3, 3, 3)),
         };
-        ScrollViewer.SetHorizontalScrollBarVisibility(observedDeviceLogsListView, ScrollBarVisibility.Disabled);
-        ScrollViewer.SetVerticalScrollBarVisibility(observedDeviceLogsListView, ScrollBarVisibility.Auto);
-        surface.Children.Add(observedDeviceLogsListView);
+        ScrollViewer.SetHorizontalScrollBarVisibility(serialMonitorListView, ScrollBarVisibility.Disabled);
+        ScrollViewer.SetVerticalScrollBarVisibility(serialMonitorListView, ScrollBarVisibility.Auto);
+        surface.Children.Add(serialMonitorListView);
 
-        observedDeviceLogsPlaceholderText = new TextBlock
+        serialMonitorPlaceholderText = new TextBlock
         {
-            Text = "Selecione um device acima para ver logs.",
-            Opacity = 0.72,
+            Text = "Selecione uma porta COM para iniciar o monitor serial.",
+            Opacity = 0.68,
             FontStyle = Windows.UI.Text.FontStyle.Italic,
             Margin = new Thickness(20),
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Top,
+            Foreground = new SolidColorBrush(Color.FromArgb(255, 170, 170, 170)),
         };
-        surface.Children.Add(observedDeviceLogsPlaceholderText);
+        surface.Children.Add(serialMonitorPlaceholderText);
 
-        return surface;
-    }
-
-    private StackPanel BuildObservedStatisticsIdentityCard()
-    {
-        var stack = new StackPanel { Spacing = 10 };
-        stack.Children.Add(new TextBlock
+        return new Border
         {
-            Text = "Identidade do firmware",
-            FontSize = 14,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        });
-
-        observedStatsIdentityFirmwareText = BuildObservedStatisticsValueText("Firmware: -");
-        observedStatsIdentityChipText = BuildObservedStatisticsValueText("Chip: -");
-        observedStatsIdentitySdkText = BuildObservedStatisticsValueText("SDK: -");
-        observedStatsIdentityBoardText = BuildObservedStatisticsValueText("Board: -");
-
-        stack.Children.Add(observedStatsIdentityFirmwareText);
-        stack.Children.Add(observedStatsIdentityChipText);
-        stack.Children.Add(observedStatsIdentitySdkText);
-        stack.Children.Add(observedStatsIdentityBoardText);
-        return stack;
-    }
-
-    private StackPanel BuildObservedStatisticsCapacityCard()
-    {
-        var stack = new StackPanel { Spacing = 10 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Capacidade do device",
-            FontSize = 14,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        });
-
-        observedStatsCapacityHeapText = BuildObservedStatisticsValueText("Heap total: -");
-        observedStatsCapacityPsramText = BuildObservedStatisticsValueText("PSRAM total: -");
-        observedStatsCapacityFlashText = BuildObservedStatisticsValueText("Flash total: -");
-        observedStatsCapacitySketchText = BuildObservedStatisticsValueText("Sketch: -");
-
-        stack.Children.Add(observedStatsCapacityHeapText);
-        stack.Children.Add(observedStatsCapacityPsramText);
-        stack.Children.Add(observedStatsCapacityFlashText);
-        stack.Children.Add(observedStatsCapacitySketchText);
-        return stack;
-    }
-
-    private StackPanel BuildObservedStatisticsStreamCard()
-    {
-        var stack = new StackPanel { Spacing = 10 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Stream e heartbeat",
-            FontSize = 14,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        });
-
-        observedStatsStreamSummaryText = BuildObservedStatisticsValueText("Controle: -");
-        observedStatsStreamFramesText = BuildObservedStatisticsValueText("Frames: -");
-        observedStatsStreamIntegrityText = BuildObservedStatisticsValueText("Integridade: -");
-        observedStatsStreamHeartbeatText = BuildObservedStatisticsValueText("Heartbeat: -");
-
-        stack.Children.Add(observedStatsStreamSummaryText);
-        stack.Children.Add(observedStatsStreamFramesText);
-        stack.Children.Add(observedStatsStreamIntegrityText);
-        stack.Children.Add(observedStatsStreamHeartbeatText);
-        return stack;
-    }
-
-    private static StackPanel BuildObservedHistoryCard(string title, Color accentColor, out TextBlock summaryText, out StackPanel barsPanel)
-    {
-        var stack = new StackPanel { Spacing = 10 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = title,
-            FontSize = 14,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        });
-
-        summaryText = BuildObservedStatisticsValueText("Sem amostras.");
-        stack.Children.Add(summaryText);
-
-        var chartHost = new Border
-        {
-            Height = 88,
-            Padding = new Thickness(10, 8, 10, 8),
-            CornerRadius = new CornerRadius(10),
+            Background = new SolidColorBrush(Color.FromArgb(255, 3, 3, 3)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(255, 26, 26, 26)),
             BorderThickness = new Thickness(1),
-            BorderBrush = CreateSettingsStrokeBrush(),
-            Background = CreateSettingsBaseBrush(),
-        };
-
-        var chartGrid = new Grid();
-        chartGrid.Children.Add(new Border
-        {
-            VerticalAlignment = VerticalAlignment.Bottom,
-            Height = 1,
-            Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
-        });
-
-        barsPanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 3,
-            VerticalAlignment = VerticalAlignment.Bottom,
-        };
-        chartGrid.Children.Add(barsPanel);
-
-        chartHost.Child = chartGrid;
-        stack.Children.Add(chartHost);
-
-        RenderObservedHistoryBars(barsPanel, Array.Empty<double?>(), accentColor);
-        return stack;
-    }
-
-    private static TextBlock BuildObservedStatisticsValueText(string text)
-    {
-        return new TextBlock
-        {
-            Text = text,
-            Opacity = 0.84,
-            TextWrapping = TextWrapping.Wrap,
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(0),
+            Child = surface,
         };
     }
 
-    private void ApplyDeviceObservabilityState(DeviceOperationsState state)
+    private async void OnSerialMonitorPortDropDownOpened(object? sender, object e)
     {
-        currentDeviceOperationsState = state ?? new DeviceOperationsState();
-        RefreshObservedDeviceSelector();
-        RefreshObservedDevicePanels();
+        try
+        {
+            await serialMonitorService.RefreshPortsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            App.ReportError("SettingsPage.RefreshSerialPorts failed", ex);
+        }
     }
 
-    private void RefreshObservedDeviceSelector()
+    private void OnSerialMonitorPortSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (observedDeviceComboBox is null || observedDeviceSummaryText is null)
+        if (suppressSerialMonitorPortSelectionChanged)
         {
             return;
         }
 
-        var devices = currentDeviceOperationsState.DeviceListSnapshot;
-        var options = devices
-            .Select(static snapshot => new ObservedDeviceOption(snapshot.DeviceId, BuildObservedDeviceOptionLabel(snapshot)))
-            .ToArray();
-
-        selectedObservedDeviceId = ResolvePreferredObservedDeviceId(selectedObservedDeviceId, devices);
-
-        suppressObservedDeviceSelectionChanged = true;
-        observedDeviceComboBox.ItemsSource = options;
-        observedDeviceComboBox.DisplayMemberPath = nameof(ObservedDeviceOption.Label);
-        observedDeviceComboBox.IsEnabled = options.Length > 0;
-        observedDeviceComboBox.SelectedItem = options.FirstOrDefault(option =>
-            string.Equals(option.DeviceId, selectedObservedDeviceId, StringComparison.OrdinalIgnoreCase));
-        suppressObservedDeviceSelectionChanged = false;
-
-        var selectedSnapshot = FindObservedDeviceSnapshot(selectedObservedDeviceId);
-        observedDeviceSummaryText.Text = selectedSnapshot is null
-            ? "Nenhum device registrado ainda."
-            : $"Exibindo {selectedSnapshot.Name} | {selectedSnapshot.DeviceId} | {selectedSnapshot.Status}.";
+        serialMonitorService.SetSelectedPort((serialMonitorPortComboBox.SelectedItem as SerialPortDescriptor)?.PortName);
+        RefreshSerialMonitorView(serialMonitorService.GetStateSnapshot());
     }
 
-    private void OnObservedDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void OnSerialMonitorConnectClicked(object sender, RoutedEventArgs e)
     {
-        if (suppressObservedDeviceSelectionChanged)
+        var snapshot = serialMonitorService.GetStateSnapshot();
+
+        try
         {
-            return;
-        }
-
-        selectedObservedDeviceId = (observedDeviceComboBox.SelectedItem as ObservedDeviceOption)?.DeviceId;
-        RefreshObservedDevicePanels();
-    }
-
-    private void RefreshObservedDevicePanels()
-    {
-        var snapshot = FindObservedDeviceSnapshot(selectedObservedDeviceId);
-        var deviceLogs = snapshot is null
-            ? Array.Empty<DeviceLogEntry>()
-            : deviceOps.GetDeviceLogs(snapshot.DeviceId);
-        UpdateObservedStructuredDeviceLogs(selectedObservedDeviceId, deviceLogs, snapshot);
-    }
-
-    private DeviceSnapshot? FindObservedDeviceSnapshot(string? deviceId)
-    {
-        if (string.IsNullOrWhiteSpace(deviceId))
-        {
-            return null;
-        }
-
-        foreach (var snapshot in currentDeviceOperationsState.DeviceListSnapshot)
-        {
-            if (string.Equals(snapshot.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+            if (snapshot.ConnectionState == SerialMonitorConnectionState.Connected)
             {
-                return snapshot;
+                await serialMonitorService.DisconnectAsync().ConfigureAwait(true);
+                return;
             }
-        }
 
-        return null;
+            await serialMonitorService.ConnectAsync(snapshot.SelectedPortName ?? string.Empty).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            App.ReportError("SettingsPage.ToggleSerialMonitor failed", ex);
+        }
     }
 
-    private static string? ResolvePreferredObservedDeviceId(string? currentDeviceId, IReadOnlyList<DeviceSnapshot> devices)
+    private void OnSerialMonitorClearClicked(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(currentDeviceId))
+        serialMonitorService.Clear();
+        RefreshSerialMonitorView(serialMonitorService.GetStateSnapshot());
+    }
+
+    private void RefreshSerialMonitorView(SerialMonitorSessionState state)
+    {
+        if (serialMonitorPortComboBox is null
+            || serialMonitorConnectButton is null
+            || serialMonitorClearButton is null
+            || serialMonitorStatusText is null
+            || serialMonitorListView is null
+            || serialMonitorPlaceholderText is null)
         {
-            foreach (var snapshot in devices)
+            return;
+        }
+
+        suppressSerialMonitorPortSelectionChanged = true;
+        serialMonitorPortComboBox.ItemsSource = state.AvailablePorts;
+        serialMonitorPortComboBox.SelectedItem = state.AvailablePorts.FirstOrDefault(item =>
+            string.Equals(item.PortName, state.SelectedPortName, StringComparison.OrdinalIgnoreCase));
+        serialMonitorPortComboBox.IsEnabled = state.ConnectionState is not SerialMonitorConnectionState.Connecting
+            and not SerialMonitorConnectionState.Connected;
+        suppressSerialMonitorPortSelectionChanged = false;
+
+        serialMonitorConnectButton.Content = state.ConnectionState switch
+        {
+            SerialMonitorConnectionState.Connected => "Desconectar",
+            SerialMonitorConnectionState.Connecting => "Conectando...",
+            _ => "Conectar",
+        };
+        serialMonitorConnectButton.IsEnabled = state.ConnectionState != SerialMonitorConnectionState.Connecting
+            && (state.ConnectionState == SerialMonitorConnectionState.Connected
+                || !string.IsNullOrWhiteSpace(state.SelectedPortName));
+
+        serialMonitorClearButton.IsEnabled = state.LineCount > 0;
+        serialMonitorStatusText.Text = state.StatusText;
+
+        UpdateSerialMonitorList(state.VisibleLines);
+
+        serialMonitorPlaceholderText.Text = ResolveSerialMonitorPlaceholder(state);
+        serialMonitorPlaceholderText.Visibility = state.LineCount == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (state.LineCount > 0 && serialMonitorAutoFollowToggle?.IsOn == true)
+        {
+            ScrollSerialMonitorToEnd();
+        }
+    }
+
+    private void UpdateSerialMonitorList(IReadOnlyList<SerialMonitorLine> nextLines)
+    {
+        if (serialMonitorListView is null)
+        {
+            return;
+        }
+
+        var shouldRebuild = nextLines.Count < currentSerialMonitorLines.Count;
+        if (!shouldRebuild)
+        {
+            for (var index = 0; index < currentSerialMonitorLines.Count; index++)
             {
-                if (string.Equals(snapshot.DeviceId, currentDeviceId, StringComparison.OrdinalIgnoreCase))
+                if (!currentSerialMonitorLines[index].Equals(nextLines[index]))
                 {
-                    return snapshot.DeviceId;
+                    shouldRebuild = true;
+                    break;
                 }
             }
         }
 
-        foreach (var snapshot in devices)
+        if (shouldRebuild)
         {
-            if (snapshot.Status == DeviceStatus.Online)
+            serialMonitorListView.Items.Clear();
+            foreach (var line in nextLines)
             {
-                return snapshot.DeviceId;
+                serialMonitorListView.Items.Add(BuildSerialMonitorRow(line));
+            }
+        }
+        else
+        {
+            for (var index = currentSerialMonitorLines.Count; index < nextLines.Count; index++)
+            {
+                serialMonitorListView.Items.Add(BuildSerialMonitorRow(nextLines[index]));
             }
         }
 
-        return devices.Count > 0 ? devices[0].DeviceId : null;
+        currentSerialMonitorLines = nextLines;
     }
 
-    private static string BuildObservedDeviceOptionLabel(DeviceSnapshot snapshot)
-    {
-        var name = string.IsNullOrWhiteSpace(snapshot.Name) ? snapshot.DeviceId : snapshot.Name;
-        return $"{name} | {snapshot.DeviceId} | {snapshot.Status}";
-    }
-
-    private void ApplyObservedStatisticsPanel(string? deviceId, DeviceSnapshot? snapshot, DeviceTelemetryHistorySnapshot history)
-    {
-        if (observedStatisticsStatusText is null || observedStatisticsContentPanel is null)
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(deviceId) || snapshot is null)
-        {
-            observedStatisticsStatusText.Text = "Selecione um device acima para ver estatisticas e historico de telemetria.";
-            observedStatisticsContentPanel.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        if (snapshot.ControlPlaneState == DeviceControlPlaneState.LegacyOnly)
-        {
-            observedStatisticsStatusText.Text = "Firmware legado detectado: estatisticas e historico estruturados exigem control plane MQTT.";
-            observedStatisticsContentPanel.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        var hasStructuredStats = HasObservedStructuredStats(snapshot);
-        var hasHistory = HasObservedTelemetryHistory(history);
-        var hasLiveTelemetry = snapshot.LastTelemetryUtc.HasValue;
-
-        if (!hasStructuredStats && !hasHistory && !hasLiveTelemetry)
-        {
-            observedStatisticsStatusText.Text = "Aguardando primeiro snapshot de estatisticas ou historico deste dispositivo.";
-            observedStatisticsContentPanel.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        observedStatisticsStatusText.Text = snapshot.Status == DeviceStatus.Online
-            ? $"Atualizado para {deviceId} com a ultima telemetria conhecida."
-            : $"Offline: exibindo ultimo snapshot conhecido de {deviceId}.";
-        observedStatisticsContentPanel.Visibility = Visibility.Visible;
-
-        observedStatsIdentityFirmwareText.Text = $"Firmware: {snapshot.FirmwareVersion ?? "-"}";
-        observedStatsIdentityChipText.Text = $"Chip: {BuildObservedChipIdentityLabel(snapshot)}";
-        observedStatsIdentitySdkText.Text = $"SDK: {snapshot.SdkVersion ?? "-"}";
-        observedStatsIdentityBoardText.Text = $"Board: {snapshot.BoardModel ?? "-"} | Painel: {snapshot.PanelType ?? "-"}";
-
-        observedStatsCapacityHeapText.Text = $"Heap total: {FormatObservedBytes(snapshot.HeapTotalBytes)}";
-        observedStatsCapacityPsramText.Text = $"PSRAM total: {FormatObservedBytes(snapshot.PsramTotalBytes)}";
-        observedStatsCapacityFlashText.Text = $"Flash total: {FormatObservedBytes(snapshot.FlashTotalBytes)}";
-        observedStatsCapacitySketchText.Text = $"Sketch: {FormatObservedBytes(snapshot.SketchSizeBytes)} usados | {FormatObservedBytes(snapshot.FreeSketchBytes)} livres";
-
-        observedStatsStreamSummaryText.Text = $"Controle: {snapshot.ControlPlaneState} | Wi-Fi: {snapshot.WifiState ?? "-"}";
-        observedStatsStreamFramesText.Text = $"Frames: RX {snapshot.StreamFramesReceived?.ToString(CultureInfo.InvariantCulture) ?? "-"} | APL {snapshot.StreamFramesApplied?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
-        observedStatsStreamIntegrityText.Text = $"Integridade: sucesso {BuildObservedStreamSuccessRateLabel(snapshot)} | gaps {snapshot.StreamSequenceGapCount?.ToString(CultureInfo.InvariantCulture) ?? "-"} | invalidos {snapshot.StreamInvalidFrameCount?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
-        observedStatsStreamHeartbeatText.Text = $"Heartbeat: telemetria #{snapshot.TelemetrySequence?.ToString(CultureInfo.InvariantCulture) ?? "-"} | ultimo frame #{snapshot.StreamLastSequence?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
-
-        observedRssiHistorySummaryText.Text = BuildObservedRssiHistorySummary(history.RssiSamples);
-        observedLoopHistorySummaryText.Text = BuildObservedLoopHistorySummary(history.LoopLoadSamples);
-        observedHeapHistorySummaryText.Text = BuildObservedMemoryHistorySummary("Heap", history.FreeHeapSamples, snapshot.HeapTotalBytes);
-        observedPsramHistorySummaryText.Text = snapshot.PsramAvailable == false
-            ? "PSRAM indisponivel neste build."
-            : BuildObservedMemoryHistorySummary("PSRAM", history.FreePsramSamples, snapshot.PsramTotalBytes);
-
-        RenderObservedHistoryBars(
-            observedRssiHistoryBarsPanel,
-            history.RssiSamples.Select(static value => NormalizeObservedRssi(value)).ToArray(),
-            Color.FromArgb(255, 86, 156, 214));
-        RenderObservedHistoryBars(
-            observedLoopHistoryBarsPanel,
-            history.LoopLoadSamples.Select(static value => NormalizeObservedPercent(value)).ToArray(),
-            Color.FromArgb(255, 78, 201, 176));
-        RenderObservedHistoryBars(
-            observedHeapHistoryBarsPanel,
-            history.FreeHeapSamples.Select(value => NormalizeObservedMemory(value, snapshot.HeapTotalBytes)).ToArray(),
-            Color.FromArgb(255, 108, 203, 95));
-        RenderObservedHistoryBars(
-            observedPsramHistoryBarsPanel,
-            history.FreePsramSamples.Select(value => NormalizeObservedMemory(value, snapshot.PsramTotalBytes)).ToArray(),
-            Color.FromArgb(255, 155, 89, 182));
-    }
-
-    private void UpdateObservedStructuredDeviceLogs(string? deviceId, IReadOnlyList<DeviceLogEntry> entries, DeviceSnapshot? snapshot)
-    {
-        currentObservedDeviceLogsDeviceId = deviceId;
-        currentObservedDeviceLogEntries = entries ?? Array.Empty<DeviceLogEntry>();
-
-        if (observedDeviceLogsHeaderText is null
-            || observedDeviceLogsHintText is null
-            || observedDeviceLogsListView is null
-            || observedDeviceLogsPlaceholderText is null)
-        {
-            return;
-        }
-
-        observedDeviceLogsHeaderText.Text = string.IsNullOrWhiteSpace(deviceId)
-            ? "Logs do device"
-            : $"Logs do device | {deviceId}";
-
-        observedDeviceLogsHintText.Text = ResolveObservedDeviceLogsHint(snapshot);
-        RefreshObservedStructuredDeviceLogsView();
-    }
-
-    private void OnObservedDeviceLogsFilterChanged(object sender, SelectionChangedEventArgs e)
-    {
-        RefreshObservedStructuredDeviceLogsView();
-    }
-
-    private void OnObservedDeviceLogsSearchTextChanged(object sender, TextChangedEventArgs e)
-    {
-        RefreshObservedStructuredDeviceLogsView();
-    }
-
-    private void RefreshObservedStructuredDeviceLogsView()
-    {
-        if (observedDeviceLogsListView is null || observedDeviceLogsPlaceholderText is null)
-        {
-            return;
-        }
-
-        var snapshot = FindObservedDeviceSnapshot(currentObservedDeviceLogsDeviceId);
-        var filteredEntries = currentObservedDeviceLogEntries
-            .Where(entry => MatchesObservedSeverityFilter(entry) && MatchesObservedSearchFilter(entry))
-            .OrderBy(entry => entry.Timestamp)
-            .ToArray();
-
-        observedDeviceLogsListView.Items.Clear();
-        foreach (var entry in filteredEntries)
-        {
-            observedDeviceLogsListView.Items.Add(BuildObservedDeviceLogRow(entry));
-        }
-
-        var placeholder = ResolveObservedLogsPlaceholder(snapshot, filteredEntries.Length);
-        observedDeviceLogsPlaceholderText.Text = placeholder;
-        observedDeviceLogsPlaceholderText.Visibility = filteredEntries.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        if (filteredEntries.Length > 0 && observedDeviceLogsAutoFollowToggle?.IsOn == true)
-        {
-            ScrollObservedStructuredDeviceLogsToEnd();
-        }
-    }
-
-    private void ScrollObservedStructuredDeviceLogsToEnd()
+    private void ScrollSerialMonitorToEnd()
     {
         _ = DispatcherQueue.TryEnqueue(() =>
         {
-            if (observedDeviceLogsListView is null || observedDeviceLogsListView.Items.Count == 0)
+            if (serialMonitorListView is null || serialMonitorListView.Items.Count == 0)
             {
                 return;
             }
 
-            observedDeviceLogsListView.UpdateLayout();
-            observedDeviceLogsListView.ScrollIntoView(observedDeviceLogsListView.Items[observedDeviceLogsListView.Items.Count - 1]);
+            serialMonitorListView.UpdateLayout();
+            serialMonitorListView.ScrollIntoView(serialMonitorListView.Items[serialMonitorListView.Items.Count - 1]);
         });
     }
 
-    private static Border BuildObservedDeviceLogRow(DeviceLogEntry entry)
+    private static Border BuildSerialMonitorRow(SerialMonitorLine line)
     {
-        var foreground = entry.Severity switch
-        {
-            DeviceLogSeverity.Warning => new SolidColorBrush(Color.FromArgb(255, 252, 225, 0)),
-            DeviceLogSeverity.Error => new SolidColorBrush(Color.FromArgb(255, 255, 99, 132)),
-            _ => new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)),
-        };
-
         return new Border
         {
-            Padding = new Thickness(16, 10, 16, 10),
+            Padding = new Thickness(16, 6, 16, 6),
             BorderBrush = new SolidColorBrush(Color.FromArgb(18, 255, 255, 255)),
             BorderThickness = new Thickness(0, 0, 0, 1),
             Child = new TextBlock
             {
-                Text = DeviceLogEntryFormatter.Format(entry),
+                Text = line.Text,
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 11.5,
                 TextWrapping = TextWrapping.WrapWholeWords,
-                Foreground = foreground,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 231, 231, 231)),
             },
         };
     }
 
-    private bool MatchesObservedSeverityFilter(DeviceLogEntry entry)
+    private static string ResolveSerialMonitorPlaceholder(SerialMonitorSessionState state)
     {
-        var selected = (observedDeviceLogsSeverityComboBox?.SelectedItem as ComboBoxItem)?.Tag as string;
-        return selected switch
+        if (state.ConnectionState == SerialMonitorConnectionState.Connected)
         {
-            "info" => entry.Severity == DeviceLogSeverity.Info,
-            "warning" => entry.Severity == DeviceLogSeverity.Warning,
-            "error" => entry.Severity == DeviceLogSeverity.Error,
-            _ => true,
-        };
+            return "Conectado. Aguardando saida serial do firmware...";
+        }
+
+        if (state.ConnectionState == SerialMonitorConnectionState.Connecting)
+        {
+            return "Abrindo a porta serial...";
+        }
+
+        if (state.ConnectionState == SerialMonitorConnectionState.Error)
+        {
+            return state.ErrorText ?? "Falha ao abrir ou ler a porta serial.";
+        }
+
+        if (state.AvailablePorts.Count == 0)
+        {
+            return "Nenhuma porta COM detectada.";
+        }
+
+        return string.IsNullOrWhiteSpace(state.SelectedPortName)
+            ? "Selecione uma porta COM para iniciar o monitor serial."
+            : $"Pronto para monitorar {state.SelectedPortName}.";
     }
-
-    private bool MatchesObservedSearchFilter(DeviceLogEntry entry)
-    {
-        var rawSearch = observedDeviceLogsSearchBox?.Text;
-        if (string.IsNullOrWhiteSpace(rawSearch))
-        {
-            return true;
-        }
-
-        var search = rawSearch.Trim();
-        return entry.Message.Contains(search, StringComparison.OrdinalIgnoreCase)
-            || entry.Category.Contains(search, StringComparison.OrdinalIgnoreCase)
-            || (!string.IsNullOrWhiteSpace(entry.Code) && entry.Code.Contains(search, StringComparison.OrdinalIgnoreCase))
-            || entry.Source.ToString().Contains(search, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string ResolveObservedDeviceLogsHint(DeviceSnapshot? snapshot)
-    {
-        if (snapshot is null)
-        {
-            return "Eventos do app e do firmware para o device selecionado no combo acima.";
-        }
-
-        if (snapshot.ControlPlaneState == DeviceControlPlaneState.LegacyOnly)
-        {
-            return "Firmware legado: exibindo apenas eventos locais do app; logs estruturados do firmware exigem MQTT.";
-        }
-
-        return snapshot.Status == DeviceStatus.Online
-            ? "Fluxo unificado do app e do firmware para o dispositivo selecionado."
-            : "Dispositivo offline: exibindo o historico desta sessao no app.";
-    }
-
-    private string ResolveObservedLogsPlaceholder(DeviceSnapshot? snapshot, int filteredCount)
-    {
-        if (!string.IsNullOrWhiteSpace(currentObservedDeviceLogsDeviceId) && filteredCount > 0)
-        {
-            return string.Empty;
-        }
-
-        if (string.IsNullOrWhiteSpace(currentObservedDeviceLogsDeviceId))
-        {
-            return "Selecione um device acima para ver logs.";
-        }
-
-        if (snapshot?.ControlPlaneState == DeviceControlPlaneState.LegacyOnly)
-        {
-            return "Firmware legado sem logs MQTT estruturados. Os eventos locais do app aparecerao aqui quando existirem.";
-        }
-
-        if (currentObservedDeviceLogEntries.Count == 0)
-        {
-            return "Sem eventos para este dispositivo ainda.";
-        }
-
-        return "Nenhum evento coincide com o filtro atual.";
-    }
-
-    private static bool HasObservedStructuredStats(DeviceSnapshot? snapshot)
-    {
-        return snapshot is not null
-            && (!string.IsNullOrWhiteSpace(snapshot.ChipModel)
-                || snapshot.ChipRevision.HasValue
-                || snapshot.ChipCores.HasValue
-                || snapshot.CpuFreqMHz.HasValue
-                || !string.IsNullOrWhiteSpace(snapshot.SdkVersion)
-                || snapshot.HeapTotalBytes.HasValue
-                || snapshot.PsramTotalBytes.HasValue
-                || snapshot.FlashTotalBytes.HasValue
-                || snapshot.SketchSizeBytes.HasValue
-                || snapshot.FreeSketchBytes.HasValue);
-    }
-
-    private static bool HasObservedTelemetryHistory(DeviceTelemetryHistorySnapshot history)
-    {
-        ArgumentNullException.ThrowIfNull(history);
-
-        return history.RssiSamples.Count > 0
-            || history.LoopLoadSamples.Count > 0
-            || history.FreeHeapSamples.Count > 0
-            || history.FreePsramSamples.Count > 0;
-    }
-
-    private static string BuildObservedChipIdentityLabel(DeviceSnapshot snapshot)
-    {
-        var parts = new List<string>(capacity: 4);
-        if (!string.IsNullOrWhiteSpace(snapshot.ChipModel))
-        {
-            parts.Add(snapshot.ChipModel!);
-        }
-
-        if (snapshot.ChipRevision.HasValue)
-        {
-            parts.Add($"rev {snapshot.ChipRevision.Value}");
-        }
-
-        if (snapshot.ChipCores.HasValue)
-        {
-            parts.Add($"{snapshot.ChipCores.Value} cores");
-        }
-
-        if (snapshot.CpuFreqMHz.HasValue)
-        {
-            parts.Add($"{snapshot.CpuFreqMHz.Value} MHz");
-        }
-
-        return parts.Count == 0 ? "-" : string.Join(" | ", parts);
-    }
-
-    private static string BuildObservedRssiHistorySummary(IReadOnlyList<int?> samples)
-    {
-        var current = samples.LastOrDefault(value => value.HasValue);
-        return current.HasValue
-            ? $"Atual {current.Value} dBm | {samples.Count} amostras"
-            : "Sem amostras de RSSI ainda.";
-    }
-
-    private static string BuildObservedLoopHistorySummary(IReadOnlyList<int?> samples)
-    {
-        var current = samples.LastOrDefault(value => value.HasValue);
-        return current.HasValue
-            ? $"Atual {current.Value}% | {samples.Count} amostras"
-            : "Sem amostras de carga ainda.";
-    }
-
-    private static string BuildObservedMemoryHistorySummary(string label, IReadOnlyList<long?> samples, long? totalBytes)
-    {
-        var current = samples.LastOrDefault(value => value.HasValue);
-        if (!current.HasValue)
-        {
-            return $"Sem amostras de {label} ainda.";
-        }
-
-        return totalBytes.HasValue && totalBytes.Value > 0
-            ? $"{label} atual {FormatObservedBytes(current.Value)} de {FormatObservedBytes(totalBytes)}"
-            : $"{label} atual {FormatObservedBytes(current.Value)}";
-    }
-
-    private static void RenderObservedHistoryBars(StackPanel panel, double?[] normalizedValues, Color accentColor)
-    {
-        panel.Children.Clear();
-
-        if (normalizedValues.Length == 0)
-        {
-            for (var index = 0; index < 24; index++)
-            {
-                panel.Children.Add(BuildObservedHistoryBar(8d, Color.FromArgb(28, accentColor.R, accentColor.G, accentColor.B)));
-            }
-
-            return;
-        }
-
-        foreach (var value in normalizedValues)
-        {
-            var normalized = value.HasValue && double.IsFinite(value.Value)
-                ? Math.Clamp(value.Value, 0d, 1d)
-                : 0.08d;
-            var alpha = value.HasValue ? (byte)220 : (byte)48;
-            var barHeight = 6d + (normalized * 54d);
-            panel.Children.Add(BuildObservedHistoryBar(barHeight, Color.FromArgb(alpha, accentColor.R, accentColor.G, accentColor.B)));
-        }
-    }
-
-    private static Border BuildObservedHistoryBar(double height, Color color)
-    {
-        return new Border
-        {
-            Width = 5,
-            Height = height,
-            CornerRadius = new CornerRadius(3),
-            Background = new SolidColorBrush(color),
-            VerticalAlignment = VerticalAlignment.Bottom,
-        };
-    }
-
-    private static double? NormalizeObservedRssi(int? value)
-    {
-        if (!value.HasValue)
-        {
-            return null;
-        }
-
-        const double minRssi = -100d;
-        const double maxRssi = -30d;
-        return Math.Clamp((value.Value - minRssi) / (maxRssi - minRssi), 0d, 1d);
-    }
-
-    private static double? NormalizeObservedPercent(int? value)
-    {
-        return value.HasValue
-            ? Math.Clamp(value.Value / 100d, 0d, 1d)
-            : null;
-    }
-
-    private static double? NormalizeObservedMemory(long? value, long? max)
-    {
-        if (!value.HasValue || value.Value < 0)
-        {
-            return null;
-        }
-
-        var maxValue = max.GetValueOrDefault();
-        if (maxValue <= 0)
-        {
-            return 0d;
-        }
-
-        return Math.Clamp(value.Value / (double)maxValue, 0d, 1d);
-    }
-
-    private static string FormatObservedBytes(long? bytes)
-    {
-        if (!bytes.HasValue || bytes.Value < 0)
-        {
-            return "-";
-        }
-
-        const double kib = 1024d;
-        const double mib = 1024d * 1024d;
-
-        if (bytes.Value < 1024)
-        {
-            return $"{bytes.Value} B";
-        }
-
-        if (bytes.Value < mib)
-        {
-            return (bytes.Value / kib).ToString("0", CultureInfo.InvariantCulture) + " KB";
-        }
-
-        return (bytes.Value / mib).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
-    }
-
-    private static string BuildObservedStreamSuccessRateLabel(DeviceSnapshot? snapshot)
-    {
-        if (snapshot?.StreamFramesReceived is not uint framesReceived || framesReceived == 0)
-        {
-            return "-";
-        }
-
-        var framesApplied = snapshot.StreamFramesApplied ?? 0;
-        var successRate = Math.Clamp((int)Math.Round((framesApplied / (double)framesReceived) * 100d), 0, 100);
-        return $"{successRate}%";
-    }
-
-    private static Border CreateSurfaceCard(UIElement content, double padding = 16)
-    {
-        return new Border
-        {
-            Background = CreateSettingsPaneBrush(),
-            BorderBrush = CreateSettingsStrokeBrush(),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(padding),
-            Child = content,
-        };
-    }
-
-    private sealed record ObservedDeviceOption(string DeviceId, string Label);
 }

@@ -12,7 +12,20 @@ public sealed class RendererIntegrationContractSmokeTests
 
         Assert.Equal(RendererIntegrationMode.Explicit, capabilities.IntegrationMode);
         Assert.Equal(RendererBarCountMode.Native, capabilities.BarCountMode);
-        Assert.Equal(RendererHubTransportMode.Frame128x64, capabilities.HubTransportMode);
+        Assert.Equal(RendererHubTransportMode.Bins128, capabilities.HubTransportMode);
+        Assert.True(capabilities.UsesAnalyzerPipeline);
+        Assert.False(capabilities.Controls.SupportsBarCount);
+    }
+
+    [Fact]
+    public void VisualizerEngine_ShouldReturnExplicitCapabilities_ForWaveMirror()
+    {
+        var engine = new VisualizerEngine();
+        var capabilities = engine.GetCapabilities(RendererIds.WaveMirror);
+
+        Assert.Equal(RendererIntegrationMode.Explicit, capabilities.IntegrationMode);
+        Assert.Equal(RendererBarCountMode.Native, capabilities.BarCountMode);
+        Assert.Equal(RendererHubTransportMode.Bins128, capabilities.HubTransportMode);
         Assert.True(capabilities.UsesAnalyzerPipeline);
         Assert.False(capabilities.Controls.SupportsBarCount);
     }
@@ -25,7 +38,7 @@ public sealed class RendererIntegrationContractSmokeTests
 
         Assert.Equal(RendererIntegrationMode.Explicit, capabilities.IntegrationMode);
         Assert.Equal(RendererBarCountMode.Resampled, capabilities.BarCountMode);
-        Assert.Equal(RendererHubTransportMode.Frame128x64, capabilities.HubTransportMode);
+        Assert.Equal(RendererHubTransportMode.Bins128, capabilities.HubTransportMode);
         Assert.True(capabilities.UsesAnalyzerPipeline);
         Assert.True(capabilities.Controls.SupportsBarCount);
     }
@@ -38,7 +51,7 @@ public sealed class RendererIntegrationContractSmokeTests
 
         Assert.Equal(RendererIntegrationMode.Explicit, capabilities.IntegrationMode);
         Assert.Equal(RendererBarCountMode.Fixed, capabilities.BarCountMode);
-        Assert.Equal(RendererHubTransportMode.Frame128x64, capabilities.HubTransportMode);
+        Assert.Equal(RendererHubTransportMode.Bins128, capabilities.HubTransportMode);
         Assert.Equal(64, capabilities.FixedVisualElementCount);
         Assert.True(capabilities.UsesAnalyzerPipeline);
         Assert.False(capabilities.Controls.SupportsBarCount);
@@ -53,7 +66,7 @@ public sealed class RendererIntegrationContractSmokeTests
 
         Assert.Equal(RendererIntegrationMode.LegacyAssumed, capabilities.IntegrationMode);
         Assert.Equal(RendererBarCountMode.Native, capabilities.BarCountMode);
-        Assert.Equal(RendererHubTransportMode.Frame128x64, capabilities.HubTransportMode);
+        Assert.Equal(RendererHubTransportMode.Bins128, capabilities.HubTransportMode);
         Assert.True(capabilities.UsesAnalyzerPipeline);
         Assert.True(capabilities.Controls.SupportsBarCount);
     }

@@ -4,7 +4,7 @@ namespace App.WinUI.Views;
 
 public partial class MainPage
 {
-    // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-prioridade-hub75-visualizador-sobre-paineis
+    // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-toggle-hub75-como-gate-e-runtime-em-background
     private async Task SyncHub75DeviceSessionAsync()
     {
         if (ShouldIgnoreUiMutation())
@@ -14,7 +14,7 @@ public partial class MainPage
 
         try
         {
-            if (hubPreviewEnabled)
+            if (ShouldEnableHub75DeviceOutput())
             {
                 await panelsPlaybackService.SuspendAsync().ConfigureAwait(false);
                 await hub75VisualizerSessionService.SetHub75ModeAsync(enabled: true).ConfigureAwait(false);

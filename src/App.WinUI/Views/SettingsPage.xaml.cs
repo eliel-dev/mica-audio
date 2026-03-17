@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using App.WinUI.Services.Devices;
+using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -9,12 +9,12 @@ using Windows.UI;
 
 namespace App.WinUI.Views;
 
-// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-settingspage-com-observabilidade-do-device
+// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-monitor-serial-em-configuracoes
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
-    private readonly DeviceOperationsCoordinator deviceOps;
+    private readonly ISerialMonitorService serialMonitorService;
     private AppSettings currentSettings = new();
     private bool suppressMicaBackdropChanged;
     private ToggleSwitch micaBackdropToggle = null!;
@@ -25,11 +25,11 @@ public sealed partial class SettingsPage : Page
     internal SettingsPage(
         SettingsRepository settingsRepository,
         AppSettingsDomainService settingsDomainService,
-        DeviceOperationsCoordinator deviceOps)
+        ISerialMonitorService serialMonitorService)
     {
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
-        this.deviceOps = deviceOps;
+        this.serialMonitorService = serialMonitorService;
 
         InitializeComponent();
         Content = BuildLayout();
@@ -41,12 +41,12 @@ public sealed partial class SettingsPage : Page
     {
         UpdateErrorLogsInfo();
         await LoadGeneralSettingsAsync();
-        ActivateDeviceObservability();
+        await ActivateSerialMonitorAsync();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private async void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        DeactivateDeviceObservability();
+        await DeactivateSerialMonitorAsync();
     }
 
     private async Task LoadGeneralSettingsAsync()

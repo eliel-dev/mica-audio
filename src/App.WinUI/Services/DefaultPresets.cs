@@ -4,10 +4,10 @@ using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services;
 
-// DOCS: docs/wiki/modules/visual-win2d.md#launchpad-grid
+// DOCS: docs/wiki/modules/visual-win2d.md#wave-mirror
 internal static class DefaultPresets
 {
-    private const int CurrentSchemaVersion = 15;
+    private const int CurrentSchemaVersion = 17;
 
     public static IReadOnlyList<PresetDefinition> Create()
     {
@@ -17,6 +17,7 @@ internal static class DefaultPresets
             CreateAudioMotionClonePreset("audiomotion-sunset", "AudioMotion Sunset", CreateSunsetStops()),
             CreateAudioMotionClonePreset("audiomotion-arctic", "AudioMotion Arctic", CreateArcticStops()),
             CreateAudioMotionClonePreset("audiomotion-neon", "AudioMotion Neon", CreateNeonStops()),
+            CreateWaveMirrorPreset(),
 
             CreateRendererPreset(
                 id: "spectrum-vizzy-blob-neon",
@@ -276,9 +277,28 @@ internal static class DefaultPresets
             paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
             {
                 ["lineThickness"] = 3f,
-                ["lineMode"] = 1f,
-                ["heightScale"] = 0.86f,
+                ["heightScale"] = 0.78f,
                 ["minHalfHeight"] = 0f,
+            });
+    }
+
+    private static PresetDefinition CreateWaveMirrorPreset()
+    {
+        return CreateRendererPreset(
+            id: "spectrum-wave-mirror",
+            name: "Wave Mirror",
+            rendererId: RendererIds.WaveMirror,
+            paletteStops: CreateRainbowStops(),
+            glow: true,
+            displayBandCount: 38,
+            paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["heightScale"] = 0.82f,
+                ["minHalfHeight"] = 0f,
+                ["centerLineThickness"] = 2.4f,
+                ["waveThickness"] = 1.6f,
+                ["edgePaddingPx"] = 0f,
+                ["waveGlowAlpha"] = 0.18f,
             });
     }
 

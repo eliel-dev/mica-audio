@@ -23,6 +23,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
     private readonly Hub75GifPlayer player;
     private readonly object gate = new();
     private readonly int maxDownloadBytes;
+    private readonly bool enableMatrixTransport;
     private readonly RgbaColor[] blackFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
     private CancellationTokenSource? loadCts;
 
@@ -37,6 +38,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         Hub75FrameFormatter formatter,
         Hub75GifPlayer player,
         int maxDownloadBytes = MaxDownloadBytes,
+        bool enableMatrixTransport = true,
         float brightness = LedDefaults.Brightness)
     {
         this.matrixOutput = matrixOutput;
@@ -45,6 +47,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         this.formatter = formatter;
         this.player = player;
         this.maxDownloadBytes = Math.Max(1, maxDownloadBytes);
+        this.enableMatrixTransport = enableMatrixTransport;
         latestFrame = blackFrame.ToArray();
 
         var config = new LedOutputConfig
@@ -54,8 +57,12 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
             Brightness = Math.Clamp(brightness, 0f, 1f),
         };
 
-        matrixOutput.Start(config);
-        matrixOutput.SetBrightness(config.Brightness);
+        if (enableMatrixTransport)
+        {
+            matrixOutput.Start(config);
+            matrixOutput.SetBrightness(config.Brightness);
+        }
+
         simulatorOutput.Start(config);
         simulatorOutput.SetBrightness(config.Brightness);
         player.FrameReady += OnPlayerFrameReady;
@@ -126,7 +133,11 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
             latestFrame = blackFrame.ToArray();
         }
 
-        SendLegacyBinsClear();
+        if (enableMatrixTransport)
+        {
+            SendLegacyBinsClear();
+        }
+
         SendSimulatorFrame(blackFrame);
         StatusChanged?.Invoke(this, "GIF runtime parado.");
     }
@@ -273,7 +284,11 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
     private void SendFrame(RgbaColor[] frame)
     {
         var payload = LedPayloadFactory.CreateFramePayload(frame, GifPresetId);
-        matrixOutput.Send(payload);
+        if (enableMatrixTransport)
+        {
+            matrixOutput.Send(payload);
+        }
+
         simulatorOutput.Send(payload);
         NotifyFrameUpdated(frame);
     }

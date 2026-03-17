@@ -8,12 +8,13 @@
 4. `LedFrameDeduplicator` codifica RGB565 e decide se o frame precisa ser reenviado
 5. `SimulatorLedOutput` mantem snapshot local nativo `128x64`
 
-## Atualizacao 2026-03 - visualizer HUB75 por frame
+## Atualizacao 2026-03 - shipping mode HUB75 em Bins128
 
-- O app pode suprimir o envio continuo de `Bins128` e usar `Frame128x64` como caminho autoritativo para renderers 2D mais artisticos.
-- Esse caminho preserva o firmware atual: o ESP32 ja suporta `messageType = 2` e apenas desenha o frame recebido.
-- `Bins128` continua disponivel como caminho de menor custo para renderers que preferem throughput.
-- `AudioMotion Clone` passou a priorizar paridade visual no HUB75 e agora segue o caminho `Frame128x64`.
+- O caminho shipping/default do desktop voltou a priorizar `Bins128`.
+- `AudioPipelineFrameProcessor` continua tratando `Frame128x64` como infraestrutura preservada, mas no runtime normal do app o fluxo ativo e:
+  - `PcmFrame -> SpectrumFrame -> LedPayloadFactory.CreateSpectrumPayload() -> Type 1`.
+- `Frame128x64` continua existindo para cenarios explicitamente forcados e para a infraestrutura local do preview/simulador, sem sair do contrato wire atual.
+- A consequencia intencional e que o preview WinUI pode divergir do HUB75 fisico em renderers artisticos, em troca de throughput maior no device.
 
 ## Atualizacao 2026-03 - Factory de payload e roteamento do pipeline
 
@@ -23,8 +24,23 @@
   - `LedPayloadFactory.ResampleSpectrumBins()` centraliza o remapeamento para `128` bins usado no pipeline e nos smoke tests.
 - O runtime do app passou a separar composicao de payload de roteamento:
   - `AudioPipelineFrameProcessor` decide quando enviar `Bins128` vs `Frame128x64`;
-  - `AudioPipelineOutputRouter` aplica brilho e decide se o simulador recebe o frame;
+  - `AudioPipelineOutputRouter` aplica brilho e decide separadamente se o simulador e o device HUB75 recebem o frame;
   - `Esp32S3LedOutput` continua sem mudar o wire e recebe um `LedPayload` ja normalizado.
+
+## Atualizacao 2026-03 - Toggle HUB75 como gate do device output
+
+- O envio para `Esp32S3LedOutput` deixou de acontecer por default ao entrar no `Visualizador`.
+- `AudioPipelineOutputRouter` agora trata preview local e output remoto como estados independentes:
+  - `enableSimulator` controla apenas o preview local do HUB75;
+  - `enableHub75DeviceOutput` controla apenas o stream para o ESP32.
+- Com isso:
+  - o toggle `Modo HUB75` passou a governar exclusivamente o device output;
+  - `forceSimulator` continua existindo apenas para cenarios locais de preview;
+  - quando ambos os outputs estao desligados, o payload cai no `NullLedOutput`.
+- No shipping mode atual:
+  - `Audio` usa `Bins128` por default no device;
+  - `GIF` do visualizador principal continua local/simulador;
+  - `Paineis` preservam um path dedicado `Frame128x64` com envio direcionado por `deviceId`.
 
 ## Atualizacao 2026-03 - Deduplicacao RGB565 extraida
 

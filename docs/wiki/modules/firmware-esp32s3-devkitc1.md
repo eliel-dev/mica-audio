@@ -237,6 +237,16 @@
   - o campo so e enviado quando a leitura vier valida (`finite`);
   - nao existe estado termico separado nem historico termico dedicado nesta entrega.
 
+## Atualizacao 2026-03 - Budget cooperativo de poll de rede
+
+- O `loop()` passou a limitar o trabalho de rede por iteracao com `kNetworkPollBudgetUs = 8000`.
+- O budget cobre apenas a secao cooperativa de rede do `loop()`, antes da secao local de brilho/LED/render.
+- Quando uma etapa elegivel de rede e adiada por esgotamento do budget, o firmware incrementa `networkPollDeferCount`.
+- O render continua independente do budget:
+  - `shouldPresentMatrixFrame(nowUs)` segue sendo o gate oficial;
+  - `drawBars()` ou `drawFrame128x64()` continuam encerrando em `commitMatrixFrame()`;
+  - o `loop()` nao usa mais `delay()` no caminho principal para a queda de Wi-Fi.
+
 ## Atualizacao 2026-03 - Auth WS por header (RSK-002)
 
 - O handshake WS oficial passou a usar path fixo `/ws/v1/stream` sem token na query string.

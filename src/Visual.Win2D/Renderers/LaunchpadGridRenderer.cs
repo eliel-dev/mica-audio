@@ -37,7 +37,7 @@ public sealed class LaunchpadGridRenderer : IRenderer, IRendererCapabilitiesProv
         },
         BarCountMode = RendererBarCountMode.Fixed,
         IntegrationMode = RendererIntegrationMode.Explicit,
-        HubTransportMode = RendererHubTransportMode.Frame128x64,
+        HubTransportMode = RendererHubTransportMode.Bins128,
         FixedVisualElementCount = PadCount,
         UnsupportedControlsHint = "Launchpad Grid usa uma grade fixa de 64 pads.",
     };

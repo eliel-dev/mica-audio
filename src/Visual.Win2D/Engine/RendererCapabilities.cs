@@ -10,7 +10,7 @@ public sealed class RendererCapabilities
 
     public RendererIntegrationMode IntegrationMode { get; init; } = RendererIntegrationMode.LegacyAssumed;
 
-    public RendererHubTransportMode HubTransportMode { get; init; } = RendererHubTransportMode.Frame128x64;
+    public RendererHubTransportMode HubTransportMode { get; init; } = RendererHubTransportMode.Bins128;
 
     public int? FixedVisualElementCount { get; init; }
 
@@ -23,7 +23,7 @@ public sealed class RendererCapabilities
             Controls = RendererControlSupport.AnalyzerDefaults,
             BarCountMode = RendererBarCountMode.Native,
             IntegrationMode = RendererIntegrationMode.LegacyAssumed,
-            HubTransportMode = RendererHubTransportMode.Frame128x64,
+            HubTransportMode = RendererHubTransportMode.Bins128,
         };
     }
 }

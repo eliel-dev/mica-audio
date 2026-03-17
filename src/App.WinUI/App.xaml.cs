@@ -164,6 +164,7 @@ public partial class App : Application
         services.AddSingleton<Hub75VisualizerSessionService>();
         services.AddSingleton<ISerialPortCatalogService, SerialPortCatalogService>();
         services.AddSingleton<ISerialProvisioningClient, SerialProvisioningClient>();
+        services.AddSingleton<ISerialMonitorService, SerialMonitorService>();
         services.AddSingleton<IEspToolFlashService, EspToolFlashService>();
         services.AddSingleton<IDeviceUsbOnboardingService, DeviceUsbOnboardingService>();
 
@@ -188,7 +189,12 @@ public partial class App : Application
         services.AddSingleton<NullLedOutput>();
         services.AddSingleton(sp => new Esp32S3LedOutput(sp.GetRequiredService<DeviceServerHost>()));
         services.AddSingleton<PanelsDeviceSessionService>();
-        services.AddSingleton<PanelsPlaybackService>();
+        services.AddSingleton(sp => new PanelsPlaybackService(
+            sp.GetRequiredService<DeviceServerHost>(),
+            sp.GetRequiredService<PanelsFrameComposer>(),
+            sp.GetRequiredService<PanelsDeviceSessionService>(),
+            sp.GetRequiredService<Hub75VisualizerSessionService>(),
+            enableMatrixTransport: true));
 
         services.AddTransient<MainPageViewModel>();
         services.AddTransient<DevicesPageViewModel>();
@@ -237,7 +243,7 @@ public partial class App : Application
         services.AddTransient<SettingsPage>(sp => new SettingsPage(
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>(),
-            sp.GetRequiredService<DeviceOperationsCoordinator>()));
+            sp.GetRequiredService<ISerialMonitorService>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>

@@ -26,6 +26,7 @@ Pontos principais do cutover HUB75 128x64:
 - [MonitoringPage UI](../../../src/App.WinUI/Views/MonitoringPage.Ui.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
 - [SettingsPage observability](../../../src/App.WinUI/Views/SettingsPage.Observability.cs#L1)
+- [SerialMonitorService](../../../src/App.WinUI/Infrastructure/Serial/SerialMonitorService.cs#L1)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
@@ -104,7 +105,7 @@ Observacoes ativas:
 - A DevicesPage usa apenas miniatura inline da lista para preview de app; o painel da direita nao tem preview maior.
 - A DevicesPage agora usa `WebView2` no painel direito e carrega o dashboard HTML local em `/dashboard`, mantendo a lista de devices e o wizard USB no shell WinUI nativo.
 - O dashboard HTML recebe selecao via `postMessage`, consome `WS /ws/device/{deviceId}` e preserva no host WinUI as acoes reais de brilho, teste de LED e remocao.
-- `Logs` estruturados continuam em `Configuracoes`; o dashboard principal fica focado em visualizacao/controle do device selecionado.
+- `Configuracoes` agora expoe um monitor serial local por `COM` manual; o dashboard principal continua focado em visualizacao/controle do device selecionado.
 - O DeviceServerHost aplica grace curto de detach WS (500ms) e detach por identidade de socket para reduzir flapping em reconexao rapida.
 - O online/offline oficial da UI agora vem do control plane MQTT; WS isolado nao basta mais para marcar device online.
 - O snapshot tambem diferencia `LegacyOnly` para firmware que ainda usa WS-texto/HTTP no control plane.
@@ -159,7 +160,7 @@ Observacoes ativas do runtime do app:
 - `ShellPage` agora tambem resolve a sessao `Monitoramento`, que le sensores locais do PC via HWiNFO64 Shared Memory sem misturar com o runtime de devices.
 - `AppStartupDiagnostics` e `MainPage.Startup` concentram breadcrumbs, fallback de preset legado e guard de bootstrap da UI.
 - `App` aplica `MicaBackdrop` com base em `AppSettings.UseMicaBackdrop` e consegue alternar entre Mica e superficie solida em runtime sem restart.
-- `SettingsPage` concentra `Geral` + `Observabilidade do device`; o combo local escolhe o alvo do `Expander` `Logs` sem sincronizar com a `DevicesPage`, enquanto `Estatisticas` seguem fora da UI.
+- `SettingsPage` concentra `Geral` + `Monitor serial`; a trilha local usa `COM` manual, buffer circular de `2000` linhas e nao depende mais de `deviceId` nem do `DeviceLogBook` para renderizacao da UI.
 - `AppLogStore` deixou de persistir log operacional completo em `app-logs.json` e agora grava em disco apenas entradas `Error`, no mesmo `crash.log` canonico do app.
 - `MonitoringPage` usa leitura local do HWiNFO64 via `HwinfoSharedMemorySource`, com 6 cards compostos orientados a hardware e lista pesquisavel de leituras agrupadas por sensor.
 - A reducao de escopo do fix de startup manteve a protecao concentrada na `MainPage`: presets sao sanitizados apenas no caminho de rebuild do analyzer.

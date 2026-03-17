@@ -1,33 +1,32 @@
 using System.Reflection;
+using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Views;
-using Device.Protocol.Models;
 
 namespace Integration.Smoke;
 
 public sealed class SettingsPageSmokeTests
 {
     [Fact]
-    public void SettingsPageShouldDeclareObservedDeviceLogsFields()
+    public void SettingsPageShouldDeclareSerialMonitorFields()
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
 
-        Assert.NotNull(typeof(SettingsPage).GetField("observedDeviceComboBox", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("observedDeviceLogsHeaderText", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("observedDeviceLogsHintText", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("observedDeviceLogsSeverityComboBox", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("observedDeviceLogsSearchBox", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("observedDeviceLogsAutoFollowToggle", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("observedDeviceLogsListView", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("observedDeviceLogsPlaceholderText", flags));
+        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorPortComboBox", flags));
+        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorConnectButton", flags));
+        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorClearButton", flags));
+        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorAutoFollowToggle", flags));
+        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorStatusText", flags));
+        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorListView", flags));
+        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorPlaceholderText", flags));
     }
 
     [Fact]
-    public void SettingsPageShouldKeepObservedDeviceLogsBuilders()
+    public void SettingsPageShouldKeepSerialMonitorBuilders()
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
 
         Assert.NotNull(typeof(SettingsPage).GetMethod("BuildDeviceObservabilityCard", flags));
-        Assert.NotNull(typeof(SettingsPage).GetMethod("BuildObservedLogsContent", flags));
+        Assert.NotNull(typeof(SettingsPage).GetMethod("BuildSerialMonitorContent", flags));
     }
 
     [Theory]
@@ -63,25 +62,31 @@ public sealed class SettingsPageSmokeTests
     }
 
     [Fact]
-    public void ResolvePreferredObservedDeviceId_ShouldPreserveCurrentThenPreferOnline()
+    public void ResolveSerialMonitorPlaceholder_ShouldDescribeDisconnectedAndConnectedStates()
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Static;
 
-        var method = typeof(SettingsPage).GetMethod("ResolvePreferredObservedDeviceId", flags);
+        var method = typeof(SettingsPage).GetMethod("ResolveSerialMonitorPlaceholder", flags);
         Assert.NotNull(method);
 
-        var devices = new[]
+        var disconnected = (string?)method!.Invoke(null, new object?[]
         {
-            new DeviceSnapshot { DeviceId = "device-offline", Status = DeviceStatus.Offline },
-            new DeviceSnapshot { DeviceId = "device-online", Status = DeviceStatus.Online },
-        };
+            new SerialMonitorSessionState
+            {
+                ConnectionState = SerialMonitorConnectionState.Disconnected,
+                AvailablePorts = [new SerialPortDescriptor { PortName = "COM7", DisplayName = "ESP32-S3", IsPreferredDevice = true, PriorityRank = 0 }],
+                SelectedPortName = "COM7",
+            },
+        });
+        var connected = (string?)method.Invoke(null, new object?[]
+        {
+            new SerialMonitorSessionState
+            {
+                ConnectionState = SerialMonitorConnectionState.Connected,
+            },
+        });
 
-        var current = method!.Invoke(null, new object?[] { "device-offline", devices });
-        var preferredOnline = method.Invoke(null, new object?[] { "missing", devices });
-        var empty = method.Invoke(null, new object?[] { null, Array.Empty<DeviceSnapshot>() });
-
-        Assert.Equal("device-offline", current);
-        Assert.Equal("device-online", preferredOnline);
-        Assert.Null(empty);
+        Assert.Equal("Pronto para monitorar COM7.", disconnected);
+        Assert.Equal("Conectado. Aguardando saida serial do firmware...", connected);
     }
 }

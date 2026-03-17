@@ -25,7 +25,7 @@ public sealed class AuroraRibbonRenderer : IRenderer, IRendererCapabilitiesProvi
         },
         BarCountMode = RendererBarCountMode.Resampled,
         IntegrationMode = RendererIntegrationMode.Explicit,
-        HubTransportMode = RendererHubTransportMode.Frame128x64,
+        HubTransportMode = RendererHubTransportMode.Bins128,
     };
 
     private float[] reactiveBands = Array.Empty<float>();

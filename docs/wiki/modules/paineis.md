@@ -58,6 +58,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - O toggle `Ativo` da galeria usa snapshot salvo do painel; editar depois disso nao muda o device ate novo `Salvar` ou nova ativacao.
 - O tick padrao do painel e `12 FPS`, alinhado ao runtime GIF atual.
 - O playback real continua em `12 FPS`, mas galeria e editor usam poster estatico ou preview sob demanda para reduzir RAM/CPU.
+- Mesmo com o visualizador principal operando em `Bins128`, `Paineis` continuam usando transporte dedicado `Frame128x64` para o HUB75 fisico.
 - Quando o `Visualizador HUB75` assume prioridade, o runtime do painel entra em suspensao retomavel:
   - o loop/frame output para;
   - o painel deixa de aparecer como ativo na galeria;

@@ -16,6 +16,7 @@ public static class RendererIds
     public const string Waterfall = "waterfall";
     public const string NeonGlow = "neon-glow";
     public const string AudioMotionClone = "audiomotion-clone";
+    public const string WaveMirror = "wave-mirror";
     public const string VizzyBlobNeon = "vizzy-blob-neon";
     public const string VizzyOrbitRings = "vizzy-orbit-rings";
     public const string PolarArcs = "polar-arcs";

@@ -78,7 +78,8 @@ public sealed partial class AppsPage : Page, IDisposable
             simulatorOutput: new SimulatorLedOutput(),
             decoder: new Hub75GifDecoder(Hub75GifDecoder.DefaultMaxGifFrames),
             formatter: new Hub75FrameFormatter(),
-            player: new Hub75GifPlayer(TimeSpan.FromMilliseconds(1000d / GifCatalogAppRuntimeService.TargetFps)));
+            player: new Hub75GifPlayer(TimeSpan.FromMilliseconds(1000d / GifCatalogAppRuntimeService.TargetFps)),
+            enableMatrixTransport: false);
         gifRuntimeProvider = new GifHub75RuntimeProvider();
         runtimeProviderRegistry = new AppRuntimeProviderRegistry([gifRuntimeProvider]);
 
