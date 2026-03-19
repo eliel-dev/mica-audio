@@ -130,4 +130,50 @@ public sealed class PanelsPageSmokeTests
         Assert.Equal(frame, stateType.GetProperty("Frame")!.GetValue(state));
         Assert.Equal(332d, stateType.GetProperty("CardWidth")!.GetValue(state));
     }
+
+    [Theory]
+    [InlineData(919d, "CompactStacked")]
+    [InlineData(920d, "CanvasFirstDesktop")]
+    [InlineData(1366d, "CanvasFirstDesktop")]
+    [InlineData(1440d, "CanvasFirstDesktop")]
+    [InlineData(1920d, "CanvasFirstDesktop")]
+    public void PanelsPageShouldResolveEditorAdaptiveLayoutMode(double width, string expectedMode)
+    {
+        const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+        var method = typeof(PanelsPage).GetMethod("ResolveEditorAdaptiveLayoutMode", flags);
+        Assert.NotNull(method);
+
+        var result = method!.Invoke(null, [width]);
+        Assert.NotNull(result);
+        Assert.Equal(expectedMode, result!.ToString());
+    }
+
+    [Theory]
+    [InlineData(880d, 900d, "CompactStacked", 1d, 0d, 320d, 306d)]
+    [InlineData(1100d, 700d, "CanvasFirstDesktop", 2d, 1d, 320d, 220d)]
+    [InlineData(1366d, 768d, "CanvasFirstDesktop", 2d, 1d, 320d, 246.6d)]
+    [InlineData(1920d, 1080d, "CanvasFirstDesktop", 2d, 1d, 320d, 387d)]
+    public void PanelsPageShouldResolveEditorLayoutPlan(
+        double width,
+        double height,
+        string expectedMode,
+        double expectedCanvasRowWeight,
+        double expectedBaseRowWeight,
+        double expectedCanvasMinHeight,
+        double expectedBottomPaneMaxHeight)
+    {
+        const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+        var method = typeof(PanelsPage).GetMethod("ResolveEditorLayoutPlan", flags);
+        Assert.NotNull(method);
+
+        var plan = method!.Invoke(null, [width, height]);
+        Assert.NotNull(plan);
+
+        var planType = plan!.GetType();
+        Assert.Equal(expectedMode, planType.GetProperty("Mode")!.GetValue(plan)!.ToString());
+        Assert.Equal(expectedCanvasRowWeight, Assert.IsType<double>(planType.GetProperty("CanvasRowWeight")!.GetValue(plan)));
+        Assert.Equal(expectedBaseRowWeight, Assert.IsType<double>(planType.GetProperty("BaseRowWeight")!.GetValue(plan)));
+        Assert.Equal(expectedCanvasMinHeight, Assert.IsType<double>(planType.GetProperty("CanvasMinHeight")!.GetValue(plan)));
+        Assert.Equal(expectedBottomPaneMaxHeight, Assert.IsType<double>(planType.GetProperty("BottomPaneMaxHeight")!.GetValue(plan)), 1);
+    }
 }

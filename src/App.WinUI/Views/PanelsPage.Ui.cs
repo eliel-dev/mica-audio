@@ -228,82 +228,126 @@ public sealed partial class PanelsPage
 
     private Border BuildWidgetLibraryPane()
     {
-        var stack = new StackPanel { Spacing = 8 };
-        stack.Children.Add(new TextBlock
+        var layout = new Grid
+        {
+            RowSpacing = 8,
+        };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var title = new TextBlock
         {
             Text = "Widgets",
             Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
-        });
-        stack.Children.Add(new TextBlock
+        };
+        Grid.SetRow(title, 0);
+        layout.Children.Add(title);
+
+        var hint = new TextBlock
         {
             Text = "Arraste um app do catalogo atual para o canvas HUB75.",
             Opacity = 0.78,
             TextWrapping = TextWrapping.Wrap,
-        });
+        };
+        Grid.SetRow(hint, 1);
+        layout.Children.Add(hint);
         WidgetLibrarySearchBox = new TextBox
         {
             PlaceholderText = "Buscar widgets por nome ou categoria",
         };
         WidgetLibrarySearchBox.TextChanged += OnWidgetLibrarySearchChanged;
-        stack.Children.Add(WidgetLibrarySearchBox);
+        Grid.SetRow(WidgetLibrarySearchBox, 2);
+        layout.Children.Add(WidgetLibrarySearchBox);
 
         WidgetLibrarySummaryText = new TextBlock
         {
             Opacity = 0.78,
             TextWrapping = TextWrapping.Wrap,
         };
-        stack.Children.Add(WidgetLibrarySummaryText);
+        Grid.SetRow(WidgetLibrarySummaryText, 3);
+        layout.Children.Add(WidgetLibrarySummaryText);
 
         WidgetLibraryList = new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
             CanDragItems = true,
             AllowDrop = false,
-            MinHeight = 260,
+            VerticalAlignment = VerticalAlignment.Stretch,
         };
         WidgetLibraryList.DragItemsStarting += OnWidgetLibraryDragItemsStarting;
-        stack.Children.Add(WidgetLibraryList);
-        return CreateCard(stack);
+        Grid.SetRow(WidgetLibraryList, 4);
+        layout.Children.Add(WidgetLibraryList);
+
+        var card = CreateCard(layout);
+        card.VerticalAlignment = VerticalAlignment.Stretch;
+        return card;
     }
 
     private Border BuildCanvasPane()
     {
-        var stack = new StackPanel { Spacing = 10 };
-        stack.Children.Add(new TextBlock
+        var layout = new Grid
+        {
+            RowSpacing = 10,
+        };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var title = new TextBlock
         {
             Text = "Canvas HUB75",
             Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
-        });
+        };
+        Grid.SetRow(title, 0);
+        layout.Children.Add(title);
 
         EditorCanvas = new Hub75PanelEditorControl
         {
             AllowDrop = true,
-            MinHeight = 420,
+            MinHeight = 320,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         EditorCanvas.DragOver += OnCanvasDragOver;
         EditorCanvas.Drop += OnCanvasDrop;
         EditorCanvas.WidgetSelected += OnEditorWidgetSelected;
         EditorCanvas.WidgetBoundsChanged += OnEditorWidgetBoundsChanged;
-        stack.Children.Add(EditorCanvas);
-        return CreateCard(stack, padding: 12, elevated: true);
+        Grid.SetRow(EditorCanvas, 1);
+        layout.Children.Add(EditorCanvas);
+
+        var card = CreateCard(layout, padding: 12, elevated: true);
+        card.VerticalAlignment = VerticalAlignment.Stretch;
+        return card;
     }
 
-    private StackPanel BuildInspectorPane()
+    private Border BuildInspectorPane()
     {
-        var host = new StackPanel { Spacing = 12 };
-        host.Children.Add(BuildWidgetInspectorCard());
-        return host;
+        var card = BuildWidgetInspectorCard();
+        card.VerticalAlignment = VerticalAlignment.Stretch;
+        return card;
     }
 
     private Border BuildWidgetInspectorCard()
     {
-        var stack = new StackPanel { Spacing = 8 };
+        var layout = new Grid
+        {
+            RowSpacing = 8,
+        };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
         WidgetInspectorTitle = new TextBlock
         {
             Text = "Widget",
             Style = Application.Current.Resources["BodyStrongTextBlockStyle"] as Style,
         };
-        stack.Children.Add(WidgetInspectorTitle);
+        Grid.SetRow(WidgetInspectorTitle, 0);
+        layout.Children.Add(WidgetInspectorTitle);
 
         DeleteWidgetButton = new Button
         {
@@ -311,7 +355,8 @@ public sealed partial class PanelsPage
             HorizontalAlignment = HorizontalAlignment.Left,
         };
         DeleteWidgetButton.Click += OnDeleteWidgetClicked;
-        stack.Children.Add(DeleteWidgetButton);
+        Grid.SetRow(DeleteWidgetButton, 1);
+        layout.Children.Add(DeleteWidgetButton);
 
         WidgetSourceCard = CreateCard(new StackPanel
         {
@@ -337,7 +382,8 @@ public sealed partial class PanelsPage
         });
         GifSourceButton.Click += OnGifSourceButtonClicked;
         WidgetSourceCard.Visibility = Visibility.Collapsed;
-        stack.Children.Add(WidgetSourceCard);
+        Grid.SetRow(WidgetSourceCard, 2);
+        layout.Children.Add(WidgetSourceCard);
 
         WidgetModifiersHintText = new TextBlock
         {
@@ -345,18 +391,20 @@ public sealed partial class PanelsPage
             Opacity = 0.82,
             TextWrapping = TextWrapping.Wrap,
         };
-        stack.Children.Add(WidgetModifiersHintText);
+        Grid.SetRow(WidgetModifiersHintText, 3);
+        layout.Children.Add(WidgetModifiersHintText);
 
         WidgetModifiersPanel = new StackPanel { Spacing = 10 };
-        stack.Children.Add(new ScrollViewer
+        var modifiersScrollViewer = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = WidgetModifiersPanel,
-            MinHeight = 240,
-            MaxHeight = 420,
-        });
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+        Grid.SetRow(modifiersScrollViewer, 4);
+        layout.Children.Add(modifiersScrollViewer);
 
-        return CreateCard(stack, padding: 12, elevated: true);
+        return CreateCard(layout, padding: 12, elevated: true);
     }
     private static Button CreatePageButton(string label, RoutedEventHandler handler, bool isPrimary = false)
     {

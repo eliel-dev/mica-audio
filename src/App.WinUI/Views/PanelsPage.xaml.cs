@@ -130,7 +130,7 @@ public sealed partial class PanelsPage : Page, IDisposable
             ApplyDevices(currentState.DeviceListSnapshot);
             SetPageMode(PanelsPageMode.Gallery);
             SetPreviewMode(PanelsPreviewMode.Off, syncToggle: true);
-            UpdateAdaptiveLayout(ActualWidth);
+            UpdateAdaptiveLayout(ActualWidth, ActualHeight);
 
             if (!initialized)
             {
@@ -182,7 +182,7 @@ public sealed partial class PanelsPage : Page, IDisposable
 
     private void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        UpdateAdaptiveLayout(e.NewSize.Width);
+        UpdateAdaptiveLayout(e.NewSize.Width, e.NewSize.Height);
     }
 
     private void HandleLoadFailure(Exception ex)
@@ -1219,7 +1219,7 @@ public sealed partial class PanelsPage : Page, IDisposable
             panelGalleryItemsById[state.PanelId] = state;
         }
 
-        UpdateAdaptiveLayout(ActualWidth);
+        UpdateAdaptiveLayout(ActualWidth, ActualHeight);
     }
 
     private void UpsertGalleryItemState(PanelDefinition panel)
@@ -1432,8 +1432,52 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
     }
 
-    private void UpdateAdaptiveLayout(double width)
+    private enum EditorAdaptiveLayoutMode
     {
+        CompactStacked,
+        CanvasFirstDesktop,
+    }
+
+    private readonly record struct EditorLayoutPlan(
+        EditorAdaptiveLayoutMode Mode,
+        double CanvasRowWeight,
+        double BaseRowWeight,
+        double CanvasMinHeight,
+        double BottomPaneMaxHeight);
+
+    private static EditorAdaptiveLayoutMode ResolveEditorAdaptiveLayoutMode(double width)
+    {
+        return width < 920d
+            ? EditorAdaptiveLayoutMode.CompactStacked
+            : EditorAdaptiveLayoutMode.CanvasFirstDesktop;
+    }
+
+    private static EditorLayoutPlan ResolveEditorLayoutPlan(double width, double height)
+    {
+        var mode = ResolveEditorAdaptiveLayoutMode(width);
+        var effectiveHeight = Math.Max(height, 640d);
+        var bottomPaneMaxHeight = Math.Clamp((effectiveHeight - 220d) * 0.45d, 220d, 420d);
+
+        return mode switch
+        {
+            EditorAdaptiveLayoutMode.CompactStacked => new EditorLayoutPlan(
+                Mode: mode,
+                CanvasRowWeight: 1d,
+                BaseRowWeight: 0d,
+                CanvasMinHeight: 320d,
+                BottomPaneMaxHeight: Math.Clamp(bottomPaneMaxHeight, 180d, 320d)),
+            _ => new EditorLayoutPlan(
+                Mode: mode,
+                CanvasRowWeight: 2d,
+                BaseRowWeight: 1d,
+                CanvasMinHeight: 320d,
+                BottomPaneMaxHeight: bottomPaneMaxHeight),
+        };
+    }
+
+    private void UpdateAdaptiveLayout(double width, double height)
+    {
+        var layoutPlan = ResolveEditorLayoutPlan(width, height);
         var compactHeader = width < 900d;
         GalleryHeaderGrid.ColumnDefinitions.Clear();
         GalleryHeaderGrid.RowDefinitions.Clear();
@@ -1486,11 +1530,17 @@ public sealed partial class PanelsPage : Page, IDisposable
 
         EditorContentLayout.ColumnDefinitions.Clear();
         EditorContentLayout.RowDefinitions.Clear();
+        Grid.SetColumnSpan(CanvasPane, 1);
+        Grid.SetColumnSpan(WidgetLibraryPane, 1);
+        Grid.SetColumnSpan(InspectorPane, 1);
+        WidgetLibraryPane.MaxHeight = layoutPlan.BottomPaneMaxHeight;
+        InspectorPane.MaxHeight = layoutPlan.BottomPaneMaxHeight;
+        EditorCanvas.MinHeight = layoutPlan.CanvasMinHeight;
 
-        if (width < 920d)
+        if (layoutPlan.Mode == EditorAdaptiveLayoutMode.CompactStacked)
         {
             EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(layoutPlan.CanvasRowWeight, GridUnitType.Star) });
             EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
@@ -1503,36 +1553,18 @@ public sealed partial class PanelsPage : Page, IDisposable
             return;
         }
 
-        if (width < 1380d)
-        {
-            EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.15, GridUnitType.Star) });
-            EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            Grid.SetColumn(CanvasPane, 0);
-            Grid.SetColumnSpan(CanvasPane, 2);
-            Grid.SetRow(CanvasPane, 0);
-            Grid.SetColumn(WidgetLibraryPane, 0);
-            Grid.SetColumnSpan(WidgetLibraryPane, 1);
-            Grid.SetRow(WidgetLibraryPane, 1);
-            Grid.SetColumn(InspectorPane, 1);
-            Grid.SetColumnSpan(InspectorPane, 1);
-            Grid.SetRow(InspectorPane, 1);
-            return;
-        }
-
-        EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.05, GridUnitType.Star) });
-        EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.6, GridUnitType.Star) });
+        EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.15, GridUnitType.Star) });
         EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(layoutPlan.CanvasRowWeight, GridUnitType.Star) });
+        EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(layoutPlan.BaseRowWeight, GridUnitType.Star) });
 
-        Grid.SetColumn(WidgetLibraryPane, 0);
-        Grid.SetRow(WidgetLibraryPane, 0);
-        Grid.SetColumn(CanvasPane, 1);
+        Grid.SetColumn(CanvasPane, 0);
+        Grid.SetColumnSpan(CanvasPane, 2);
         Grid.SetRow(CanvasPane, 0);
-        Grid.SetColumn(InspectorPane, 2);
-        Grid.SetRow(InspectorPane, 0);
+        Grid.SetColumn(WidgetLibraryPane, 0);
+        Grid.SetRow(WidgetLibraryPane, 1);
+        Grid.SetColumn(InspectorPane, 1);
+        Grid.SetRow(InspectorPane, 1);
     }
 
     private void SetPageMode(PanelsPageMode mode)

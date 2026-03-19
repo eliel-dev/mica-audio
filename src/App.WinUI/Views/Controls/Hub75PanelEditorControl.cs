@@ -61,7 +61,7 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
 
         canvas = new CanvasControl
         {
-            MinHeight = 360,
+            MinHeight = 300,
         };
         canvas.Draw += OnCanvasDraw;
         canvas.PointerPressed += OnCanvasPointerPressed;

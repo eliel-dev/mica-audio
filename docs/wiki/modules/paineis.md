@@ -18,6 +18,8 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - O painel permanece fixo em `128x64`; `Width` e `Height` continuam no modelo apenas por compatibilidade e sao normalizados automaticamente nesse tamanho.
 - O header do editor traz `Voltar`, `Salvar`, `Duplicar`, `Excluir` e o nome do painel como campo editavel inline.
 - O editor central usa um canvas HUB75 ampliado com overlay de selecao, drag e resize por alcas nas bordas e cantos, sem misturar os adornos de edicao no frame real enviado ao device.
+- Em desktop e widescreen, o editor permanece em layout `canvas-first`: canvas HUB75 dominante na faixa superior e, abaixo, `Widgets` + `Widget`/configuracao lado a lado; o layout nao volta mais para tres colunas em tela cheia.
+- O redimensionamento automatico agora considera largura e altura: quando a janela aperta, as panes inferiores cedem altura e passam a rolar internamente antes do canvas HUB75 desaparecer.
 - O editor abre com preview local desligado por default; a animacao so liga quando o usuario ativa explicitamente o toggle `Preview`.
 - A biblioteca lateral virou o ponto unico de descoberta de widgets: usa busca, cards de preview do catalogo e badge de disponibilidade HUB75.
 - Itens sem renderer no compositor HUB75 continuam visiveis, mas aparecem desabilitados na biblioteca ate terem suporte.

@@ -158,11 +158,14 @@ String gToken;
 String gActiveAppId;
 String gActiveAppName;
 String gActiveAppConfig;
-uint8_t gBins[kBinsCount] = {0};
+portMUX_TYPE gStreamBufferMux = portMUX_INITIALIZER_UNLOCKED;
+uint8_t gBinsBuffers[2][kBinsCount] = {};
+uint8_t gBinsActiveIndex = 0;
 uint8_t gLevel = 0;
 uint8_t gStreamBrightness = 255;
 uint8_t gBrightnessCap = kBrightnessDefaultCap;
-uint16_t gFrameRgb565[kMatrixPixelCount] = {0};
+uint16_t gFrameRgb565Buffers[2][kMatrixPixelCount] = {};
+uint8_t gFrameRgb565ActiveIndex = 0;
 unsigned long gLastFrameMs = 0;
 unsigned long gWsDisconnectedSinceMs = 0;
 unsigned long gMqttDisconnectedSinceMs = 0;
@@ -2632,9 +2635,13 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         gHasStreamLastSequence = true;
       }
 
+      const uint8_t nextBinsIndex = static_cast<uint8_t>(gBinsActiveIndex ^ 1u);
+      portENTER_CRITICAL(&gStreamBufferMux);
       gLevel = payload[14];
-      memcpy(gBins, payload + 15, kBinsCount);
+      memcpy(gBinsBuffers[nextBinsIndex], payload + 15, kBinsCount);
+      gBinsActiveIndex = nextBinsIndex;
       gStreamBrightness = payload[143];
+      portEXIT_CRITICAL(&gStreamBufferMux);
       gFrameModeActive = false;
       gLastFrameMs = millis();
       gMatrixSignalTimedOut = false;
@@ -2658,13 +2665,15 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         gHasStreamLastSequence = true;
       }
 
+      const uint8_t nextFrameIndex = static_cast<uint8_t>(gFrameRgb565ActiveIndex ^ 1u);
+      uint16_t* frameBackBuffer = gFrameRgb565Buffers[nextFrameIndex];
       gStreamBrightness = payload[14];
-      size_t offset = 15;
-      for (size_t i = 0; i < kMatrixPixelCount; i++) {
-        gFrameRgb565[i] = static_cast<uint16_t>(payload[offset]) |
-                          static_cast<uint16_t>(payload[offset + 1]) << 8;
-        offset += 2;
-      }
+      // Payload is already little-endian and ESP32 is little-endian, so we can bulk copy.
+      memcpy(frameBackBuffer, payload + 15, static_cast<size_t>(kMatrixPixelCount) * sizeof(uint16_t));
+
+      portENTER_CRITICAL(&gStreamBufferMux);
+      gFrameRgb565ActiveIndex = nextFrameIndex;
+      portEXIT_CRITICAL(&gStreamBufferMux);
 
       gFrameModeActive = true;
       gLastFrameMs = millis();
@@ -2761,6 +2770,18 @@ bool drawBars() {
     return false;
   }
 
+  uint8_t binsSnapshot[kBinsCount];
+  uint8_t levelSnapshot = 0;
+  uint8_t streamBrightnessSnapshot = 0;
+  {
+    portENTER_CRITICAL(&gStreamBufferMux);
+    const uint8_t index = gBinsActiveIndex;
+    memcpy(binsSnapshot, gBinsBuffers[index], sizeof(binsSnapshot));
+    levelSnapshot = gLevel;
+    streamBrightnessSnapshot = gStreamBrightness;
+    portEXIT_CRITICAL(&gStreamBufferMux);
+  }
+
   const uint8_t bufferIndex = gMatrixShadowBackBufferIndex;
   uint8_t* renderedHeights = gMatrixShadowBarHeights[bufferIndex];
   if (gMatrixBufferModes[bufferIndex] != MatrixBufferMode::Bars) {
@@ -2774,7 +2795,7 @@ bool drawBars() {
     RgbColor targetColor = {0, 0, 0};
     if (x < columnCount) {
       const uint16_t binIndex = (x * kBinsCount) / columnCount;
-      const uint8_t amplitude = gBins[binIndex];
+      const uint8_t amplitude = binsSnapshot[binIndex];
       targetHeight =
           static_cast<uint8_t>((static_cast<uint16_t>(amplitude) * kMatrixHalfHeight + 254u) / 255u);
       targetColor = rainbowColorForColumn(x, columnCount);
@@ -2825,9 +2846,11 @@ bool drawFrame128x64() {
   }
 
   const uint8_t bufferIndex = gMatrixShadowBackBufferIndex;
+  const uint8_t frameIndex = gFrameRgb565ActiveIndex;
+  const uint16_t* frame = gFrameRgb565Buffers[frameIndex];
   // Bulk RGB565 path writes the full frame directly into the HUB75 BCM back buffer.
-  gMatrix->writeFrameRGB565(gFrameRgb565);
-  memcpy(gMatrixShadowFrames[bufferIndex], gFrameRgb565, sizeof(gFrameRgb565));
+  gMatrix->writeFrameRGB565(frame);
+  memcpy(gMatrixShadowFrames[bufferIndex], frame, sizeof(gFrameRgb565Buffers[0]));
   memset(gMatrixShadowBarHeights[bufferIndex], 0, sizeof(gMatrixShadowBarHeights[bufferIndex]));
   gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Frame;
   return commitMatrixFrame();
@@ -3059,9 +3082,13 @@ void loop() {
 
   const unsigned long nowMs = millis();
   if ((nowMs - gLastFrameMs) > kMatrixSignalTimeoutMs && !gMatrixSignalTimedOut) {
-    memset(gBins, 0, sizeof(gBins));
+    portENTER_CRITICAL(&gStreamBufferMux);
+    memset(gBinsBuffers, 0, sizeof(gBinsBuffers));
+    gBinsActiveIndex = 0;
     gLevel = 0;
-    memset(gFrameRgb565, 0, sizeof(gFrameRgb565));
+    memset(gFrameRgb565Buffers, 0, sizeof(gFrameRgb565Buffers));
+    gFrameRgb565ActiveIndex = 0;
+    portEXIT_CRITICAL(&gStreamBufferMux);
     gFrameModeActive = false;
     gMatrixSignalTimedOut = true;
     gPendingMatrixPresentCountsAsApplied = false;
