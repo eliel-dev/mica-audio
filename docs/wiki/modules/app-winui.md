@@ -132,10 +132,20 @@
   - `MainPage.SettingsPane`
   - `MainPage.SettingsBindings`
 - O runtime do analyzer nao mudou de ownership:
-  - debounce de `150 ms`;
-  - rebuild consolidado;
-  - fallback seguro;
-  - persistencia pelo mesmo caminho existente.
+- debounce de `150 ms`;
+- rebuild consolidado;
+- fallback seguro;
+- persistencia pelo mesmo caminho existente.
+
+## Atualizacao 2026-03 Regra global de scroll canvas-first
+
+- O `App.WinUI` passou a adotar uma regra global para paginas editoriais com superficie primaria de trabalho, alinhada ao guidance oficial de WinUI/Fluent:
+  - quando o conteudo nao cabe no viewport, a regiao de conteudo da pagina deve rolar verticalmente;
+  - a compressao do layout nao pode esconder a superficie principal;
+  - scroll horizontal da pagina nao e permitido no fluxo normal.
+- O dono padrao do scroll deixou de ser o card interno e passou a ser o body da pagina, abaixo de header e comandos.
+- Regioes internas so devem ter scroll proprio quando forem secundarias e semanticamente delimitadas, como listas, logs e formularios longos.
+- A primeira consumidora desta politica e a `PanelsPage`, que agora preserva o canvas HUB75 com minimo visivel canonico antes de sacrificar a navegacao do usuario.
 
 ## Atualizacao 2026-03 - Mica configuravel em Configuracoes > Geral
 

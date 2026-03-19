@@ -23,7 +23,8 @@ using WinRT.Interop;
 
 namespace App.WinUI.Views;
 
-// DOCS: docs/wiki/modules/paineis.md#galeria-de-paineis
+// DOCS: docs/wiki/modules/paineis.md#editor-hub75
+// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-regra-global-de-scroll-canvas-first
 public sealed partial class PanelsPage : Page, IDisposable
 {
     private static readonly RgbaColor[] EmptyFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
@@ -31,6 +32,7 @@ public sealed partial class PanelsPage : Page, IDisposable
     private const string DraggedWidgetAppIdKey = "panelWidgetAppId";
     private const int DefaultNewWidgetWidth = 64;
     private const int DefaultNewWidgetHeight = 32;
+    private const double DesktopInspectorSidebarWidth = 340d;
 
     private readonly PanelsPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;
@@ -631,6 +633,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         currentPanel.Widgets.RemoveAll(widget => string.Equals(widget.WidgetId, selectedWidget.WidgetId, StringComparison.OrdinalIgnoreCase));
+        currentPanel.Normalize();
         selectedWidget = null;
         selectedWidgetCatalogItem = null;
         EditorCanvas.SelectedWidgetId = null;
@@ -671,6 +674,30 @@ public sealed partial class PanelsPage : Page, IDisposable
         UpdateWidgetSourceUi();
         MarkDirty("Fonte do widget GIF atualizada.");
         await RefreshPreviewSessionAsync();
+    }
+
+    private async void OnEditorMoveSelectedWidgetBackwardRequested(object? sender, EventArgs e)
+    {
+        await ReorderSelectedWidgetAsync(moveForward: false);
+    }
+
+    private async void OnEditorMoveSelectedWidgetForwardRequested(object? sender, EventArgs e)
+    {
+        await ReorderSelectedWidgetAsync(moveForward: true);
+    }
+
+    private void OnEditorCycleOverlappingWidgetRequested(object? sender, EventArgs e)
+    {
+        if (currentPanel is null || selectedWidget is null)
+        {
+            return;
+        }
+
+        if (currentPanel.TryGetNextOverlappingWidgetId(selectedWidget.WidgetId, out var nextWidgetId))
+        {
+            SelectWidgetById(nextWidgetId);
+            SetStatus("Widget sobreposto selecionado.");
+        }
     }
 
     private void OnWidgetLibrarySearchChanged(object sender, TextChangedEventArgs e)
@@ -729,7 +756,6 @@ public sealed partial class PanelsPage : Page, IDisposable
         currentPanel.Widgets.Add(widget);
         currentPanel.Normalize();
         selectedWidget = currentPanel.Widgets.FirstOrDefault(entry => string.Equals(entry.WidgetId, widget.WidgetId, StringComparison.OrdinalIgnoreCase));
-        BringSelectedWidgetToFront();
         EditorCanvas.Panel = currentPanel;
         EditorCanvas.SelectedWidgetId = selectedWidget?.WidgetId;
         UpdateWidgetInspector();
@@ -737,22 +763,14 @@ public sealed partial class PanelsPage : Page, IDisposable
         await RefreshPreviewSessionAsync();
     }
 
-    private async void OnEditorWidgetSelected(object? sender, string? widgetId)
+    private void OnEditorWidgetSelected(object? sender, string? widgetId)
     {
         if (currentPanel is null)
         {
             return;
         }
 
-        selectedWidget = currentPanel.Widgets.FirstOrDefault(widget => string.Equals(widget.WidgetId, widgetId, StringComparison.OrdinalIgnoreCase));
-        EditorCanvas.SelectedWidgetId = selectedWidget?.WidgetId;
-        var changedZ = BringSelectedWidgetToFront();
-        UpdateWidgetInspector();
-        if (changedZ)
-        {
-            MarkDirty("Widget selecionado movido para o topo.");
-            await RefreshPreviewSessionAsync();
-        }
+        SelectWidgetById(widgetId);
     }
 
     private async void OnEditorWidgetBoundsChanged(object? sender, Hub75PanelWidgetBoundsChangedEventArgs e)
@@ -1259,13 +1277,16 @@ public sealed partial class PanelsPage : Page, IDisposable
         WidgetLibraryList.Items.Clear();
         foreach (var entry in filteredWidgetLibraryEntries)
         {
-            var card = new AppCatalogCardControl(entry.Item);
-            card.SetPreviewConfig(entry.PreviewValues);
-            card.SetAvailability(entry.IsSupported, entry.BadgeLabel);
+            var chip = new WidgetRailCardControl(
+                entry.Item,
+                ResolveWidgetLibraryShortLabel(entry.Item),
+                ResolveWidgetLibraryCategoryLabel(entry.Item));
+            chip.Tag = entry;
+            chip.SetAvailability(entry.IsSupported);
             var listItem = new ListViewItem
             {
                 Tag = entry,
-                Content = card,
+                Content = chip,
                 IsEnabled = true,
                 CanDrag = entry.IsSupported,
             };
@@ -1276,8 +1297,6 @@ public sealed partial class PanelsPage : Page, IDisposable
 
             WidgetLibraryList.Items.Add(listItem);
         }
-
-        WidgetLibrarySummaryText.Text = BuildWidgetLibrarySummary();
     }
 
     private void ApplyDevices(IReadOnlyList<DeviceSnapshot> devices)
@@ -1423,6 +1442,26 @@ public sealed partial class PanelsPage : Page, IDisposable
             : string.Empty;
     }
 
+    private string ResolveWidgetLayerDisplayLabel(PanelWidgetDefinition widget)
+    {
+        var displayName = catalogById.TryGetValue(widget.AppId, out var item)
+            ? ResolveWidgetLibraryShortLabel(item)
+            : widget.AppId;
+        var shortId = widget.WidgetId.Length > 4 ? widget.WidgetId[..4] : widget.WidgetId;
+        return $"{displayName} · {shortId}";
+    }
+
+    private static string ResolveWidgetLayerSubtitle(PanelWidgetDefinition widget, int visualIndex, int totalCount)
+    {
+        var position = visualIndex switch
+        {
+            0 => "Topo",
+            var last when last == totalCount - 1 => "Fundo",
+            _ => $"Camada {totalCount - visualIndex}",
+        };
+        return $"{position} · {widget.Width}x{widget.Height}";
+    }
+
     private void UpdateEditorHeader()
     {
         var nextName = currentPanel?.Name ?? string.Empty;
@@ -1432,52 +1471,48 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
     }
 
-    private enum EditorAdaptiveLayoutMode
+    private static CanvasFirstPageLayoutMode ResolveEditorAdaptiveLayoutMode(double width)
     {
-        CompactStacked,
-        CanvasFirstDesktop,
+        return CanvasFirstPageScrollPolicy.ResolveMode(width);
     }
 
-    private readonly record struct EditorLayoutPlan(
-        EditorAdaptiveLayoutMode Mode,
-        double CanvasRowWeight,
-        double BaseRowWeight,
-        double CanvasMinHeight,
-        double BottomPaneMaxHeight);
-
-    private static EditorAdaptiveLayoutMode ResolveEditorAdaptiveLayoutMode(double width)
+    private static CanvasFirstPageLayoutPlan ResolveEditorLayoutPlan(double width, double height)
     {
-        return width < 920d
-            ? EditorAdaptiveLayoutMode.CompactStacked
-            : EditorAdaptiveLayoutMode.CanvasFirstDesktop;
+        return CanvasFirstPageScrollPolicy.Resolve(width, height);
     }
 
-    private static EditorLayoutPlan ResolveEditorLayoutPlan(double width, double height)
+    private static EditorPaneLayout ResolveEditorPaneLayout(double width, double height)
     {
-        var mode = ResolveEditorAdaptiveLayoutMode(width);
-        var effectiveHeight = Math.Max(height, 640d);
-        var bottomPaneMaxHeight = Math.Clamp((effectiveHeight - 220d) * 0.45d, 220d, 420d);
-
-        return mode switch
+        var plan = ResolveEditorLayoutPlan(width, height);
+        return plan.Mode switch
         {
-            EditorAdaptiveLayoutMode.CompactStacked => new EditorLayoutPlan(
-                Mode: mode,
-                CanvasRowWeight: 1d,
-                BaseRowWeight: 0d,
-                CanvasMinHeight: 320d,
-                BottomPaneMaxHeight: Math.Clamp(bottomPaneMaxHeight, 180d, 320d)),
-            _ => new EditorLayoutPlan(
-                Mode: mode,
-                CanvasRowWeight: 2d,
-                BaseRowWeight: 1d,
-                CanvasMinHeight: 320d,
-                BottomPaneMaxHeight: bottomPaneMaxHeight),
+            CanvasFirstPageLayoutMode.CompactStacked => new EditorPaneLayout(
+                Mode: plan.Mode,
+                WidgetLibraryColumn: 0,
+                WidgetLibraryRow: 0,
+                WidgetLibraryColumnSpan: 1,
+                InspectorColumn: 0,
+                InspectorRow: 2,
+                InspectorColumnSpan: 1,
+                CanvasColumn: 0,
+                CanvasRow: 1),
+            _ => new EditorPaneLayout(
+                Mode: plan.Mode,
+                WidgetLibraryColumn: 0,
+                WidgetLibraryRow: 0,
+                WidgetLibraryColumnSpan: 2,
+                InspectorColumn: 0,
+                InspectorRow: 1,
+                InspectorColumnSpan: 1,
+                CanvasColumn: 1,
+                CanvasRow: 1),
         };
     }
 
     private void UpdateAdaptiveLayout(double width, double height)
     {
         var layoutPlan = ResolveEditorLayoutPlan(width, height);
+        var paneLayout = ResolveEditorPaneLayout(width, height);
         var compactHeader = width < 900d;
         GalleryHeaderGrid.ColumnDefinitions.Clear();
         GalleryHeaderGrid.RowDefinitions.Clear();
@@ -1533,38 +1568,49 @@ public sealed partial class PanelsPage : Page, IDisposable
         Grid.SetColumnSpan(CanvasPane, 1);
         Grid.SetColumnSpan(WidgetLibraryPane, 1);
         Grid.SetColumnSpan(InspectorPane, 1);
-        WidgetLibraryPane.MaxHeight = layoutPlan.BottomPaneMaxHeight;
-        InspectorPane.MaxHeight = layoutPlan.BottomPaneMaxHeight;
-        EditorCanvas.MinHeight = layoutPlan.CanvasMinHeight;
+        WidgetLibraryPane.MaxHeight = double.PositiveInfinity;
+        InspectorPane.MaxHeight = double.PositiveInfinity;
+        EditorCanvas.MinHeight = layoutPlan.PrimarySurfaceMinHeight;
+        EditorCanvas.Height = paneLayout.Mode == CanvasFirstPageLayoutMode.CompactStacked
+            ? layoutPlan.PrimarySurfacePreferredHeight
+            : double.NaN;
+        EditorBodyContentHost.Padding = new Thickness(0, 0, layoutPlan.ScrollViewportRightPadding, 0);
+        EditorBodyScrollViewer.VerticalScrollBarVisibility = layoutPlan.UsePageBodyScroll
+            ? ScrollBarVisibility.Auto
+            : ScrollBarVisibility.Disabled;
 
-        if (layoutPlan.Mode == EditorAdaptiveLayoutMode.CompactStacked)
+        if (paneLayout.Mode == CanvasFirstPageLayoutMode.CompactStacked)
         {
             EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(layoutPlan.CanvasRowWeight, GridUnitType.Star) });
+            EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            Grid.SetColumn(CanvasPane, 0);
-            Grid.SetRow(CanvasPane, 0);
-            Grid.SetColumn(InspectorPane, 0);
-            Grid.SetRow(InspectorPane, 1);
-            Grid.SetColumn(WidgetLibraryPane, 0);
-            Grid.SetRow(WidgetLibraryPane, 2);
+            Grid.SetColumn(WidgetLibraryPane, paneLayout.WidgetLibraryColumn);
+            Grid.SetRow(WidgetLibraryPane, paneLayout.WidgetLibraryRow);
+            Grid.SetColumnSpan(WidgetLibraryPane, paneLayout.WidgetLibraryColumnSpan);
+            Grid.SetColumn(CanvasPane, paneLayout.CanvasColumn);
+            Grid.SetRow(CanvasPane, paneLayout.CanvasRow);
+            Grid.SetColumn(InspectorPane, paneLayout.InspectorColumn);
+            Grid.SetRow(InspectorPane, paneLayout.InspectorRow);
+            Grid.SetColumnSpan(InspectorPane, paneLayout.InspectorColumnSpan);
             return;
         }
 
-        EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.15, GridUnitType.Star) });
+        EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(DesktopInspectorSidebarWidth) });
         EditorContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(layoutPlan.CanvasRowWeight, GridUnitType.Star) });
-        EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(layoutPlan.BaseRowWeight, GridUnitType.Star) });
+        EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        EditorContentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        Grid.SetColumn(CanvasPane, 0);
-        Grid.SetColumnSpan(CanvasPane, 2);
-        Grid.SetRow(CanvasPane, 0);
-        Grid.SetColumn(WidgetLibraryPane, 0);
-        Grid.SetRow(WidgetLibraryPane, 1);
-        Grid.SetColumn(InspectorPane, 1);
-        Grid.SetRow(InspectorPane, 1);
+        Grid.SetColumn(WidgetLibraryPane, paneLayout.WidgetLibraryColumn);
+        Grid.SetRow(WidgetLibraryPane, paneLayout.WidgetLibraryRow);
+        Grid.SetColumnSpan(WidgetLibraryPane, paneLayout.WidgetLibraryColumnSpan);
+        Grid.SetColumn(CanvasPane, paneLayout.CanvasColumn);
+        Grid.SetRow(CanvasPane, paneLayout.CanvasRow);
+        Grid.SetColumn(InspectorPane, paneLayout.InspectorColumn);
+        Grid.SetRow(InspectorPane, paneLayout.InspectorRow);
+        Grid.SetColumnSpan(InspectorPane, paneLayout.InspectorColumnSpan);
     }
 
     private void SetPageMode(PanelsPageMode mode)
@@ -1603,25 +1649,29 @@ public sealed partial class PanelsPage : Page, IDisposable
         StatusTextBlock.Text = isError ? $"Erro: {message}" : message;
     }
 
-    private bool BringSelectedWidgetToFront()
+    private async Task ReorderSelectedWidgetAsync(bool moveForward)
     {
         if (currentPanel is null || selectedWidget is null)
         {
-            return false;
+            return;
         }
 
-        var maxZ = currentPanel.Widgets.Count == 0 ? 0 : currentPanel.Widgets.Max(widget => widget.ZIndex);
-        if (selectedWidget.ZIndex >= maxZ)
+        var changed = moveForward
+            ? currentPanel.TryMoveWidgetForward(selectedWidget.WidgetId)
+            : currentPanel.TryMoveWidgetBackward(selectedWidget.WidgetId);
+        if (!changed)
         {
-            return false;
+            UpdateWidgetInspector();
+            return;
         }
 
         var widgetId = selectedWidget.WidgetId;
-        selectedWidget.ZIndex = maxZ + 1;
-        currentPanel.Normalize();
         selectedWidget = currentPanel.Widgets.FirstOrDefault(widget => string.Equals(widget.WidgetId, widgetId, StringComparison.OrdinalIgnoreCase));
         EditorCanvas.Panel = currentPanel;
-        return true;
+        EditorCanvas.SelectedWidgetId = selectedWidget?.WidgetId;
+        UpdateWidgetInspector();
+        MarkDirty(moveForward ? "Widget trazido para frente." : "Widget movido para tras.");
+        await RefreshPreviewSessionAsync();
     }
 
     private int GetNextWidgetZIndex()
@@ -1629,6 +1679,22 @@ public sealed partial class PanelsPage : Page, IDisposable
         return currentPanel?.Widgets.Count > 0
             ? currentPanel.Widgets.Max(widget => widget.ZIndex) + 1
             : 1;
+    }
+
+    private void SelectWidgetById(string? widgetId)
+    {
+        if (currentPanel is null)
+        {
+            selectedWidget = null;
+            selectedWidgetCatalogItem = null;
+            EditorCanvas.SelectedWidgetId = null;
+            UpdateWidgetInspector();
+            return;
+        }
+
+        selectedWidget = currentPanel.Widgets.FirstOrDefault(widget => string.Equals(widget.WidgetId, widgetId, StringComparison.OrdinalIgnoreCase));
+        EditorCanvas.SelectedWidgetId = selectedWidget?.WidgetId;
+        UpdateWidgetInspector();
     }
 
     private bool ResolveSelectedSourceType()
@@ -1678,6 +1744,34 @@ public sealed partial class PanelsPage : Page, IDisposable
 
         filteredWidgetLibraryEntries.AddRange(source.OrderBy(entry => entry.Item.Name, StringComparer.CurrentCultureIgnoreCase));
         RebuildWidgetLibrary();
+    }
+
+    private static string ResolveWidgetLibraryShortLabel(AppCatalogItem item)
+    {
+        return item.Id.Trim().ToLowerInvariant() switch
+        {
+            "analogclock" => "Relogio",
+            "gifhub75" => "Foto / GIF",
+            _ => string.IsNullOrWhiteSpace(item.Name) ? item.Id : item.Name.Trim(),
+        };
+    }
+
+    private static string ResolveWidgetLibraryCategoryLabel(AppCatalogItem item)
+    {
+        return item.Category.Trim().ToLowerInvariant() switch
+        {
+            "relogio" => "Relogio",
+            "relógio" => "Relogio",
+            "midia" => "Midia",
+            "mídia" => "Midia",
+            "clima" => "Clima",
+            "finance" => "Financas",
+            "financas" => "Financas",
+            "finanças" => "Financas",
+            "audio" => "Audio",
+            "esportes" => "Esportes",
+            _ => string.IsNullOrWhiteSpace(item.Category) ? "Widget" : item.Category.Trim(),
+        };
     }
 
     private string BuildWidgetLibrarySummary()
@@ -1746,6 +1840,16 @@ public sealed partial class PanelsPage : Page, IDisposable
                     entry = new WidgetLibraryEntry(appItem, PanelsFrameComposer.SupportsWidgetApp(appItem.Id), null, null);
                     return true;
                 case ListViewItem listViewItem when listViewItem.Tag is WidgetLibraryEntry taggedEntry && taggedEntry.Item.IsValid():
+                    entry = taggedEntry;
+                    return true;
+                case WidgetRailCardControl railCard when railCard.Item.IsValid():
+                    entry = new WidgetLibraryEntry(
+                        railCard.Item,
+                        PanelsFrameComposer.SupportsWidgetApp(railCard.Item.Id),
+                        null,
+                        null);
+                    return true;
+                case FrameworkElement element when element.Tag is WidgetLibraryEntry taggedEntry && taggedEntry.Item.IsValid():
                     entry = taggedEntry;
                     return true;
                 case AppCatalogCardControl card when card.Item is { } cardItem && cardItem.IsValid():
@@ -2052,6 +2156,17 @@ public sealed partial class PanelsPage : Page, IDisposable
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
+
+    private readonly record struct EditorPaneLayout(
+        CanvasFirstPageLayoutMode Mode,
+        int WidgetLibraryColumn,
+        int WidgetLibraryRow,
+        int WidgetLibraryColumnSpan,
+        int InspectorColumn,
+        int InspectorRow,
+        int InspectorColumnSpan,
+        int CanvasColumn,
+        int CanvasRow);
 
     private sealed record WidgetLibraryEntry(
         AppCatalogItem Item,

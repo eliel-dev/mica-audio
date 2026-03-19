@@ -1,13 +1,15 @@
 using App.WinUI.Views.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using MicaAudio.Core.Led;
 using Windows.UI;
 
 namespace App.WinUI.Views;
 
-// DOCS: docs/wiki/modules/paineis.md#galeria-de-paineis
+// DOCS: docs/wiki/modules/paineis.md#editor-hub75
+// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-regra-global-de-scroll-canvas-first
 public sealed partial class PanelsPage
 {
     private Grid RootLayout = null!;
@@ -19,6 +21,8 @@ public sealed partial class PanelsPage
     private FrameworkElement EditorHeader = null!;
     private FrameworkElement GalleryView = null!;
     private FrameworkElement EditorView = null!;
+    private ScrollViewer EditorBodyScrollViewer = null!;
+    private Border EditorBodyContentHost = null!;
     private Grid EditorContentLayout = null!;
     private FrameworkElement WidgetLibraryPane = null!;
     private FrameworkElement CanvasPane = null!;
@@ -26,7 +30,6 @@ public sealed partial class PanelsPage
     private GridView PanelsGalleryGrid = null!;
     private ListView WidgetLibraryList = null!;
     private TextBox WidgetLibrarySearchBox = null!;
-    private TextBlock WidgetLibrarySummaryText = null!;
     private Hub75PanelEditorControl EditorCanvas = null!;
     private ComboBox TargetDeviceCombo = null!;
     private TextBlock StatusTextBlock = null!;
@@ -207,13 +210,12 @@ public sealed partial class PanelsPage
         return PanelsGalleryGrid;
     }
 
-    private Grid BuildEditorView()
+    private ScrollViewer BuildEditorView()
     {
         EditorContentLayout = new Grid
         {
             ColumnSpacing = 12,
             RowSpacing = 12,
-            Visibility = Visibility.Collapsed,
         };
 
         WidgetLibraryPane = BuildWidgetLibraryPane();
@@ -223,20 +225,34 @@ public sealed partial class PanelsPage
         EditorContentLayout.Children.Add(WidgetLibraryPane);
         EditorContentLayout.Children.Add(CanvasPane);
         EditorContentLayout.Children.Add(InspectorPane);
-        return EditorContentLayout;
+
+        EditorBodyContentHost = new Border
+        {
+            Padding = new Thickness(0, 0, 16, 0),
+            Child = EditorContentLayout,
+        };
+
+        EditorBodyScrollViewer = new ScrollViewer
+        {
+            Visibility = Visibility.Collapsed,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollMode = ScrollMode.Enabled,
+            Content = EditorBodyContentHost,
+        };
+
+        return EditorBodyScrollViewer;
     }
 
     private Border BuildWidgetLibraryPane()
     {
         var layout = new Grid
         {
-            RowSpacing = 8,
+            RowSpacing = 10,
         };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         var title = new TextBlock
         {
@@ -246,43 +262,34 @@ public sealed partial class PanelsPage
         Grid.SetRow(title, 0);
         layout.Children.Add(title);
 
-        var hint = new TextBlock
-        {
-            Text = "Arraste um app do catalogo atual para o canvas HUB75.",
-            Opacity = 0.78,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        Grid.SetRow(hint, 1);
-        layout.Children.Add(hint);
-        WidgetLibrarySearchBox = new TextBox
-        {
-            PlaceholderText = "Buscar widgets por nome ou categoria",
-        };
-        WidgetLibrarySearchBox.TextChanged += OnWidgetLibrarySearchChanged;
-        Grid.SetRow(WidgetLibrarySearchBox, 2);
-        layout.Children.Add(WidgetLibrarySearchBox);
-
-        WidgetLibrarySummaryText = new TextBlock
-        {
-            Opacity = 0.78,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        Grid.SetRow(WidgetLibrarySummaryText, 3);
-        layout.Children.Add(WidgetLibrarySummaryText);
-
         WidgetLibraryList = new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
             CanDragItems = true,
             AllowDrop = false,
-            VerticalAlignment = VerticalAlignment.Stretch,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
+            MinHeight = 74,
+            MaxHeight = 84,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            ItemsPanel = (ItemsPanelTemplate)XamlReader.Load(
+                """
+                <ItemsPanelTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+                    <ItemsStackPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+                """),
+            ItemContainerStyle = BuildWidgetRailItemContainerStyle(),
         };
         WidgetLibraryList.DragItemsStarting += OnWidgetLibraryDragItemsStarting;
-        Grid.SetRow(WidgetLibraryList, 4);
+        ScrollViewer.SetHorizontalScrollBarVisibility(WidgetLibraryList, ScrollBarVisibility.Auto);
+        ScrollViewer.SetHorizontalScrollMode(WidgetLibraryList, ScrollMode.Enabled);
+        ScrollViewer.SetVerticalScrollBarVisibility(WidgetLibraryList, ScrollBarVisibility.Disabled);
+        ScrollViewer.SetVerticalScrollMode(WidgetLibraryList, ScrollMode.Disabled);
+        Grid.SetRow(WidgetLibraryList, 1);
         layout.Children.Add(WidgetLibraryList);
 
-        var card = CreateCard(layout);
-        card.VerticalAlignment = VerticalAlignment.Stretch;
+        var card = CreateCard(layout, padding: 12, elevated: true);
+        card.VerticalAlignment = VerticalAlignment.Top;
         return card;
     }
 
@@ -314,10 +321,13 @@ public sealed partial class PanelsPage
         EditorCanvas.Drop += OnCanvasDrop;
         EditorCanvas.WidgetSelected += OnEditorWidgetSelected;
         EditorCanvas.WidgetBoundsChanged += OnEditorWidgetBoundsChanged;
+        EditorCanvas.MoveSelectedWidgetBackwardRequested += OnEditorMoveSelectedWidgetBackwardRequested;
+        EditorCanvas.MoveSelectedWidgetForwardRequested += OnEditorMoveSelectedWidgetForwardRequested;
+        EditorCanvas.CycleOverlappingWidgetRequested += OnEditorCycleOverlappingWidgetRequested;
         Grid.SetRow(EditorCanvas, 1);
         layout.Children.Add(EditorCanvas);
 
-        var card = CreateCard(layout, padding: 12, elevated: true);
+        var card = CreateCard(layout, padding: 8, elevated: true);
         card.VerticalAlignment = VerticalAlignment.Stretch;
         return card;
     }
@@ -349,14 +359,20 @@ public sealed partial class PanelsPage
         Grid.SetRow(WidgetInspectorTitle, 0);
         layout.Children.Add(WidgetInspectorTitle);
 
+        var widgetActionsPanel = new StackPanel
+        {
+            Spacing = 8,
+        };
         DeleteWidgetButton = new Button
         {
             Content = "Remover widget",
             HorizontalAlignment = HorizontalAlignment.Left,
         };
         DeleteWidgetButton.Click += OnDeleteWidgetClicked;
+        widgetActionsPanel.Children.Add(DeleteWidgetButton);
         Grid.SetRow(DeleteWidgetButton, 1);
-        layout.Children.Add(DeleteWidgetButton);
+        Grid.SetRow(widgetActionsPanel, 1);
+        layout.Children.Add(widgetActionsPanel);
 
         WidgetSourceCard = CreateCard(new StackPanel
         {
@@ -450,6 +466,17 @@ public sealed partial class PanelsPage
         style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Stretch));
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
         style.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0)));
+        return style;
+    }
+
+    private static Style BuildWidgetRailItemContainerStyle()
+    {
+        var style = new Style(typeof(ListViewItem));
+        style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
+        style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Stretch));
+        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 8, 0)));
+        style.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 52d));
         return style;
     }
 

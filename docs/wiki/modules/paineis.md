@@ -18,14 +18,17 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - O painel permanece fixo em `128x64`; `Width` e `Height` continuam no modelo apenas por compatibilidade e sao normalizados automaticamente nesse tamanho.
 - O header do editor traz `Voltar`, `Salvar`, `Duplicar`, `Excluir` e o nome do painel como campo editavel inline.
 - O editor central usa um canvas HUB75 ampliado com overlay de selecao, drag e resize por alcas nas bordas e cantos, sem misturar os adornos de edicao no frame real enviado ao device.
-- Em desktop e widescreen, o editor permanece em layout `canvas-first`: canvas HUB75 dominante na faixa superior e, abaixo, `Widgets` + `Widget`/configuracao lado a lado; o layout nao volta mais para tres colunas em tela cheia.
-- O redimensionamento automatico agora considera largura e altura: quando a janela aperta, as panes inferiores cedem altura e passam a rolar internamente antes do canvas HUB75 desaparecer.
+- Em desktop e widescreen, o editor usa layout `workbench`: uma faixa compacta de `Widgets` no topo, `Widget`/configuracao em coluna fixa a esquerda e canvas HUB75 dominante na area principal a direita; o layout nao volta mais para tres colunas em tela cheia.
+- O editor segue a regra global `canvas-first` do app: header e status ficam fixos, o corpo da pagina vira o dono do scroll vertical e o canvas HUB75 mantem minimo visivel antes de qualquer compressao mais agressiva.
+- As panes inferiores continuam com scroll proprio quando necessario, mas apenas como regioes secundarias; elas nao podem mais empurrar o canvas HUB75 para fora do viewport.
 - O editor abre com preview local desligado por default; a animacao so liga quando o usuario ativa explicitamente o toggle `Preview`.
-- A biblioteca lateral virou o ponto unico de descoberta de widgets: usa busca, cards de preview do catalogo e badge de disponibilidade HUB75.
+- A biblioteca de widgets virou uma rail compacta no topo do editor: continua sendo drag source do catalogo, mas agora usa tiles visuais fixos estilo mini HUB75, com identidade estatica por widget, nome curto e subtitulo de categoria para os widgets disponiveis, como `Relogio` e `Foto / GIF`.
 - Itens sem renderer no compositor HUB75 continuam visiveis, mas aparecem desabilitados na biblioteca ate terem suporte.
 - A biblioteca lateral e derivada do catalogo atual de apps, permitindo instancias independentes dos itens suportados, hoje `analogclock` e `gifhub75`.
 - Arrastar um app da biblioteca para o canvas cria o widget imediatamente no painel atual, sem exigir salvamento para ele aparecer.
-- O inspetor da direita ficou restrito ao widget selecionado: remocao, modifiers compartilhados e selecao de fonte local para `gifhub75`.
+- O canvas HUB75 usa preview `clean fit`: preserva a proporcao real `128x64`, reduz o padding interno e remove a moldura preta extra do editor para aproveitar melhor a area disponivel sem distorcer a matriz.
+- O inspetor da esquerda ficou restrito ao widget selecionado: remocao, modifiers compartilhados e selecao de fonte local para `gifhub75`.
+- Sobreposicao de widgets continua suportada, mas a ordem agora e manual: selecionar no canvas nao sobe mais a camada automaticamente, e o proprio editor HUB75 expoe uma toolbar minima na faixa preta superior do letterbox com icones para `Mover para tras`, `Trazer para frente` e alternar entre widgets realmente sobrepostos.
 - `Salvar` reaplica automaticamente o painel no mesmo device quando o painel editado ja estiver ativo.
 
 ## Persistencia Do Layout

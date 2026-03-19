@@ -5,6 +5,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 using Windows.Foundation;
@@ -15,14 +16,23 @@ namespace App.WinUI.Views.Controls;
 // DOCS: docs/wiki/modules/paineis.md#editor-hub75
 internal sealed class Hub75PanelEditorControl : Grid, IDisposable
 {
+    private const double LayerToolbarButtonSize = 28d;
+    private const double LayerToolbarHeight = 40d;
+    private const double LayerToolbarTopMargin = 6d;
     private const float OverlayLabelTopPadding = 4f;
     private const float OverlayLabelLeftPadding = 4f;
     private const float OverlayErrorTopPadding = 20f;
     private const double HandleVisualSize = 8d;
     private const double HandleHitThickness = 10d;
+    private static readonly Color EditorSurfaceColor = Color.FromArgb(255, 18, 24, 32);
     private static readonly RgbaColor[] BlackFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
 
     private readonly CanvasControl canvas;
+    private readonly Border layerToolbarChrome;
+    private readonly StackPanel layerToolbarPanel;
+    private readonly Button moveBackwardButton;
+    private readonly Button moveForwardButton;
+    private readonly Button cycleOverlappingButton;
     private readonly CanvasTextFormat labelTextFormat = new()
     {
         FontFamily = "Segoe UI",
@@ -50,18 +60,11 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
 
     public Hub75PanelEditorControl()
     {
-        var border = new Border
-        {
-            CornerRadius = new CornerRadius(12),
-            BorderThickness = new Thickness(1),
-            BorderBrush = UiResourceResolver.ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 55, 68, 86)),
-            Background = UiResourceResolver.ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 8, 10, 14)),
-            Padding = new Thickness(8),
-        };
-
         canvas = new CanvasControl
         {
             MinHeight = 300,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
         };
         canvas.Draw += OnCanvasDraw;
         canvas.PointerPressed += OnCanvasPointerPressed;
@@ -70,14 +73,55 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
         canvas.PointerCaptureLost += OnCanvasPointerCaptureLost;
         canvas.PointerExited += OnCanvasPointerExited;
         canvas.SizeChanged += (_, _) => canvas.Invalidate();
+        SizeChanged += (_, _) => UpdateLayerToolbarPresentation();
 
-        border.Child = canvas;
-        Children.Add(border);
+        moveBackwardButton = CreateLayerToolbarButton("↓", "Mover para tras");
+        moveBackwardButton.Click += (_, _) => MoveSelectedWidgetBackwardRequested?.Invoke(this, EventArgs.Empty);
+
+        moveForwardButton = CreateLayerToolbarButton("↑", "Trazer para frente");
+        moveForwardButton.Click += (_, _) => MoveSelectedWidgetForwardRequested?.Invoke(this, EventArgs.Empty);
+
+        cycleOverlappingButton = CreateLayerToolbarButton("↺", "Alternar widget sobreposto");
+        cycleOverlappingButton.Click += (_, _) => CycleOverlappingWidgetRequested?.Invoke(this, EventArgs.Empty);
+
+        layerToolbarPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            Children =
+            {
+                moveBackwardButton,
+                cycleOverlappingButton,
+                moveForwardButton,
+            },
+        };
+
+        layerToolbarChrome = new Border
+        {
+            Padding = new Thickness(6, 4, 6, 4),
+            CornerRadius = new CornerRadius(10),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(255, 58, 72, 90)),
+            Background = new SolidColorBrush(Color.FromArgb(224, 7, 11, 15)),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Visibility = Visibility.Collapsed,
+            Child = layerToolbarPanel,
+        };
+
+        Children.Add(canvas);
+        Children.Add(layerToolbarChrome);
     }
 
     public event EventHandler<string?>? WidgetSelected;
 
     public event EventHandler<Hub75PanelWidgetBoundsChangedEventArgs>? WidgetBoundsChanged;
+
+    public event EventHandler? MoveSelectedWidgetBackwardRequested;
+
+    public event EventHandler? MoveSelectedWidgetForwardRequested;
+
+    public event EventHandler? CycleOverlappingWidgetRequested;
 
     public PanelDefinition? Panel
     {
@@ -86,6 +130,7 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
         {
             panel = value;
             panel?.Normalize();
+            UpdateLayerToolbarPresentation();
             canvas.Invalidate();
         }
     }
@@ -96,6 +141,7 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
         set
         {
             selectedWidgetId = value;
+            UpdateLayerToolbarPresentation();
             canvas.Invalidate();
         }
     }
@@ -142,34 +188,82 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
 
     private void OnCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
     {
-        args.DrawingSession.Clear(Color.FromArgb(255, 5, 7, 10));
+        args.DrawingSession.Clear(EditorSurfaceColor);
 
         lastLayout = ComputeLayout(sender.ActualWidth, sender.ActualHeight);
         if (!lastLayout.IsValid)
         {
+            UpdateLayerToolbarPresentation();
             return;
         }
 
-        args.DrawingSession.FillRoundedRectangle(
-            lastLayout.OffsetX - 6f,
-            lastLayout.OffsetY - 6f,
-            lastLayout.DrawWidth + 12f,
-            lastLayout.DrawHeight + 12f,
-            14f,
-            14f,
-            Color.FromArgb(255, 2, 3, 5));
-        args.DrawingSession.DrawRoundedRectangle(
-            lastLayout.OffsetX - 6f,
-            lastLayout.OffsetY - 6f,
-            lastLayout.DrawWidth + 12f,
-            lastLayout.DrawHeight + 12f,
-            14f,
-            14f,
-            Color.FromArgb(255, 34, 42, 54),
-            1f);
-
+        UpdateLayerToolbarPresentation();
         DrawMatrix(args);
         DrawWidgetOverlays(args);
+    }
+
+    private void UpdateLayerToolbarPresentation()
+    {
+        var selectedWidget = panel?.Widgets.FirstOrDefault(widget => string.Equals(widget.WidgetId, selectedWidgetId, StringComparison.OrdinalIgnoreCase));
+        if (selectedWidget is null)
+        {
+            layerToolbarChrome.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        moveBackwardButton.IsEnabled = panel?.CanMoveWidgetBackward(selectedWidget.WidgetId) is true;
+        moveForwardButton.IsEnabled = panel?.CanMoveWidgetForward(selectedWidget.WidgetId) is true;
+
+        var hasOverlappingWidgets = panel?.GetOverlappingWidgetsInVisualOrderTopFirst(selectedWidget.WidgetId).Count > 0;
+        cycleOverlappingButton.Visibility = hasOverlappingWidgets ? Visibility.Visible : Visibility.Collapsed;
+        cycleOverlappingButton.IsEnabled = hasOverlappingWidgets;
+
+        var topBandHeight = lastLayout.IsValid ? Math.Max(0d, lastLayout.OffsetY) : 0d;
+        var useTopBandPlacement = topBandHeight >= LayerToolbarHeight + (LayerToolbarTopMargin * 2d);
+        var top = useTopBandPlacement
+            ? Math.Max(LayerToolbarTopMargin, ((topBandHeight - LayerToolbarHeight) * 0.5d))
+            : LayerToolbarTopMargin;
+
+        layerToolbarChrome.Margin = new Thickness(0, top, 0, 0);
+        layerToolbarChrome.Visibility = Visibility.Visible;
+    }
+
+    private static Button CreateLayerToolbarButton(string glyph, string tooltip)
+    {
+        var button = new Button
+        {
+            Width = LayerToolbarButtonSize,
+            Height = LayerToolbarButtonSize,
+            MinWidth = LayerToolbarButtonSize,
+            MinHeight = LayerToolbarButtonSize,
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+            BorderThickness = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Content = new FontIcon
+            {
+                Glyph = ResolveLayerToolbarGlyph(tooltip),
+                FontFamily = new FontFamily("Segoe UI Symbol"),
+                FontSize = 13,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 232, 240, 248)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        ToolTipService.SetToolTip(button, tooltip);
+        return button;
+    }
+
+    private static string ResolveLayerToolbarGlyph(string tooltip)
+    {
+        return tooltip switch
+        {
+            "Mover para tras" => "\u2193",
+            "Trazer para frente" => "\u2191",
+            "Alternar widget sobreposto" => "\u21BB",
+            _ => "\u2022",
+        };
     }
 
     private void DrawMatrix(CanvasDrawEventArgs args)
@@ -567,7 +661,7 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
     {
         var safeWidth = Math.Max(1d, width);
         var safeHeight = Math.Max(1d, height);
-        var padding = Math.Min(20d, Math.Max(8d, Math.Min(safeWidth, safeHeight) * 0.05d));
+        var padding = Math.Clamp(Math.Min(safeWidth, safeHeight) * 0.02d, 2d, 8d);
         var availableWidth = Math.Max(1d, safeWidth - (padding * 2d));
         var availableHeight = Math.Max(1d, safeHeight - (padding * 2d));
         var pitch = Math.Min(availableWidth / LedDefaults.MatrixWidth, availableHeight / LedDefaults.MatrixHeight);
