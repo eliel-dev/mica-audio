@@ -171,7 +171,7 @@ os status acima incluem inferencia tecnica a partir das referencias Context7 e d
 | RSK-005 | Firmware deps | `ArduinoJson` patch desatualizado | 2.6 | Medio | Parcial | atualizar para `7.4.3` e validar regressao de parse | build firmware + smoke de pair/telemetria | P1 | restaurar lock anterior |
 | RSK-006 | Artefato precompilado | risco de bin stale sem carimbo/hash no processo | 3.2 | Medio | Parcial | registrar hash + metadata de build no fluxo de export | validar hash no download local | P2 | manter fluxo atual de copia |
 | RSK-007 | Cobertura de firmware secundario | `firmware/matrixportal-s3/src/main.cpp` vazio | 2.9 | Medio | N/A | marcar oficialmente como experimental ou remover da trilha ativa | docs + gate de coverage por firmware ativo | P2 | manter pasta isolada sem build |
-| RSK-008 | Legado de protocolo | `StreamFrameV1` ainda presente no codigo/testes | 2.5 | Baixo | Parcial | definir politica de deprecacao e remover quando seguro | testes de compatibilidade antes da remocao | P3 | manter V1 isolado por compatibilidade |
+| RSK-008 | Legado de protocolo | contrato de stream legado 64x32 removido do codigo/runtime ativo em 2026-03-19 | 2.5 | Baixo | Corrigido | manter apenas `StreamFrameV2` como contrato documentado/ativo | `dotnet build` + `Output.Tests` sem legado 64x32 | P3 | restaurar o contrato legado apenas em incidente de compatibilidade real |
 | RSK-009 | Win2D warning em teste | WIN2D0001 em Integration.Smoke AnyCPU | 2.3 | Baixo | N/A | fixar plataforma de teste ou suprimir warning com criterio | build limpo sem warning alvo | P3 | retornar configuracao atual |
 
 ## Checklist rapido

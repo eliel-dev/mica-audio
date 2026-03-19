@@ -39,7 +39,7 @@ Usar marcador padrao:
 Para exemplos de protocolo, referenciar sempre paginas canonicas:
 
 - HTTP: `docs/wiki/reference/http-api-v1.md`
-- WS: `docs/wiki/reference/ws-protocol-v1.md`
+- WS: `docs/wiki/reference/ws-protocol-v2.md`
 
 ## Regra 6: anchors estaveis
 

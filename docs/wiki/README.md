@@ -95,7 +95,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Code index](reference/code-index.md)
 - [Convencoes de links wiki<->codigo](reference/linking-conventions.md)
 - [HTTP API v1](reference/http-api-v1.md)
-- [WS protocol v1](reference/ws-protocol-v1.md)
 - [Device telemetry v2 fields](reference/device-telemetry-v2-fields.md)
 - [Dashboard nativo de observabilidade por device](reference/device-observability-dashboard.md)
 - [Troubleshooting matrix](reference/troubleshooting-matrix.md)

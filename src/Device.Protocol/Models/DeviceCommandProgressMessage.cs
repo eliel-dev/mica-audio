@@ -1,6 +1,6 @@
 namespace Device.Protocol.Models;
 
-// DOCS: docs/wiki/reference/ws-protocol-v1.md#tipos-de-mensagem
+// DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
 public sealed class DeviceCommandProgressMessage
 {
     public string DeviceId { get; init; } = string.Empty;

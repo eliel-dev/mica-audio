@@ -18,20 +18,6 @@ public class BandMappingTests
     }
 
     [Fact]
-    public void Downmix128To64_ShouldPreservePairEnergyShape()
-    {
-        var input = Enumerable.Range(0, 128)
-            .Select(i => i / 127f)
-            .ToArray();
-
-        var output = SpectrumDownmixer.DownmixTo64(input);
-
-        Assert.Equal(64, output.Length);
-        Assert.True(output[10] > output[4]);
-        Assert.True(output[63] > output[20]);
-    }
-
-    [Fact]
     public void AggregateBandsPeak_ShouldHighlightTransientsMoreThanRms()
     {
         var fftSize = 4096;

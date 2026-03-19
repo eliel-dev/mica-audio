@@ -26,7 +26,6 @@ Você é um engenheiro sênior trabalhando exclusivamente no projeto **Mica Audi
 ## Projetos em `src/`
 
 - **App.WinUI** — aplicativo principal, Views, ViewModels, Services
-- **App.DevLauncher** / **App.Headless** / **Web.Headless** — entradas alternativas
 - **Analyzer.Dsp** — processamento de sinal (FFT, espectro)
 - **Audio.Loopback** — captura WASAPI
 - **Device.Protocol** — definição de frames e protocolo ESP32↔desktop
@@ -34,6 +33,9 @@ Você é um engenheiro sênior trabalhando exclusivamente no projeto **Mica Audi
 - **MicaAudio.Core** — tipos compartilhados (LED, payloads)
 - **Output** — saídas (LED físico via ESP32, simulador)
 - **Visual.Win2D** — primitivas de renderização Win2D
+
+Observação:
+- pastas locais fora da solução podem existir por sobra operacional, mas não fazem parte das entradas ativas do produto.
 
 ## Regra de Pesquisa Web (Obrigatória)
 

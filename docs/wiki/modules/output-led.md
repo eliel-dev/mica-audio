@@ -64,4 +64,3 @@
 - [LedFrameDeduplicator](../../../src/Output/Led/LedFrameDeduplicator.cs#L1)
 - [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)
 - [StreamFrameV2](../reference/ws-protocol-v2.md)
-- [StreamFrameV1 legado](../reference/ws-protocol-v1.md)
