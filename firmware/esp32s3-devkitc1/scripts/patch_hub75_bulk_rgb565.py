@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 
 
-# DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-bulk-rgb565-back-buffer-fix
+# DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-bulk-rgb565-contraste-e-curva-tonal
 
 PATCH_MARKER = "MICA_HUB75_WRITE_FRAME_RGB565_PATCH"
 LIB_ROOT = Path(env.subst("$PROJECT_LIBDEPS_DIR")) / env.subst("$PIOENV") / "ESP32 HUB75 LED MATRIX PANEL DMA Display" / "src"
@@ -23,13 +23,22 @@ CPP_SENTINEL = re.compile(
     r"(^\}\s*// updateMatrixDMABuffer \(full frame paint\)\s*$)",
     re.MULTILINE,
 )
+CPP_METHOD_SENTINEL = re.compile(
+    r"void MatrixPanel_I2S_DMA::writeFrameRGB565\(const uint16_t \*frame565\)\s*// "
+    + PATCH_MARKER
+    + r"[\s\S]*?^\}",
+    re.MULTILINE,
+)
 HEADER_LAYOUT_SENTINELS = [
     re.compile(r"inline void flipDMABuffer\(\)\s*\{[\s\S]*?dma_bus\.flip_dma_output_buffer\(back_buffer_id\);[\s\S]*?back_buffer_id\s*=\s*back_buffer_id\^1;[\s\S]*?fb\s*=\s*&frame_buffer\[back_buffer_id\];", re.MULTILINE),
     re.compile(r"frameStruct frame_buffer\[2\];"),
     re.compile(r"frameStruct \*fb;"),
     re.compile(r"volatile int back_buffer_id = 0;"),
+    re.compile(r"static const uint16_t lumConvTab\[\]\s*="),
+    re.compile(r"uint8_t MASK_OFFSET = 16 - m_cfg\.getPixelColorDepthBits\(\);"),
 ]
 CPP_LAYOUT_SENTINELS = [
+    re.compile(r"#define PIXEL_COLOR_MASK_BIT\(color_depth_index, mask_offset\)\s+\(1 << \(color_depth_index \+ mask_offset\)\)"),
     re.compile(r'#define getRowDataPtr\(row, _dpth\)\s*&\(fb->rowBits\[row\]->data\[_dpth \* fb->rowBits\[row\]->width\]\)'),
     re.compile(r"void MatrixPanel_I2S_DMA::clearFrameBuffer\(bool _buff_id\)"),
 ]
@@ -44,7 +53,7 @@ def ensure_layout(original: str, patterns, file_name: str) -> None:
 def patch_header(original: str, newline: str) -> str:
     ensure_layout(original, HEADER_LAYOUT_SENTINELS, TARGET_HEADER.name)
 
-    if PATCH_MARKER in original:
+    if re.search(r"\s*void writeFrameRGB565\(const uint16_t \*frame565\);\s*(// .*?)?$", original, re.MULTILINE):
         return original
 
     replacement = (
@@ -61,18 +70,17 @@ def patch_header(original: str, newline: str) -> str:
 def patch_cpp(original: str, newline: str) -> str:
     ensure_layout(original, CPP_LAYOUT_SENTINELS, TARGET_CPP.name)
 
-    if PATCH_MARKER in original:
-        return original
-
     include_replacement = r"\1" + newline + "#include <Arduino.h> // " + PATCH_MARKER
-    patched, include_count = CPP_INCLUDE_SENTINEL.subn(include_replacement, original, count=1)
+    if PATCH_MARKER in original:
+        patched = original
+        include_count = 1
+    else:
+        patched, include_count = CPP_INCLUDE_SENTINEL.subn(include_replacement, original, count=1)
     if include_count != 1:
         raise RuntimeError("Include esperado de ESP32-HUB75-MatrixPanel-I2S-DMA.h nao encontrado em ESP32-HUB75-MatrixPanel-I2S-DMA.cpp.")
 
     method = newline.join(
         [
-            r"\1",
-            "",
             f"void MatrixPanel_I2S_DMA::writeFrameRGB565(const uint16_t *frame565) // {PATCH_MARKER}",
             "{",
             "  if (!initialized || frame565 == nullptr)",
@@ -89,6 +97,26 @@ def patch_cpp(original: str, newline: str) -> str:
             "",
             "  const int observed_back_buffer_id = back_buffer_id;",
             "  const uint8_t colour_depth_count = m_cfg.getPixelColorDepthBits();",
+            "  static uint16_t red_blue_luminance_lut[32] = {0};",
+            "  static uint16_t green_luminance_lut[64] = {0};",
+            "  static bool luminance_luts_initialized = false;",
+            "  if (!luminance_luts_initialized)",
+            "  {",
+            "    for (uint8_t i = 0; i < 32; i++)",
+            "    {",
+            "      const uint8_t expanded = static_cast<uint8_t>((i << 3) | (i >> 2));",
+            "      red_blue_luminance_lut[i] = lumConvTab[expanded];",
+            "    }",
+            "",
+            "    for (uint8_t i = 0; i < 64; i++)",
+            "    {",
+            "      const uint8_t expanded = static_cast<uint8_t>((i << 2) | (i >> 4));",
+            "      green_luminance_lut[i] = lumConvTab[expanded];",
+            "    }",
+            "",
+            "    luminance_luts_initialized = true;",
+            "  }",
+            "",
             "  static unsigned long last_audit_log_ms = 0;",
             "  const unsigned long now_ms = millis();",
             "  if ((now_ms - last_audit_log_ms) >= 1000UL)",
@@ -129,48 +157,61 @@ def patch_cpp(original: str, newline: str) -> str:
             "      const uint8_t lower_r5 = static_cast<uint8_t>((lower_pixel >> 11) & 0x1FU);",
             "      const uint8_t lower_g6 = static_cast<uint8_t>((lower_pixel >> 5) & 0x3FU);",
             "      const uint8_t lower_b5 = static_cast<uint8_t>(lower_pixel & 0x1FU);",
-            "",
-            "      const uint8_t upper_r6 = static_cast<uint8_t>((upper_r5 << 1) | (upper_r5 >> 4));",
-            "      const uint8_t upper_b6 = static_cast<uint8_t>((upper_b5 << 1) | (upper_b5 >> 4));",
-            "      const uint8_t lower_r6 = static_cast<uint8_t>((lower_r5 << 1) | (lower_r5 >> 4));",
-            "      const uint8_t lower_b6 = static_cast<uint8_t>((lower_b5 << 1) | (lower_b5 >> 4));",
+            "      const uint16_t upper_red16 = red_blue_luminance_lut[upper_r5];",
+            "      const uint16_t upper_green16 = green_luminance_lut[upper_g6];",
+            "      const uint16_t upper_blue16 = red_blue_luminance_lut[upper_b5];",
+            "      const uint16_t lower_red16 = red_blue_luminance_lut[lower_r5];",
+            "      const uint16_t lower_green16 = green_luminance_lut[lower_g6];",
+            "      const uint16_t lower_blue16 = red_blue_luminance_lut[lower_b5];",
             "      const uint16_t adjusted_x = ESP32_TX_FIFO_POSITION_ADJUST(x);",
             "",
             "      for (uint8_t colour_depth_idx = 0; colour_depth_idx < colour_depth_count; colour_depth_idx++)",
             "      {",
-            "        const uint8_t bit_mask = static_cast<uint8_t>(1U << colour_depth_idx);",
+            "        const uint16_t mask = PIXEL_COLOR_MASK_BIT(colour_depth_idx, MASK_OFFSET);",
+            "        uint16_t upper_rgb_output_bits = 0;",
+            "        uint16_t lower_rgb_output_bits = 0;",
             "        uint16_t rgb_output_bits = 0;",
             "",
-            "        if ((upper_r6 & bit_mask) != 0)",
-            "          rgb_output_bits |= BIT_R1;",
-            "        if ((upper_g6 & bit_mask) != 0)",
-            "          rgb_output_bits |= BIT_G1;",
-            "        if ((upper_b6 & bit_mask) != 0)",
-            "          rgb_output_bits |= BIT_B1;",
-            "        if ((lower_r6 & bit_mask) != 0)",
-            "          rgb_output_bits |= BIT_R2;",
-            "        if ((lower_g6 & bit_mask) != 0)",
-            "          rgb_output_bits |= BIT_G2;",
-            "        if ((lower_b6 & bit_mask) != 0)",
-            "          rgb_output_bits |= BIT_B2;",
+            "        upper_rgb_output_bits |= static_cast<uint16_t>((upper_blue16 & mask) != 0);",
+            "        upper_rgb_output_bits <<= 1;",
+            "        upper_rgb_output_bits |= static_cast<uint16_t>((upper_green16 & mask) != 0);",
+            "        upper_rgb_output_bits <<= 1;",
+            "        upper_rgb_output_bits |= static_cast<uint16_t>((upper_red16 & mask) != 0);",
+            "",
+            "        lower_rgb_output_bits |= static_cast<uint16_t>((lower_blue16 & mask) != 0);",
+            "        lower_rgb_output_bits <<= 1;",
+            "        lower_rgb_output_bits |= static_cast<uint16_t>((lower_green16 & mask) != 0);",
+            "        lower_rgb_output_bits <<= 1;",
+            "        lower_rgb_output_bits |= static_cast<uint16_t>((lower_red16 & mask) != 0);",
+            "",
+            "        rgb_output_bits = upper_rgb_output_bits | static_cast<uint16_t>(lower_rgb_output_bits << BITS_RGB2_OFFSET);",
             "",
             "        plane_rows[colour_depth_idx][adjusted_x] &= BITMASK_RGB12_CLEAR;",
             "        plane_rows[colour_depth_idx][adjusted_x] |= rgb_output_bits;",
             "",
             "      }",
+            "    }",
             "",
             "#if defined(SPIRAM_DMA_BUFFER)",
+            "    for (uint8_t colour_depth_idx = 0; colour_depth_idx < colour_depth_count; colour_depth_idx++)",
+            "    {",
             "      Cache_WriteBack_Addr((uint32_t)plane_rows[colour_depth_idx], plane_bytes);",
-            "#endif",
             "    }",
+            "#endif",
             "  }",
             "}",
         ]
     )
 
-    patched, count = CPP_SENTINEL.subn(method, patched, count=1)
-    if count != 1:
-        raise RuntimeError("Assinatura esperada de updateMatrixDMABuffer(full frame paint) nao encontrada em ESP32-HUB75-MatrixPanel-I2S-DMA.cpp.")
+    if CPP_METHOD_SENTINEL.search(patched):
+        patched, count = CPP_METHOD_SENTINEL.subn(method, patched, count=1)
+        if count != 1:
+            raise RuntimeError("Falha ao atualizar a implementacao existente de writeFrameRGB565 em ESP32-HUB75-MatrixPanel-I2S-DMA.cpp.")
+    else:
+        insertion = newline.join([r"\1", "", method])
+        patched, count = CPP_SENTINEL.subn(insertion, patched, count=1)
+        if count != 1:
+            raise RuntimeError("Assinatura esperada de updateMatrixDMABuffer(full frame paint) nao encontrada em ESP32-HUB75-MatrixPanel-I2S-DMA.cpp.")
     return patched
 
 

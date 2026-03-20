@@ -203,6 +203,26 @@
   - nao usa `lumConvTab` nem replica a curva/gamma antiga da lib nesse caminho.
 - O patch falha cedo se as assinaturas esperadas da header/cpp mudarem, evitando drift silencioso no build oficial.
 
+## Atualizacao 2026-03 - HUB75 bulk RGB565 contraste e curva tonal
+
+- O caminho `Frame128x64` do firmware permaneceu bulk/back-buffer, mas deixou de usar o mapper tonal simplificado que expandia `RGB565` apenas por replicacao de bits.
+- O writer patchado `writeFrameRGB565()` agora segue a mesma resposta luminosa da upstream para preencher os bitplanes BCM:
+  - reconstrucao `RGB565 -> intensidade efetiva`
+  - uso da `lumConvTab` (`CIE 1931`) por canal
+  - uso de `PIXEL_COLOR_MASK_BIT(..., MASK_OFFSET)` para respeitar o depth BCM configurado
+- Para preservar throughput, o bulk writer usa LUTs locais pequenas derivadas da `lumConvTab`:
+  - `R/B 5-bit -> luminancia 16-bit`
+  - `G 6-bit -> luminancia 16-bit`
+- O objetivo desta fase e alinhar o contraste/saturacao dos producers `Frame128x64` com o comportamento perceptivo do caminho upstream `drawPixelRGB888`, sem reabrir:
+  - `commitMatrixFrame()`
+  - `Bins128`
+  - tuning de `brightnessCap`, `clkphase`, `latch_blanking` ou `min_refresh_rate`
+- A auditoria de ownership do back buffer foi preservada:
+  - `target_buffer_id`
+  - `back_buffer_id`
+  - `ROWS_PER_FRAME`
+- Se ainda houver distorcao residual de cor apos esse fix, o proximo suspeito oficial passa a ser o mapeamento BCM/bitplane remanescente do writer bulk, nao o compositor WinUI nem o transporte de rede.
+
 ## Atualizacao 2026-03 - MQTT cutover do control plane
 
 - O firmware passou a usar MQTT para controle e telemetria:
