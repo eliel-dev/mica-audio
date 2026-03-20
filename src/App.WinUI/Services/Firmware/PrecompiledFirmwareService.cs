@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -15,6 +17,17 @@ internal sealed partial class PrecompiledFirmwareService
     {
         PropertyNameCaseInsensitive = true,
     };
+
+    private static readonly string[] WorkspaceFreshnessInputs =
+    [
+        Path.Combine("scripts", "build-precompiled-firmware.ps1"),
+        Path.Combine("firmware", "esp32s3-devkitc1", "platformio.ini"),
+        Path.Combine("firmware", "esp32s3-devkitc1", "src", "main.cpp"),
+        Path.Combine("firmware", "esp32s3-devkitc1", "src", "firmware_version.h"),
+        Path.Combine("firmware", "esp32s3-devkitc1", "boards"),
+        Path.Combine("firmware", "esp32s3-devkitc1", "partitions"),
+        Path.Combine("firmware", "esp32s3-devkitc1", "scripts"),
+    ];
 
     public const string Esp32S3DevKitC1Board = "esp32s3_devkitc1";
     public const string Hub75PanelP25_128x64_Smd2121_Scan32 = "hub75_p2_5_128x64_smd2121_scan32";
@@ -36,6 +49,9 @@ internal sealed partial class PrecompiledFirmwareService
 
     private readonly MicaAudioOptions options;
     private readonly ILogger<PrecompiledFirmwareService> logger;
+    private readonly object officialFirmwareGate = new();
+    private readonly Dictionary<string, OfficialFirmwareStatus> officialFirmwareStatuses = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Task<OfficialFirmwareRefreshResult>> officialFirmwareRefreshTasks = new(StringComparer.OrdinalIgnoreCase);
 
     public PrecompiledFirmwareService(IOptions<MicaAudioOptions> options, ILogger<PrecompiledFirmwareService> logger)
     {
@@ -180,6 +196,88 @@ internal sealed partial class PrecompiledFirmwareService
         return true;
     }
 
+    public bool TryResolveOfficialArtifact(string boardModel, string panelType, string profile, out ResolvedFirmwareArtifact artifact, out string error)
+    {
+        artifact = null!;
+        error = string.Empty;
+
+        if (!TryGetOption(boardModel, panelType, profile, out var option, out error))
+        {
+            return false;
+        }
+
+        return TryResolveOfficialArtifact(option.Id, out artifact, out error);
+    }
+
+    public bool TryResolveOfficialArtifact(string optionId, out ResolvedFirmwareArtifact artifact, out string error)
+    {
+        artifact = null!;
+        error = string.Empty;
+
+        if (!TryGetOptionById(optionId, out var option, out error))
+        {
+            return false;
+        }
+
+        var status = GetOrEvaluateOfficialStatus(option);
+        if (!status.IsFresh || status.Artifact is null)
+        {
+            error = status.FailureReason;
+            return false;
+        }
+
+        artifact = status.Artifact;
+        return true;
+    }
+
+    public Task<OfficialFirmwareRefreshResult> EnsureOfficialFirmwareFreshAsync(
+        string boardModel,
+        string panelType,
+        string profile,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetOption(boardModel, panelType, profile, out var option, out var error))
+        {
+            return Task.FromResult(new OfficialFirmwareRefreshResult(false, false, error, null));
+        }
+
+        return EnsureOfficialFirmwareFreshAsync(option.Id, cancellationToken);
+    }
+
+    public async Task<OfficialFirmwareRefreshResult> EnsureOfficialFirmwareFreshAsync(
+        string optionId,
+        CancellationToken cancellationToken = default)
+    {
+        Task<OfficialFirmwareRefreshResult> refreshTask;
+        lock (officialFirmwareGate)
+        {
+            if (!officialFirmwareRefreshTasks.TryGetValue(optionId, out refreshTask!))
+            {
+                refreshTask = EnsureOfficialFirmwareFreshCoreAsync(optionId);
+                officialFirmwareRefreshTasks[optionId] = refreshTask;
+            }
+        }
+
+        try
+        {
+            return await refreshTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (refreshTask.IsCompleted)
+            {
+                lock (officialFirmwareGate)
+                {
+                    if (officialFirmwareRefreshTasks.TryGetValue(optionId, out var currentTask)
+                        && ReferenceEquals(currentTask, refreshTask))
+                    {
+                        officialFirmwareRefreshTasks.Remove(optionId);
+                    }
+                }
+            }
+        }
+    }
+
     public bool TryResolveSource(string optionId, out string sourcePath, out string error)
     {
         sourcePath = string.Empty;
@@ -257,6 +355,437 @@ internal sealed partial class PrecompiledFirmwareService
         await source.CopyToAsync(destination, cancellationToken).ConfigureAwait(false);
 
         Log($"Firmware copiado para: {destinationPath}");
+    }
+
+    private async Task<OfficialFirmwareRefreshResult> EnsureOfficialFirmwareFreshCoreAsync(string optionId)
+    {
+        if (!TryGetOptionById(optionId, out var option, out var error))
+        {
+            var invalidOptionResult = new OfficialFirmwareRefreshResult(false, false, error, null);
+            SetOfficialStatus(optionId, new OfficialFirmwareStatus(invalidOptionResult));
+            return invalidOptionResult;
+        }
+
+        try
+        {
+            if (!TryResolveWorkspaceContext(out var workspace))
+            {
+                var packagedStatus = EvaluateOfficialStatus(option, workspace: null);
+                SetOfficialStatus(option.Id, packagedStatus);
+                return packagedStatus.ToRefreshResult(wasRegenerated: false);
+            }
+
+            var currentStatus = EvaluateOfficialStatus(option, workspace);
+            if (currentStatus.IsFresh)
+            {
+                SetOfficialStatus(option.Id, currentStatus);
+                return currentStatus.ToRefreshResult(wasRegenerated: false);
+            }
+
+            Log($"Release oficial stale ou ausente para '{option.DisplayName}'. Regenerando com o script oficial...");
+
+            var build = await RunOfficialBuildScriptAsync(workspace).ConfigureAwait(false);
+            if (!build.Success)
+            {
+                var failureResult = new OfficialFirmwareRefreshResult(
+                    WasRegenerated: false,
+                    IsFresh: false,
+                    FailureReason: build.FailureReason,
+                    ResolvedArtifact: null);
+                SetOfficialStatus(option.Id, new OfficialFirmwareStatus(failureResult));
+                return failureResult;
+            }
+
+            var refreshedStatus = EvaluateOfficialStatus(option, workspace);
+            SetOfficialStatus(option.Id, refreshedStatus);
+            if (refreshedStatus.IsFresh)
+            {
+                return refreshedStatus.ToRefreshResult(wasRegenerated: true);
+            }
+
+            var staleAfterBuild = refreshedStatus.FailureReason;
+            if (!string.IsNullOrWhiteSpace(build.Output))
+            {
+                staleAfterBuild = $"{staleAfterBuild} Saida do build oficial:{Environment.NewLine}{build.Output}";
+            }
+
+            var unresolvedResult = new OfficialFirmwareRefreshResult(
+                WasRegenerated: true,
+                IsFresh: false,
+                FailureReason: staleAfterBuild,
+                ResolvedArtifact: null);
+            SetOfficialStatus(option.Id, new OfficialFirmwareStatus(unresolvedResult));
+            return unresolvedResult;
+        }
+        catch (Exception ex)
+        {
+            var failureReason = $"Falha ao garantir frescor do release oficial para '{option.DisplayName}': {ex.Message}";
+            LogOfficialFirmwareRefreshFailed(logger, ex, option.Id);
+            var exceptionResult = new OfficialFirmwareRefreshResult(
+                WasRegenerated: false,
+                IsFresh: false,
+                FailureReason: failureReason,
+                ResolvedArtifact: null);
+            SetOfficialStatus(option.Id, new OfficialFirmwareStatus(exceptionResult));
+            return exceptionResult;
+        }
+    }
+
+    private OfficialFirmwareStatus GetOrEvaluateOfficialStatus(PrecompiledFirmwareOption option)
+    {
+        if (TryResolveWorkspaceContext(out var workspace))
+        {
+            var evaluatedWorkspaceStatus = EvaluateOfficialStatus(option, workspace);
+            SetOfficialStatus(option.Id, evaluatedWorkspaceStatus);
+            return evaluatedWorkspaceStatus;
+        }
+
+        lock (officialFirmwareGate)
+        {
+            if (officialFirmwareStatuses.TryGetValue(option.Id, out var cached))
+            {
+                return cached;
+            }
+        }
+
+        var evaluated = EvaluateOfficialStatus(option, workspace: null);
+        SetOfficialStatus(option.Id, evaluated);
+        return evaluated;
+    }
+
+    private OfficialFirmwareStatus EvaluateOfficialStatus(PrecompiledFirmwareOption option, WorkspaceContext? workspace)
+    {
+        if (!TryResolveArtifact(option.Id, out var artifact, out var error))
+        {
+            return new OfficialFirmwareStatus(
+                false,
+                workspace is null
+                    ? error
+                    : $"{error} Release oficial workspace-local indisponivel para '{option.DisplayName}'.",
+                null);
+        }
+
+        if (workspace is null)
+        {
+            return new OfficialFirmwareStatus(true, string.Empty, artifact);
+        }
+
+        var freshness = EvaluateArtifactFreshness(artifact, workspace);
+        return freshness.IsFresh
+            ? new OfficialFirmwareStatus(true, string.Empty, artifact)
+            : new OfficialFirmwareStatus(false, freshness.FailureReason, null);
+    }
+
+    private static ArtifactFreshness EvaluateArtifactFreshness(ResolvedFirmwareArtifact artifact, WorkspaceContext workspace)
+    {
+        if (!TryResolveArtifactBuildTimestampUtc(artifact, out var artifactBuiltAtUtc))
+        {
+            return new ArtifactFreshness(
+                false,
+                $"Manifesto do release oficial invalido para '{artifact.Option.DisplayName}': builtAtUtc ausente ou invalido.");
+        }
+
+        if (!TryResolveLatestWorkspaceInputTimestampUtc(workspace, out var latestInputUtc, out var latestInputPath, out var error))
+        {
+            return new ArtifactFreshness(false, error);
+        }
+
+        if (artifactBuiltAtUtc >= latestInputUtc)
+        {
+            return new ArtifactFreshness(true, string.Empty);
+        }
+
+        var relativeInputPath = Path.GetRelativePath(workspace.RepoRoot, latestInputPath);
+        return new ArtifactFreshness(
+            false,
+            $"Release oficial stale para '{artifact.Option.DisplayName}'. O insumo '{relativeInputPath}' mudou em {latestInputUtc:yyyy-MM-dd HH:mm:ss} UTC, depois do manifesto atual ({artifactBuiltAtUtc:yyyy-MM-dd HH:mm:ss} UTC).");
+    }
+
+    private bool TryResolveWorkspaceContext([NotNullWhen(true)] out WorkspaceContext? workspace)
+    {
+        workspace = null;
+
+        foreach (var candidate in EnumerateWorkspaceRootCandidates())
+        {
+            var repoRoot = Path.GetFullPath(candidate);
+            var buildScriptPath = Path.Combine(repoRoot, "scripts", "build-precompiled-firmware.ps1");
+            var solutionPath = Path.Combine(repoRoot, "MicaAudio.sln");
+            var firmwareRoot = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1");
+
+            if (!File.Exists(solutionPath)
+                || !File.Exists(buildScriptPath)
+                || !Directory.Exists(firmwareRoot))
+            {
+                continue;
+            }
+
+            workspace = new WorkspaceContext(
+                repoRoot,
+                buildScriptPath,
+                firmwareRoot,
+                ResolveOutputRoot(),
+                WorkspaceFreshnessInputs.Select(relative => Path.Combine(repoRoot, relative)).ToArray());
+            return true;
+        }
+
+        return false;
+    }
+
+    private IEnumerable<string> EnumerateWorkspaceRootCandidates()
+    {
+        if (!string.IsNullOrWhiteSpace(options.WorkspaceRoot))
+        {
+            yield return options.WorkspaceRoot;
+        }
+
+        var currentDirectory = Environment.CurrentDirectory;
+        if (!string.IsNullOrWhiteSpace(currentDirectory))
+        {
+            yield return currentDirectory;
+        }
+
+        yield return AppContext.BaseDirectory;
+
+        foreach (var root in new[] { options.WorkspaceRoot, currentDirectory, AppContext.BaseDirectory })
+        {
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                continue;
+            }
+
+            DirectoryInfo? current;
+            try
+            {
+                current = new DirectoryInfo(Path.GetFullPath(root));
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!current.Exists && current.Parent is not null)
+            {
+                current = current.Parent;
+            }
+
+            while (current is not null)
+            {
+                yield return current.FullName;
+                current = current.Parent;
+            }
+        }
+    }
+
+    private string ResolveOutputRoot()
+    {
+        if (!string.IsNullOrWhiteSpace(options.PrecompiledFirmwareDirectory))
+        {
+            return Path.GetFullPath(options.PrecompiledFirmwareDirectory);
+        }
+
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "AppData", "Firmware"));
+    }
+
+    private async Task<BuildProcessResult> RunOfficialBuildScriptAsync(WorkspaceContext workspace)
+    {
+        var output = new StringBuilder();
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = ResolvePowerShellExecutable(),
+            WorkingDirectory = workspace.RepoRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+
+        startInfo.ArgumentList.Add("-ExecutionPolicy");
+        startInfo.ArgumentList.Add("Bypass");
+        startInfo.ArgumentList.Add("-File");
+        startInfo.ArgumentList.Add(workspace.BuildScriptPath);
+        startInfo.ArgumentList.Add("-OutputRoot");
+        startInfo.ArgumentList.Add(workspace.OutputRoot);
+
+        using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        process.OutputDataReceived += (_, args) =>
+        {
+            if (!string.IsNullOrWhiteSpace(args.Data))
+            {
+                output.AppendLine(args.Data);
+            }
+        };
+
+        process.ErrorDataReceived += (_, args) =>
+        {
+            if (!string.IsNullOrWhiteSpace(args.Data))
+            {
+                output.AppendLine(args.Data);
+            }
+        };
+
+        try
+        {
+            if (!process.Start())
+            {
+                return new BuildProcessResult(false, output.ToString(), "Falha ao iniciar o script oficial de build do firmware.");
+            }
+
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await process.WaitForExitAsync().ConfigureAwait(false);
+            process.WaitForExit();
+        }
+        catch (Exception ex)
+        {
+            return new BuildProcessResult(false, output.ToString(), $"Falha ao executar o script oficial de build do firmware: {ex.Message}");
+        }
+
+        var capturedOutput = output.ToString().Trim();
+        if (process.ExitCode == 0)
+        {
+            if (!string.IsNullOrWhiteSpace(capturedOutput))
+            {
+                Log($"Script oficial de firmware concluido com sucesso.{Environment.NewLine}{capturedOutput}");
+            }
+
+            return new BuildProcessResult(true, capturedOutput, string.Empty);
+        }
+
+        var failure = $"Script oficial de build do firmware falhou com exit code {process.ExitCode}.";
+        if (!string.IsNullOrWhiteSpace(capturedOutput))
+        {
+            failure = $"{failure}{Environment.NewLine}{capturedOutput}";
+        }
+
+        LogOfficialFirmwareBuildFailed(logger, process.ExitCode);
+        return new BuildProcessResult(false, capturedOutput, failure);
+    }
+
+    private static string ResolvePowerShellExecutable()
+        => OperatingSystem.IsWindows() ? "powershell" : "pwsh";
+
+    private static bool TryResolveLatestWorkspaceInputTimestampUtc(
+        WorkspaceContext workspace,
+        out DateTimeOffset latestInputUtc,
+        out string latestInputPath,
+        out string error)
+    {
+        latestInputUtc = DateTimeOffset.MinValue;
+        latestInputPath = string.Empty;
+        error = string.Empty;
+
+        foreach (var inputPath in workspace.FreshnessInputs)
+        {
+            if (!TryResolvePathLastWriteTimeUtc(inputPath, out var inputLastWriteUtc, out var pathError))
+            {
+                error = $"Falha ao avaliar frescor do release oficial: {pathError}";
+                return false;
+            }
+
+            if (inputLastWriteUtc > latestInputUtc)
+            {
+                latestInputUtc = inputLastWriteUtc;
+                latestInputPath = inputPath;
+            }
+        }
+
+        if (latestInputUtc == DateTimeOffset.MinValue || string.IsNullOrWhiteSpace(latestInputPath))
+        {
+            error = "Falha ao avaliar frescor do release oficial: nenhum insumo de firmware foi encontrado no workspace.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryResolvePathLastWriteTimeUtc(string path, out DateTimeOffset latestUtc, out string error)
+    {
+        latestUtc = DateTimeOffset.MinValue;
+        error = string.Empty;
+
+        try
+        {
+            if (File.Exists(path))
+            {
+                latestUtc = File.GetLastWriteTimeUtc(path);
+                return true;
+            }
+
+            if (!Directory.Exists(path))
+            {
+                error = $"insumo obrigatorio nao encontrado: {path}";
+                return false;
+            }
+
+            latestUtc = Directory.GetLastWriteTimeUtc(path);
+            foreach (var entry in Directory.EnumerateFileSystemEntries(path, "*", SearchOption.AllDirectories))
+            {
+                var entryUtc = File.Exists(entry)
+                    ? File.GetLastWriteTimeUtc(entry)
+                    : Directory.GetLastWriteTimeUtc(entry);
+                if (entryUtc > latestUtc)
+                {
+                    latestUtc = entryUtc;
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            error = $"falha ao ler o insumo '{path}': {ex.Message}";
+            return false;
+        }
+    }
+
+    private static bool TryResolveArtifactBuildTimestampUtc(ResolvedFirmwareArtifact artifact, out DateTimeOffset builtAtUtc)
+    {
+        if (artifact.Manifest.BuiltAtUtc > DateTimeOffset.UnixEpoch)
+        {
+            builtAtUtc = artifact.Manifest.BuiltAtUtc.ToUniversalTime();
+            return true;
+        }
+
+        try
+        {
+            builtAtUtc = new[]
+            {
+                File.GetLastWriteTimeUtc(artifact.FirmwarePath),
+                File.GetLastWriteTimeUtc(artifact.ManifestPath),
+            }.Max();
+            return true;
+        }
+        catch (Exception) when (!File.Exists(artifact.FirmwarePath) || !File.Exists(artifact.ManifestPath))
+        {
+            builtAtUtc = default;
+            return false;
+        }
+    }
+
+    private static bool TryGetOptionById(string optionId, out PrecompiledFirmwareOption option, out string error)
+    {
+        option = new PrecompiledFirmwareOption();
+        error = string.Empty;
+
+        var match = Options.FirstOrDefault(item => string.Equals(item.Id, optionId, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            error = $"Opcao de firmware invalida: {optionId}";
+            return false;
+        }
+
+        option = match;
+        return true;
+    }
+
+    private void SetOfficialStatus(string optionId, OfficialFirmwareStatus status)
+    {
+        lock (officialFirmwareGate)
+        {
+            officialFirmwareStatuses[optionId] = status;
+        }
     }
 
     private static bool TryNormalizeManifest(
@@ -359,4 +888,35 @@ internal sealed partial class PrecompiledFirmwareService
 
     [LoggerMessage(EventId = 1500, Level = LogLevel.Information, Message = "Firmware event: {Message}")]
     private static partial void LogFirmwareMessage(ILogger logger, string message);
+
+    [LoggerMessage(EventId = 1501, Level = LogLevel.Error, Message = "Official firmware refresh failed for {OptionId}")]
+    private static partial void LogOfficialFirmwareRefreshFailed(ILogger logger, Exception exception, string optionId);
+
+    [LoggerMessage(EventId = 1502, Level = LogLevel.Warning, Message = "Official firmware build failed. ExitCode={ExitCode}")]
+    private static partial void LogOfficialFirmwareBuildFailed(ILogger logger, int exitCode);
+
+    private sealed record OfficialFirmwareStatus(
+        bool IsFresh,
+        string FailureReason,
+        ResolvedFirmwareArtifact? Artifact)
+    {
+        public OfficialFirmwareStatus(OfficialFirmwareRefreshResult result)
+            : this(result.IsFresh, result.FailureReason, result.ResolvedArtifact)
+        {
+        }
+
+        public OfficialFirmwareRefreshResult ToRefreshResult(bool wasRegenerated)
+            => new(wasRegenerated, IsFresh, FailureReason, Artifact);
+    }
+
+    private sealed record ArtifactFreshness(bool IsFresh, string FailureReason);
+
+    private sealed record BuildProcessResult(bool Success, string Output, string FailureReason);
+
+    private sealed record WorkspaceContext(
+        string RepoRoot,
+        string BuildScriptPath,
+        string FirmwareRoot,
+        string OutputRoot,
+        IReadOnlyList<string> FreshnessInputs);
 }

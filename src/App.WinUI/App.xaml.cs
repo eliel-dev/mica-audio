@@ -100,6 +100,7 @@ public partial class App : Application
         var localRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var appDataRoot = Path.Combine(roamingRoot, "MicaAudio");
         var localAppDataRoot = Path.Combine(localRoot, "MicaAudio");
+        var workspaceRoot = ResolveWorkspaceRoot();
 
         var options = new MicaAudioOptions
         {
@@ -112,6 +113,7 @@ public partial class App : Application
             PanelsFilePath = Path.Combine(appDataRoot, "panels", "panels.json"),
             CrashLogPath = Path.Combine(localAppDataRoot, "crash.log"),
             PrecompiledFirmwareDirectory = Path.Combine(AppContext.BaseDirectory, "AppData", "Firmware"),
+            WorkspaceRoot = workspaceRoot,
         };
 
         var observability = AppObservability.ConfigureGlobalLogger(options);
@@ -136,6 +138,7 @@ public partial class App : Application
             configured.PanelsFilePath = options.PanelsFilePath;
             configured.CrashLogPath = options.CrashLogPath;
             configured.PrecompiledFirmwareDirectory = options.PrecompiledFirmwareDirectory;
+            configured.WorkspaceRoot = options.WorkspaceRoot;
         });
 
         services.AddSingleton<PrecompiledFirmwareService>();
@@ -281,6 +284,8 @@ public partial class App : Application
         {
             await deviceIntegration.StartAsync().ConfigureAwait(false);
 
+            _ = WarmUpOfficialFirmwareAsync(services);
+
             var deviceOps = services.GetService<DeviceOperationsCoordinator>();
             deviceOps?.RequestRefresh();
 
@@ -405,6 +410,34 @@ public partial class App : Application
         }
     }
 
+    private static async Task WarmUpOfficialFirmwareAsync(IServiceProvider services)
+    {
+        var firmwareService = services.GetService<PrecompiledFirmwareService>();
+        if (firmwareService is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var requestRefresh = false;
+            foreach (var option in firmwareService.GetOptions())
+            {
+                var result = await firmwareService.EnsureOfficialFirmwareFreshAsync(option.Id).ConfigureAwait(false);
+                requestRefresh |= result.WasRegenerated;
+            }
+
+            if (requestRefresh)
+            {
+                services.GetService<DeviceOperationsCoordinator>()?.RequestRefresh();
+            }
+        }
+        catch (Exception ex)
+        {
+            services.GetService<AppLogStore>()?.Append(LogCategory.System, LogSeverity.Warning, $"Official firmware warm-up failed: {ex.Message}");
+        }
+    }
+
     private static AppSettings LoadStartupSettings(IServiceProvider services)
     {
         try
@@ -419,6 +452,57 @@ public partial class App : Application
             WriteCrashLog("Load startup settings failed. Using defaults.", ex);
             return new AppSettings();
         }
+    }
+
+    private static string ResolveWorkspaceRoot()
+    {
+        var candidates = new[]
+        {
+            AppContext.BaseDirectory,
+            Environment.CurrentDirectory,
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var resolved = TryResolveWorkspaceRootFrom(candidate);
+            if (!string.IsNullOrWhiteSpace(resolved))
+            {
+                return resolved;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string? TryResolveWorkspaceRootFrom(string? startPath)
+    {
+        if (string.IsNullOrWhiteSpace(startPath))
+        {
+            return null;
+        }
+
+        var current = new DirectoryInfo(Path.GetFullPath(startPath));
+        if (!current.Exists && current.Parent is not null)
+        {
+            current = current.Parent;
+        }
+
+        while (current is not null)
+        {
+            var solutionPath = Path.Combine(current.FullName, "MicaAudio.sln");
+            var scriptPath = Path.Combine(current.FullName, "scripts", "build-precompiled-firmware.ps1");
+            var firmwareRoot = Path.Combine(current.FullName, "firmware", "esp32s3-devkitc1");
+            if (File.Exists(solutionPath)
+                && File.Exists(scriptPath)
+                && Directory.Exists(firmwareRoot))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
     }
 
     private static void ApplyFallbackBackground(Frame rootFrame)

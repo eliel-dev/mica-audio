@@ -11,7 +11,7 @@
 
 1. conecta ao servidor local
 2. recebe `StreamFrameV2` tipo `1` (`bins128`) ou tipo `2` (`frame 128x64 RGB565`)
-3. renderiza `drawBars` ou `drawFrame128x64`
+3. renderiza `drawBars`, `drawFrame128x64` ou o fallback local de conectividade
 4. conecta o control plane MQTT para `presence`, `status`, `stats`, `logs` e `commands`
 5. reporta `boardModel = esp32s3_devkitc1` e `panelType = hub75_p2_5_128x64_smd2121_scan32`
 
@@ -95,7 +95,7 @@
   - `double_buff = true`
   - `i2sspeed = HZ_10M`
   - `clkphase = false`
-  - sem forcamento de `min_refresh_rate`
+  - `min_refresh_rate = 60`
 - O firmware passou a aplicar `setLatBlanking(2)` no painel oficial:
   - a README da upstream recomenda esse ajuste quando houver ghosting com clone/deslocamento horizontal;
   - valores maiores so reduzem brilho e nao entram no baseline oficial.
@@ -140,6 +140,48 @@
 - PSRAM continua apenas como telemetria/capacidade do device:
   - o perfil oficial nao habilita `SPIRAM_FRAMEBUFFER` nem `SPIRAM_DMA_BUFFER`;
   - a decisao segue a documentacao da biblioteca upstream, que associa esse caminho a tradeoffs de clock/banda.
+
+## Atualizacao 2026-03 - HUB75 diagnostic matrix envs
+
+- A investigacao oficial de tearing/ghosting no painel ganhou uma trilha separada do build shipping:
+  - `esp32s3_devkitc1_dma_diag` recompila o firmware oficial com `CORE_DEBUG_LEVEL=3`;
+  - o env diagnostico preserva o fluxo Mica real (`writeFrameRGB565`, MQTT, WS, `flipDMABuffer()`), mas explicita no serial:
+    - `driver`
+    - `min_refresh_rate`
+    - `calculated_refresh_rate`
+    - `physical_present_interval_us`
+    - `effective_present_interval_us`
+    - `clkphase`
+    - `double_buffer`
+    - `latch_blanking`
+- O baseline shipping passou a deixar `min_refresh_rate = 60` explicito em vez de depender apenas do default implícito da biblioteca.
+- Para isolar a origem fora do runtime do app, o repositorio agora inclui dois envs-oracle da lib HUB75:
+  - `esp32s3_devkitc1_dma_oracle_shiftreg`
+  - `esp32s3_devkitc1_dma_oracle_fm6124`
+- Esses envs-oracle usam o mesmo pinout oficial `128x64` do projeto e desenham apenas patterns estaticos/diagnosticos em double buffer, sem depender de `StreamFrameV2`, MQTT nem do runtime visual do app no caminho de uso.
+- A investigacao desta fase trava a seguinte politica:
+  - `120 Hz` nao vira baseline;
+  - o alvo conservador continua sendo `60 FPS` de apresentacao;
+  - `min_refresh_rate = 90` so entra como experimento posterior se a matriz de testes mostrar ganho real sem piora de cor/ghosting.
+
+## Atualizacao 2026-03 - HUB75 fallback local de conectividade
+
+- O firmware oficial passou a renderizar uma tela local no proprio ESP32-S3 quando nao houver conectividade operacional para o stream visual do painel.
+- O fallback e deliberadamente minimalista e estatico, com copy ASCII curta para alta legibilidade em `128x64`.
+- Estados oficiais desta fase:
+  - `SEM WIFI`
+  - `SEM SERV`
+  - `SETUP WIFI`
+- Precedencia:
+  1. `SETUP WIFI` quando o portal de provisioning estiver ativo
+  2. `SEM WIFI` quando nao houver Wi-Fi estavel
+  3. `SEM SERV` quando houver Wi-Fi, mas nao houver sessao WebSocket ativa
+- MQTT nao entra no criterio do fallback:
+  - a tela representa apenas a conectividade que afeta o stream real do HUB75.
+- Para evitar flicker em flap curto de rede, `SEM WIFI` e `SEM SERV` usam debounce fixo de `1000 ms`.
+- Quando o stream visual normal volta, o fallback sai do painel sem exigir reboot nem reset do host.
+- O timeout de stream sem queda de conectividade continua fora deste fallback:
+  - se houver servidor conectado, mas faltar frame/sinal, o comportamento atual permanece.
 
 ## Atualizacao 2026-03 - HUB75 bulk RGB565 back-buffer fix
 

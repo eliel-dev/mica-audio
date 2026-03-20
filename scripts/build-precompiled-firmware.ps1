@@ -2,7 +2,8 @@
 # DOCS: docs/wiki/modules/server-build-and-artifacts.md#manifesto-oficial
 # DOCS: docs/wiki/reference/code-index.md
 param(
-    [switch]$SkipToolInstall
+    [switch]$SkipToolInstall,
+    [string]$OutputRoot
 )
 
 Set-StrictMode -Version Latest
@@ -10,10 +11,15 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $firmwareRoot = Join-Path $repoRoot 'firmware/esp32s3-devkitc1'
-$outputRoot = Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
+$resolvedOutputRoot = if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+    Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
+}
+else {
+    [System.IO.Path]::GetFullPath($OutputRoot)
+}
 $autoVersionHeaderPath = Join-Path $firmwareRoot 'src/firmware_version.auto.h'
 $target = [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin' }
-$manifestPath = Join-Path $outputRoot 'esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json'
+$manifestPath = Join-Path $resolvedOutputRoot 'esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json'
 $platformIoCommand = @()
 
 function Invoke-External {
@@ -289,7 +295,7 @@ function Write-FirmwareManifest {
     Write-Host "[build-precompiled-firmware] Manifesto atualizado: $DestinationPath"
 }
 
-$destinationPath = Join-Path $outputRoot $target.OutputFile
+$destinationPath = Join-Path $resolvedOutputRoot $target.OutputFile
 $firmwareVersion = Resolve-FirmwareVersion
 $gitSha = Resolve-GitSha
 
@@ -306,8 +312,8 @@ try {
     Write-Host "[build-precompiled-firmware] PlatformIO: $($platformIoCommand -join ' ')"
     Invoke-Pio -Args @('--version') -ErrorMessage 'Falha ao consultar versao do PlatformIO'
 
-    if (-not (Test-Path $outputRoot)) {
-        New-Item -Path $outputRoot -ItemType Directory | Out-Null
+    if (-not (Test-Path $resolvedOutputRoot)) {
+        New-Item -Path $resolvedOutputRoot -ItemType Directory | Out-Null
     }
 
     Invoke-PioBuild -Env $target.Env

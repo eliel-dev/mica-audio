@@ -22,4 +22,6 @@ public class MicaAudioOptions
     public string CrashLogPath { get; set; } = string.Empty;
 
     public string PrecompiledFirmwareDirectory { get; set; } = string.Empty;
+
+    public string WorkspaceRoot { get; set; } = string.Empty;
 }

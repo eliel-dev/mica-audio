@@ -21,7 +21,7 @@
 - O app deixou de montar `LedPayload` manualmente em varios pontos:
   - `LedPayloadFactory.CreateSpectrumPayload()` e o caminho canonico para `SpectrumFrame -> Bins128`;
   - `LedPayloadFactory.CreateFramePayload()` preserva o caminho `Frame128x64` para GIF e renderers 2D;
-  - `LedPayloadFactory.ResampleSpectrumBins()` centraliza o remapeamento para `128` bins usado no pipeline e nos smoke tests.
+  - o remapeamento para `128` bins fica encapsulado no proprio `LedPayloadFactory`, sem virar superficie publica do pipeline.
 - O runtime do app passou a separar composicao de payload de roteamento:
   - `AudioPipelineFrameProcessor` decide quando enviar `Bins128` vs `Frame128x64`;
   - `AudioPipelineOutputRouter` aplica brilho e decide separadamente se o simulador e o device HUB75 recebem o frame;

@@ -97,6 +97,110 @@ public sealed class DeviceUsbOnboardingServiceTests
         Assert.Equal(0, flashService.CallCount);
     }
 
+    [Fact]
+    public async Task RunAsync_ShouldUseRegeneratedOfficialReleaseWhenWorkspaceArtifactIsMissing()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), "mica-audio-onboarding-tests", Guid.NewGuid().ToString("N"));
+        var outputRoot = Path.Combine(workspaceRoot, "artifacts");
+        Directory.CreateDirectory(Path.Combine(workspaceRoot, "scripts"));
+        Directory.CreateDirectory(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src"));
+        Directory.CreateDirectory(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards"));
+        Directory.CreateDirectory(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "partitions"));
+        Directory.CreateDirectory(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "scripts"));
+        await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "MicaAudio.sln"), "Microsoft Visual Studio Solution File");
+        await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "platformio.ini"), "[env:esp32s3_devkitc1_dma_exp]");
+        await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "main.cpp"), "int main() { return 0; }");
+        await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "firmware_version.h"), "#define MICA_FIRMWARE_VERSION \"test\"");
+        await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards", "board.json"), "{}");
+        await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "partitions", "partitions.csv"), "# partitions");
+        await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "scripts", "patch.py"), "# patch");
+        var sourceTimestamp = new DateTime(2026, 3, 20, 12, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "platformio.ini"), sourceTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "main.cpp"), sourceTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "firmware_version.h"), sourceTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards", "board.json"), sourceTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "partitions", "partitions.csv"), sourceTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "scripts", "patch.py"), sourceTimestamp);
+        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards"), sourceTimestamp);
+        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "partitions"), sourceTimestamp);
+        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "scripts"), sourceTimestamp);
+        await File.WriteAllTextAsync(
+            Path.Combine(workspaceRoot, "scripts", "build-precompiled-firmware.ps1"),
+            """
+param(
+    [string]$OutputRoot
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+[System.IO.Directory]::CreateDirectory($OutputRoot) | Out-Null
+$binPath = Join-Path $OutputRoot 'esp32s3-devkitc1-128x64-dma_exp_merged.bin'
+$manifestPath = Join-Path $OutputRoot 'esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json'
+[System.IO.File]::WriteAllBytes($binPath, [byte[]](1,2,3,4,5))
+$manifest = [ordered]@{
+    schemaVersion   = 2
+    firmwareVersion = '2.0.0-regenerated'
+    gitSha          = 'regen123'
+    profile         = 'dma_exp'
+    boardModel      = 'esp32s3_devkitc1'
+    panelType       = 'hub75_p2_5_128x64_smd2121_scan32'
+    controlPlane    = 'mqtt'
+    builtAtUtc      = '2026-03-20T12:05:00Z'
+    sha256          = ''
+    fileSizeBytes   = 0
+}
+$manifest | ConvertTo-Json | Set-Content -Path $manifestPath -Encoding utf8
+""");
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "scripts", "build-precompiled-firmware.ps1"), sourceTimestamp);
+        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "scripts"), sourceTimestamp);
+
+        try
+        {
+            var runtime = new FakeDeviceOperationsRuntime();
+            using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
+            var firmwareService = new PrecompiledFirmwareService(
+                Options.Create(new MicaAudioOptions
+                {
+                    PrecompiledFirmwareDirectory = outputRoot,
+                    WorkspaceRoot = workspaceRoot,
+                }),
+                NullLogger<PrecompiledFirmwareService>.Instance);
+            var flashService = new FakeFlashService
+            {
+                NextResult = new EspToolFlashResult
+                {
+                    Success = true,
+                    ExitCode = 0,
+                    Message = "ok",
+                },
+            };
+            var sut = new DeviceUsbOnboardingService(
+                coordinator,
+                firmwareService,
+                flashService,
+                NullLogger<DeviceUsbOnboardingService>.Instance);
+
+            var progressItems = new List<DeviceOnboardingProgress>();
+            var progress = new Progress<DeviceOnboardingProgress>(item => progressItems.Add(item));
+
+            var result = await sut.RunAsync(new DeviceOnboardingRequest
+            {
+                PortName = "COM9",
+            }, progress);
+
+            Assert.True(result.Success);
+            Assert.Equal("COM9", flashService.LastPortName);
+            Assert.NotNull(flashService.LastFirmwarePath);
+            Assert.StartsWith(outputRoot, flashService.LastFirmwarePath!, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(progressItems, item => item.Message.Contains("2.0.0-regenerated", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(workspaceRoot, recursive: true);
+        }
+    }
+
     private sealed class FakeFlashService : IEspToolFlashService
     {
         public EspToolFlashResult NextResult { get; set; } = new()

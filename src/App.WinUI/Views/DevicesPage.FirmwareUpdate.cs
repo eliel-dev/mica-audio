@@ -21,7 +21,8 @@ public sealed partial class DevicesPage
             return;
         }
 
-        if (!TryResolveLatestFirmwareArtifact(snapshot, out var artifact, out var error))
+        var (artifact, error) = await TryResolveLatestFirmwareArtifactAsync(snapshot).ConfigureAwait(true);
+        if (artifact is null)
         {
             PairingCodeText.Severity = InfoBarSeverity.Warning;
             PairingCodeText.Message = "Release oficial indisponivel para este dispositivo.";
@@ -184,27 +185,30 @@ public sealed partial class DevicesPage
         return false;
     }
 
-    private bool TryResolveLatestFirmwareArtifact(DeviceSnapshot snapshot, out ResolvedFirmwareArtifact artifact, out string error)
+    private async Task<(ResolvedFirmwareArtifact? Artifact, string Error)> TryResolveLatestFirmwareArtifactAsync(DeviceSnapshot snapshot)
     {
-        artifact = null!;
-        error = string.Empty;
-
         var service = FirmwareService;
         if (service is null)
         {
-            error = "Servico de firmware indisponivel.";
-            return false;
+            return (null, "Servico de firmware indisponivel.");
         }
 
         if (string.IsNullOrWhiteSpace(snapshot.BoardModel)
             || string.IsNullOrWhiteSpace(snapshot.PanelType)
             || string.IsNullOrWhiteSpace(snapshot.Profile))
         {
-            error = "Metadados do dispositivo insuficientes para resolver o release oficial.";
-            return false;
+            return (null, "Metadados do dispositivo insuficientes para resolver o release oficial.");
         }
 
-        return service.TryResolveArtifact(snapshot.BoardModel, snapshot.PanelType, snapshot.Profile, out artifact, out error);
+        var refresh = await service
+            .EnsureOfficialFirmwareFreshAsync(snapshot.BoardModel, snapshot.PanelType, snapshot.Profile)
+            .ConfigureAwait(true);
+        if (!refresh.IsFresh || refresh.ResolvedArtifact is null)
+        {
+            return (null, refresh.FailureReason);
+        }
+
+        return (refresh.ResolvedArtifact, string.Empty);
     }
 
     private static bool IsFirmwareUpdateAvailable(DeviceSnapshot snapshot, string latestFirmwareVersion)

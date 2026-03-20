@@ -31,7 +31,7 @@ internal sealed class PrecompiledFirmwareCatalogAdapter : IDeviceOfficialFirmwar
             return false;
         }
 
-        if (!firmwareService.TryResolveArtifact(boardModel.Trim(), panelType.Trim(), profile.Trim(), out var artifact, out failureReason))
+        if (!firmwareService.TryResolveOfficialArtifact(boardModel.Trim(), panelType.Trim(), profile.Trim(), out var artifact, out failureReason))
         {
             return false;
         }

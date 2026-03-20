@@ -21,16 +21,20 @@ public sealed class FirmwareCatalogSmokeTests
         Assert.Equal("dma_exp", dma.Profile);
         Assert.Equal("esp32s3-devkitc1-128x64-dma_exp_merged.bin", dma.FileName);
         Assert.Empty(service.GetOptions(boardModel: "unknown_board"));
-        Assert.True(catalog.TryResolveLatest(
+        Assert.NotNull(catalog);
+
+        var resolved = service.TryResolveArtifact(
             PrecompiledFirmwareService.Esp32S3DevKitC1Board,
             PrecompiledFirmwareService.Hub75PanelP25_128x64_Smd2121_Scan32,
             "dma_exp",
-            out var package,
-            out var error), error);
-        Assert.Equal("dma_exp", package.Profile);
-        Assert.Equal(PrecompiledFirmwareService.RequiredControlPlane, package.ControlPlane);
-        Assert.True(package.FileSizeBytes > 0);
-        Assert.False(string.IsNullOrWhiteSpace(package.Sha256));
+            out var artifact,
+            out var error);
+
+        Assert.True(resolved, error);
+        Assert.Equal("dma_exp", artifact.Manifest.Profile);
+        Assert.Equal(PrecompiledFirmwareService.RequiredControlPlane, artifact.Manifest.ControlPlane);
+        Assert.True(artifact.Manifest.FileSizeBytes > 0);
+        Assert.False(string.IsNullOrWhiteSpace(artifact.Manifest.Sha256));
     }
 
     [Fact]

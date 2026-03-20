@@ -53,14 +53,17 @@ Documentar o fluxo oficial e estavel de onboarding:
 ### Pipeline executado pelo app
 
 1. Resolve firmware oficial `esp32s3-devkitc1-128x64-dma_exp_merged.bin`.
-2. Valida manifesto sidecar `esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json`.
-3. So prossegue com flash quando o manifesto declarar `controlPlane = mqtt`.
-4. Flasha o ESP32-S3 via `esptool`, sempre com apagamento total da flash antes da gravacao.
-5. Gera `pair code` e mostra em modal.
-6. Finaliza wizard e orienta provisioning via AP.
-7. O portal AP permite confirmar ou editar manualmente o campo `Servidor` antes do pareamento.
-8. O device fica online no dashboard apos configuracao no portal.
-9. O status `Online` agora depende do control plane MQTT estar conectado.
+2. Em workspace/dev, executa preflight de frescor do release oficial:
+   - se o pacote oficial local estiver stale, roda `scripts/build-precompiled-firmware.ps1`;
+   - `pio run` sozinho nao atualiza o catalogo oficial usado pelo wizard.
+3. Valida manifesto sidecar `esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json`.
+4. So prossegue com flash quando o manifesto declarar `controlPlane = mqtt`.
+5. Flasha o ESP32-S3 via `esptool`, sempre com apagamento total da flash antes da gravacao.
+6. Gera `pair code` e mostra em modal.
+7. Finaliza wizard e orienta provisioning via AP.
+8. O portal AP permite confirmar ou editar manualmente o campo `Servidor` antes do pareamento.
+9. O device fica online no dashboard apos configuracao no portal.
+10. O status `Online` agora depende do control plane MQTT estar conectado.
 
 ## Perfil oficial do comando de flash
 

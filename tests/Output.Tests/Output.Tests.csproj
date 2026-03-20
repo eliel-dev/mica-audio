@@ -72,6 +72,7 @@
     <Compile Include="..\..\src\App.WinUI\Services\Devices\Onboarding\DeviceUsbOnboardingService.cs" Link="Shared\Onboarding\DeviceUsbOnboardingService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\Onboarding\IEspToolFlashService.cs" Link="Shared\Onboarding\IEspToolFlashService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Firmware\FirmwareArtifactManifest.cs" Link="Shared\Firmware\FirmwareArtifactManifest.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Firmware\OfficialFirmwareRefreshResult.cs" Link="Shared\Firmware\OfficialFirmwareRefreshResult.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Firmware\PrecompiledFirmwareOption.cs" Link="Shared\Firmware\PrecompiledFirmwareOption.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Firmware\PrecompiledFirmwareService.cs" Link="Shared\Firmware\PrecompiledFirmwareService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Firmware\ResolvedFirmwareArtifact.cs" Link="Shared\Firmware\ResolvedFirmwareArtifact.cs" />

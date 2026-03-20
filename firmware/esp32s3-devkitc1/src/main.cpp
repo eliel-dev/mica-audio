@@ -34,6 +34,8 @@ namespace {
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-anti-flicker-com-double-buffer
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-upstream-baseline-fluidity-recovery
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-60-fps-com-pacing-fisico-correto
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-diagnostic-matrix-envs
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-fallback-local-de-conectividade
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 145;
@@ -52,6 +54,7 @@ constexpr unsigned long kTelemetryIntervalMs = 2000;
 constexpr unsigned long kLoopHealthWindowMs = 5000;
 constexpr unsigned long kSerialHelloIntervalMs = 3000;
 constexpr unsigned long kMatrixSignalTimeoutMs = 15000;
+constexpr unsigned long kConnectivityFallbackDebounceMs = 1000;
 constexpr size_t kSerialInputMaxLength = 1024;
 constexpr unsigned long kWifiConnectAttemptTimeoutMs = 20000;
 constexpr uint32_t kHealthyLoopThresholdUs = 25000;
@@ -65,7 +68,26 @@ constexpr uint8_t kMatrixHeight = MICA_MATRIX_HEIGHT;
 constexpr uint8_t kMatrixHalfHeight = kMatrixHeight / 2;
 constexpr size_t kMatrixPixelCount = static_cast<size_t>(kMatrixWidth) * static_cast<size_t>(kMatrixHeight);
 constexpr uint8_t kHub75ColorDepthBits = 6;
-constexpr uint8_t kHub75LatchBlankingPulses = 2;
+
+#ifndef MICA_HUB75_LATCH_BLANKING
+#define MICA_HUB75_LATCH_BLANKING 2
+#endif
+
+#ifndef MICA_HUB75_MIN_REFRESH_RATE
+#define MICA_HUB75_MIN_REFRESH_RATE 60
+#endif
+
+#ifndef MICA_HUB75_CLKPHASE
+#define MICA_HUB75_CLKPHASE 0
+#endif
+
+#ifndef MICA_HUB75_SHIFT_DRIVER
+#define MICA_HUB75_SHIFT_DRIVER 0
+#endif
+
+constexpr uint8_t kHub75LatchBlankingPulses = static_cast<uint8_t>(MICA_HUB75_LATCH_BLANKING);
+constexpr uint8_t kHub75MinRefreshRate = static_cast<uint8_t>(MICA_HUB75_MIN_REFRESH_RATE);
+constexpr bool kHub75ClockPhaseEnabled = MICA_HUB75_CLKPHASE != 0;
 constexpr uint8_t kHub75TargetPresentFps = 60;
 constexpr uint8_t kMatrixShadowBufferCount = 2;
 constexpr uint32_t kMicrosPerSecond = 1000000UL;
@@ -73,10 +95,24 @@ constexpr uint32_t kHub75TargetPresentIntervalUs =
     (kMicrosPerSecond + kHub75TargetPresentFps - 1u) / kHub75TargetPresentFps;
 constexpr uint32_t kHub75FallbackPresentIntervalUs = 20000UL;
 static_assert((kMatrixHeight % 2) == 0, "MICA_MATRIX_HEIGHT must be even.");
+static_assert(
+    MICA_HUB75_LATCH_BLANKING >= 1 && MICA_HUB75_LATCH_BLANKING <= 4,
+    "MICA_HUB75_LATCH_BLANKING must stay between 1 and 4 clock pulses.");
+static_assert(
+    MICA_HUB75_MIN_REFRESH_RATE >= 1 && MICA_HUB75_MIN_REFRESH_RATE <= 240,
+    "MICA_HUB75_MIN_REFRESH_RATE must stay between 1 and 240.");
+static_assert(
+    MICA_HUB75_CLKPHASE == 0 || MICA_HUB75_CLKPHASE == 1,
+    "MICA_HUB75_CLKPHASE must be 0 or 1.");
 #if defined(MICA_PROFILE_DMA_EXP) && defined(PIXEL_COLOR_DEPTH_BITS)
 static_assert(
     PIXEL_COLOR_DEPTH_BITS == kHub75ColorDepthBits,
     "PIXEL_COLOR_DEPTH_BITS must stay aligned with the official HUB75 baseline profile.");
+#endif
+#if defined(MICA_PROFILE_DMA_EXP)
+static_assert(
+    MICA_HUB75_SHIFT_DRIVER == 0 || MICA_HUB75_SHIFT_DRIVER == 1,
+    "MICA_HUB75_SHIFT_DRIVER must stay 0 (SHIFTREG) or 1 (FM6124) in this firmware path.");
 #endif
 #if !defined(WEBSOCKETS_MAX_DATA_SIZE)
 #error WEBSOCKETS_MAX_DATA_SIZE must be defined by WebSockets.h.
@@ -93,6 +129,13 @@ enum class MatrixBufferMode : uint8_t {
   Clear = 1,
   Bars = 2,
   Frame = 3,
+};
+
+enum class Hub75FallbackState : uint8_t {
+  None = 0,
+  NoWifi = 1,
+  NoServer = 2,
+  Portal = 3,
 };
 
 constexpr const char* kBoardModel = "esp32s3_devkitc1";
@@ -205,6 +248,11 @@ uint32_t gNetworkPollDeferCount = 0;
 bool gProvisioningPortalActive = false;
 String gWifiState = kWifiStateConnecting;
 String gLastWifiEvent = "boot";
+Hub75FallbackState gHub75FallbackState = Hub75FallbackState::None;
+Hub75FallbackState gHub75FallbackPendingState = Hub75FallbackState::None;
+unsigned long gHub75FallbackPendingSinceMs = 0;
+bool gHub75FallbackDirty = false;
+bool gHub75FallbackClearPending = false;
 String gAuxLedUnavailableReason;
 String gSerialInputBuffer;
 unsigned long gLastSerialHelloMs = 0;
@@ -263,7 +311,11 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
 
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
+#if MICA_HUB75_SHIFT_DRIVER == 1
+constexpr HUB75_I2S_CFG::shift_driver kHub75BaselineDriver = HUB75_I2S_CFG::FM6124;
+#else
 constexpr HUB75_I2S_CFG::shift_driver kHub75BaselineDriver = HUB75_I2S_CFG::SHIFTREG;
+#endif
 #endif
 
 struct RgbColor {
@@ -287,6 +339,20 @@ constexpr uint32_t ceilDivideU32(uint32_t numerator, uint32_t denominator) {
   return denominator == 0 ? 0u : (numerator + denominator - 1u) / denominator;
 }
 
+const char* hub75FallbackStateName(Hub75FallbackState state) {
+  switch (state) {
+    case Hub75FallbackState::NoWifi:
+      return "no_wifi";
+    case Hub75FallbackState::NoServer:
+      return "no_server";
+    case Hub75FallbackState::Portal:
+      return "portal";
+    case Hub75FallbackState::None:
+    default:
+      return "none";
+  }
+}
+
 size_t matrixPixelIndex(uint8_t x, uint8_t y) {
   return static_cast<size_t>(y) * static_cast<size_t>(kMatrixWidth) + static_cast<size_t>(x);
 }
@@ -294,6 +360,8 @@ size_t matrixPixelIndex(uint8_t x, uint8_t y) {
 uint16_t rgb888ToRgb565(uint8_t r, uint8_t g, uint8_t b) {
   return static_cast<uint16_t>(((r & 0xF8u) << 8) | ((g & 0xFCu) << 3) | (b >> 3));
 }
+
+bool commitMatrixFrame();
 
 void initializeColorConversionLookups() {
   for (uint8_t value = 0; value < 32; value++) {
@@ -857,6 +925,185 @@ void fillMatrixRect(int16_t x, int16_t y, int16_t w, int16_t h, const RgbColor& 
 #endif
 }
 
+#if defined(MICA_PROFILE_DMA_EXP)
+void drawMatrixTextCentered(const char* text, int16_t baselineY, uint16_t color, uint8_t textSize) {
+  if (gMatrix == nullptr || text == nullptr || text[0] == '\0') {
+    return;
+  }
+
+  int16_t x1 = 0;
+  int16_t y1 = 0;
+  uint16_t textWidth = 0;
+  uint16_t textHeight = 0;
+  gMatrix->setTextWrap(false);
+  gMatrix->setTextSize(textSize);
+  gMatrix->getTextBounds(text, 0, baselineY, &x1, &y1, &textWidth, &textHeight);
+
+  int16_t cursorX = ((static_cast<int16_t>(kMatrixWidth) - static_cast<int16_t>(textWidth)) / 2) - x1;
+  if (cursorX < 0) {
+    cursorX = 0;
+  }
+
+  gMatrix->setCursor(cursorX, baselineY);
+  gMatrix->setTextColor(color);
+  gMatrix->print(text);
+}
+
+void drawConnectivityFallbackIcon(Hub75FallbackState state, uint16_t accentColor, uint16_t neutralColor) {
+  if (gMatrix == nullptr) {
+    return;
+  }
+
+  constexpr int16_t kIconCenterX = kMatrixWidth / 2;
+  constexpr int16_t kIconTopY = 8;
+  switch (state) {
+    case Hub75FallbackState::NoWifi:
+      gMatrix->fillRect(kIconCenterX - 11, kIconTopY + 8, 3, 4, neutralColor);
+      gMatrix->fillRect(kIconCenterX - 4, kIconTopY + 5, 3, 7, neutralColor);
+      gMatrix->fillRect(kIconCenterX + 3, kIconTopY + 2, 3, 10, neutralColor);
+      gMatrix->drawLine(kIconCenterX - 14, kIconTopY + 12, kIconCenterX + 10, kIconTopY, accentColor);
+      gMatrix->drawLine(kIconCenterX - 13, kIconTopY + 12, kIconCenterX + 11, kIconTopY, accentColor);
+      break;
+    case Hub75FallbackState::NoServer:
+      gMatrix->drawRect(kIconCenterX - 12, kIconTopY + 1, 24, 12, neutralColor);
+      gMatrix->fillRect(kIconCenterX - 8, kIconTopY + 4, 3, 3, accentColor);
+      gMatrix->fillRect(kIconCenterX - 1, kIconTopY + 4, 3, 3, accentColor);
+      gMatrix->fillRect(kIconCenterX + 6, kIconTopY + 4, 3, 3, accentColor);
+      gMatrix->drawLine(kIconCenterX - 5, kIconTopY + 16, kIconCenterX + 5, kIconTopY + 16, neutralColor);
+      gMatrix->drawLine(kIconCenterX, kIconTopY + 13, kIconCenterX, kIconTopY + 18, neutralColor);
+      break;
+    case Hub75FallbackState::Portal:
+      gMatrix->fillRect(kIconCenterX - 1, kIconTopY + 8, 3, 6, neutralColor);
+      gMatrix->drawLine(kIconCenterX - 7, kIconTopY + 12, kIconCenterX - 1, kIconTopY + 9, accentColor);
+      gMatrix->drawLine(kIconCenterX + 1, kIconTopY + 9, kIconCenterX + 7, kIconTopY + 12, accentColor);
+      gMatrix->drawLine(kIconCenterX - 11, kIconTopY + 14, kIconCenterX - 3, kIconTopY + 10, accentColor);
+      gMatrix->drawLine(kIconCenterX + 3, kIconTopY + 10, kIconCenterX + 11, kIconTopY + 14, accentColor);
+      break;
+    case Hub75FallbackState::None:
+    default:
+      break;
+  }
+}
+#endif
+
+Hub75FallbackState resolveHub75FallbackCandidate() {
+  if (gProvisioningPortalActive) {
+    return Hub75FallbackState::Portal;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    return Hub75FallbackState::NoWifi;
+  }
+
+  if (!gWs.isConnected()) {
+    return Hub75FallbackState::NoServer;
+  }
+
+  return Hub75FallbackState::None;
+}
+
+Hub75FallbackState resolveHub75FallbackState(unsigned long nowMs) {
+  const Hub75FallbackState candidate = resolveHub75FallbackCandidate();
+  if (candidate == Hub75FallbackState::None || candidate == Hub75FallbackState::Portal) {
+    gHub75FallbackPendingState = candidate;
+    gHub75FallbackPendingSinceMs = 0;
+    return candidate;
+  }
+
+  if (candidate == gHub75FallbackState) {
+    gHub75FallbackPendingState = candidate;
+    gHub75FallbackPendingSinceMs = 0;
+    return candidate;
+  }
+
+  if (candidate != gHub75FallbackPendingState) {
+    gHub75FallbackPendingState = candidate;
+    gHub75FallbackPendingSinceMs = nowMs;
+    return Hub75FallbackState::None;
+  }
+
+  if (gHub75FallbackPendingSinceMs != 0
+      && (nowMs - gHub75FallbackPendingSinceMs) >= kConnectivityFallbackDebounceMs) {
+    return candidate;
+  }
+
+  return Hub75FallbackState::None;
+}
+
+void updateHub75FallbackState(unsigned long nowMs) {
+  const Hub75FallbackState nextState = resolveHub75FallbackState(nowMs);
+  if (nextState == gHub75FallbackState) {
+    return;
+  }
+
+  const Hub75FallbackState previousState = gHub75FallbackState;
+  gHub75FallbackState = nextState;
+  gHub75FallbackDirty = nextState != Hub75FallbackState::None;
+  gHub75FallbackClearPending = previousState != Hub75FallbackState::None && nextState == Hub75FallbackState::None;
+  if (nextState != Hub75FallbackState::None) {
+    gHub75FallbackClearPending = false;
+  }
+
+  Serial.printf(
+      "[hub75_fallback] previous=%s next=%s\n",
+      hub75FallbackStateName(previousState),
+      hub75FallbackStateName(nextState));
+}
+
+bool clearConnectivityFallbackFrame() {
+  if (!gMatrixReady) {
+    return false;
+  }
+
+  clearMatrix();
+  return commitMatrixFrame();
+}
+
+bool drawConnectivityFallback(Hub75FallbackState state) {
+  if (!gMatrixReady || state == Hub75FallbackState::None) {
+    return false;
+  }
+
+  const char* title = "";
+  const char* subtitle = "";
+  RgbColor accent = {0, 0, 0};
+  switch (state) {
+    case Hub75FallbackState::NoWifi:
+      title = "SEM WIFI";
+      subtitle = "Conecte a rede";
+      accent = {255, 170, 48};
+      break;
+    case Hub75FallbackState::NoServer:
+      title = "SEM SERV";
+      subtitle = "Abra o MicaAudio";
+      accent = {255, 96, 96};
+      break;
+    case Hub75FallbackState::Portal:
+      title = "SETUP WIFI";
+      subtitle = "Conecte no portal";
+      accent = {96, 220, 255};
+      break;
+    case Hub75FallbackState::None:
+    default:
+      return false;
+  }
+
+#if defined(MICA_PROFILE_DMA_EXP)
+  clearMatrix();
+  const uint16_t accentColor = rgb888ToRgb565(accent.r, accent.g, accent.b);
+  const uint16_t titleColor = rgb888ToRgb565(244, 244, 244);
+  const uint16_t subtitleColor = rgb888ToRgb565(158, 170, 180);
+  drawConnectivityFallbackIcon(state, accentColor, titleColor);
+  gMatrix->drawFastHLine(24, 22, kMatrixWidth - 48, rgb888ToRgb565(36, 48, 60));
+  drawMatrixTextCentered(title, 36, titleColor, 2);
+  drawMatrixTextCentered(subtitle, 50, subtitleColor, 1);
+  gMatrixBufferModes[gMatrixShadowBackBufferIndex] = MatrixBufferMode::Clear;
+  return commitMatrixFrame();
+#else
+  return false;
+#endif
+}
+
 bool commitMatrixFrame() {
 #if defined(MICA_PROFILE_DMA_EXP)
   if (gMatrix != nullptr) {
@@ -968,6 +1215,7 @@ void logMatrixPinout() {
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-anti-flicker-com-double-buffer
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-upstream-baseline-fluidity-recovery
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-60-fps-com-pacing-fisico-correto
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-diagnostic-matrix-envs
 bool initMatrixDisplay() {
 
 #if defined(MICA_PROFILE_DMA_EXP)
@@ -996,19 +1244,21 @@ bool initMatrixDisplay() {
   HUB75_I2S_CFG config(kMatrixWidth, kMatrixHeight, 1, pinMap);
   config.double_buff = true;
   config.i2sspeed = HUB75_I2S_CFG::HZ_10M;
-  config.clkphase = false;
+  config.clkphase = kHub75ClockPhaseEnabled;
   config.driver = kHub75BaselineDriver;
   config.latch_blanking = kHub75LatchBlankingPulses;
+  config.min_refresh_rate = kHub75MinRefreshRate;
   config.setPixelColorDepthBits(kHub75ColorDepthBits);
   Serial.printf(
-      "[hub75] config matrix=%ux%u driver=%s color_depth=%u i2s=10MHz clkphase=%u double_buffer=%u latch_blanking=%u\n",
+      "[hub75] config matrix=%ux%u driver=%s color_depth=%u i2s=10MHz clkphase=%u double_buffer=%u latch_blanking=%u min_refresh_rate=%u\n",
       static_cast<unsigned>(kMatrixWidth),
       static_cast<unsigned>(kMatrixHeight),
       hub75DriverName(config.driver),
       static_cast<unsigned>(config.getPixelColorDepthBits()),
       config.clkphase ? 1u : 0u,
       config.double_buff ? 1u : 0u,
-      static_cast<unsigned>(config.latch_blanking));
+      static_cast<unsigned>(config.latch_blanking),
+      static_cast<unsigned>(config.min_refresh_rate));
 
   gMatrix = new MatrixPanel_I2S_DMA(config);
   if (gMatrix == nullptr) {
@@ -1025,7 +1275,7 @@ bool initMatrixDisplay() {
 
   const uint8_t effectiveLatchBlanking = gMatrix->setLatBlanking(kHub75LatchBlankingPulses);
   Serial.printf(
-      "[hub75] active driver=%s calculated_refresh_rate=%dHz latch_blanking=%u physical_present_interval_us=%lu target_present_interval_us=%lu effective_present_interval_us=%lu clkphase=%u double_buffer=%u\n",
+      "[hub75] active driver=%s calculated_refresh_rate=%dHz latch_blanking=%u physical_present_interval_us=%lu target_present_interval_us=%lu effective_present_interval_us=%lu clkphase=%u double_buffer=%u min_refresh_rate=%u\n",
       hub75DriverName(config.driver),
       gMatrix->calculated_refresh_rate,
       static_cast<unsigned>(effectiveLatchBlanking),
@@ -1033,7 +1283,11 @@ bool initMatrixDisplay() {
       static_cast<unsigned long>(kHub75TargetPresentIntervalUs),
       static_cast<unsigned long>(getEffectiveMatrixPresentIntervalUs()),
       config.clkphase ? 1u : 0u,
-      config.double_buff ? 1u : 0u);
+      config.double_buff ? 1u : 0u,
+      static_cast<unsigned>(config.min_refresh_rate));
+#if defined(MICA_HUB75_DIAGNOSTIC_MODE)
+  Serial.println("[hub75] diagnostic_mode=1 oracle_compare=shiftreg_vs_fm6124");
+#endif
 #endif
 
   gMatrixReady = true;
@@ -3081,6 +3335,7 @@ void loop() {
   }
 
   const unsigned long nowMs = millis();
+  updateHub75FallbackState(nowMs);
   if ((nowMs - gLastFrameMs) > kMatrixSignalTimeoutMs && !gMatrixSignalTimedOut) {
     portENTER_CRITICAL(&gStreamBufferMux);
     memset(gBinsBuffers, 0, sizeof(gBinsBuffers));
@@ -3102,21 +3357,40 @@ void loop() {
   const uint32_t nowUs = micros();
   if (gMatrixReady && shouldPresentMatrixFrame(nowUs)) {
     bool presented = false;
-    if (gFrameModeActive) {
-      if (gMatrixFrameDirty) {
-        presented = drawFrame128x64();
+    bool presentedStreamPayload = false;
+    if (gHub75FallbackState != Hub75FallbackState::None) {
+      if (gHub75FallbackDirty) {
+        presented = drawConnectivityFallback(gHub75FallbackState);
+        if (presented) {
+          gHub75FallbackDirty = false;
+        }
       }
-    } else if (!gMatrixSignalTimedOut || gMatrixFrameDirty) {
-      presented = drawBars();
+    } else {
+      if (gFrameModeActive) {
+        if (gMatrixFrameDirty) {
+          presented = drawFrame128x64();
+          presentedStreamPayload = presented;
+        }
+      } else if (!gMatrixSignalTimedOut || gMatrixFrameDirty) {
+        presented = drawBars();
+        presentedStreamPayload = presented;
+      }
+
+      if (!presented && gHub75FallbackClearPending) {
+        presented = clearConnectivityFallbackFrame();
+      }
     }
 
     if (presented) {
-      gMatrixFrameDirty = false;
-      if (gPendingMatrixPresentCountsAsApplied) {
-        gStreamFramesApplied++;
+      if (presentedStreamPayload) {
+        gMatrixFrameDirty = false;
+        if (gPendingMatrixPresentCountsAsApplied) {
+          gStreamFramesApplied++;
+        }
       }
 
       gPendingMatrixPresentCountsAsApplied = false;
+      gHub75FallbackClearPending = false;
     }
   }
 

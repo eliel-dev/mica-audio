@@ -17,6 +17,20 @@
 5. processar `PcmFrame -> SpectrumFrame -> LedPayload` pelo runtime do pipeline
 6. renderizar `MainCanvas` e preview HUB75 com a mesma base `128x64`
 
+## Atualizacao 2026-03 - Refresh automatico do release oficial de firmware
+
+- A `App.WinUI` continua trabalhando apenas com o conceito de release oficial local do firmware, validado por manifesto.
+- Em workspace/dev, o app agora detecta se esse release oficial ficou stale em relacao aos fontes reais do firmware e tenta regenerar o pacote automaticamente.
+- O ciclo ficou dividido em dois pontos:
+  - warm-up assincromo no startup, em background;
+  - preflight obrigatorio antes de OTA e antes do wizard USB.
+- O backend nao usa `pio run` como sinal de release valido:
+  - `pio run` recompila o firmware bruto;
+  - o release oficial consumido pelo dashboard, OTA e wizard continua nascendo do script `scripts/build-precompiled-firmware.ps1`.
+- Quando o pacote oficial local esta stale e a regeneracao ainda nao ocorreu com sucesso:
+  - o dashboard deixa de anunciar `Ultimo release`;
+  - OTA e wizard USB bloqueiam a operacao em vez de reaproveitar silenciosamente um pacote velho.
+
 ## Atualizacao 2026-03 - Fase 6 core, pipeline e borda de integracao
 
 - A fase 6 ampliou a arquitetura do app em tres ondas sem mudar wire/protocolo:

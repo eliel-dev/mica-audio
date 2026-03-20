@@ -42,7 +42,7 @@ internal static class LedPayloadFactory
         };
     }
 
-    public static float[] ResampleSpectrumBins(SpectrumFrame spectrum)
+    private static float[] ResampleSpectrumBins(SpectrumFrame spectrum)
     {
         ArgumentNullException.ThrowIfNull(spectrum);
 

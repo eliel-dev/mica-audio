@@ -57,16 +57,20 @@ internal sealed partial class DeviceUsbOnboardingService : IDeviceUsbOnboardingS
                 return Fail("port_required", "Porta COM obrigatoria para onboarding.");
             }
 
-            if (!firmwareService.TryResolveArtifact(
+            var firmwareRefresh = await firmwareService
+                .EnsureOfficialFirmwareFreshAsync(
                     PrecompiledFirmwareService.Esp32S3DevKitC1Board,
                     PrecompiledFirmwareService.Hub75PanelP25_128x64_Smd2121_Scan32,
                     "dma_exp",
-                    out var artifact,
-                    out var firmwareError))
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!firmwareRefresh.IsFresh || firmwareRefresh.ResolvedArtifact is null)
             {
                 activity?.SetStatus(ActivityStatusCode.Error, "firmware_missing");
-                return Fail("firmware_missing", firmwareError);
+                return Fail("firmware_missing", firmwareRefresh.FailureReason);
             }
+
+            var artifact = firmwareRefresh.ResolvedArtifact;
 
             if (!string.Equals(artifact.Manifest.ControlPlane, PrecompiledFirmwareService.RequiredControlPlane, StringComparison.OrdinalIgnoreCase))
             {
