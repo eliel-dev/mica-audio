@@ -138,6 +138,30 @@ enum class Hub75FallbackState : uint8_t {
   Portal = 3,
 };
 
+enum class Hub75BinsVisualStyle : uint8_t {
+  LegacyFallback = 0,
+  WaveMirror = 1,
+  MirrorLines = 2,
+  MirrorBlocks = 3,
+  ClassicBars = 4,
+  FlowLine = 5,
+  HistoryScan = 6,
+  RadialOrbit = 7,
+  Atmosphere = 8,
+  LaunchpadGrid = 9,
+};
+
+enum class Hub75BinsPaletteFamily : uint8_t {
+  Canonical = 0,
+  Rainbow = 1,
+  Sunset = 2,
+  Arctic = 3,
+  Neon = 4,
+  Aurora = 5,
+  Plasma = 6,
+  Mono = 7,
+};
+
 constexpr const char* kBoardModel = "esp32s3_devkitc1";
 constexpr const char* kBoardDisplayName = "ESP32-S3 DevKitC-1";
 constexpr uint8_t kMatrixRgbPins[6] = {4, 5, 6, 7, 15, 16};
@@ -205,6 +229,7 @@ portMUX_TYPE gStreamBufferMux = portMUX_INITIALIZER_UNLOCKED;
 uint8_t gBinsBuffers[2][kBinsCount] = {};
 uint8_t gBinsActiveIndex = 0;
 uint8_t gLevel = 0;
+uint8_t gBinsFlags = 0;
 uint8_t gStreamBrightness = 255;
 uint8_t gBrightnessCap = kBrightnessDefaultCap;
 uint16_t gFrameRgb565Buffers[2][kMatrixPixelCount] = {};
@@ -268,6 +293,13 @@ unsigned long gPendingOtaValidationStartedMs = 0;
 bool gPendingOtaPendingVerifyAnnounced = false;
 uint8_t gRgb5To8Lut[32] = {0};
 uint8_t gRgb6To8Lut[64] = {0};
+uint8_t gBinsPeakHeights[kMatrixWidth] = {0};
+uint8_t gBinsHistory[kMatrixHeight][kMatrixWidth] = {};
+uint8_t gBinsHistoryHead = 0;
+uint8_t gLaunchpadPadLevels[64] = {0};
+uint8_t gLaunchpadTopLevels[8] = {0};
+uint8_t gLaunchpadSideLevels[8] = {0};
+uint8_t gLastBinsStyleId = 0xFFu;
 uint16_t gMatrixShadowFrames[kMatrixShadowBufferCount][kMatrixPixelCount] = {};
 uint8_t gMatrixShadowBarHeights[kMatrixShadowBufferCount][kMatrixWidth] = {};
 MatrixBufferMode gMatrixBufferModes[kMatrixShadowBufferCount] = {
@@ -560,6 +592,225 @@ RgbColor rgb565ToRgb888(uint16_t rgb565) {
       gRgb5To8Lut[(rgb565 >> 11) & 0x1Fu],
       gRgb6To8Lut[(rgb565 >> 5) & 0x3Fu],
       gRgb5To8Lut[rgb565 & 0x1Fu]};
+}
+
+float clamp01f(float value) {
+  if (value <= 0.0f) {
+    return 0.0f;
+  }
+
+  return value >= 1.0f ? 1.0f : value;
+}
+
+uint8_t clampToByte(int value) {
+  if (value <= 0) {
+    return 0;
+  }
+
+  return value >= 255 ? 255 : static_cast<uint8_t>(value);
+}
+
+RgbColor scaleColor(const RgbColor& color, float amount) {
+  const float scale = clamp01f(amount);
+  return {
+      clampToByte(static_cast<int>(roundf(color.r * scale))),
+      clampToByte(static_cast<int>(roundf(color.g * scale))),
+      clampToByte(static_cast<int>(roundf(color.b * scale)))};
+}
+
+RgbColor mixColor(const RgbColor& left, const RgbColor& right, float amount) {
+  const float t = clamp01f(amount);
+  return {
+      clampToByte(static_cast<int>(roundf(left.r + ((right.r - left.r) * t)))),
+      clampToByte(static_cast<int>(roundf(left.g + ((right.g - left.g) * t)))),
+      clampToByte(static_cast<int>(roundf(left.b + ((right.b - left.b) * t))))};
+}
+
+RgbColor sampleGradientStops(const RgbColor* stops, size_t stopCount, float t) {
+  if (stops == nullptr || stopCount == 0) {
+    return {255, 255, 255};
+  }
+
+  if (stopCount == 1) {
+    return stops[0];
+  }
+
+  const float clamped = clamp01f(t);
+  const float scaled = clamped * static_cast<float>(stopCount - 1u);
+  const size_t leftIndex = static_cast<size_t>(scaled);
+  const size_t rightIndex = leftIndex + 1u >= stopCount ? stopCount - 1u : leftIndex + 1u;
+  return mixColor(stops[leftIndex], stops[rightIndex], scaled - static_cast<float>(leftIndex));
+}
+
+Hub75BinsVisualStyle decodeBinsVisualStyle(uint8_t flags) {
+  switch (flags >> 3u) {
+    case 1u:
+      return Hub75BinsVisualStyle::WaveMirror;
+    case 2u:
+      return Hub75BinsVisualStyle::MirrorLines;
+    case 3u:
+      return Hub75BinsVisualStyle::MirrorBlocks;
+    case 4u:
+      return Hub75BinsVisualStyle::ClassicBars;
+    case 5u:
+      return Hub75BinsVisualStyle::FlowLine;
+    case 6u:
+      return Hub75BinsVisualStyle::HistoryScan;
+    case 7u:
+      return Hub75BinsVisualStyle::RadialOrbit;
+    case 8u:
+      return Hub75BinsVisualStyle::Atmosphere;
+    case 9u:
+      return Hub75BinsVisualStyle::LaunchpadGrid;
+    default:
+      return Hub75BinsVisualStyle::LegacyFallback;
+  }
+}
+
+Hub75BinsPaletteFamily decodeBinsPaletteFamily(uint8_t flags) {
+  switch (flags & 0x07u) {
+    case 1u:
+      return Hub75BinsPaletteFamily::Rainbow;
+    case 2u:
+      return Hub75BinsPaletteFamily::Sunset;
+    case 3u:
+      return Hub75BinsPaletteFamily::Arctic;
+    case 4u:
+      return Hub75BinsPaletteFamily::Neon;
+    case 5u:
+      return Hub75BinsPaletteFamily::Aurora;
+    case 6u:
+      return Hub75BinsPaletteFamily::Plasma;
+    case 7u:
+      return Hub75BinsPaletteFamily::Mono;
+    default:
+      return Hub75BinsPaletteFamily::Canonical;
+  }
+}
+
+Hub75BinsPaletteFamily resolveBinsEffectivePalette(Hub75BinsVisualStyle style, Hub75BinsPaletteFamily requestedPalette) {
+  if (requestedPalette != Hub75BinsPaletteFamily::Canonical) {
+    return requestedPalette;
+  }
+
+  switch (style) {
+    case Hub75BinsVisualStyle::WaveMirror:
+      return Hub75BinsPaletteFamily::Rainbow;
+    case Hub75BinsVisualStyle::RadialOrbit:
+      return Hub75BinsPaletteFamily::Mono;
+    case Hub75BinsVisualStyle::Atmosphere:
+      return Hub75BinsPaletteFamily::Aurora;
+    case Hub75BinsVisualStyle::LaunchpadGrid:
+      return Hub75BinsPaletteFamily::Canonical;
+    default:
+      return Hub75BinsPaletteFamily::Rainbow;
+  }
+}
+
+RgbColor samplePaletteColor(Hub75BinsPaletteFamily palette, float t) {
+  static constexpr RgbColor kSunsetStops[] = {
+      {255, 72, 40},
+      {255, 132, 32},
+      {255, 188, 48},
+      {220, 82, 196},
+      {98, 54, 255}};
+  static constexpr RgbColor kArcticStops[] = {
+      {24, 214, 255},
+      {0, 168, 255},
+      {74, 224, 255},
+      {138, 255, 214},
+      {114, 92, 255}};
+  static constexpr RgbColor kNeonStops[] = {
+      {57, 255, 20},
+      {0, 255, 180},
+      {0, 220, 255},
+      {120, 86, 255},
+      {255, 60, 180}};
+  static constexpr RgbColor kAuroraStops[] = {
+      {48, 255, 170},
+      {0, 222, 255},
+      {88, 124, 255},
+      {198, 84, 255},
+      {255, 176, 226}};
+  static constexpr RgbColor kPlasmaStops[] = {
+      {255, 88, 46},
+      {255, 168, 26},
+      {255, 58, 168},
+      {64, 108, 255},
+      {72, 244, 255}};
+  static constexpr RgbColor kMonoStops[] = {
+      {88, 98, 118},
+      {180, 192, 214},
+      {255, 255, 255}};
+
+  switch (palette) {
+    case Hub75BinsPaletteFamily::Sunset:
+      return sampleGradientStops(kSunsetStops, sizeof(kSunsetStops) / sizeof(kSunsetStops[0]), t);
+    case Hub75BinsPaletteFamily::Arctic:
+      return sampleGradientStops(kArcticStops, sizeof(kArcticStops) / sizeof(kArcticStops[0]), t);
+    case Hub75BinsPaletteFamily::Neon:
+      return sampleGradientStops(kNeonStops, sizeof(kNeonStops) / sizeof(kNeonStops[0]), t);
+    case Hub75BinsPaletteFamily::Aurora:
+      return sampleGradientStops(kAuroraStops, sizeof(kAuroraStops) / sizeof(kAuroraStops[0]), t);
+    case Hub75BinsPaletteFamily::Plasma:
+      return sampleGradientStops(kPlasmaStops, sizeof(kPlasmaStops) / sizeof(kPlasmaStops[0]), t);
+    case Hub75BinsPaletteFamily::Mono:
+      return sampleGradientStops(kMonoStops, sizeof(kMonoStops) / sizeof(kMonoStops[0]), t);
+    case Hub75BinsPaletteFamily::Canonical:
+      return {255, 255, 255};
+    case Hub75BinsPaletteFamily::Rainbow:
+    default:
+      return rainbowColorForColumn(
+          static_cast<uint16_t>(clampToByte(static_cast<int>(roundf(clamp01f(t) * 255.0f)))),
+          256);
+  }
+}
+
+uint8_t smoothBinsSample(const uint8_t* bins, int index) {
+  const int clampedIndex = index < 0 ? 0 : (index >= kBinsCount ? kBinsCount - 1 : index);
+  const int leftIndex = clampedIndex > 0 ? clampedIndex - 1 : clampedIndex;
+  const int rightIndex = clampedIndex + 1 < kBinsCount ? clampedIndex + 1 : clampedIndex;
+  const int smoothed =
+      static_cast<int>(bins[leftIndex]) + (static_cast<int>(bins[clampedIndex]) * 2) + static_cast<int>(bins[rightIndex]);
+  return static_cast<uint8_t>(smoothed / 4);
+}
+
+uint8_t amplitudeToHeight(uint8_t amplitude, uint8_t maxHeight) {
+  return static_cast<uint8_t>((static_cast<uint16_t>(amplitude) * maxHeight + 254u) / 255u);
+}
+
+uint8_t sampleBinsAverage(const uint8_t* bins, uint16_t startInclusive, uint16_t endExclusive) {
+  if (startInclusive >= endExclusive || startInclusive >= kBinsCount) {
+    return 0;
+  }
+
+  const uint16_t safeEnd = endExclusive > kBinsCount ? kBinsCount : endExclusive;
+  uint32_t sum = 0;
+  for (uint16_t index = startInclusive; index < safeEnd; index++) {
+    sum += bins[index];
+  }
+
+  return static_cast<uint8_t>(sum / static_cast<uint32_t>(safeEnd - startInclusive));
+}
+
+void resetBinsVisualState() {
+  memset(gBinsPeakHeights, 0, sizeof(gBinsPeakHeights));
+  memset(gBinsHistory, 0, sizeof(gBinsHistory));
+  gBinsHistoryHead = 0;
+  memset(gLaunchpadPadLevels, 0, sizeof(gLaunchpadPadLevels));
+  memset(gLaunchpadTopLevels, 0, sizeof(gLaunchpadTopLevels));
+  memset(gLaunchpadSideLevels, 0, sizeof(gLaunchpadSideLevels));
+  for (uint8_t bufferIndex = 0; bufferIndex < kMatrixShadowBufferCount; bufferIndex++) {
+    memset(gMatrixShadowBarHeights[bufferIndex], 0, sizeof(gMatrixShadowBarHeights[bufferIndex]));
+    if (gMatrixBufferModes[bufferIndex] == MatrixBufferMode::Bars) {
+      gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Unknown;
+    }
+  }
+}
+
+bool finishBinsVisualFrame() {
+  gMatrixBufferModes[gMatrixShadowBackBufferIndex] = MatrixBufferMode::Bars;
+  return commitMatrixFrame();
 }
 
 bool isReservedHub75Pin(int pin) {
@@ -2895,6 +3146,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
       memcpy(gBinsBuffers[nextBinsIndex], payload + 15, kBinsCount);
       gBinsActiveIndex = nextBinsIndex;
       gStreamBrightness = payload[143];
+      gBinsFlags = payload[144];
       portEXIT_CRITICAL(&gStreamBufferMux);
       gFrameModeActive = false;
       gLastFrameMs = millis();
@@ -3092,6 +3344,314 @@ bool drawBars() {
 
   gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Bars;
   return commitMatrixFrame();
+}
+
+bool drawWaveMirrorVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette) {
+  clearMatrix();
+  const Hub75BinsPaletteFamily effectivePalette = resolveBinsEffectivePalette(Hub75BinsVisualStyle::WaveMirror, palette);
+  const int16_t midY = kMatrixHalfHeight;
+  for (uint16_t x = 0; x < kMatrixWidth; x++) {
+    const RgbColor centerColor = samplePaletteColor(effectivePalette, x / static_cast<float>(kMatrixWidth - 1u));
+    drawMatrixPixel(static_cast<uint8_t>(x), static_cast<uint8_t>(midY), scaleColor(centerColor, 0.70f));
+  }
+
+  for (uint16_t x = 0; x < kMatrixWidth; x++) {
+    const uint8_t amplitude = smoothBinsSample(bins, static_cast<int>(x));
+    const uint8_t halfHeight = amplitudeToHeight(amplitude, static_cast<uint8_t>(kMatrixHalfHeight - 1));
+    const RgbColor color = samplePaletteColor(effectivePalette, x / static_cast<float>(kMatrixWidth - 1u));
+    const RgbColor glow = scaleColor(color, 0.42f);
+    for (uint8_t offset = 0; offset <= halfHeight; offset++) {
+      const int16_t yTop = midY - offset;
+      const int16_t yBottom = midY + offset;
+      drawMatrixPixel(static_cast<uint8_t>(x), static_cast<uint8_t>(yTop), color);
+      drawMatrixPixel(static_cast<uint8_t>(x), static_cast<uint8_t>(yBottom), color);
+      if (offset > 0 && x > 0) {
+        drawMatrixPixel(static_cast<uint8_t>(x - 1), static_cast<uint8_t>(yTop), glow);
+        drawMatrixPixel(static_cast<uint8_t>(x - 1), static_cast<uint8_t>(yBottom), glow);
+      }
+      if (offset > 0 && x + 1u < kMatrixWidth) {
+        drawMatrixPixel(static_cast<uint8_t>(x + 1), static_cast<uint8_t>(yTop), glow);
+        drawMatrixPixel(static_cast<uint8_t>(x + 1), static_cast<uint8_t>(yBottom), glow);
+      }
+    }
+  }
+
+  return finishBinsVisualFrame();
+}
+
+bool drawMirrorLinesVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette) {
+  clearMatrix();
+  const Hub75BinsPaletteFamily effectivePalette = resolveBinsEffectivePalette(Hub75BinsVisualStyle::MirrorLines, palette);
+  const int16_t midY = kMatrixHalfHeight;
+  for (uint16_t x = 0; x < kMatrixWidth; x++) {
+    const uint8_t amplitude = smoothBinsSample(bins, static_cast<int>(x));
+    const uint8_t halfHeight = amplitudeToHeight(amplitude, static_cast<uint8_t>(kMatrixHalfHeight - 1));
+    const RgbColor color = samplePaletteColor(effectivePalette, x / static_cast<float>(kMatrixWidth - 1u));
+    for (uint8_t offset = 0; offset < halfHeight; offset++) {
+      drawMatrixPixel(static_cast<uint8_t>(x), static_cast<uint8_t>(midY - offset), color);
+      drawMatrixPixel(static_cast<uint8_t>(x), static_cast<uint8_t>(midY + offset), color);
+    }
+  }
+
+  return finishBinsVisualFrame();
+}
+
+bool drawMirrorBlocksVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette) {
+  clearMatrix();
+  const Hub75BinsPaletteFamily effectivePalette = resolveBinsEffectivePalette(Hub75BinsVisualStyle::MirrorBlocks, palette);
+  const int16_t horizon = static_cast<int16_t>(kMatrixHeight * 0.62f);
+  constexpr uint16_t kBlockCount = 64;
+  for (uint16_t block = 0; block < kBlockCount; block++) {
+    const uint16_t x = block * 2u;
+    const uint8_t amplitude = sampleBinsAverage(bins, block * 2u, (block * 2u) + 2u);
+    const uint8_t topHeight = amplitudeToHeight(amplitude, static_cast<uint8_t>(horizon));
+    const uint8_t reflectionHeight = static_cast<uint8_t>(topHeight * 0.45f);
+    const RgbColor color = samplePaletteColor(effectivePalette, block / static_cast<float>(kBlockCount - 1u));
+    fillMatrixRect(static_cast<int16_t>(x), horizon - topHeight, 2, topHeight, color);
+    fillMatrixRect(static_cast<int16_t>(x), horizon, 2, reflectionHeight, scaleColor(color, 0.38f));
+  }
+
+  return finishBinsVisualFrame();
+}
+
+bool drawClassicBarsVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette) {
+  clearMatrix();
+  const Hub75BinsPaletteFamily effectivePalette = resolveBinsEffectivePalette(Hub75BinsVisualStyle::ClassicBars, palette);
+  constexpr uint16_t kBarCount = 64;
+  for (uint16_t bar = 0; bar < kBarCount; bar++) {
+    const uint16_t x = bar * 2u;
+    const uint8_t amplitude = sampleBinsAverage(bins, bar * 2u, (bar * 2u) + 2u);
+    const uint8_t height = amplitudeToHeight(amplitude, kMatrixHeight - 1u);
+    const uint8_t previousPeak = gBinsPeakHeights[bar];
+    const uint8_t peak = height > previousPeak ? height : (previousPeak > 0 ? previousPeak - 1u : 0u);
+    gBinsPeakHeights[bar] = peak;
+    const RgbColor color = samplePaletteColor(effectivePalette, bar / static_cast<float>(kBarCount - 1u));
+    fillMatrixRect(static_cast<int16_t>(x), static_cast<int16_t>(kMatrixHeight - height), 2, height, color);
+    if (peak > 0) {
+      fillMatrixRect(static_cast<int16_t>(x), static_cast<int16_t>(kMatrixHeight - peak), 2, 1, scaleColor(color, 0.95f));
+    }
+  }
+
+  return finishBinsVisualFrame();
+}
+
+bool drawFlowLineVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette) {
+  clearMatrix();
+  const Hub75BinsPaletteFamily effectivePalette = resolveBinsEffectivePalette(Hub75BinsVisualStyle::FlowLine, palette);
+  constexpr uint16_t kSampleCount = 64;
+  int16_t previousX = 0;
+  int16_t previousY = static_cast<int16_t>(kMatrixHeight - amplitudeToHeight(sampleBinsAverage(bins, 0, 2), kMatrixHeight - 1u));
+  for (uint16_t sample = 0; sample < kSampleCount; sample++) {
+    const uint16_t x = sample * 2u;
+    const uint8_t amplitude = sampleBinsAverage(bins, sample * 2u, (sample * 2u) + 2u);
+    const int16_t y = static_cast<int16_t>(kMatrixHeight - amplitudeToHeight(amplitude, kMatrixHeight - 2u));
+    const RgbColor color = samplePaletteColor(effectivePalette, sample / static_cast<float>(kSampleCount - 1u));
+    gMatrix->drawLine(previousX, previousY, x, y, rgb888ToRgb565(color.r, color.g, color.b));
+    if ((sample & 0x01u) == 0u) {
+      fillMatrixRect(static_cast<int16_t>(x), y, 2, static_cast<int16_t>(kMatrixHeight - y), scaleColor(color, 0.22f));
+    }
+
+    previousX = static_cast<int16_t>(x);
+    previousY = y;
+  }
+
+  return finishBinsVisualFrame();
+}
+
+bool drawHistoryScanVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette) {
+  clearMatrix();
+  const Hub75BinsPaletteFamily effectivePalette = resolveBinsEffectivePalette(Hub75BinsVisualStyle::HistoryScan, palette);
+  constexpr uint16_t kColumnCount = 64;
+  uint8_t* currentRow = gBinsHistory[gBinsHistoryHead];
+  for (uint16_t column = 0; column < kColumnCount; column++) {
+    currentRow[column] = sampleBinsAverage(bins, column * 2u, (column * 2u) + 2u);
+  }
+
+  gBinsHistoryHead = static_cast<uint8_t>((gBinsHistoryHead + 1u) % kMatrixHeight);
+
+  for (uint16_t row = 0; row < kMatrixHeight; row++) {
+    const int historyIndex = (static_cast<int>(gBinsHistoryHead) - 1 - static_cast<int>(row) + kMatrixHeight) % kMatrixHeight;
+    const uint8_t* historyRow = gBinsHistory[historyIndex];
+    for (uint16_t column = 0; column < kColumnCount; column++) {
+      const uint8_t amplitude = historyRow[column];
+      if (amplitude < 6u) {
+        continue;
+      }
+
+      const float paletteT = clamp01f((amplitude / 255.0f) * 0.85f + (column / static_cast<float>(kColumnCount - 1u)) * 0.15f);
+      const RgbColor color = samplePaletteColor(effectivePalette, paletteT);
+      fillMatrixRect(static_cast<int16_t>(column * 2u), static_cast<int16_t>(kMatrixHeight - 1u - row), 2, 1, color);
+    }
+  }
+
+  return finishBinsVisualFrame();
+}
+
+bool drawRadialOrbitVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette) {
+  clearMatrix();
+  const Hub75BinsPaletteFamily effectivePalette = resolveBinsEffectivePalette(Hub75BinsVisualStyle::RadialOrbit, palette);
+  const int16_t centerX = kMatrixWidth / 2;
+  const int16_t centerY = kMatrixHeight / 2;
+  constexpr uint16_t kRayCount = 48;
+  const float baseRadius = 7.0f;
+  const float maxRadius = 28.0f;
+  for (uint16_t ray = 0; ray < kRayCount; ray++) {
+    const uint16_t binStart = static_cast<uint16_t>((ray * kBinsCount) / kRayCount);
+    const uint16_t binEnd = static_cast<uint16_t>(((ray + 1u) * kBinsCount) / kRayCount);
+    const uint8_t amplitude = sampleBinsAverage(bins, binStart, binEnd);
+    const float angle = (static_cast<float>(ray) / static_cast<float>(kRayCount)) * 6.2831853f - 1.5707963f;
+    const float radius = baseRadius + ((amplitude / 255.0f) * maxRadius);
+    const int16_t endX = static_cast<int16_t>(roundf(centerX + cosf(angle) * radius));
+    const int16_t endY = static_cast<int16_t>(roundf(centerY + sinf(angle) * radius));
+    const RgbColor color = samplePaletteColor(effectivePalette, ray / static_cast<float>(kRayCount - 1u));
+    gMatrix->drawLine(centerX, centerY, endX, endY, rgb888ToRgb565(color.r, color.g, color.b));
+    fillMatrixRect(endX - 1, endY - 1, 2, 2, scaleColor(color, 0.68f));
+  }
+
+  fillMatrixRect(centerX - 2, centerY - 2, 4, 4, scaleColor(samplePaletteColor(effectivePalette, 0.5f), 0.72f));
+  return finishBinsVisualFrame();
+}
+
+bool drawAtmosphereVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette, uint8_t level) {
+  clearMatrix();
+  const Hub75BinsPaletteFamily effectivePalette = resolveBinsEffectivePalette(Hub75BinsVisualStyle::Atmosphere, palette);
+  constexpr uint16_t kSampleCount = 64;
+  const float time = millis() / 1000.0f;
+  const float globalLevel = level / 255.0f;
+  for (uint8_t ribbon = 0; ribbon < 3u; ribbon++) {
+    const float baseline = kMatrixHeight * (0.24f + (ribbon * 0.22f));
+    const float phase = time * (0.9f + (ribbon * 0.22f));
+    int16_t previousX = 0;
+    int16_t previousY = static_cast<int16_t>(baseline);
+    for (uint16_t sample = 0; sample < kSampleCount; sample++) {
+      const uint16_t x = sample * 2u;
+      const uint8_t amplitude = sampleBinsAverage(bins, sample * 2u, (sample * 2u) + 2u);
+      const float energy = amplitude / 255.0f;
+      const float wave = sinf((sample * 0.22f) + phase + ribbon) * (5.0f + (globalLevel * 4.0f));
+      const int16_t y = static_cast<int16_t>(roundf(baseline + wave - (energy * 16.0f)));
+      const float colorT = clamp01f((sample / static_cast<float>(kSampleCount - 1u)) * 0.65f + (ribbon * 0.18f));
+      const RgbColor color = samplePaletteColor(effectivePalette, colorT);
+      gMatrix->drawLine(previousX, previousY, x, y, rgb888ToRgb565(color.r, color.g, color.b));
+      if ((sample % 6u) == 0u) {
+        fillMatrixRect(x - 1, y - 1, 3, 3, scaleColor(color, 0.52f + (energy * 0.30f)));
+      }
+
+      previousX = static_cast<int16_t>(x);
+      previousY = y;
+    }
+  }
+
+  const RgbColor bloom = samplePaletteColor(effectivePalette, 0.35f + (globalLevel * 0.25f));
+  fillMatrixRect((kMatrixWidth / 2) - 6, (kMatrixHeight / 2) - 4, 12, 8, scaleColor(bloom, 0.30f + (globalLevel * 0.30f)));
+  return finishBinsVisualFrame();
+}
+
+bool drawLaunchpadGridVisual(const uint8_t* bins) {
+  clearMatrix();
+  const RgbColor deviceBody = {10, 12, 16};
+  const RgbColor padOff = {34, 38, 46};
+  const RgbColor topOff = {58, 64, 72};
+  fillMatrixRect(18, 4, 92, 56, deviceBody);
+  constexpr uint8_t kGridSize = 8;
+  constexpr uint8_t kPadWidth = 9;
+  constexpr uint8_t kPadHeight = 5;
+  constexpr uint8_t kPadGapX = 2;
+  constexpr uint8_t kPadGapY = 1;
+  constexpr uint8_t kGridLeft = 22;
+  constexpr uint8_t kGridTop = 12;
+  for (uint8_t row = 0; row < kGridSize; row++) {
+    for (uint8_t col = 0; col < kGridSize; col++) {
+      const uint8_t padIndex = static_cast<uint8_t>(row * kGridSize + col);
+      const uint8_t target = sampleBinsAverage(bins, padIndex * 2u, (padIndex * 2u) + 2u);
+      const uint8_t previous = gLaunchpadPadLevels[padIndex];
+      const uint8_t levelValue = target > previous ? target : (previous > 14u ? previous - 14u : 0u);
+      gLaunchpadPadLevels[padIndex] = levelValue;
+      const uint8_t x = kGridLeft + col * (kPadWidth + kPadGapX);
+      const uint8_t y = kGridTop + row * (kPadHeight + kPadGapY);
+      fillMatrixRect(x, y, kPadWidth, kPadHeight, padOff);
+      if (levelValue > 6u) {
+        const float colorT = clamp01f((col / 7.0f) * 0.55f + (row / 7.0f) * 0.25f + (levelValue / 255.0f) * 0.20f);
+        const RgbColor activeColor = samplePaletteColor(Hub75BinsPaletteFamily::Neon, colorT);
+        fillMatrixRect(x + 1, y + 1, kPadWidth - 2, kPadHeight - 2, scaleColor(activeColor, 0.35f + (levelValue / 255.0f) * 0.65f));
+      }
+    }
+  }
+
+  for (uint8_t col = 0; col < kGridSize; col++) {
+    const uint8_t target = sampleBinsAverage(bins, col * 4u, (col * 4u) + 4u);
+    const uint8_t previous = gLaunchpadTopLevels[col];
+    gLaunchpadTopLevels[col] = target > previous ? target : (previous > 18u ? previous - 18u : 0u);
+    const uint8_t x = kGridLeft + col * (kPadWidth + kPadGapX) + 2u;
+    fillMatrixRect(x, 7, kPadWidth - 4u, 3, topOff);
+    if (gLaunchpadTopLevels[col] > 12u) {
+      const RgbColor color = samplePaletteColor(Hub75BinsPaletteFamily::Plasma, col / 7.0f);
+      fillMatrixRect(x, 7, kPadWidth - 4u, 3, scaleColor(color, 0.28f + (gLaunchpadTopLevels[col] / 255.0f) * 0.72f));
+    }
+  }
+
+  for (uint8_t row = 0; row < kGridSize; row++) {
+    const uint8_t target = sampleBinsAverage(bins, row * 4u, (row * 4u) + 4u);
+    const uint8_t previous = gLaunchpadSideLevels[row];
+    gLaunchpadSideLevels[row] = target > previous ? target : (previous > 18u ? previous - 18u : 0u);
+    const uint8_t y = kGridTop + row * (kPadHeight + kPadGapY) + 1u;
+    fillMatrixRect(112, y, 3, kPadHeight - 2u, topOff);
+    if (gLaunchpadSideLevels[row] > 12u) {
+      const RgbColor color = samplePaletteColor(Hub75BinsPaletteFamily::Aurora, row / 7.0f);
+      fillMatrixRect(112, y, 3, kPadHeight - 2u, scaleColor(color, 0.28f + (gLaunchpadSideLevels[row] / 255.0f) * 0.72f));
+    }
+  }
+
+  return finishBinsVisualFrame();
+}
+
+bool drawBinsVisual() {
+  if (!gMatrixReady) {
+    return false;
+  }
+
+  uint8_t binsSnapshot[kBinsCount];
+  uint8_t levelSnapshot = 0;
+  uint8_t flagsSnapshot = 0;
+  {
+    portENTER_CRITICAL(&gStreamBufferMux);
+    const uint8_t index = gBinsActiveIndex;
+    memcpy(binsSnapshot, gBinsBuffers[index], sizeof(binsSnapshot));
+    levelSnapshot = gLevel;
+    flagsSnapshot = gBinsFlags;
+    portEXIT_CRITICAL(&gStreamBufferMux);
+  }
+
+  const Hub75BinsVisualStyle style = decodeBinsVisualStyle(flagsSnapshot);
+  const Hub75BinsPaletteFamily palette = decodeBinsPaletteFamily(flagsSnapshot);
+  const uint8_t styleId = static_cast<uint8_t>(style);
+  if (styleId != gLastBinsStyleId) {
+    resetBinsVisualState();
+    gLastBinsStyleId = styleId;
+  }
+
+  switch (style) {
+    case Hub75BinsVisualStyle::WaveMirror:
+      return drawWaveMirrorVisual(binsSnapshot, palette);
+    case Hub75BinsVisualStyle::MirrorLines:
+      return drawMirrorLinesVisual(binsSnapshot, palette);
+    case Hub75BinsVisualStyle::MirrorBlocks:
+      return drawMirrorBlocksVisual(binsSnapshot, palette);
+    case Hub75BinsVisualStyle::ClassicBars:
+      return drawClassicBarsVisual(binsSnapshot, palette);
+    case Hub75BinsVisualStyle::FlowLine:
+      return drawFlowLineVisual(binsSnapshot, palette);
+    case Hub75BinsVisualStyle::HistoryScan:
+      return drawHistoryScanVisual(binsSnapshot, palette);
+    case Hub75BinsVisualStyle::RadialOrbit:
+      return drawRadialOrbitVisual(binsSnapshot, palette);
+    case Hub75BinsVisualStyle::Atmosphere:
+      return drawAtmosphereVisual(binsSnapshot, palette, levelSnapshot);
+    case Hub75BinsVisualStyle::LaunchpadGrid:
+      return drawLaunchpadGridVisual(binsSnapshot);
+    case Hub75BinsVisualStyle::LegacyFallback:
+    default:
+      return drawBars();
+  }
 }
 
 bool drawFrame128x64() {
@@ -3341,11 +3901,14 @@ void loop() {
     memset(gBinsBuffers, 0, sizeof(gBinsBuffers));
     gBinsActiveIndex = 0;
     gLevel = 0;
+    gBinsFlags = 0;
     memset(gFrameRgb565Buffers, 0, sizeof(gFrameRgb565Buffers));
     gFrameRgb565ActiveIndex = 0;
     portEXIT_CRITICAL(&gStreamBufferMux);
     gFrameModeActive = false;
     gMatrixSignalTimedOut = true;
+    gLastBinsStyleId = 0xFFu;
+    resetBinsVisualState();
     gPendingMatrixPresentCountsAsApplied = false;
     markMatrixFrameDirty(false);
   }
@@ -3372,7 +3935,7 @@ void loop() {
           presentedStreamPayload = presented;
         }
       } else if (!gMatrixSignalTimedOut || gMatrixFrameDirty) {
-        presented = drawBars();
+        presented = drawBinsVisual();
         presentedStreamPayload = presented;
       }
 

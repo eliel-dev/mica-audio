@@ -28,6 +28,43 @@ Layout:
 
 Tamanho total: `145` bytes.
 
+### Semantica oficial de `flags`
+
+- `flags[7:3] = styleId` (`0..31`)
+- `flags[2:0] = paletteFamilyId` (`0..7`)
+- `flags = 0` continua valido e preserva o comportamento legado do firmware.
+
+#### `styleId`
+
+1. `0 = legacy-fallback`
+2. `1 = wave-mirror`
+3. `2 = mirror-lines`
+4. `3 = mirror-blocks`
+5. `4 = classic-bars`
+6. `5 = flow-line`
+7. `6 = history-scan`
+8. `7 = radial-orbit`
+9. `8 = atmosphere`
+10. `9 = launchpad-grid`
+
+#### `paletteFamilyId`
+
+1. `0 = canonical`
+2. `1 = rainbow`
+3. `2 = sunset`
+4. `3 = arctic`
+5. `4 = neon`
+6. `5 = aurora`
+7. `6 = plasma`
+8. `7 = mono`
+
+### Politica operacional atual
+
+- O host desktop resolve `presetId + rendererId -> flags` antes de serializar o pacote `Bins128`.
+- O firmware HUB75 usa `styleId/paletteFamilyId` apenas no tipo `1`:
+  - `Frame128x64 RGB565` ignora essa semantica.
+- O objetivo do contrato e distinguir poucas familias fisicas nativas no painel, nao recriar o preview WinUI pixel a pixel.
+
 ## Mensagem tipo 2 - frame128x64 RGB565
 
 Layout:
@@ -44,4 +81,5 @@ Tamanho total: `16400` bytes.
 ## Referencias
 
 - [StreamFrameV2](../../../src/Device.Protocol/Stream/StreamFrameV2.cs#L1)
+- [Bins128VisualFlags](../../../src/Device.Protocol/Stream/Bins128VisualFlags.cs#L1)
 - [Firmware onWsEvent](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)

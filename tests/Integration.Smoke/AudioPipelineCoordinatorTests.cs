@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using Analyzer.Dsp.Analysis;
 using App.WinUI.Services;
 using Audio.Loopback.Capture;
+using Device.Protocol.Stream;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
@@ -27,7 +28,8 @@ public sealed class AudioPipelineCoordinatorTests
             enableSimulator: true,
             enableHub75DeviceOutput: true,
             brightness: 0.6f,
-            presetId: "preset");
+            presetId: "audiomotion-clone",
+            rendererId: RendererIds.AudioMotionClone);
         await capture.PublishAsync(new PcmFrame([1f, 2f, 3f], 42));
         await WaitForAsync(() => matrix.Payloads.Count == 1);
 
@@ -41,6 +43,9 @@ public sealed class AudioPipelineCoordinatorTests
         Assert.Single(simulator.Payloads);
         Assert.Empty(sink.Payloads);
         Assert.Equal(LedDefaults.MatrixWidth, matrix.Payloads[0].Bins128!.Length);
+        Assert.Equal(
+            Bins128VisualFlags.Create(Bins128VisualStyle.MirrorLines, Bins128PaletteFamily.Rainbow),
+            matrix.Payloads[0].BinsFlags);
 
         await coordinator.StopAsync();
     }
@@ -63,7 +68,8 @@ public sealed class AudioPipelineCoordinatorTests
             enableSimulator: false,
             enableHub75DeviceOutput: false,
             brightness: 0.6f,
-            presetId: "preset");
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
         await capture.PublishAsync(new PcmFrame([1f, 2f, 3f], 42));
         await WaitForAsync(() => sink.Payloads.Count == 1);
 
@@ -85,12 +91,14 @@ public sealed class AudioPipelineCoordinatorTests
             enableSimulator: false,
             enableHub75DeviceOutput: false,
             brightness: 0.4f,
-            presetId: "preset");
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
         await coordinator.StartAsync(
             enableSimulator: true,
             enableHub75DeviceOutput: true,
             brightness: 0.8f,
-            presetId: "preset");
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
         await coordinator.StopAsync();
         await coordinator.StopAsync();
 
@@ -114,7 +122,8 @@ public sealed class AudioPipelineCoordinatorTests
             enableSimulator: false,
             enableHub75DeviceOutput: true,
             brightness: 1f,
-            presetId: "preset");
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
         await capture.PublishAsync(new PcmFrame([1f], 1));
         await WaitForAsync(() => matrix.Payloads.Count == 1);
 
@@ -145,7 +154,8 @@ public sealed class AudioPipelineCoordinatorTests
             enableSimulator: false,
             enableHub75DeviceOutput: true,
             brightness: 1f,
-            presetId: "preset");
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
         await capture.PublishAsync(new PcmFrame([1f], 1));
         await Task.Delay(50);
 

@@ -183,6 +183,26 @@
 - O timeout de stream sem queda de conectividade continua fora deste fallback:
   - se houver servidor conectado, mas faltar frame/sinal, o comportamento atual permanece.
 
+## Atualizacao 2026-03 - familias nativas para `Bins128`
+
+- O tipo `1` (`Bins128`) deixou de cair sempre no mesmo `drawBars()` do firmware.
+- O byte `flags` do pacote passou a carregar:
+  - `flags[7:3] = styleId`
+  - `flags[2:0] = paletteFamilyId`
+- `flags = 0` continua valido e preserva o desenho legado.
+- O firmware agora usa um dispatcher `drawBinsVisual()` para escolher entre familias nativas leves e dirigidas apenas por bins/level/brightness:
+  - `wave-mirror`
+  - `mirror-lines`
+  - `mirror-blocks`
+  - `classic-bars`
+  - `flow-line`
+  - `history-scan`
+  - `radial-orbit`
+  - `atmosphere`
+  - `launchpad-grid`
+- A intencao desta fase e distinguir familias fisicas de preset no painel, sem tentar reproduzir com paridade total o preview WinUI.
+- O estado temporal especifico de cada estilo e resetado quando `styleId` muda ou quando o stream expira, evitando carry-over visual entre presets.
+
 ## Atualizacao 2026-03 - HUB75 bulk RGB565 back-buffer fix
 
 - A dependencia `ESP32-HUB75-MatrixPanel-DMA` `3.0.13` continua sem expor `getBackBuffer()` publico nem `drawPixelRGB565()`.

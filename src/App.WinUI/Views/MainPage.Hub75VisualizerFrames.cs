@@ -15,6 +15,7 @@ public partial class MainPage
 
     private void SyncHubTransportMode()
     {
+        pipelineCoordinator.SetCurrentVisualizerIdentity(currentPresetId, ResolveCurrentRendererId());
         pipelineCoordinator.SetHubTransportMode(ResolveCurrentHubTransportMode());
         lastHubFrameQpc = 0;
     }

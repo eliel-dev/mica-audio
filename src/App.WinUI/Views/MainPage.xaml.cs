@@ -239,7 +239,8 @@ public partial class MainPage : Page
                     enableSimulator: ShouldShowHubPreviewPanel(),
                     enableHub75DeviceOutput: ShouldEnableHub75DeviceOutput(),
                     brightness: appSettings.Brightness,
-                    presetId: currentPresetId)
+                    presetId: currentPresetId,
+                    rendererId: ResolveCurrentRendererId())
                 .ConfigureAwait(false);
 
             await DispatcherQueue.EnqueueAsync(() =>
@@ -455,7 +456,7 @@ public partial class MainPage : Page
     private void BuildPresetNavigationOrder() { presetNavigationOrder.Clear(); foreach (var preset in PresetNavigationHelper.BuildOrder(presetsById.Values)) { presetNavigationOrder.Add(preset); } }
     private void UpdateCurrentPresetIndex() { currentPresetIndex = PresetNavigationHelper.ResolveIndex(presetNavigationOrder, currentPresetId); if (currentPresetIndex < 0 || currentPresetIndex >= presetNavigationOrder.Count) { return; } var resolvedPreset = presetNavigationOrder[currentPresetIndex]; if (!string.Equals(currentPresetId, resolvedPreset.PresetId, StringComparison.OrdinalIgnoreCase)) { activePreset = resolvedPreset; currentPresetId = resolvedPreset.PresetId; } }
     private void NavigatePreset(int direction) { if (presetNavigationOrder.Count == 0) { return; } var nextIndex = PresetNavigationHelper.WrapIndex(currentPresetIndex, direction, presetNavigationOrder.Count); if (nextIndex < 0) { return; } SelectPreset(presetNavigationOrder[nextIndex], showHud: true); }
-    private void SelectPreset(PresetDefinition preset, bool showHud) { var selectedPreset = string.IsNullOrWhiteSpace(preset?.PresetId) ? ResolveBuiltInFallbackPreset(AudioMotionClonePresetId) : preset; activePreset = selectedPreset; currentPresetId = selectedPreset.PresetId; selectedRendererId = ResolveSelectedRendererId(selectedPreset.RendererId, selectedPreset.RendererId); UpdateCurrentPresetIndex(); if (showHud) { ShowPresetSwitchHud(); } var samePreset = string.Equals(viewModel.CurrentPresetId, currentPresetId, StringComparison.OrdinalIgnoreCase) && string.Equals(viewModel.SelectedRendererId, selectedRendererId, StringComparison.OrdinalIgnoreCase); if (samePreset) { return; } pipelineCoordinator.SetCurrentPreset(currentPresetId); viewModel.CurrentPresetId = currentPresetId; viewModel.SelectedRendererId = selectedRendererId; SelectComboOption(RendererCombo, selectedRendererId); ApplyRendererControlState(); lastCloneViewportWidth = GetAnalyzerViewportWidth(); _ = ApplyPendingVisualizerRuntimeImmediately(forceRebuild: false, persistSettings: true, refreshOutputs: true, updateStatusOnFailure: true); }
+    private void SelectPreset(PresetDefinition preset, bool showHud) { var selectedPreset = string.IsNullOrWhiteSpace(preset?.PresetId) ? ResolveBuiltInFallbackPreset(AudioMotionClonePresetId) : preset; activePreset = selectedPreset; currentPresetId = selectedPreset.PresetId; selectedRendererId = ResolveSelectedRendererId(selectedPreset.RendererId, selectedPreset.RendererId); UpdateCurrentPresetIndex(); if (showHud) { ShowPresetSwitchHud(); } var samePreset = string.Equals(viewModel.CurrentPresetId, currentPresetId, StringComparison.OrdinalIgnoreCase) && string.Equals(viewModel.SelectedRendererId, selectedRendererId, StringComparison.OrdinalIgnoreCase); if (samePreset) { return; } pipelineCoordinator.SetCurrentVisualizerIdentity(currentPresetId, ResolveCurrentRendererId()); viewModel.CurrentPresetId = currentPresetId; viewModel.SelectedRendererId = selectedRendererId; SelectComboOption(RendererCombo, selectedRendererId); ApplyRendererControlState(); lastCloneViewportWidth = GetAnalyzerViewportWidth(); _ = ApplyPendingVisualizerRuntimeImmediately(forceRebuild: false, persistSettings: true, refreshOutputs: true, updateStatusOnFailure: true); }
     private void EnsurePresetSwitchHudHideTimer() { if (presetSwitchHudHideTimer is not null) { return; } presetSwitchHudHideTimer = DispatcherQueue.CreateTimer(); presetSwitchHudHideTimer.Interval = TimeSpan.FromMilliseconds(1200); presetSwitchHudHideTimer.Tick += (_, _) => { presetSwitchHudHideTimer?.Stop(); HidePresetSwitchHud(); }; }
     private void ShowPresetSwitchHud() { if (currentPresetIndex < 0) { return; } PresetQuickSwitchText.Text = $"{currentPresetIndex + 1:00}. {activePreset.Name}"; PresetQuickSwitchHud.Visibility = Visibility.Visible; EnsurePresetSwitchHudHideTimer(); presetSwitchHudHideTimer!.Stop(); presetSwitchHudHideTimer.Start(); }
     private void HidePresetSwitchHud() { PresetQuickSwitchHud.Visibility = Visibility.Collapsed; }
@@ -536,7 +537,8 @@ public partial class MainPage : Page
                     enableSimulator: ShouldShowHubPreviewPanel(),
                     enableHub75DeviceOutput: ShouldEnableHub75DeviceOutput(),
                     brightness: appSettings.Brightness,
-                    presetId: currentPresetId)
+                    presetId: currentPresetId,
+                    rendererId: ResolveCurrentRendererId())
                 .ConfigureAwait(true);
             UpdateRenderLoopState();
             PumpHubFrameOutput(force: true);

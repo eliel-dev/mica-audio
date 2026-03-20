@@ -11,7 +11,7 @@ public sealed class LedPayloadFactoryTests
     {
         var spectrum = new SpectrumFrame([0f, 0.5f, 1f], [0f, 0.5f, 1f], 0.75f, 123);
 
-        var payload = LedPayloadFactory.CreateSpectrumPayload(spectrum, "preset");
+        var payload = LedPayloadFactory.CreateSpectrumPayload(spectrum, "preset", binsFlags: 41);
 
         Assert.NotNull(payload.Bins128);
         Assert.Equal(LedDefaults.MatrixWidth, payload.Bins128!.Length);
@@ -19,6 +19,7 @@ public sealed class LedPayloadFactoryTests
         Assert.Equal(1f, payload.Bins128[^1]);
         Assert.Equal(0.75f, payload.Level);
         Assert.Equal("preset", payload.PresetId);
+        Assert.Equal((byte)41, payload.BinsFlags);
     }
 
     [Fact]

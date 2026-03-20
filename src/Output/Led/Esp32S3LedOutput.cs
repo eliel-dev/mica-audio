@@ -61,6 +61,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
         string? localTargetDeviceId;
         uint localSequence;
         byte localBrightnessByte;
+        byte localBinsFlags;
         ushort[]? encodedFrame;
 
         lock (gate)
@@ -76,6 +77,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
             localBrightness = brightness;
             localTargetDeviceId = targetDeviceId;
             localBrightnessByte = ToByte01(localBrightness);
+            localBinsFlags = payload.BinsFlags;
             encodedFrame = null;
 
             if (frame is { Length: StreamFrameV2.PixelCount128x64 })
@@ -129,7 +131,8 @@ public sealed class Esp32S3LedOutput : ILedOutput
             timestampQpc: Stopwatch.GetTimestamp(),
             level0To255: ToByte01(level),
             bins128: binsBytes,
-            brightness0To255: localBrightnessByte);
+            brightness0To255: localBrightnessByte,
+            flags: localBinsFlags);
 
         SendFrame(bytes, localTargetDeviceId);
     }

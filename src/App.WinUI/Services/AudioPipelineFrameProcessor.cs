@@ -3,6 +3,7 @@ using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
+using App.WinUI.Services.Visualizer;
 using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services;
@@ -16,6 +17,7 @@ internal sealed class AudioPipelineFrameProcessor
     private IAnalyzer analyzer;
     private SpectrumFrame? latestFrame;
     private string currentPresetId = VisualizerRuntimeDefaults.DefaultPresetId;
+    private string currentRendererId = VisualizerRuntimeDefaults.DefaultRendererId;
     private RendererHubTransportMode hubTransportMode = RendererHubTransportMode.Bins128;
 
     public AudioPipelineFrameProcessor(AudioPipelineOutputRouter outputRouter, IAnalyzer initialAnalyzer)
@@ -45,11 +47,12 @@ internal sealed class AudioPipelineFrameProcessor
         }
     }
 
-    public void SetCurrentPreset(string presetId)
+    public void SetCurrentVisualizerIdentity(string presetId, string rendererId)
     {
         lock (stateGate)
         {
             currentPresetId = VisualizerRuntimeSettings.NormalizePresetId(presetId);
+            currentRendererId = VisualizerRuntimeSettings.NormalizeRendererId(rendererId);
         }
     }
 
@@ -86,12 +89,14 @@ internal sealed class AudioPipelineFrameProcessor
         IAnalyzer currentAnalyzer;
         RendererHubTransportMode activeTransportMode;
         string presetId;
+        string rendererId;
 
         lock (stateGate)
         {
             currentAnalyzer = analyzer;
             activeTransportMode = hubTransportMode;
             presetId = currentPresetId;
+            rendererId = currentRendererId;
         }
 
         var spectrum = currentAnalyzer.Process(in pcmFrame);
@@ -110,6 +115,7 @@ internal sealed class AudioPipelineFrameProcessor
             return;
         }
 
-        outputRouter.Dispatch(LedPayloadFactory.CreateSpectrumPayload(spectrum, presetId));
+        var binsFlags = Hub75BinsVisualIdentityResolver.ResolveFlags(presetId, rendererId);
+        outputRouter.Dispatch(LedPayloadFactory.CreateSpectrumPayload(spectrum, presetId, binsFlags));
     }
 }

@@ -6,7 +6,7 @@ namespace MicaAudio.Core.Led;
 // DOCS: docs/wiki/modules/output-led.md#fluxo-de-execucao
 internal static class LedPayloadFactory
 {
-    public static LedPayload CreateSpectrumPayload(SpectrumFrame spectrum, string presetId)
+    public static LedPayload CreateSpectrumPayload(SpectrumFrame spectrum, string presetId, byte binsFlags = 0)
     {
         ArgumentNullException.ThrowIfNull(spectrum);
 
@@ -15,10 +15,11 @@ internal static class LedPayloadFactory
             Bins128 = ResampleSpectrumBins(spectrum),
             Level = spectrum.Level,
             PresetId = presetId,
+            BinsFlags = binsFlags,
         };
     }
 
-    public static LedPayload CreateBinsPayload(float[] bins128, string presetId, float level)
+    public static LedPayload CreateBinsPayload(float[] bins128, string presetId, float level, byte binsFlags = 0)
     {
         ArgumentNullException.ThrowIfNull(bins128);
 
@@ -27,6 +28,7 @@ internal static class LedPayloadFactory
             Bins128 = bins128,
             Level = level,
             PresetId = presetId,
+            BinsFlags = binsFlags,
         };
     }
 

@@ -16,6 +16,22 @@
   - renderers explicitos do catalogo shipping tambem foram alinhados para `Bins128`.
 - `Frame128x64` continua implementado para cenarios forcados e para infraestrutura preservada, mas sai do caminho normal de execucao.
 
+## Atualizacao 2026-03 - familias fisicas `Bins128` no HUB75
+
+- O desktop deixou de tratar todos os presets `Bins128` como equivalentes no device.
+- O runtime agora resolve `presetId + rendererId` para um conjunto pequeno de familias nativas no firmware:
+  - `wave-mirror`
+  - `mirror-lines`
+  - `mirror-blocks`
+  - `classic-bars`
+  - `flow-line`
+  - `history-scan`
+  - `radial-orbit`
+  - `atmosphere`
+  - `launchpad-grid`
+- Cada preset builtin continua com sua identidade forte no preview WinUI, mas o HUB75 passa a receber uma familia fisica reconhecivel em `Bins128`, em vez de colapsar tudo no mesmo visual legado.
+- A paleta-base tambem vai no `flags` do pacote tipo `1`, com familias como `rainbow`, `sunset`, `arctic`, `neon`, `aurora`, `plasma` e `canonical`.
+
 ## AudioMotion Clone
 
 - Continua com a mesma identidade visual no canvas principal.

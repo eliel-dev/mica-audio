@@ -13,13 +13,17 @@ public class StreamFrameV2Tests
             bins[i] = (byte)i;
         }
 
+        var encodedFlags = Bins128VisualFlags.Create(
+            Bins128VisualStyle.FlowLine,
+            Bins128PaletteFamily.Arctic);
+
         var payload = StreamFrameV2.CreateBins128(
             sequence: 7,
             timestampQpc: 123456,
             level0To255: 200,
             bins128: bins,
             brightness0To255: 128,
-            flags: 3);
+            flags: encodedFlags);
 
         Assert.Equal(StreamFrameV2.PayloadSizeBins128, payload.Length);
         Assert.Equal(StreamFrameV2.Version, payload[0]);
@@ -28,7 +32,7 @@ public class StreamFrameV2Tests
         Assert.Equal((byte)0, payload[15]);
         Assert.Equal((byte)127, payload[142]);
         Assert.Equal((byte)128, payload[143]);
-        Assert.Equal((byte)3, payload[144]);
+        Assert.Equal(encodedFlags, payload[144]);
     }
 
     [Fact]

@@ -28,6 +28,7 @@ public class Esp32S3LedOutputTests
             Bins128 = bins,
             Level = 1f,
             PresetId = "audiomotion-clone",
+            BinsFlags = Bins128VisualFlags.Create(Bins128VisualStyle.MirrorLines, Bins128PaletteFamily.Rainbow),
         });
 
         Assert.Single(host.BroadcastFrames);
@@ -40,7 +41,7 @@ public class Esp32S3LedOutputTests
         Assert.Equal((byte)0, payload[15]);
         Assert.Equal((byte)255, payload[142]);
         Assert.Equal((byte)128, payload[143]);
-        Assert.Equal((byte)0, payload[144]);
+        Assert.Equal(Bins128VisualFlags.Create(Bins128VisualStyle.MirrorLines, Bins128PaletteFamily.Rainbow), payload[144]);
     }
 
     [Fact]

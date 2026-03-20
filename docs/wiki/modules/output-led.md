@@ -16,6 +16,16 @@
 - `Frame128x64` continua existindo para cenarios explicitamente forcados e para a infraestrutura local do preview/simulador, sem sair do contrato wire atual.
 - A consequencia intencional e que o preview WinUI pode divergir do HUB75 fisico em renderers artisticos, em troca de throughput maior no device.
 
+## Atualizacao 2026-03 - identidade visual `Bins128` por `flags`
+
+- O payload canonico do pipeline ganhou `BinsFlags` explicito em `LedPayload`.
+- `LedPayloadFactory` agora preenche esse byte no caminho `Bins128`, em vez de deixar `Esp32S3LedOutput` recalcular estilo no limite do wire.
+- `Esp32S3LedOutput` apenas repassa o valor resolvido para `StreamFrameV2.CreateBins128(...)`.
+- O contrato operacional fica:
+  - host resolve `presetId + rendererId -> styleId + paletteFamilyId`;
+  - `flags = 0` continua reservado ao visual legado do firmware;
+  - `Frame128x64` nao muda.
+
 ## Atualizacao 2026-03 - Factory de payload e roteamento do pipeline
 
 - O app deixou de montar `LedPayload` manualmente em varios pontos:

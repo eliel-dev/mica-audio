@@ -42,9 +42,10 @@ internal sealed class AudioPipelineCoordinator
         bool enableHub75DeviceOutput,
         float brightness,
         string presetId,
+        string rendererId,
         CancellationToken cancellationToken = default)
     {
-        frameProcessor.SetCurrentPreset(presetId);
+        frameProcessor.SetCurrentVisualizerIdentity(presetId, rendererId);
         outputRouter.Configure(enableSimulator, enableHub75DeviceOutput, brightness);
 
         if (running)
@@ -132,7 +133,8 @@ internal sealed class AudioPipelineCoordinator
         frameProcessor.SendHubBins(bins128, level, forceSimulator, presetId);
     }
 
-    public void SetCurrentPreset(string presetId) => frameProcessor.SetCurrentPreset(presetId);
+    public void SetCurrentVisualizerIdentity(string presetId, string rendererId)
+        => frameProcessor.SetCurrentVisualizerIdentity(presetId, rendererId);
 
     public void SetHubTransportMode(RendererHubTransportMode mode)
     {
