@@ -28,6 +28,16 @@ Layout:
 
 Tamanho total: `145` bytes.
 
+### O que sao os 128 bytes do campo bins128
+
+Cada byte representa a amplitude normalizada (0 = silencio, 255 = maximo) de uma faixa de frequencia do espectro de audio:
+
+- A FFT de 2048 pontos sobre o PCM gera 1025 bins de potencia.
+- `LogBandMapper` agrega esses bins em bandas logaritmicas.
+- `LedPayloadFactory.ResampleSpectrumBins` remapeia interpolando as bandas para exatamente 128 valores, correspondendo coluna a coluna aos 128 pixels de largura do painel HUB75.
+- Cada valor `float` (0.0-1.0) e convertido para `byte` (0-255) antes do envio.
+- O indice `0` representa a frequencia mais baixa (graves) e o indice `127` a mais alta (agudos).
+
 ### Semantica oficial de `flags`
 
 - `flags[7:3] = styleId` (`0..31`)
