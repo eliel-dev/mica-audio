@@ -1,5 +1,6 @@
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
+using Device.Protocol.Stream;
 using Output.Led;
 
 namespace Output.Tests;
@@ -18,6 +19,56 @@ public class SimulatorLedOutputTests
 
         Assert.Equal(LedDefaults.MatrixWidth * LedDefaults.MatrixHeight, snapshot.Length);
         Assert.Contains(snapshot, px => px.R > 0 || px.G > 0 || px.B > 0);
+    }
+
+    [Fact]
+    public void SendBins_WithDifferentFlags_ShouldCreateDifferentSnapshots()
+    {
+        var simulator = CreateStartedSimulator();
+        var bins = Enumerable.Repeat(0.65f, LedDefaults.MatrixWidth).ToArray();
+
+        simulator.Send(new LedPayload
+        {
+            Bins128 = bins,
+            Level = 0.55f,
+            BinsFlags = Bins128VisualFlags.Create(Bins128VisualStyle.WaveMirror, Bins128PaletteFamily.Canonical),
+        });
+        var waveSnapshot = simulator.GetFrameSnapshot();
+
+        simulator.Send(new LedPayload
+        {
+            Bins128 = bins,
+            Level = 0.55f,
+            BinsFlags = Bins128VisualFlags.Create(Bins128VisualStyle.LaunchpadGrid, Bins128PaletteFamily.Canonical),
+        });
+        var gridSnapshot = simulator.GetFrameSnapshot();
+
+        Assert.NotEqual(waveSnapshot, gridSnapshot);
+    }
+
+    [Fact]
+    public void SendBins_FlagsZeroAndLegacyFallbackStyle_ShouldMatch()
+    {
+        var simulator = CreateStartedSimulator();
+        var bins = Enumerable.Repeat(0.75f, LedDefaults.MatrixWidth).ToArray();
+
+        simulator.Send(new LedPayload
+        {
+            Bins128 = bins,
+            Level = 0.7f,
+            BinsFlags = 0,
+        });
+        var zeroFlagsSnapshot = simulator.GetFrameSnapshot();
+
+        simulator.Send(new LedPayload
+        {
+            Bins128 = bins,
+            Level = 0.7f,
+            BinsFlags = Bins128VisualFlags.Create(Bins128VisualStyle.LegacyFallback, Bins128PaletteFamily.Rainbow),
+        });
+        var legacySnapshot = simulator.GetFrameSnapshot();
+
+        Assert.Equal(zeroFlagsSnapshot, legacySnapshot);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using Analyzer.Dsp.Analysis;
 using Audio.Loopback.Capture;
+using Device.Protocol.Stream;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Led;
@@ -29,6 +30,33 @@ public class PipelineSmokeTests
 
         var snapshot = simulator.GetFrameSnapshot();
         Assert.Equal(128 * 64, snapshot.Length);
+    }
+
+    [Fact]
+    public void SimulatorPreview_ShouldReflectBinsFlagsFamilies()
+    {
+        var simulator = new SimulatorLedOutput();
+        simulator.Start(new LedOutputConfig { Width = LedDefaults.MatrixWidth, Height = LedDefaults.MatrixHeight, Brightness = 1f });
+
+        var bins = Enumerable.Repeat(0.7f, LedDefaults.MatrixWidth).ToArray();
+
+        simulator.Send(new LedPayload
+        {
+            Bins128 = bins,
+            Level = 0.6f,
+            BinsFlags = Bins128VisualFlags.Create(Bins128VisualStyle.WaveMirror, Bins128PaletteFamily.Canonical),
+        });
+        var waveSnapshot = simulator.GetFrameSnapshot();
+
+        simulator.Send(new LedPayload
+        {
+            Bins128 = bins,
+            Level = 0.6f,
+            BinsFlags = Bins128VisualFlags.Create(Bins128VisualStyle.LaunchpadGrid, Bins128PaletteFamily.Canonical),
+        });
+        var gridSnapshot = simulator.GetFrameSnapshot();
+
+        Assert.NotEqual(waveSnapshot, gridSnapshot);
     }
 
     [Fact(Skip = "Manual validation for real WASAPI loopback session.")]

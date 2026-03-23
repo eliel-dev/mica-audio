@@ -26,6 +26,27 @@
   - `flags = 0` continua reservado ao visual legado do firmware;
   - `Frame128x64` nao muda.
 
+## Atualizacao 2026-03 - preview HUB75 local fiel ao `Bins128` do device
+
+- O preview HUB75 local do `Visualizador` continua vindo de `SimulatorLedOutput`, sem trocar a fonte do painel inferior da tela.
+- O simulador deixou de desenhar `Bins128` com um unico visual espelhado legado.
+- O novo `Bins128PreviewRenderer` replica localmente as familias fisicas do firmware:
+  - `wave-mirror`
+  - `mirror-lines`
+  - `mirror-blocks`
+  - `classic-bars`
+  - `flow-line`
+  - `history-scan`
+  - `radial-orbit`
+  - `atmosphere`
+  - `launchpad-grid`
+- O contrato do preview local passa a ser o proprio payload ja emitido para o HUB75:
+  - `bins[128]`
+  - `level`
+  - `brightness`
+  - `BinsFlags`
+- `Frame128x64` continua igual, e `flags = 0` preserva o fallback legado para emissores antigos.
+
 ## Atualizacao 2026-03 - Factory de payload e roteamento do pipeline
 
 - O app deixou de montar `LedPayload` manualmente em varios pontos:
@@ -72,5 +93,6 @@
 - [AudioPipelineOutputRouter](../../../src/App.WinUI/Services/AudioPipelineOutputRouter.cs#L1)
 - [Esp32S3LedOutput](../../../src/Output/Led/Esp32S3LedOutput.cs#L1)
 - [LedFrameDeduplicator](../../../src/Output/Led/LedFrameDeduplicator.cs#L1)
+- [Bins128PreviewRenderer](../../../src/Output/Led/Bins128PreviewRenderer.cs#L1)
 - [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)
 - [StreamFrameV2](../reference/ws-protocol-v2.md)
