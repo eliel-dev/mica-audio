@@ -29,12 +29,21 @@ public sealed class Hub75BinsVisualIdentityResolverTests
     }
 
     [Fact]
-    public void ResolveFlags_ShouldFallbackByRendererForTechnicalCombo()
+    public void ResolveFlags_ShouldFallbackByRendererForRemainingTechnicalCombo()
     {
-        var flags = Hub75BinsVisualIdentityResolver.ResolveFlags(null, RendererIds.LaunchpadGrid);
+        var flags = Hub75BinsVisualIdentityResolver.ResolveFlags(null, RendererIds.VizzyOrbitRings);
 
-        Assert.Equal(Bins128VisualStyle.LaunchpadGrid, Bins128VisualFlags.GetStyle(flags));
+        Assert.Equal(Bins128VisualStyle.RadialOrbit, Bins128VisualFlags.GetStyle(flags));
         Assert.Equal(Bins128PaletteFamily.Canonical, Bins128VisualFlags.GetPalette(flags));
+    }
+
+    [Fact]
+    public void ResolveFlags_ShouldFallbackToLegacyForRetiredVisualizerIdentity()
+    {
+        var flags = Hub75BinsVisualIdentityResolver.ResolveFlags("spectrum-launchpad-grid", RendererIds.LaunchpadGrid);
+
+        Assert.Equal(Bins128VisualStyle.LegacyFallback, Bins128VisualFlags.GetStyle(flags));
+        Assert.Equal(Bins128PaletteFamily.Rainbow, Bins128VisualFlags.GetPalette(flags));
     }
 
     [Fact]

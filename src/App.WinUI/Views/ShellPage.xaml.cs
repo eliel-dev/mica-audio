@@ -1,4 +1,5 @@
-﻿using App.WinUI.Services.Devices;
+using App.WinUI.Services.Devices;
+using App.WinUI.Services.Visualizer;
 using App.WinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -6,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
+// DOCS: docs/wiki/modules/app-winui.md#studio-de-visualizacoes
 public sealed partial class ShellPage : Page
 {
     private const string VisualizerTag = "visualizer";
@@ -13,21 +15,26 @@ public sealed partial class ShellPage : Page
     private const string PanelsTag = "panels";
     private const string MonitoringTag = "monitoring";
     private const string SettingsTag = "settings";
+    private const string VisualizerStudioTag = "visualizer-studio";
 
     private readonly ShellPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly ShellPageContentFactory contentFactory;
+    private readonly VisualizerEditorNavigationCoordinator visualizerEditorNavigation;
 
-    private string currentTag = string.Empty;
+    private string currentNavigationTag = VisualizerTag;
+    private string currentRouteTag = string.Empty;
 
     internal ShellPage(
         ShellPageViewModel viewModel,
         DeviceOperationsCoordinator deviceOps,
-        ShellPageContentFactory contentFactory)
+        ShellPageContentFactory contentFactory,
+        VisualizerEditorNavigationCoordinator visualizerEditorNavigation)
     {
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
         this.contentFactory = contentFactory;
+        this.visualizerEditorNavigation = visualizerEditorNavigation;
 
         InitializeComponent();
         DataContext = viewModel;
@@ -35,7 +42,7 @@ public sealed partial class ShellPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (RootNavigation.MenuItems.Count == 0)
         {
@@ -47,12 +54,14 @@ public sealed partial class ShellPage : Page
             RootNavigation.SelectedItem = RootNavigation.MenuItems[0];
         }
 
-        if (string.IsNullOrWhiteSpace(currentTag))
+        if (string.IsNullOrWhiteSpace(currentRouteTag))
         {
-            ShowPage(VisualizerTag);
+            await ShowPageAsync(VisualizerTag).ConfigureAwait(true);
         }
 
         deviceOps.StateChanged += OnDeviceOpsStateChanged;
+        visualizerEditorNavigation.OpenVisualizerPresetEditorRequested += OnOpenVisualizerPresetEditorRequested;
+        visualizerEditorNavigation.ReturnToVisualizerRequested += OnReturnToVisualizerRequested;
         UpdateServerFooter();
 
         App.ShellChromeVisibilityChanged += OnShellChromeVisibilityChanged;
@@ -63,9 +72,11 @@ public sealed partial class ShellPage : Page
     {
         App.ShellChromeVisibilityChanged -= OnShellChromeVisibilityChanged;
         deviceOps.StateChanged -= OnDeviceOpsStateChanged;
+        visualizerEditorNavigation.OpenVisualizerPresetEditorRequested -= OnOpenVisualizerPresetEditorRequested;
+        visualizerEditorNavigation.ReturnToVisualizerRequested -= OnReturnToVisualizerRequested;
     }
 
-    private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    private async void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         var tag = args.SelectedItemContainer?.Tag as string;
         if (string.IsNullOrWhiteSpace(tag))
@@ -73,34 +84,92 @@ public sealed partial class ShellPage : Page
             return;
         }
 
-        ShowPage(tag);
+        if (!await ShowPageAsync(tag).ConfigureAwait(true))
+        {
+            EnsureNavigationSelection(currentNavigationTag);
+        }
     }
 
-    private void ShowPage(string tag)
+    private async Task<bool> ShowPageAsync(string tag, string? selectedNavigationTag = null, bool force = false)
     {
         // DOCS: docs/wiki/architecture/02-runtime-lifecycle.md#navegacao
-        if (string.Equals(currentTag, tag, StringComparison.OrdinalIgnoreCase))
+        var normalizedRouteTag = NormalizeTag(tag);
+        var normalizedNavigationTag = NormalizeTag(selectedNavigationTag ?? normalizedRouteTag);
+
+        if (!force && string.Equals(currentRouteTag, normalizedRouteTag, StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            return true;
         }
 
-        viewModel.CurrentTag = tag;
-        App.RecordStartupBreadcrumb($"ShellPage.ShowPage({tag})");
-
-        if (!contentFactory.TryResolve(tag, out var page, out var exception))
+        if (!await CanLeaveCurrentContentAsync(normalizedRouteTag).ConfigureAwait(true))
         {
-            App.ReportStartupFailure($"ShellPage.ShowPage({tag}) failed", exception!);
+            return false;
+        }
+
+        viewModel.CurrentTag = normalizedNavigationTag;
+        App.RecordStartupBreadcrumb($"ShellPage.ShowPage({normalizedRouteTag})");
+
+        if (!contentFactory.TryResolve(normalizedRouteTag, out var page, out var exception))
+        {
+            App.ReportStartupFailure($"ShellPage.ShowPage({normalizedRouteTag}) failed", exception!);
             ContentFrame.Content = AppFailureViewFactory.Build(
                 "Falha ao carregar a pagina.",
                 "A shell permaneceu ativa. Voce pode navegar para outra aba enquanto verifica o log local.",
                 exception!,
                 App.CurrentCrashLogPath);
+            return false;
+        }
+
+        currentNavigationTag = normalizedNavigationTag;
+        currentRouteTag = normalizedRouteTag;
+        viewModel.CurrentTag = normalizedNavigationTag;
+        ContentFrame.Content = page;
+        return true;
+    }
+
+    private async void OnOpenVisualizerPresetEditorRequested(object? sender, OpenVisualizerPresetEditorRequest request)
+    {
+        if (!contentFactory.TryResolve(VisualizerStudioTag, out var page, out var exception))
+        {
+            App.ReportStartupFailure("ShellPage.ShowPage(visualizer-studio) failed", exception!);
             return;
         }
 
-        currentTag = tag;
-        viewModel.CurrentTag = currentTag;
-        ContentFrame.Content = page;
+        if (page is VisualizerStudioPage studioPage)
+        {
+            studioPage.PrepareSession(request.PresetId);
+        }
+
+        if (await ShowPageAsync(VisualizerStudioTag, VisualizerTag, force: true).ConfigureAwait(true))
+        {
+            EnsureNavigationSelection(VisualizerTag);
+        }
+    }
+
+    private async void OnReturnToVisualizerRequested(object? sender, ReturnToVisualizerRequest request)
+    {
+        if (contentFactory.Resolve(VisualizerTag) is MainPage mainPage)
+        {
+            mainPage.PrepareReturnFromEditor(request.PresetId, request.ReloadPresets);
+        }
+
+        if (await ShowPageAsync(VisualizerTag, VisualizerTag, force: true).ConfigureAwait(true))
+        {
+            EnsureNavigationSelection(VisualizerTag);
+        }
+    }
+
+    private void EnsureNavigationSelection(string tag)
+    {
+        var item = RootNavigation.MenuItems
+            .OfType<NavigationViewItem>()
+            .FirstOrDefault(candidate =>
+                string.Equals(candidate.Tag as string, tag, StringComparison.OrdinalIgnoreCase));
+
+        if (item is not null && !ReferenceEquals(RootNavigation.SelectedItem, item))
+        {
+            RootNavigation.SelectedItem = item;
+        }
     }
 
     private void OnDeviceOpsStateChanged(object? sender, EventArgs e)
@@ -132,5 +201,23 @@ public sealed partial class ShellPage : Page
 
         ServerFooterText.Visibility = hideChrome ? Visibility.Collapsed : Visibility.Visible;
     }
-}
 
+    private static string NormalizeTag(string tag)
+        => string.IsNullOrWhiteSpace(tag) ? VisualizerTag : tag.Trim().ToLowerInvariant();
+
+    private async Task<bool> CanLeaveCurrentContentAsync(string nextRouteTag)
+    {
+        if (string.IsNullOrWhiteSpace(currentRouteTag)
+            || string.Equals(currentRouteTag, nextRouteTag, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (ContentFrame.Content is not IShellNavigationGuard guard)
+        {
+            return true;
+        }
+
+        return await guard.CanLeaveAsync().ConfigureAwait(true);
+    }
+}

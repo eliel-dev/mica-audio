@@ -25,18 +25,10 @@ public sealed class VisualizerEngine
             [RendererIds.Reflection] = new ReflectionRenderer(),
             [RendererIds.Peaks] = new PeakDotsRenderer(),
             [RendererIds.Radial] = new RadialRenderer(),
-            [RendererIds.Spectrogram] = new SpectrogramRenderer(),
-            [RendererIds.Pulse] = new PulseBackgroundRenderer(),
-            [RendererIds.Waterfall] = new WaterfallRenderer(),
             [RendererIds.NeonGlow] = new NeonGlowBarsRenderer(),
             [RendererIds.AudioMotionClone] = new AudioMotionCloneRenderer(),
             [RendererIds.WaveMirror] = new WaveMirrorRenderer(),
-            [RendererIds.VizzyBlobNeon] = new VizzyBlobNeonRenderer(),
             [RendererIds.VizzyOrbitRings] = new VizzyOrbitRingsRenderer(),
-            [RendererIds.PolarArcs] = new PolarArcsRenderer(),
-            [RendererIds.AuroraRibbon] = new AuroraRibbonRenderer(),
-            [RendererIds.PlasmaPulse] = new PlasmaPulseRenderer(),
-            [RendererIds.LaunchpadGrid] = new LaunchpadGridRenderer(),
         };
     }
 

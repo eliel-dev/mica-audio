@@ -6,6 +6,7 @@ using App.WinUI.Services.Gif;
 using App.WinUI.Services.Panels;
 using App.WinUI.Services.Visualizer;
 using App.WinUI.ViewModels;
+using App.WinUI.Views.Controls.Renderers;
 using Audio.Loopback.Capture;
 using Device.Server.Hosting;
 using MicaAudio.Core.Audio;
@@ -58,6 +59,8 @@ public partial class MainPage : Page
     private readonly Esp32S3LedOutput esp32s3LedOutput;
     private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
     private readonly PanelsPlaybackService panelsPlaybackService;
+    private readonly VisualizerEditorNavigationCoordinator visualizerEditorNavigation;
+    private readonly BuiltInPresetNameOverrideStore builtInPresetNameOverrideStore;
     private readonly Hub75GifDecoder gifDecoder = new(Hub75GifDecoder.DefaultMaxGifFrames);
     private readonly Hub75FrameFormatter gifFrameFormatter = new();
     private readonly Hub75GifPlayer gifPlayer = new(TimeSpan.FromMilliseconds(1000d / GifTargetFps));
@@ -77,6 +80,7 @@ public partial class MainPage : Page
     private DispatcherQueueTimer? fullscreenButtonHideTimer;
     private AppWindow? appWindow;
     private AppSettings appSettings = new();
+    private IReadOnlyDictionary<string, string> builtInPresetNameOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     private PresetDefinition activePreset = new();
     private string selectedRendererId = RendererIds.AudioMotionClone;
     private string currentPresetId = AudioMotionClonePresetId;
@@ -101,6 +105,7 @@ public partial class MainPage : Page
     private bool suppressContentModeChanged;
     private bool suppressGifScaleModeChanged;
     private bool gifLoading;
+    private bool suppressHub75SessionWhileInEditor;
     private float linearBoost = DefaultLinearBoost;
     private int displayBandCount = 38;
     private int fftSize = DefaultFftSize;
@@ -135,7 +140,9 @@ public partial class MainPage : Page
         NullLedOutput nullLedOutput,
         Esp32S3LedOutput esp32s3LedOutput,
         Hub75VisualizerSessionService hub75VisualizerSessionService,
-        PanelsPlaybackService panelsPlaybackService)
+        PanelsPlaybackService panelsPlaybackService,
+        VisualizerEditorNavigationCoordinator visualizerEditorNavigation,
+        BuiltInPresetNameOverrideStore builtInPresetNameOverrideStore)
     {
         this.viewModel = viewModel;
         this.presetRepository = presetRepository;
@@ -147,6 +154,8 @@ public partial class MainPage : Page
         this.esp32s3LedOutput = esp32s3LedOutput;
         this.hub75VisualizerSessionService = hub75VisualizerSessionService;
         this.panelsPlaybackService = panelsPlaybackService;
+        this.visualizerEditorNavigation = visualizerEditorNavigation;
+        this.builtInPresetNameOverrideStore = builtInPresetNameOverrideStore;
 
         pipelineCoordinator = new AudioPipelineCoordinator(
             capture,
@@ -189,6 +198,7 @@ public partial class MainPage : Page
             return;
         }
 
+        await ApplyPendingEditorReturnAsync().ConfigureAwait(true);
         ConfigureHubOutputsForCurrentState();
         UpdateRenderLoopState();
         RefreshVisibleCanvases();
@@ -227,7 +237,7 @@ public partial class MainPage : Page
         SaveWindowSizeIntoSettings();
         await settingsRepository.SaveAsync(appSettings);
     }
-    private async Task InitializeAsync() { App.RecordStartupBreadcrumb("MainPage.InitializeAsync"); appSettings = await settingsRepository.LoadAsync().ConfigureAwait(false); appSettings = settingsDomainService.Migrate(appSettings); var presets = await presetRepository.LoadOrSeedAsync().ConfigureAwait(false); var shouldPersistNormalizedState = false; presetsById.Clear(); foreach (var preset in presets) { if (preset is null || string.IsNullOrWhiteSpace(preset.PresetId)) { continue; } presetsById[preset.PresetId] = preset; } await DispatcherQueue.EnqueueAsync(() => { ApplyLoadedStateToUi(out shouldPersistNormalizedState); SyncHubTransportMode(); PersistCurrentVisualizerSettings(includePreview: true); StatusText.Text = "Pronto"; }); if (shouldPersistNormalizedState) { await settingsRepository.SaveAsync(appSettings).ConfigureAwait(false); } await ActivateVisualizerSessionAsync().ConfigureAwait(false); await SyncHub75DeviceSessionAsync().ConfigureAwait(false); }
+    private async Task InitializeAsync() { App.RecordStartupBreadcrumb("MainPage.InitializeAsync"); appSettings = await settingsRepository.LoadAsync().ConfigureAwait(false); appSettings = settingsDomainService.Migrate(appSettings); await ReloadPresetCatalogAsync().ConfigureAwait(false); var shouldPersistNormalizedState = false; await DispatcherQueue.EnqueueAsync(() => { ApplyLoadedStateToUi(out shouldPersistNormalizedState); SyncHubTransportMode(); PersistCurrentVisualizerSettings(includePreview: true); StatusText.Text = "Pronto"; }); if (shouldPersistNormalizedState) { await settingsRepository.SaveAsync(appSettings).ConfigureAwait(false); } await ActivateVisualizerSessionAsync().ConfigureAwait(false); await SyncHub75DeviceSessionAsync().ConfigureAwait(false); }
     private async Task ActivateVisualizerSessionAsync()
     {
         App.RecordStartupBreadcrumb("MainPage.ActivateVisualizerSessionAsync");
@@ -295,7 +305,7 @@ public partial class MainPage : Page
     private void HideFullscreenButtonOverlay() { CanvasFullscreenButton.Visibility = Visibility.Collapsed; CanvasFullscreenButton.IsHitTestVisible = false; fullscreenButtonHideTimer?.Stop(); }
     private void ScheduleCloneViewportAnalyzerRebuild() { if (!initialized || !IsCloneDisplayModeActive()) { return; } EnsureCloneViewportDebounceTimer(); var timer = cloneViewportDebounceTimer!; timer.Stop(); timer.Interval = TimeSpan.FromMilliseconds(80); timer.Start(); }
     private void EnsureCloneViewportDebounceTimer() { if (cloneViewportDebounceTimer is not null) { return; } cloneViewportDebounceTimer = DispatcherQueue.CreateTimer(); cloneViewportDebounceTimer.Interval = TimeSpan.FromMilliseconds(80); cloneViewportDebounceTimer.Tick += (_, _) => { cloneViewportDebounceTimer?.Stop(); if (!IsCloneDisplayModeActive()) { return; } _ = ApplyPendingVisualizerRuntime(forceRebuild: true, persistSettings: false, refreshOutputs: false, updateStatusOnFailure: true); }; }
-    private void OnMainCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args) { var now = Stopwatch.GetTimestamp(); var deltaSeconds = lastRenderQpc == 0 ? 1f / 60f : (float)(now - lastRenderQpc) / Stopwatch.Frequency; lastRenderQpc = now; if (contentSourceMode == GifContentSourceMode.Gif) { var gifFrame = lastGifFrame; if (gifFrame is null || gifFrame.Length == 0) { args.DrawingSession.Clear(Color.FromArgb(255, 0, 0, 0)); TrackRenderDiagnostics(deltaSeconds); return; } DrawHubFrame(args.DrawingSession, (float)sender.ActualWidth, (float)sender.ActualHeight, gifFrame, LedDefaults.MatrixWidth, LedDefaults.MatrixHeight); TrackRenderDiagnostics(deltaSeconds); return; } var frame = pipelineCoordinator.LatestFrame; if (frame is null) { args.DrawingSession.Clear(Color.FromArgb(255, 0, 0, 0)); TrackRenderDiagnostics(deltaSeconds); return; } var preset = BuildRuntimePreset(GetRenderRuntimeSettings()); visualizer.Render(args.DrawingSession, (float)sender.ActualWidth, (float)sender.ActualHeight, frame, preset, deltaSeconds); TrackRenderDiagnostics(deltaSeconds); }
+    private void OnMainCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args) { var now = Stopwatch.GetTimestamp(); var deltaSeconds = lastRenderQpc == 0 ? 1f / 60f : (float)(now - lastRenderQpc) / Stopwatch.Frequency; lastRenderQpc = now; if (contentSourceMode == GifContentSourceMode.Gif) { var gifFrame = lastGifFrame; if (gifFrame is null || gifFrame.Length == 0) { args.DrawingSession.Clear(Color.FromArgb(255, 0, 0, 0)); TrackRenderDiagnostics(deltaSeconds); return; } Hub75PreviewHelper.DrawFrame(args.DrawingSession, (float)sender.ActualWidth, (float)sender.ActualHeight, gifFrame); TrackRenderDiagnostics(deltaSeconds); return; } var frame = pipelineCoordinator.LatestFrame; if (frame is null) { args.DrawingSession.Clear(Color.FromArgb(255, 0, 0, 0)); TrackRenderDiagnostics(deltaSeconds); return; } var preset = BuildRuntimePreset(GetRenderRuntimeSettings()); visualizer.Render(args.DrawingSession, (float)sender.ActualWidth, (float)sender.ActualHeight, frame, preset, deltaSeconds); TrackRenderDiagnostics(deltaSeconds); }
     private void OnMainCanvasSizeChanged(object sender, SizeChangedEventArgs e) { if (!initialized || !IsCloneDisplayModeActive()) { return; } var width = (float)e.NewSize.Width; if (width <= 1f || MathF.Abs(width - lastCloneViewportWidth) < 1f) { return; } lastCloneViewportWidth = width; ScheduleCloneViewportAnalyzerRebuild(); }
     private void OnMainCanvasHostPointerEntered(object sender, PointerRoutedEventArgs e) { ShowFullscreenButtonOverlay(restartAutoHide: true); }
     private void OnMainCanvasHostPointerMoved(object sender, PointerRoutedEventArgs e) { ShowFullscreenButtonOverlay(restartAutoHide: true); }
@@ -316,86 +326,11 @@ public partial class MainPage : Page
             return;
         }
 
-        DrawHubFrame(
+        Hub75PreviewHelper.DrawFrame(
             args.DrawingSession,
             (float)sender.ActualWidth,
             (float)sender.ActualHeight,
-            snapshot,
-            LedDefaults.MatrixWidth,
-            LedDefaults.MatrixHeight);
-    }
-    private static void DrawHubFrame(CanvasDrawingSession drawingSession, float width, float height, RgbaColor[] pixels, int matrixWidth, int matrixHeight)
-    {
-        var matrixAspect = (float)matrixWidth / matrixHeight;
-        var canvasAspect = width <= 0f || height <= 0f ? matrixAspect : (width / height);
-        var drawWidth = width;
-        var drawHeight = height;
-
-        if (canvasAspect > matrixAspect)
-        {
-            drawWidth = height * matrixAspect;
-            drawHeight = height;
-        }
-        else
-        {
-            drawWidth = width;
-            drawHeight = width / matrixAspect;
-        }
-
-        var offsetX = (width - drawWidth) * 0.5f;
-        var offsetY = (height - drawHeight) * 0.5f;
-        var cellW = drawWidth / matrixWidth;
-        var cellH = drawHeight / matrixHeight;
-        var drawCellW = Math.Max(1f, cellW);
-        var drawCellH = Math.Max(1f, cellH);
-
-        drawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
-
-        var requiredPixels = matrixWidth * matrixHeight;
-        if (pixels.Length < requiredPixels)
-        {
-            return;
-        }
-
-        for (var y = 0; y < matrixHeight; y++)
-        {
-            var rowStart = y * matrixWidth;
-            var drawY = offsetY + (y * cellH);
-
-            var x = 0;
-            while (x < matrixWidth)
-            {
-                var pixel = pixels[rowStart + x];
-                if (pixel.A == 0)
-                {
-                    x++;
-                    continue;
-                }
-
-                var runStart = x;
-                x++;
-
-                while (x < matrixWidth)
-                {
-                    var candidate = pixels[rowStart + x];
-                    if (candidate.A != pixel.A || candidate.R != pixel.R || candidate.G != pixel.G || candidate.B != pixel.B)
-                    {
-                        break;
-                    }
-
-                    x++;
-                }
-
-                var runLength = x - runStart;
-                var color = Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B);
-                drawingSession.FillRectangle(
-                    offsetX + (runStart * cellW),
-                    drawY,
-                    drawCellW * runLength,
-                    drawCellH,
-                    color);
-            }
-        }
+            snapshot);
     }
     private static void DrawHubFrameUpscaled2x(CanvasDrawingSession drawingSession, float width, float height, IReadOnlyList<RgbaColor> sourcePixels, int sourceMatrixWidth, int sourceMatrixHeight) { var targetMatrixWidth = sourceMatrixWidth * 2; var targetMatrixHeight = sourceMatrixHeight * 2; var matrixAspect = (float)targetMatrixWidth / targetMatrixHeight; var canvasAspect = width <= 0f || height <= 0f ? matrixAspect : (width / height); var drawWidth = width; var drawHeight = height; if (canvasAspect > matrixAspect) { drawWidth = height * matrixAspect; drawHeight = height; } else { drawWidth = width; drawHeight = width / matrixAspect; } var offsetX = (width - drawWidth) * 0.5f; var offsetY = (height - drawHeight) * 0.5f; var cellW = drawWidth / targetMatrixWidth; var cellH = drawHeight / targetMatrixHeight; drawingSession.Clear(Color.FromArgb(255, 8, 10, 14)); var requiredPixels = sourceMatrixWidth * sourceMatrixHeight; if (sourcePixels.Count < requiredPixels) { return; } for (var y = 0; y < targetMatrixHeight; y++) { var sourceY = y >> 1; var sourceRowStart = sourceY * sourceMatrixWidth; for (var x = 0; x < targetMatrixWidth; x++) { var sourceX = x >> 1; var pixel = sourcePixels[sourceRowStart + sourceX]; if (pixel.A == 0) { continue; } var color = Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B); drawingSession.FillRectangle(offsetX + (x * cellW), offsetY + (y * cellH), Math.Max(1f, cellW), Math.Max(1f, cellH), color); } } }
     private void InvalidateHubPreviews() { HubCanvas.Invalidate(); }
@@ -456,7 +391,7 @@ public partial class MainPage : Page
     private void BuildPresetNavigationOrder() { presetNavigationOrder.Clear(); foreach (var preset in PresetNavigationHelper.BuildOrder(presetsById.Values)) { presetNavigationOrder.Add(preset); } }
     private void UpdateCurrentPresetIndex() { currentPresetIndex = PresetNavigationHelper.ResolveIndex(presetNavigationOrder, currentPresetId); if (currentPresetIndex < 0 || currentPresetIndex >= presetNavigationOrder.Count) { return; } var resolvedPreset = presetNavigationOrder[currentPresetIndex]; if (!string.Equals(currentPresetId, resolvedPreset.PresetId, StringComparison.OrdinalIgnoreCase)) { activePreset = resolvedPreset; currentPresetId = resolvedPreset.PresetId; } }
     private void NavigatePreset(int direction) { if (presetNavigationOrder.Count == 0) { return; } var nextIndex = PresetNavigationHelper.WrapIndex(currentPresetIndex, direction, presetNavigationOrder.Count); if (nextIndex < 0) { return; } SelectPreset(presetNavigationOrder[nextIndex], showHud: true); }
-    private void SelectPreset(PresetDefinition preset, bool showHud) { var selectedPreset = string.IsNullOrWhiteSpace(preset?.PresetId) ? ResolveBuiltInFallbackPreset(AudioMotionClonePresetId) : preset; activePreset = selectedPreset; currentPresetId = selectedPreset.PresetId; selectedRendererId = ResolveSelectedRendererId(selectedPreset.RendererId, selectedPreset.RendererId); UpdateCurrentPresetIndex(); if (showHud) { ShowPresetSwitchHud(); } var samePreset = string.Equals(viewModel.CurrentPresetId, currentPresetId, StringComparison.OrdinalIgnoreCase) && string.Equals(viewModel.SelectedRendererId, selectedRendererId, StringComparison.OrdinalIgnoreCase); if (samePreset) { return; } pipelineCoordinator.SetCurrentVisualizerIdentity(currentPresetId, ResolveCurrentRendererId()); viewModel.CurrentPresetId = currentPresetId; viewModel.SelectedRendererId = selectedRendererId; SelectComboOption(RendererCombo, selectedRendererId); ApplyRendererControlState(); lastCloneViewportWidth = GetAnalyzerViewportWidth(); _ = ApplyPendingVisualizerRuntimeImmediately(forceRebuild: false, persistSettings: true, refreshOutputs: true, updateStatusOnFailure: true); }
+    private void SelectPreset(PresetDefinition preset, bool showHud, bool forceApply = false) { var selectedPreset = string.IsNullOrWhiteSpace(preset?.PresetId) ? ResolveBuiltInFallbackPreset(AudioMotionClonePresetId) : preset; activePreset = selectedPreset; currentPresetId = selectedPreset.PresetId; selectedRendererId = ResolveSelectedRendererId(selectedPreset.RendererId, selectedPreset.RendererId); UpdateCurrentPresetIndex(); if (showHud) { ShowPresetSwitchHud(); } var samePreset = string.Equals(viewModel.CurrentPresetId, currentPresetId, StringComparison.OrdinalIgnoreCase) && string.Equals(viewModel.SelectedRendererId, selectedRendererId, StringComparison.OrdinalIgnoreCase); if (samePreset && !forceApply) { return; } pipelineCoordinator.SetCurrentVisualizerIdentity(currentPresetId, ResolveCurrentRendererId()); viewModel.CurrentPresetId = currentPresetId; viewModel.SelectedRendererId = selectedRendererId; SelectComboOption(RendererCombo, selectedRendererId); ApplyRendererControlState(); lastCloneViewportWidth = GetAnalyzerViewportWidth(); _ = ApplyPendingVisualizerRuntimeImmediately(forceRebuild: forceApply, persistSettings: true, refreshOutputs: true, updateStatusOnFailure: true); }
     private void EnsurePresetSwitchHudHideTimer() { if (presetSwitchHudHideTimer is not null) { return; } presetSwitchHudHideTimer = DispatcherQueue.CreateTimer(); presetSwitchHudHideTimer.Interval = TimeSpan.FromMilliseconds(1200); presetSwitchHudHideTimer.Tick += (_, _) => { presetSwitchHudHideTimer?.Stop(); HidePresetSwitchHud(); }; }
     private void ShowPresetSwitchHud() { if (currentPresetIndex < 0) { return; } PresetQuickSwitchText.Text = $"{currentPresetIndex + 1:00}. {activePreset.Name}"; PresetQuickSwitchHud.Visibility = Visibility.Visible; EnsurePresetSwitchHudHideTimer(); presetSwitchHudHideTimer!.Stop(); presetSwitchHudHideTimer.Start(); }
     private void HidePresetSwitchHud() { PresetQuickSwitchHud.Visibility = Visibility.Collapsed; }

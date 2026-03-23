@@ -11,6 +11,7 @@ using App.WinUI.Services.Firmware;
 using App.WinUI.Services.Logging;
 using App.WinUI.Services.Monitoring;
 using App.WinUI.Services.Panels;
+using App.WinUI.Services.Visualizer;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Audio.Loopback.Capture;
@@ -30,6 +31,7 @@ using Output.Led;
 namespace App.WinUI;
 
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
+// DOCS: docs/wiki/modules/app-winui.md#studio-de-visualizacoes
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
@@ -187,6 +189,8 @@ public partial class App : Application
         services.AddSingleton<PresetRepository>();
         services.AddSingleton<SettingsRepository>();
         services.AddSingleton<AppSettingsDomainService>();
+        services.AddSingleton<BuiltInPresetNameOverrideStore>();
+        services.AddSingleton<VisualizerEditorNavigationCoordinator>();
         services.AddSingleton<ILoopbackCapture, WasapiLoopbackCaptureService>();
         services.AddSingleton<SimulatorLedOutput>();
         services.AddSingleton<NullLedOutput>();
@@ -214,7 +218,9 @@ public partial class App : Application
             sp.GetRequiredService<NullLedOutput>(),
             sp.GetRequiredService<Esp32S3LedOutput>(),
             sp.GetRequiredService<Hub75VisualizerSessionService>(),
-            sp.GetRequiredService<PanelsPlaybackService>()));
+            sp.GetRequiredService<PanelsPlaybackService>(),
+            sp.GetRequiredService<VisualizerEditorNavigationCoordinator>(),
+            sp.GetRequiredService<BuiltInPresetNameOverrideStore>()));
 
         services.AddTransient<DevicesPage>(sp => new DevicesPage(
             sp.GetRequiredService<DevicesPageViewModel>(),
@@ -247,6 +253,15 @@ public partial class App : Application
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<ISerialMonitorService>()));
+        services.AddTransient<VisualizerStudioPage>(sp => new VisualizerStudioPage(
+            sp.GetRequiredService<PresetRepository>(),
+            sp.GetRequiredService<BuiltInPresetNameOverrideStore>(),
+            sp.GetRequiredService<SettingsRepository>(),
+            sp.GetRequiredService<AppSettingsDomainService>(),
+            sp.GetRequiredService<ILoopbackCapture>(),
+            sp.GetRequiredService<SimulatorLedOutput>(),
+            sp.GetRequiredService<NullLedOutput>(),
+            sp.GetRequiredService<VisualizerEditorNavigationCoordinator>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>
@@ -257,12 +272,14 @@ public partial class App : Application
             () => sp.GetRequiredService<DevicesPage>(),
             () => sp.GetRequiredService<PanelsPage>(),
             () => sp.GetRequiredService<MonitoringPage>(),
-            () => sp.GetRequiredService<SettingsPage>()));
+            () => sp.GetRequiredService<SettingsPage>(),
+            () => sp.GetRequiredService<VisualizerStudioPage>()));
 
         services.AddTransient<ShellPage>(sp => new ShellPage(
             sp.GetRequiredService<ShellPageViewModel>(),
             sp.GetRequiredService<DeviceOperationsCoordinator>(),
-            sp.GetRequiredService<ShellPageContentFactory>()));
+            sp.GetRequiredService<ShellPageContentFactory>(),
+            sp.GetRequiredService<VisualizerEditorNavigationCoordinator>()));
 
         return services.BuildServiceProvider();
     }

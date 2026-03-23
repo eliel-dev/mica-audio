@@ -5,10 +5,13 @@ using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Panels;
+using App.WinUI.Services.Visualizer;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml;
 using MicaAudio.Core.Config;
 
 namespace Integration.Smoke;
@@ -34,6 +37,8 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<PanelsFrameComposer>());
         Assert.NotNull(provider.GetService<PanelsPlaybackService>());
         Assert.NotNull(provider.GetService<PanelsDeviceSessionService>());
+        Assert.NotNull(provider.GetService<VisualizerEditorNavigationCoordinator>());
+        Assert.NotNull(provider.GetService<BuiltInPresetNameOverrideStore>());
     }
 
     [Fact]
@@ -60,6 +65,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.True(isService.IsService(typeof(DevicesPage)));
         Assert.True(isService.IsService(typeof(PanelsPage)));
         Assert.True(isService.IsService(typeof(SettingsPage)));
+        Assert.True(isService.IsService(typeof(VisualizerStudioPage)));
         Assert.True(isService.IsService(typeof(ShellPage)));
         Assert.True(isService.IsService(typeof(ShellPageContentFactory)));
     }
@@ -77,6 +83,30 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.True(isService.IsService(typeof(PresetRepository)));
         Assert.True(isService.IsService(typeof(SettingsRepository)));
         Assert.True(isService.IsService(typeof(AppSettingsDomainService)));
+        Assert.True(isService.IsService(typeof(VisualizerEditorNavigationCoordinator)));
+        Assert.True(isService.IsService(typeof(BuiltInPresetNameOverrideStore)));
+    }
+
+    [Fact]
+    public void VisualizerStudioPage_ShouldAllowConstruction_BeforeSessionIsLoaded()
+    {
+        var provider = App.WinUI.App.BuildServiceProvider();
+        var exception = Record.Exception(() => provider.GetRequiredService<VisualizerStudioPage>());
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void VisualizerStudioPage_ShouldOwnVerticalScrollAtPageLevel()
+    {
+        var provider = App.WinUI.App.BuildServiceProvider();
+        var page = provider.GetRequiredService<VisualizerStudioPage>();
+
+        var root = Assert.IsType<Grid>(page.Content);
+        Assert.Equal(2, root.Children.Count);
+        Assert.IsType<Border>(root.Children[0]);
+
+        var contentScrollViewer = Assert.IsType<ScrollViewer>(root.Children[1]);
+        Assert.NotNull(contentScrollViewer.Content);
     }
 
     [Fact]

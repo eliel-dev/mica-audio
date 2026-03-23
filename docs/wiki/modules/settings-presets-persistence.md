@@ -23,6 +23,7 @@ Centralizar configuracoes de sessao, presets e armazenamento em `%AppData%`.
 
 - Novo campo de settings: atualizar `AppSettings`, `AppSettingsDomainService`, `SettingsRepository`.
 - Novo preset builtin: atualizar `DefaultPresets` e seed em repositiorio.
+- Preset/renderer aposentado: atualizar `PresetRepository` para remover built-ins legados do disco e migrar presets customizados para um fallback suportado.
 - Novo default/coercao de visualizer: atualizar `VisualizerRuntimeSettings`, `AnalyzerRuntimeProfile` e `MainPage.Pipeline`.
 - Novo payload de runtime HUB75: usar `LedPayloadFactory` em vez de montar `LedPayload` inline no app.
 
@@ -109,6 +110,33 @@ A regra de normalizacao garante sempre: `Fresh < Stale < Dormant`.
 - default: `false` (seguro, sem query token no handshake WS);
 - override emergencial: `true` em `%AppData%\\MicaAudio\\settings.json`;
 - sem UI dedicada nesta fase; controle intencionalmente operacional.
+
+## Studio de presets
+
+- O Studio do `Visualizador` atua sobre `PresetDefinition.Palette` e sobre o nome exibido de cada preset.
+- O fluxo nao e modal; ele vive em uma subpagina oculta da shell e trabalha sobre working copy em memoria.
+- A UI do Studio agora esconde as mecanicas internas de preset atras de um workbench HUB75-first:
+  - status curto no cabecalho;
+  - `Salvar` como acao primaria;
+  - `Salvar como novo` como rotulo de clone;
+  - preview `Painel HUB75` por padrao, reaproveitando o mesmo comportamento shipping do `Visualizador`;
+  - `Canvas` como superficie secundaria e fiel para a edicao do working copy.
+- Nada persiste antes de `Salvar`.
+- Ao voltar para o `Visualizador`, a pagina principal recarrega o catalogo persistido e reseleciona o preset salvo.
+- Built-ins seguem as mesmas regras internas:
+  - rename usa override local por `PresetId`, sem criar variante;
+  - edicao de cor cria ou reaproveita a copia local estavel `user-{presetId}`.
+- Presets locais continuam sendo atualizados in-place.
+- `Salvar como novo` continua chamando o fluxo de clone local; a mudanca foi apenas de microcopy.
+- O helper `VisualizerPresetPaletteEditor` centraliza:
+  - criacao da copia editavel protegida para built-ins;
+  - criacao de clones locais com id/nome deduplicados;
+  - add/remove/move/update de `PaletteStop`;
+  - normalizacao de offsets em `0..1`;
+  - garantia de pelo menos `2` stops;
+  - aplicacao de gradientes rapidos sem alterar `RendererId`.
+- `BuiltInPresetNameOverrideStore` persiste overrides locais de nome em arquivo dedicado dentro da pasta de presets, para sobreviver a merge e reseed dos defaults.
+- `PresetRepository.SaveAllAsync(...)` continua sendo a borda de persistencia do catalogo bruto de presets.
 
 ## Atualizacao 2026-03 - Preferencia global de Mica
 

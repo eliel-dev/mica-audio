@@ -31,31 +31,19 @@ public sealed class RendererIntegrationContractSmokeTests
     }
 
     [Fact]
-    public void VisualizerEngine_ShouldReturnExplicitCapabilities_ForPolarArcs()
+    public void VisualizerEngine_ShouldNotExposeRetiredRendererCapabilities_InActiveRuntime()
     {
         var engine = new VisualizerEngine();
-        var capabilities = engine.GetCapabilities(RendererIds.PolarArcs);
+        var rendererIds = engine.Renderers.Select(static renderer => renderer.RendererId).ToArray();
 
-        Assert.Equal(RendererIntegrationMode.Explicit, capabilities.IntegrationMode);
-        Assert.Equal(RendererBarCountMode.Resampled, capabilities.BarCountMode);
-        Assert.Equal(RendererHubTransportMode.Bins128, capabilities.HubTransportMode);
-        Assert.True(capabilities.UsesAnalyzerPipeline);
-        Assert.True(capabilities.Controls.SupportsBarCount);
-    }
-
-    [Fact]
-    public void VisualizerEngine_ShouldReturnExplicitCapabilities_ForLaunchpadGrid()
-    {
-        var engine = new VisualizerEngine();
-        var capabilities = engine.GetCapabilities(RendererIds.LaunchpadGrid);
-
-        Assert.Equal(RendererIntegrationMode.Explicit, capabilities.IntegrationMode);
-        Assert.Equal(RendererBarCountMode.Fixed, capabilities.BarCountMode);
-        Assert.Equal(RendererHubTransportMode.Bins128, capabilities.HubTransportMode);
-        Assert.Equal(64, capabilities.FixedVisualElementCount);
-        Assert.True(capabilities.UsesAnalyzerPipeline);
-        Assert.False(capabilities.Controls.SupportsBarCount);
-        Assert.Equal("Launchpad Grid usa uma grade fixa de 64 pads.", capabilities.UnsupportedControlsHint);
+        Assert.DoesNotContain(RendererIds.AuroraRibbon, rendererIds);
+        Assert.DoesNotContain(RendererIds.LaunchpadGrid, rendererIds);
+        Assert.DoesNotContain(RendererIds.PlasmaPulse, rendererIds);
+        Assert.DoesNotContain(RendererIds.PolarArcs, rendererIds);
+        Assert.DoesNotContain(RendererIds.Pulse, rendererIds);
+        Assert.DoesNotContain(RendererIds.Spectrogram, rendererIds);
+        Assert.DoesNotContain(RendererIds.VizzyBlobNeon, rendererIds);
+        Assert.DoesNotContain(RendererIds.Waterfall, rendererIds);
     }
 
     [Fact]

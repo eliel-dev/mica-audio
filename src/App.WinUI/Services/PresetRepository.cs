@@ -11,12 +11,28 @@ internal sealed class PresetRepository
 {
     private static readonly HashSet<string> RetiredBuiltInPresetIds = new(StringComparer.OrdinalIgnoreCase)
     {
+        "spectrum-aurora-ribbon",
+        "spectrum-launchpad-grid",
+        "spectrum-plasma-pulse",
+        "spectrum-polar-arcs",
+        "spectrum-pulse",
+        "spectrum-spectrogram",
+        "spectrum-vizzy-blob-neon",
+        "spectrum-waterfall",
         "spectrum-vizzy-hyper-tunnel",
         "spectrum-vizzy-hyper-tunnel-shader",
     };
 
     private static readonly HashSet<string> RetiredRendererIds = new(StringComparer.OrdinalIgnoreCase)
     {
+        RendererIds.AuroraRibbon,
+        RendererIds.LaunchpadGrid,
+        RendererIds.PlasmaPulse,
+        RendererIds.PolarArcs,
+        RendererIds.Pulse,
+        RendererIds.Spectrogram,
+        RendererIds.VizzyBlobNeon,
+        RendererIds.Waterfall,
         "vizzy-hyper-tunnel",
         "vizzy-hyper-tunnel-shader",
     };
@@ -188,24 +204,6 @@ internal sealed class PresetRepository
 
     private static PresetDefinition MigrateRetiredRendererPreset(PresetDefinition preset, PresetDefinition fallback)
     {
-        var migratedParameters = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var pair in preset.RendererParameters)
-        {
-            if (!RetiredRendererParameterKeys.Contains(pair.Key))
-            {
-                migratedParameters[pair.Key] = pair.Value;
-            }
-        }
-
-        foreach (var pair in fallback.RendererParameters)
-        {
-            if (!migratedParameters.ContainsKey(pair.Key))
-            {
-                migratedParameters[pair.Key] = pair.Value;
-            }
-        }
-
         return new PresetDefinition
         {
             SchemaVersion = preset.SchemaVersion,
@@ -217,8 +215,23 @@ internal sealed class PresetRepository
             FpsTarget = preset.FpsTarget,
             Layout = preset.Layout,
             EnableGlow = preset.EnableGlow,
-            RendererParameters = migratedParameters,
+            RendererParameters = CloneFallbackParameters(fallback.RendererParameters),
             Palette = preset.Palette,
         };
+    }
+
+    private static Dictionary<string, float> CloneFallbackParameters(IReadOnlyDictionary<string, float> fallbackParameters)
+    {
+        var cloned = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in fallbackParameters)
+        {
+            if (!RetiredRendererParameterKeys.Contains(pair.Key))
+            {
+                cloned[pair.Key] = pair.Value;
+            }
+        }
+
+        return cloned;
     }
 }

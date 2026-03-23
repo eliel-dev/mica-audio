@@ -31,6 +31,26 @@
   - `launchpad-grid`
 - Cada preset builtin continua com sua identidade forte no preview WinUI, mas o HUB75 passa a receber uma familia fisica reconhecivel em `Bins128`, em vez de colapsar tudo no mesmo visual legado.
 - A paleta-base tambem vai no `flags` do pacote tipo `1`, com familias como `rainbow`, `sunset`, `arctic`, `neon`, `aurora`, `plasma` e `canonical`.
+- O catalogo ativo do app foi simplificado em `2026-03-23`: `Aurora Ribbon`, `Blob Neon`, `Launchpad Grid`, `Plasma Pulse`, `Polar Arcs`, `Pulse Aura`, `Spectrogram` e `Waterfall` foram aposentados do runtime e deixaram de aparecer como presets ou renderers selecionaveis.
+
+## Preview HUB75 fiel ao device
+
+- O canvas principal do `Visualizador` continua sendo o preview artistico completo do renderer Win2D.
+- O preview HUB75 inferior continua vindo do simulador local e segue o payload real enviado ao device.
+- O Studio agora vive em `VisualizerStudioPage` e abre em modo `Painel HUB75` por padrao.
+- O preview principal do Studio reaproveita o mesmo caminho shipping do `Visualizador`: `AudioPipelineFrameProcessor` resolve `Bins128` ou outro transporte suportado e entrega o payload ao `SimulatorLedOutput` compartilhado.
+- `MainPage` e Studio passaram a reutilizar `Hub75PreviewHelper` para o desenho do frame no app, evitando drift visual entre as duas superficies.
+- O modo `Canvas` do Studio continua disponivel como referencia secundaria e fiel do renderer Win2D artistico em edicao.
+- O modo `Painel HUB75` do Studio deixa de ser um frame dedicado do working copy e passa a significar exatamente o mesmo preview HUB75 shipping do `Visualizador`.
+
+## Studio de presets
+
+- O fluxo de Studio opera sobre `PresetDefinition.Palette` e sobre o nome exibido de cada preset.
+- O modo `Canvas` responde imediatamente a rename, add/remove/move de `PaletteStop` e aplicacao de gradientes rapidos.
+- O modo `Painel HUB75` segue a mesma interpretacao shipping do `Visualizador`, inclusive quando a familia `Bins128` nao projeta fielmente um gradiente arbitrario do working copy.
+- Built-ins continuam protegidos pela convencao `user-{presetId}` para conteudo visual.
+- Rename de built-ins usa override local de display name, sem tocar no preset builtin original.
+- `Salvar como novo` continua criando clones locais totalmente editaveis depois de salvos.
 
 ## AudioMotion Clone
 
@@ -46,32 +66,12 @@
 - Usa arco-iris fixo por posicao horizontal como identidade propria do visual, sem depender da paleta do preset.
 - Entra como preset builtin `spectrum-wave-mirror` e tambem fica disponivel no combo tecnico de renderers.
 
-## Aurora Ribbon
-
-- Visual de fitas largas com glow e bloom central.
-- Foi calibrado para o HUB75 com formas largas, poucas curvas e leitura forte em `128x64`.
-
-## Plasma Pulse
-
-- Campo chunked por celulas, com warp e shockwave guiados por graves.
-- Foi pensado para baixa resolucao, evitando detalhe fino demais e priorizando massa luminosa.
-
-## Launchpad Grid
-
-- Replica a linguagem de performance de um Launchpad: grade `8x8` apagada por padrao, botoes superiores/laterais e acentos fortes por grupos de pads.
-- Usa `RendererBarCountMode.Fixed` com `64` pads, travando a UI no mesmo contrato visual do painel.
-- Graves avancam linhas e blocos nas fileiras inferiores, medios disparam colunas e cruzes no miolo e agudos acendem taps rapidos nas linhas superiores e nos botoes de cena.
-- O renderer mantem hold curto e decaimento rapido para parecer um sequenciador vivo, em vez de uma malha inteira respirando ao mesmo tempo.
-
 ## Referencias de codigo
 
 - [VisualizerEngine](../../../src/Visual.Win2D/Engine/VisualizerEngine.cs#L1)
 - [RendererCapabilities](../../../src/Visual.Win2D/Engine/RendererCapabilities.cs#L1)
 - [AudioMotionCloneRenderer](../../../src/Visual.Win2D/Renderers/AudioMotionCloneRenderer.cs#L1)
 - [WaveMirrorRenderer](../../../src/Visual.Win2D/Renderers/WaveMirrorRenderer.cs#L1)
-- [AuroraRibbonRenderer](../../../src/Visual.Win2D/Renderers/AuroraRibbonRenderer.cs#L1)
-- [LaunchpadGridRenderer](../../../src/Visual.Win2D/Renderers/LaunchpadGridRenderer.cs#L1)
-- [PlasmaPulseRenderer](../../../src/Visual.Win2D/Renderers/PlasmaPulseRenderer.cs#L1)
 - [DefaultPresets](../../../src/App.WinUI/Services/DefaultPresets.cs#L1)
 - [Hub75VisualizerFrameRenderer](../../../src/App.WinUI/Services/Visualizer/Hub75VisualizerFrameRenderer.cs#L1)
 - [MainPage](../../../src/App.WinUI/Views/MainPage.xaml.cs#L1)

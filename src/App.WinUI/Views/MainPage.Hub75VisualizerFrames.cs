@@ -33,7 +33,9 @@ public partial class MainPage
 
     private bool ShouldEnableHub75DeviceOutput()
     {
-        return hub75ModeEnabled && contentSourceMode == GifContentSourceMode.Audio;
+        return hub75ModeEnabled
+            && !suppressHub75SessionWhileInEditor
+            && contentSourceMode == GifContentSourceMode.Audio;
     }
 
     private bool ShouldDriveHubOutputs()

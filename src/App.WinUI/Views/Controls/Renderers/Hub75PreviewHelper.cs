@@ -1,11 +1,14 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.Graphics.Canvas;
+using MicaAudio.Core.Led;
+using MicaAudio.Core.Presets;
 using Windows.UI;
 
 namespace App.WinUI.Views.Controls.Renderers;
 
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
+// DOCS: docs/wiki/modules/app-winui.md#studio-de-visualizacoes
 internal static class Hub75PreviewHelper
 {
     public const int PanelWidth = 128;
@@ -126,6 +129,89 @@ internal static class Hub75PreviewHelper
         }
 
         ds.FillRectangle(left, top, ledSize, ledSize, color);
+    }
+
+    public static void DrawFrame(
+        CanvasDrawingSession drawingSession,
+        float width,
+        float height,
+        IReadOnlyList<RgbaColor> pixels,
+        int matrixWidth = PanelWidth,
+        int matrixHeight = PanelHeight)
+    {
+        var matrixAspect = (float)matrixWidth / matrixHeight;
+        var canvasAspect = width <= 0f || height <= 0f ? matrixAspect : width / height;
+        var drawWidth = width;
+        var drawHeight = height;
+
+        if (canvasAspect > matrixAspect)
+        {
+            drawWidth = height * matrixAspect;
+            drawHeight = height;
+        }
+        else
+        {
+            drawWidth = width;
+            drawHeight = width / matrixAspect;
+        }
+
+        var offsetX = (width - drawWidth) * 0.5f;
+        var offsetY = (height - drawHeight) * 0.5f;
+        var cellW = drawWidth / matrixWidth;
+        var cellH = drawHeight / matrixHeight;
+        var drawCellW = Math.Max(1f, cellW);
+        var drawCellH = Math.Max(1f, cellH);
+
+        drawingSession.Clear(Color.FromArgb(255, 8, 10, 14));
+
+        var requiredPixels = matrixWidth * matrixHeight;
+        if (pixels.Count < requiredPixels)
+        {
+            return;
+        }
+
+        for (var y = 0; y < matrixHeight; y++)
+        {
+            var rowStart = y * matrixWidth;
+            var drawY = offsetY + (y * cellH);
+
+            var x = 0;
+            while (x < matrixWidth)
+            {
+                var pixel = pixels[rowStart + x];
+                if (pixel.A == 0)
+                {
+                    x++;
+                    continue;
+                }
+
+                var runStart = x;
+                x++;
+
+                while (x < matrixWidth)
+                {
+                    var candidate = pixels[rowStart + x];
+                    if (candidate.A != pixel.A
+                        || candidate.R != pixel.R
+                        || candidate.G != pixel.G
+                        || candidate.B != pixel.B)
+                    {
+                        break;
+                    }
+
+                    x++;
+                }
+
+                var runLength = x - runStart;
+                var color = Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B);
+                drawingSession.FillRectangle(
+                    offsetX + (runStart * cellW),
+                    drawY,
+                    drawCellW * runLength,
+                    drawCellH,
+                    color);
+            }
+        }
     }
 
     public static void DrawText5x7(CanvasDrawingSession ds, float ox, float oy, float pitch, float ledSize, int x, int y, string text, Color color)

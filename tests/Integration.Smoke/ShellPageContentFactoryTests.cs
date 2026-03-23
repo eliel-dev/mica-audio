@@ -11,9 +11,11 @@ public sealed class ShellPageContentFactoryTests
         var devicesPage = new object();
         var panelsPage = new object();
         var monitoringPage = new object();
+        var studioPage = new object();
         var visualizerResolutions = 0;
         var panelsResolutions = 0;
         var monitoringResolutions = 0;
+        var studioResolutions = 0;
 
         var factory = new ShellPageContentFactory(
             () =>
@@ -32,7 +34,12 @@ public sealed class ShellPageContentFactoryTests
                 monitoringResolutions++;
                 return monitoringPage;
             },
-            () => new object());
+            () => new object(),
+            () =>
+            {
+                studioResolutions++;
+                return studioPage;
+            });
 
         var first = factory.Resolve("visualizer");
         var second = factory.Resolve("visualizer");
@@ -40,6 +47,8 @@ public sealed class ShellPageContentFactoryTests
         var panelsSecond = factory.Resolve("panels");
         var monitoringFirst = factory.Resolve("monitoring");
         var monitoringSecond = factory.Resolve("monitoring");
+        var studioFirst = factory.Resolve("visualizer-studio");
+        var studioSecond = factory.Resolve("visualizer-studio");
 
         Assert.Same(visualizerPage, first);
         Assert.Same(first, second);
@@ -47,9 +56,12 @@ public sealed class ShellPageContentFactoryTests
         Assert.Same(panelsFirst, panelsSecond);
         Assert.Same(monitoringPage, monitoringFirst);
         Assert.Same(monitoringFirst, monitoringSecond);
+        Assert.Same(studioPage, studioFirst);
+        Assert.Same(studioFirst, studioSecond);
         Assert.Equal(1, visualizerResolutions);
         Assert.Equal(1, panelsResolutions);
         Assert.Equal(1, monitoringResolutions);
+        Assert.Equal(1, studioResolutions);
     }
 
     [Fact]
@@ -57,6 +69,7 @@ public sealed class ShellPageContentFactoryTests
     {
         var factory = new ShellPageContentFactory(
             () => throw new InvalidOperationException("boom"),
+            () => new object(),
             () => new object(),
             () => new object(),
             () => new object(),

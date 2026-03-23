@@ -409,6 +409,12 @@
                                 Icon="Setting"
                                 Label="Configurações"
                                 Click="OnSettingsClicked" />
+                            <!-- DOCS: docs/wiki/modules/app-winui.md#studio-de-visualizacoes -->
+                            <AppBarButton
+                                Icon="Edit"
+                                Label="Editar preset"
+                                Click="OnEditVisualClicked"
+                                ToolTipService.ToolTip="Abrir o Studio do preset atual." />
                             <AppBarSeparator />
                             <AppBarElementContainer>
                                 <ToggleSwitch

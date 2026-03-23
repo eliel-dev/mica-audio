@@ -466,6 +466,40 @@
 - O percentual e derivado diretamente das linhas de saida do `esptool` (`NN%` e `NN %`).
 - Em sucesso, o wizard encerra apos mostrar o `pair code` e orientar configuracao no AP do ESP32.
 
+## Studio de visualizacoes
+
+- A sessao `Visualizador` agora expoe `Editar preset` na `CommandBar`.
+- O clique continua abrindo uma rota interna oculta da shell, sem novo item na barra lateral:
+  - `MainPage` pausa a sessao HUB75 local e pede a abertura do Studio pela `VisualizerEditorNavigationCoordinator`;
+  - `ShellPage` mantem a selecao visual em `Visualizador`, troca apenas o conteudo e permite voltar para a pagina principal com o preset salvo ja reativado.
+- O Studio vive em `VisualizerStudioPage` e agora assume um workbench HUB75-first:
+  - cabecalho com breadcrumb `Visualizador / Studio de preset`, status curto, `Salvar como novo`, `Salvar` e `Voltar ao visualizador`;
+  - atalho `Ctrl+S` para salvar e `Esc` para voltar, sempre respeitando o guard de alteracoes pendentes;
+  - em larguras maiores, rail compacto de presets na esquerda e area dominante de preview + edicao na direita;
+  - abaixo do breakpoint, a biblioteca vira um picker no topo e a edicao passa para coluna unica.
+- O bloco principal da tela e o preview:
+  - `Painel HUB75` vem selecionado por padrao e reaproveita o mesmo preview shipping do `Visualizador` via simulador local compartilhado;
+  - `Canvas` vira modo secundario para conferir o working copy artistico e fiel da edicao;
+  - o desenho do frame 128x64 foi centralizado em `Hub75PreviewHelper` para manter paridade visual entre `MainPage` e Studio.
+- O bloco secundario da tela e o inspetor:
+  - campo `Nome do preset`;
+  - faixa de gradiente clicavel com selecao e insercao de stops;
+  - grade de swatches, slider de posicao e bases rapidas de gradiente.
+- O working copy continua apenas em memoria ate `Salvar`.
+- O cabecalho deixou de expor as regras internas de override e clone; ele mostra apenas o estado pendente e qual preset volta ativo para o `Visualizador`.
+- Ao tentar sair com mudancas pendentes, trocar de preset ou usar `Esc`, a pagina mostra confirmacao simples para `Salvar`, `Descartar` ou continuar editando.
+- A politica de persistencia nao mudou:
+  - built-ins podem ser renomeados localmente sem criar variante separada;
+  - mudanca de cor em built-in continua protegida pela copia `user-{presetId}`;
+  - `Salvar como novo` continua mapeando para o fluxo de clone local.
+- A implementacao fica dividida em seis bordas:
+  - `MainPage.VisualEditor` para abrir o Studio e reativar o preset salvo no retorno;
+  - `VisualizerStudioPage` para a UI nao modal;
+  - `VisualizerEditorNavigationCoordinator` para a navegacao interna;
+  - `AudioPipelineCoordinator` + `SimulatorLedOutput` para o preview HUB75 shipping compartilhado com o `Visualizador`;
+  - `BuiltInPresetNameOverrideStore` para rename local de built-ins;
+  - `PaletteGradientStripControl` para a faixa de gradiente clicavel.
+
 ## Referencias de codigo
 
 - [Hub75VisualizerSessionService](../../../src/App.WinUI/Services/Devices/Hub75VisualizerSessionService.cs#L1)

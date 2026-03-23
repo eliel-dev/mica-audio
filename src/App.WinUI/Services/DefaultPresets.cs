@@ -7,7 +7,7 @@ namespace App.WinUI.Services;
 // DOCS: docs/wiki/modules/visual-win2d.md#wave-mirror
 internal static class DefaultPresets
 {
-    private const int CurrentSchemaVersion = 17;
+    private const int CurrentSchemaVersion = 18;
 
     public static IReadOnlyList<PresetDefinition> Create()
     {
@@ -19,25 +19,6 @@ internal static class DefaultPresets
             CreateAudioMotionClonePreset("audiomotion-neon", "AudioMotion Neon", CreateNeonStops()),
             CreateWaveMirrorPreset(),
 
-            CreateRendererPreset(
-                id: "spectrum-vizzy-blob-neon",
-                name: "Blob Neon",
-                rendererId: RendererIds.VizzyBlobNeon,
-                paletteStops: CreateVizzyBlobStops(),
-                glow: true,
-                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["blobBaseRadius"] = 0.28f,
-                    ["blobAudioDepth"] = 0.11f,
-                    ["blobLfoDepth"] = 0.03f,
-                    ["blobLfoSpeed"] = 1.20f,
-                    ["blobPointCount"] = 96f,
-                    ["blobGlowPasses"] = 3f,
-                    ["blobStrokeWidth"] = 2.0f,
-                    ["blobCoreAlpha"] = 0.92f,
-                    ["blobGlowAlpha"] = 0.24f,
-                    ["blobRotationSpeed"] = 0.18f,
-                }),
             CreateRendererPreset(
                 id: "spectrum-vizzy-orbit-rings",
                 name: "Orbit Rings",
@@ -56,69 +37,6 @@ internal static class DefaultPresets
                     ["orbitGlowPasses"] = 2f,
                     ["orbitLineThickness"] = 2.2f,
                     ["orbitCoreCircleAlpha"] = 0.90f,
-                }),
-            CreateRendererPreset(
-                id: "spectrum-polar-arcs",
-                name: "Polar Arcs",
-                rendererId: RendererIds.PolarArcs,
-                paletteStops: CreateRainbowStops(),
-                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["polarArcsOuterRadius"] = 1.00f,
-                    ["polarArcsInnerHoleRadius"] = 0.18f,
-                    ["polarArcsCenterDotRadius"] = 0.018f,
-                    ["polarArcsBarsStart"] = 0.28f,
-                    ["polarArcsBarsEnd"] = 0.92f,
-                    ["polarArcsMaxSweepDegrees"] = 34f,
-                    ["polarArcsJitter"] = 0.01f,
-                    ["polarArcsBandThicknessFactor"] = 0.14f,
-                }),
-            CreateRendererPreset(
-                id: "spectrum-aurora-ribbon",
-                name: "Aurora Ribbon",
-                rendererId: RendererIds.AuroraRibbon,
-                paletteStops: CreateAuroraStops(),
-                glow: true,
-                displayBandCount: 64,
-                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["auroraThickness"] = 0.14f,
-                    ["auroraWaveDepth"] = 0.16f,
-                    ["auroraAudioDepth"] = 0.24f,
-                    ["auroraGlowAlpha"] = 0.22f,
-                    ["auroraDriftSpeed"] = 0.78f,
-                    ["auroraBassBloom"] = 0.19f,
-                }),
-            CreateRendererPreset(
-                id: "spectrum-plasma-pulse",
-                name: "Plasma Pulse",
-                rendererId: RendererIds.PlasmaPulse,
-                paletteStops: CreatePlasmaStops(),
-                glow: true,
-                displayBandCount: 72,
-                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["plasmaCellsX"] = 56f,
-                    ["plasmaSpeed"] = 0.92f,
-                    ["plasmaWarp"] = 0.72f,
-                    ["plasmaBassPulse"] = 0.32f,
-                    ["plasmaContrast"] = 1.34f,
-                }),
-            CreateRendererPreset(
-                id: "spectrum-launchpad-grid",
-                name: "Launchpad Grid",
-                rendererId: RendererIds.LaunchpadGrid,
-                paletteStops: CreateLaunchpadStops(),
-                glow: true,
-                displayBandCount: 64,
-                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["launchpadGap"] = 0.16f,
-                    ["launchpadCorner"] = 0.22f,
-                    ["launchpadBloom"] = 0.55f,
-                    ["launchpadIdleLevel"] = 0.025f,
-                    ["launchpadDriftSpeed"] = 0.85f,
-                    ["launchpadFlashThreshold"] = 0.58f,
                 }),
             CreateRendererPreset(
                 id: "spectrum-bars",
@@ -223,34 +141,6 @@ internal static class DefaultPresets
                 paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["lineThickness"] = 2f,
-                    ["decay"] = 0.90f,
-                }),
-            CreateRendererPreset(
-                id: "spectrum-spectrogram",
-                name: "Spectrogram",
-                rendererId: RendererIds.Spectrogram,
-                paletteStops: CreateRainbowStops(),
-                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["decay"] = 0.90f,
-                }),
-            CreateRendererPreset(
-                id: "spectrum-waterfall",
-                name: "Waterfall",
-                rendererId: RendererIds.Waterfall,
-                paletteStops: CreateRainbowStops(),
-                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["decay"] = 0.90f,
-                }),
-            CreateRendererPreset(
-                id: "spectrum-pulse",
-                name: "Pulse Aura",
-                rendererId: RendererIds.Pulse,
-                paletteStops: CreateNeonStops(),
-                paramOverrides: new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["lineThickness"] = 2.2f,
                     ["decay"] = 0.90f,
                 }),
             CreateRendererPreset(
