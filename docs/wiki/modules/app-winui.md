@@ -8,6 +8,10 @@
 4. renderizar preview HUB75 local unico e nativo `128x64`
 5. integrar setup e catalogo com firmware oficial DevKitC-1
 
+## Referencias relacionadas
+
+- [Auditoria desktop WinUI (2026-03-23)](../reference/app-winui-audit-2026-03-23.md)
+
 ## Fluxo de execucao
 
 1. carregar `AppSettings` e presets
