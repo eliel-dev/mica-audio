@@ -225,5 +225,6 @@ Observacoes ativas dos paineis:
 - O editor entra com preview desligado; a animacao local so e criada quando o usuario ativa o toggle `Preview`.
 - `PanelsFrameComposer.CreatePosterAsync(...)` e `PanelsMediaCache` separam poster de playback e reutilizam decodificacao de midia para evitar churn de RAM/CPU.
 - `PanelsStore` agora recupera `panels.json` vazio/corrompido sem derrubar a app e grava com temp+replace para reduzir risco de arquivo truncado.
-- O runtime de painel em background usa `12 FPS`, salva `lastSelectedPanelId` e separa estado de widget (`ConfigValues`) do draft local compartilhado de apps.
+- O runtime de painel em background usa `30 FPS` como teto de apresentacao, salva `lastSelectedPanelId` e separa estado de widget (`ConfigValues`) do draft local compartilhado de apps.
+- `gifhub75` agora resolve animacao por delays reais do arquivo e o cache animado guarda sequencia temporal (`frames + durationMs + totalDurationMs`).
 - O transporte HUB75 agora suporta `SendFrame(deviceId, payload)` em paralelo ao broadcast, e `Esp32S3LedOutput` escolhe o destino a partir de `LedOutputConfig.TargetDeviceId`.

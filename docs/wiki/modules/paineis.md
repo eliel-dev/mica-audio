@@ -49,10 +49,13 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 
 ## Compositor Hub75
 
-- `PanelsFrameComposer` cria um unico framebuffer RGBA `128x64` por tick e compoe os widgets em ordem de `ZIndex`.
+- `PanelsFrameComposer` cria um unico framebuffer RGBA `128x64` por apresentacao e compoe os widgets em ordem de `ZIndex`.
 - `CreatePosterAsync(...)` separa poster render de playback render para manter a galeria leve e previsivel.
 - `analogclock` e renderizado nativamente no compositor com texto `5x7` e barra de segundos.
 - `gifhub75` usa decodificacao propria por widget, inclusive para arquivos estaticos e slideshow local por pasta.
+- GIF animado agora preserva os delays reais do arquivo por frame; o compositor resolve o frame ativo por timeline da midia, nao mais por indice global fixo.
+- `PanelsMediaCache` trata midia animada como sequencia temporal (`frames + durationMs + totalDurationMs`), o que evita redecodificacao e permite playback mais fiel.
+- Quando a midia ja entra no tamanho do widget, o compositor faz fast path e reaproveita os pixels sem reescala desnecessaria.
 - Posters de `gifhub75` decodificam apenas o primeiro frame util da midia; a animacao completa fica reservada ao playback real ou ao preview manual do editor.
 - `PanelsMediaCache` compartilha posters e frames animados entre galeria, editor e playback para evitar redecodificacao redundante.
 - Caminhos invalidos nao derrubam o runtime: o widget entra em erro para o preview e contribui preto no frame final.
@@ -61,8 +64,10 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 
 - `PanelsPlaybackService` mantem somente um painel ativo por vez, em background, enquanto o app desktop estiver aberto.
 - O toggle `Ativo` da galeria usa snapshot salvo do painel; editar depois disso nao muda o device ate novo `Salvar` ou nova ativacao.
-- O tick padrao do painel e `12 FPS`, alinhado ao runtime GIF atual.
-- O playback real continua em `12 FPS`, mas galeria e editor usam poster estatico ou preview sob demanda para reduzir RAM/CPU.
+- O scheduler padrao do painel e `30 FPS`, ancorado em relogio monotonic para reduzir drift do loop de reproducao.
+- O playback real de `gifhub75` usa `30 Hz` como teto de apresentacao, mas respeita os delays reais do GIF; frames repetidos continuam sendo deduplicados antes do envio.
+- A fila de saida do device segue politica `newest-wins` (`capacity=1` + `DropOldest`), portanto o runtime prioriza o frame mais novo sob carga em vez de tentar entregar todos.
+- A entrada recomendada para `gifhub75` neste v1 e imagem/GIF ja preformatado externamente para `128x64`; o compositor ainda escala quando necessario, mas esse nao e o caminho ideal de qualidade/performance.
 - Mesmo com o visualizador principal operando em `Bins128`, `Paineis` continuam usando transporte dedicado `Frame128x64` para o HUB75 fisico.
 - Quando o `Visualizador HUB75` assume prioridade, o runtime do painel entra em suspensao retomavel:
   - o loop/frame output para;

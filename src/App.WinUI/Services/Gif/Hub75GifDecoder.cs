@@ -16,6 +16,8 @@ namespace App.WinUI.Services.Gif;
 internal sealed class Hub75GifDecoder
 {
     public const int DefaultMaxGifFrames = 720;
+    public const int DefaultFrameDurationMs = 100;
+    private const int PropertyTagFrameDelay = 0x5100;
 
     private readonly int maxGifFrames;
 
@@ -41,6 +43,8 @@ internal sealed class Hub75GifDecoder
             throw new InvalidDataException("GIF sem frames decodificaveis.");
         }
 
+        var frameDurationsMs = ResolveFrameDurations(image, frameCount);
+
         using var canvas = new DrawingBitmap(image.Width, image.Height, PixelFormat.Format32bppArgb);
         using var canvasGraphics = DrawingGraphics.FromImage(canvas);
         canvasGraphics.Clear(DrawingColor.Transparent);
@@ -55,7 +59,7 @@ internal sealed class Hub75GifDecoder
             canvasGraphics.DrawImage(image, 0, 0, image.Width, image.Height);
 
             using var snapshot = (DrawingBitmap)canvas.Clone();
-            output.Add(new DecodedGifFrame(snapshot.Width, snapshot.Height, CopyPixels(snapshot)));
+            output.Add(new DecodedGifFrame(snapshot.Width, snapshot.Height, CopyPixels(snapshot), frameDurationsMs[i]));
         }
 
         return output;
@@ -77,6 +81,8 @@ internal sealed class Hub75GifDecoder
             throw new InvalidDataException("GIF sem frames decodificaveis.");
         }
 
+        var frameDurationsMs = ResolveFrameDurations(image, frameCount: 1);
+
         cancellationToken.ThrowIfCancellationRequested();
         image.SelectActiveFrame(frameDimension, 0);
         using var snapshot = new DrawingBitmap(image.Width, image.Height, PixelFormat.Format32bppArgb);
@@ -84,7 +90,7 @@ internal sealed class Hub75GifDecoder
         graphics.Clear(DrawingColor.Transparent);
         graphics.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
         graphics.DrawImage(image, 0, 0, image.Width, image.Height);
-        return new DecodedGifFrame(snapshot.Width, snapshot.Height, CopyPixels(snapshot));
+        return new DecodedGifFrame(snapshot.Width, snapshot.Height, CopyPixels(snapshot), frameDurationsMs[0]);
     }
 
     private static FrameDimension ResolveFrameDimension(DrawingImage image)
@@ -113,6 +119,46 @@ internal sealed class Hub75GifDecoder
             && data[3] == (byte)'8'
             && (data[4] == (byte)'7' || data[4] == (byte)'9')
             && data[5] == (byte)'a';
+    }
+
+    internal static int NormalizeFrameDurationMs(int rawDelayUnits)
+    {
+        return rawDelayUnits > 0
+            ? rawDelayUnits * 10
+            : DefaultFrameDurationMs;
+    }
+
+    private static int[] ResolveFrameDurations(DrawingImage image, int frameCount)
+    {
+        var durations = Enumerable
+            .Repeat(DefaultFrameDurationMs, frameCount)
+            .ToArray();
+
+        if (frameCount <= 0 || !image.PropertyIdList.Contains(PropertyTagFrameDelay))
+        {
+            return durations;
+        }
+
+        try
+        {
+            var property = image.GetPropertyItem(PropertyTagFrameDelay);
+            if (property?.Value is not { } propertyValue)
+            {
+                return durations;
+            }
+
+            var maxDurations = Math.Min(frameCount, property.Len / sizeof(int));
+            for (var i = 0; i < maxDurations; i++)
+            {
+                var rawDelayUnits = BitConverter.ToInt32(propertyValue, i * sizeof(int));
+                durations[i] = NormalizeFrameDurationMs(rawDelayUnits);
+            }
+        }
+        catch (ArgumentException)
+        {
+        }
+
+        return durations;
     }
 
     private static RgbaColor[] CopyPixels(DrawingBitmap bitmap)
@@ -152,4 +198,4 @@ internal sealed class Hub75GifDecoder
     }
 }
 
-internal sealed record DecodedGifFrame(int Width, int Height, RgbaColor[] Pixels);
+internal sealed record DecodedGifFrame(int Width, int Height, RgbaColor[] Pixels, int DurationMs = Hub75GifDecoder.DefaultFrameDurationMs);

@@ -12,12 +12,11 @@ namespace App.WinUI.Services.Panels;
 [SupportedOSPlatform("windows")]
 internal sealed class PanelsFrameComposer
 {
-    public const int TargetFps = 12;
+    public const int TargetFps = 30;
     private static readonly HashSet<string> SupportedWidgetAppIds =
         new(StringComparer.OrdinalIgnoreCase) { "analogclock", "gifhub75" };
     private static readonly HashSet<string> SupportedImageExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".gif", ".png", ".jpg", ".jpeg", ".bmp" };
-    private static readonly TimeSpan FrameInterval = TimeSpan.FromMilliseconds(1000d / TargetFps);
     private static readonly TimeZoneInfo BrasiliaTimeZone = ResolveBrasiliaTimeZone();
 
     private readonly Hub75GifDecoder decoder;
@@ -236,7 +235,7 @@ internal sealed class PanelsFrameComposer
         private readonly CancellationTokenSource lifetimeCts = new();
         private readonly List<string> mediaSources = [];
         private readonly object stateGate = new();
-        private RgbaColor[][] frames = [];
+        private AnimatedMediaSequence mediaSequence = AnimatedMediaSequence.Empty;
         private DateTimeOffset mediaStartedUtc = DateTimeOffset.UtcNow;
         private DateTimeOffset nextSlideUtc = DateTimeOffset.MaxValue;
         private int sourceIndex;
@@ -281,7 +280,7 @@ internal sealed class PanelsFrameComposer
 
         public void Render(DateTimeOffset utcNow, RgbaColor[] targetFrame, int panelWidth, int panelHeight)
         {
-            RgbaColor[][] localFrames;
+            AnimatedMediaSequence localSequence;
             DateTimeOffset localMediaStartedUtc;
             string? nextSlideSource = null;
             int nextSlideIndex = -1;
@@ -299,9 +298,9 @@ internal sealed class PanelsFrameComposer
                     switchInProgress = true;
                 }
 
-                localFrames = frames;
+                localSequence = mediaSequence;
                 localMediaStartedUtc = mediaStartedUtc;
-                if (localFrames.Length == 0)
+                if (localSequence.IsEmpty)
                 {
                     return;
                 }
@@ -312,16 +311,10 @@ internal sealed class PanelsFrameComposer
                 _ = BeginSlideSwitchAsync(nextSlideIndex, nextSlideSource);
             }
 
-            var index = localFrames.Length == 1
-                ? 0
-                : (int)Math.Floor(((utcNow - localMediaStartedUtc).TotalMilliseconds / FrameInterval.TotalMilliseconds) % localFrames.Length);
-            if (index < 0)
-            {
-                index = 0;
-            }
+            var index = ResolveAnimatedFrameIndex(localSequence, utcNow - localMediaStartedUtc);
 
             PanelsMatrixDrawHelpers.Blit(
-                localFrames[index],
+                localSequence.Frames[index].Pixels,
                 widget.Width,
                 widget.Height,
                 targetFrame,
@@ -375,9 +368,11 @@ internal sealed class PanelsFrameComposer
                 var posterFrame = await LoadPosterFrameAsync(posterSource, cancellationToken).ConfigureAwait(false);
                 lock (stateGate)
                 {
-                    frames = posterFrame.Length == 0 ? Array.Empty<RgbaColor[]>() : [posterFrame];
+                    mediaSequence = posterFrame.Length == 0
+                        ? AnimatedMediaSequence.Empty
+                        : new AnimatedMediaSequence([new AnimatedMediaFrame(posterFrame, Hub75GifDecoder.DefaultFrameDurationMs)], Hub75GifDecoder.DefaultFrameDurationMs);
                     mediaStartedUtc = DateTimeOffset.UtcNow;
-                    errorMessage = frames.Length == 0 ? "Midia sem poster valido." : null;
+                    errorMessage = mediaSequence.IsEmpty ? "Midia sem poster valido." : null;
                 }
             }
             catch (OperationCanceledException)
@@ -469,14 +464,14 @@ internal sealed class PanelsFrameComposer
                 cacheKey,
                 token => DecodeFramesCoreAsync(decoder, sourcePath, widget.Width, widget.Height, scaleMode, token),
                 cancellationToken).ConfigureAwait(false);
-            if (loadedFrames.Length == 0)
+            if (loadedFrames.IsEmpty)
             {
                 throw new InvalidDataException("Midia sem frames validos.");
             }
 
             lock (stateGate)
             {
-                frames = loadedFrames;
+                mediaSequence = loadedFrames;
                 mediaStartedUtc = DateTimeOffset.UtcNow;
                 errorMessage = null;
             }
@@ -490,8 +485,8 @@ internal sealed class PanelsFrameComposer
                 cacheKey,
                 async token =>
                 {
-                    var frames = await DecodeFramesCoreAsync(decoder, sourcePath, widget.Width, widget.Height, scaleMode, token, firstFrameOnly: true).ConfigureAwait(false);
-                    return frames.FirstOrDefault() ?? Array.Empty<RgbaColor>();
+                    var sequence = await DecodeFramesCoreAsync(decoder, sourcePath, widget.Width, widget.Height, scaleMode, token, firstFrameOnly: true).ConfigureAwait(false);
+                    return sequence.IsEmpty ? Array.Empty<RgbaColor>() : sequence.Frames[0].Pixels;
                 },
                 cancellationToken).ConfigureAwait(false);
             if (posterFrame.Length == 0)
@@ -563,13 +558,13 @@ internal sealed class PanelsFrameComposer
                 errorMessage = message;
                 if (clearFrames)
                 {
-                    frames = Array.Empty<RgbaColor[]>();
+                    mediaSequence = AnimatedMediaSequence.Empty;
                 }
             }
         }
     }
 
-    private static async Task<RgbaColor[][]> DecodeFramesCoreAsync(
+    private static async Task<AnimatedMediaSequence> DecodeFramesCoreAsync(
         Hub75GifDecoder decoder,
         string sourcePath,
         int targetWidth,
@@ -585,16 +580,16 @@ internal sealed class PanelsFrameComposer
             if (firstFrameOnly)
             {
                 var firstFrame = await Task.Run(() => Hub75GifDecoder.DecodeFirstFrame(bytes, cancellationToken), cancellationToken).ConfigureAwait(false);
-                return [FormatToTarget(firstFrame, targetWidth, targetHeight, scaleMode)];
+                return CreateAnimatedSequence([firstFrame], targetWidth, targetHeight, scaleMode);
             }
 
             var decodedFrames = await Task.Run(() => decoder.Decode(bytes, cancellationToken), cancellationToken).ConfigureAwait(false);
-            return decodedFrames.Select(frame => FormatToTarget(frame, targetWidth, targetHeight, scaleMode)).ToArray();
+            return CreateAnimatedSequence(decodedFrames, targetWidth, targetHeight, scaleMode);
         }
 
         var rawBytes = await File.ReadAllBytesAsync(sourcePath, cancellationToken).ConfigureAwait(false);
         var imageFrame = await Task.Run(() => DecodeStaticImageBytes(rawBytes), cancellationToken).ConfigureAwait(false);
-        return [FormatToTarget(imageFrame, targetWidth, targetHeight, scaleMode)];
+        return CreateAnimatedSequence([imageFrame], targetWidth, targetHeight, scaleMode);
     }
 
     private static DecodedGifFrame DecodeStaticImageBytes(byte[] bytes)
@@ -633,17 +628,47 @@ internal sealed class PanelsFrameComposer
         }
     }
 
-    private static RgbaColor[] FormatToTarget(DecodedGifFrame sourceFrame, int targetWidth, int targetHeight, GifScaleMode scaleMode)
+    internal static int ResolveAnimatedFrameIndex(AnimatedMediaSequence sequence, TimeSpan elapsed)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+
+        if (sequence.Count <= 1 || sequence.TotalDurationMs <= 0)
+        {
+            return 0;
+        }
+
+        var elapsedMs = Math.Max(0L, (long)elapsed.TotalMilliseconds);
+        var timeInLoopMs = elapsedMs % sequence.TotalDurationMs;
+        long cumulativeMs = 0;
+        for (var i = 0; i < sequence.Count; i++)
+        {
+            cumulativeMs += Math.Max(1, sequence.Frames[i].DurationMs);
+            if (timeInLoopMs < cumulativeMs)
+            {
+                return i;
+            }
+        }
+
+        return sequence.Count - 1;
+    }
+
+    internal static RgbaColor[] FormatToTarget(DecodedGifFrame sourceFrame, int targetWidth, int targetHeight, GifScaleMode scaleMode)
     {
         var safeWidth = Math.Max(1, targetWidth);
         var safeHeight = Math.Max(1, targetHeight);
         var target = new RgbaColor[safeWidth * safeHeight];
-        PanelsMatrixDrawHelpers.Clear(target);
-
         if (sourceFrame.Width <= 0 || sourceFrame.Height <= 0)
         {
+            PanelsMatrixDrawHelpers.Clear(target);
             return target;
         }
+
+        if (sourceFrame.Width == safeWidth && sourceFrame.Height == safeHeight)
+        {
+            return sourceFrame.Pixels;
+        }
+
+        PanelsMatrixDrawHelpers.Clear(target);
 
         if (scaleMode == GifScaleMode.Stretch)
         {
@@ -664,6 +689,30 @@ internal sealed class PanelsFrameComposer
         var offsetY = (safeHeight - drawHeight) / 2f;
         BlitScaled(sourceFrame.Pixels, sourceFrame.Width, sourceFrame.Height, target, safeWidth, safeHeight, offsetX, offsetY, drawWidth, drawHeight);
         return target;
+    }
+
+    private static AnimatedMediaSequence CreateAnimatedSequence(
+        IReadOnlyList<DecodedGifFrame> decodedFrames,
+        int targetWidth,
+        int targetHeight,
+        GifScaleMode scaleMode)
+    {
+        if (decodedFrames.Count == 0)
+        {
+            return AnimatedMediaSequence.Empty;
+        }
+
+        var frames = new AnimatedMediaFrame[decodedFrames.Count];
+        var totalDurationMs = 0;
+        for (var i = 0; i < decodedFrames.Count; i++)
+        {
+            var decodedFrame = decodedFrames[i];
+            var durationMs = Math.Max(1, decodedFrame.DurationMs);
+            frames[i] = new AnimatedMediaFrame(FormatToTarget(decodedFrame, targetWidth, targetHeight, scaleMode), durationMs);
+            totalDurationMs += durationMs;
+        }
+
+        return new AnimatedMediaSequence(frames, totalDurationMs);
     }
 
     private static void BlitScaled(

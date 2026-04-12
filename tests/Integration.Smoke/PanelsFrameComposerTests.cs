@@ -1,4 +1,5 @@
 using App.WinUI.Models.Panels;
+using App.WinUI.Services.Gif;
 using App.WinUI.Services.Panels;
 using MicaAudio.Core.Presets;
 
@@ -180,6 +181,49 @@ public sealed class PanelsFrameComposerTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(99, 0)]
+    [InlineData(100, 1)]
+    [InlineData(299, 1)]
+    [InlineData(300, 2)]
+    [InlineData(599, 2)]
+    [InlineData(600, 0)]
+    [InlineData(650, 0)]
+    public void ResolveAnimatedFrameIndex_ShouldRespectFrameDurationsAndWrap(long elapsedMs, int expectedIndex)
+    {
+        var sequence = new AnimatedMediaSequence(
+            [
+                new AnimatedMediaFrame([new RgbaColor(255, 0, 0, 255)], 100),
+                new AnimatedMediaFrame([new RgbaColor(0, 255, 0, 255)], 200),
+                new AnimatedMediaFrame([new RgbaColor(0, 0, 255, 255)], 300),
+            ],
+            totalDurationMs: 600);
+
+        var index = PanelsFrameComposer.ResolveAnimatedFrameIndex(sequence, TimeSpan.FromMilliseconds(elapsedMs));
+
+        Assert.Equal(expectedIndex, index);
+    }
+
+    [Fact]
+    public void FormatToTarget_ShouldReusePixelsWhenFrameAlreadyMatchesWidgetSize()
+    {
+        var pixels = Enumerable
+            .Repeat(new RgbaColor(12, 34, 56, 255), 8 * 4)
+            .ToArray();
+        var frame = new DecodedGifFrame(8, 4, pixels);
+
+        var output = PanelsFrameComposer.FormatToTarget(frame, 8, 4, GifScaleMode.Fit);
+
+        Assert.Same(pixels, output);
+    }
+
+    [Fact]
+    public void TargetFps_ShouldBeThirtyForGifHub75Playback()
+    {
+        Assert.Equal(30, PanelsFrameComposer.TargetFps);
     }
 
     private static string CreateTempDirectory()

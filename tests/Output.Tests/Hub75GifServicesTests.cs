@@ -8,6 +8,8 @@ namespace Output.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class Hub75GifServicesTests
 {
+    private const string SinglePixelGifBase64 = "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
     [Fact]
     public void Hub75FrameFormatter_Fit_ShouldPreserveAspectWithBorders()
     {
@@ -69,5 +71,29 @@ public sealed class Hub75GifServicesTests
         var invalidBytes = System.Text.Encoding.ASCII.GetBytes("not-a-gif-content");
 
         Assert.Throws<InvalidDataException>(() => decoder.Decode(invalidBytes));
+    }
+
+    [Fact]
+    public void Hub75GifDecoder_StaticGifWithoutDelay_ShouldUseDefaultDuration()
+    {
+        var decoder = new Hub75GifDecoder();
+        var gifBytes = Convert.FromBase64String(SinglePixelGifBase64);
+
+        var frames = decoder.Decode(gifBytes);
+
+        var frame = Assert.Single(frames);
+        Assert.Equal(Hub75GifDecoder.DefaultFrameDurationMs, frame.DurationMs);
+    }
+
+    [Theory]
+    [InlineData(-1, Hub75GifDecoder.DefaultFrameDurationMs)]
+    [InlineData(0, Hub75GifDecoder.DefaultFrameDurationMs)]
+    [InlineData(1, 10)]
+    [InlineData(7, 70)]
+    public void Hub75GifDecoder_NormalizeFrameDurationMs_ShouldConvertHundredthsToMilliseconds(int rawDelayUnits, int expectedDurationMs)
+    {
+        var durationMs = Hub75GifDecoder.NormalizeFrameDurationMs(rawDelayUnits);
+
+        Assert.Equal(expectedDurationMs, durationMs);
     }
 }

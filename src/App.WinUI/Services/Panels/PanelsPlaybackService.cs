@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using App.WinUI.Models.Panels;
 using App.WinUI.Services.Devices;
 using Device.Server.Hosting;
@@ -339,10 +340,22 @@ internal sealed class PanelsPlaybackService : IDisposable
     {
         try
         {
-            using var timer = new PeriodicTimer(TickInterval);
-            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            var stopwatch = Stopwatch.StartNew();
+            var nextTickIndex = 1L;
+
+            while (!cancellationToken.IsCancellationRequested)
             {
+                var dueAt = TimeSpan.FromTicks(nextTickIndex * TickInterval.Ticks);
+                var remaining = dueAt - stopwatch.Elapsed;
+                if (remaining > TimeSpan.Zero)
+                {
+                    await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
+                }
+
                 await SendFrameAsync(session, output, DateTimeOffset.UtcNow).ConfigureAwait(false);
+
+                var elapsedTicks = stopwatch.Elapsed.Ticks;
+                nextTickIndex = Math.Max(nextTickIndex + 1, (elapsedTicks / TickInterval.Ticks) + 1);
             }
         }
         catch (OperationCanceledException)
