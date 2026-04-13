@@ -11,9 +11,11 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - WebSocket `/ws/v1/stream` exclusivamente para stream visual binario.
 - Dashboard local para `WebView2` via `GET /dashboard` + `WS /ws/device/{deviceId}` com DTO dedicado.
 - Sessao de comandos rastreados com timeout.
+- Transporte HTTP autenticado para lotes animados `WebP` da sessao `Paineis`.
 - Normalizacao interna de `ServerConfig` para limites, timeouts e CIDRs.
 - Controle temporal deterministico via `TimeProvider` no pairing, snapshots e timeouts tracked.
 - Encaminhamento de comandos de operacao do device (`test_led`, `set_brightness`, `install/activate/set_app_config`).
+- Encaminhamento de `queue_panels_batch` para lotes `WebP` precompostos no host.
 - Encaminhamento de `update_firmware` com progresso tracked via `command-events`.
 - Controle de acesso de rede e rate limiting por endpoint critico.
 - Persistencia de metadados de hardware (`BoardModel`, `PanelType`) por dispositivo.
@@ -24,6 +26,8 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Endpoints autenticados para OTA:
   - `GET /api/v1/device/firmware/latest`
   - `GET /api/v1/device/firmware/download?version=...`
+- Endpoint autenticado para batches `Paineis`:
+  - `GET /api/v1/device/panels/batches/{batchSequence}.webp?panelsSessionId=...`
 
 ## Fluxo de execucao
 
@@ -80,6 +84,29 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Timeout curto demais gera falso offline.
 - Mudanca de token/session pode invalidar devices em campo.
 - Filtro de rede/CIDR mal configurado pode bloquear dispositivos legitimos.
+
+## Atualizacao 2026-04 - Transporte De Lotes WebP Para Paineis
+
+- `Paineis` ganhou um caminho `monitor-first` alternativo ao `Frame128x64` continuo:
+  - o host continua compositor autoritativo do canvas `128x64`;
+  - o batch scheduler renderiza `30` frames futuros (`1 s`) e os codifica em `WebP` animado lossless;
+  - o host mantem os batches apenas em memoria por `deviceId + panelsSessionId + batchSequence`;
+  - o device baixa o batch por HTTP autenticado e toca localmente uma unica vez.
+- O comando tracked novo e `queue_panels_batch` e usa `PanelsBatchCommandPayload` com:
+  - `panelsSessionId`
+  - `batchSequence`
+  - `downloadUrl`
+  - `sha256`
+  - `fileSizeBytes`
+  - `contentType`
+  - `frameCount`
+  - `durationMs`
+- `batchSequence` e monotono por sessao e define a ordenacao `ativo -> proximo`.
+- `DeviceServerHost.RegisterPanelsBatch(...)` calcula `sha256`, expira batches antigos e monta a URL autenticada do download.
+- `ClearPanelsBatches(...)` e chamado no teardown/fallback para evitar reter batches alem do necessario.
+- Compatibilidade:
+  - o fluxo WS binario `Frame128x64` continua intocado;
+  - o host so tenta `WebP batch` quando o snapshot do device anuncia `animatedWebpBatchSupported = true`.
 
 ## Checklist apos alteracao
 
@@ -160,6 +187,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [DeviceServerHost.Advanced](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Firmware](../../../src/Device.Server/Hosting/DeviceServerHost.Firmware.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Mqtt](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
@@ -173,6 +201,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1) - assinatura: `public sealed class DevicePresenceMessage`
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1) - assinatura: `public sealed class DeviceTelemetryMessage`
+- [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1) - assinatura: `public sealed class PanelsBatchCommandPayload`
 - [DeviceFirmwareReleaseInfo](../../../src/Device.Protocol/Models/DeviceFirmwareReleaseInfo.cs#L1) - assinatura: `public sealed class DeviceFirmwareReleaseInfo`
 - [DeviceStatsMessage](../../../src/Device.Protocol/Models/DeviceStatsMessage.cs#L1) - assinatura: `public sealed class DeviceStatsMessage`
 - [DeviceLogMessage](../../../src/Device.Protocol/Models/DeviceLogMessage.cs#L1) - assinatura: `public sealed class DeviceLogMessage`

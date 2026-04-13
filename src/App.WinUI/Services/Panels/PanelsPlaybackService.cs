@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using App.WinUI.Models.Panels;
 using App.WinUI.Services.Devices;
+using Device.Protocol.Models;
 using Device.Server.Hosting;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
@@ -13,6 +14,9 @@ namespace App.WinUI.Services.Panels;
 internal sealed class PanelsPlaybackService : IDisposable
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(1000d / PanelsFrameComposer.TargetFps);
+    private static readonly TimeSpan BatchDuration = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan BatchPreloadLead = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan BatchCommandTimeout = TimeSpan.FromSeconds(10);
     private static readonly RgbaColor[] BlackFrame = Enumerable
         .Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
         .ToArray();
@@ -31,6 +35,7 @@ internal sealed class PanelsPlaybackService : IDisposable
     private PanelDefinition? activePanelSnapshot;
     private string? targetDeviceId;
     private Esp32S3LedOutput? matrixOutput;
+    private PanelsBatchTransportState? batchTransportState;
     private SuspendedPanelState? suspendedPanelState;
     private RgbaColor[] latestFrame = BlackFrame;
     private bool disposed;
@@ -271,6 +276,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         var normalizedDeviceId = deviceId.Trim();
         var session = await composer.CreateSessionAsync(snapshot, cancellationToken).ConfigureAwait(false);
         Esp32S3LedOutput? output = null;
+        PanelsBatchTransportState? batchState = null;
         CancellationTokenSource? cts = null;
 
         try
@@ -297,6 +303,11 @@ internal sealed class PanelsPlaybackService : IDisposable
                 output.SetBrightness(LedDefaults.Brightness);
             }
 
+            if (enableMatrixTransport && SupportsAnimatedWebpBatch(normalizedDeviceId))
+            {
+                batchState = await TryPrimeBatchTransportAsync(session, normalizedDeviceId, cancellationToken).ConfigureAwait(false);
+            }
+
             cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             lock (stateGate)
@@ -305,6 +316,7 @@ internal sealed class PanelsPlaybackService : IDisposable
                 activePanelSnapshot = snapshot;
                 targetDeviceId = normalizedDeviceId;
                 matrixOutput = output;
+                batchTransportState = batchState;
                 loopCts = cts;
                 latestFrame = BlackFrame;
                 if (resumeSuppressedSession)
@@ -313,9 +325,9 @@ internal sealed class PanelsPlaybackService : IDisposable
                 }
             }
 
-            await SendFrameAsync(session, output, DateTimeOffset.UtcNow).ConfigureAwait(false);
+            await SendFrameAsync(session, output, DateTimeOffset.UtcNow, sendToDevice: batchState is null).ConfigureAwait(false);
 
-            var localLoopTask = RunLoopAsync(session, output, cts.Token);
+            var localLoopTask = RunLoopAsync(session, output, normalizedDeviceId, batchState, cts.Token);
             lock (stateGate)
             {
                 loopTask = localLoopTask;
@@ -336,6 +348,8 @@ internal sealed class PanelsPlaybackService : IDisposable
     private async Task RunLoopAsync(
         PanelsFrameComposer.PanelCompositionSession session,
         Esp32S3LedOutput? output,
+        string deviceId,
+        PanelsBatchTransportState? batchState,
         CancellationToken cancellationToken)
     {
         try
@@ -352,7 +366,24 @@ internal sealed class PanelsPlaybackService : IDisposable
                     await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
                 }
 
-                await SendFrameAsync(session, output, DateTimeOffset.UtcNow).ConfigureAwait(false);
+                var utcNow = DateTimeOffset.UtcNow;
+                await SendFrameAsync(session, output, utcNow, sendToDevice: batchState is null).ConfigureAwait(false);
+
+                if (batchState is not null
+                    && utcNow + BatchPreloadLead >= batchState.NextBatchStartUtc)
+                {
+                    if (!await QueueNextBatchAsync(session, deviceId, batchState, cancellationToken).ConfigureAwait(false))
+                    {
+                        host.ClearPanelsBatches(deviceId, batchState.PanelsSessionId);
+                        batchState = null;
+                        lock (stateGate)
+                        {
+                            batchTransportState = null;
+                        }
+
+                        await SendFrameAsync(session, output, utcNow, sendToDevice: true).ConfigureAwait(false);
+                    }
+                }
 
                 var elapsedTicks = stopwatch.Elapsed.Ticks;
                 nextTickIndex = Math.Max(nextTickIndex + 1, (elapsedTicks / TickInterval.Ticks) + 1);
@@ -370,6 +401,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         PanelsFrameComposer.PanelCompositionSession? localSession;
         Esp32S3LedOutput? localOutput;
         string? localTargetDeviceId;
+        PanelsBatchTransportState? localBatchState;
 
         lock (stateGate)
         {
@@ -378,6 +410,7 @@ internal sealed class PanelsPlaybackService : IDisposable
             localSession = compositionSession;
             localOutput = matrixOutput;
             localTargetDeviceId = targetDeviceId;
+            localBatchState = batchTransportState;
 
             loopCts = null;
             loopTask = null;
@@ -385,6 +418,7 @@ internal sealed class PanelsPlaybackService : IDisposable
             matrixOutput = null;
             activePanelSnapshot = null;
             targetDeviceId = null;
+            batchTransportState = null;
             latestFrame = BlackFrame;
             if (clearSuspendedState)
             {
@@ -411,6 +445,11 @@ internal sealed class PanelsPlaybackService : IDisposable
 
         if (localOutput is not null && !string.IsNullOrWhiteSpace(localTargetDeviceId))
         {
+            if (localBatchState is not null)
+            {
+                host.ClearPanelsBatches(localTargetDeviceId, localBatchState.PanelsSessionId);
+            }
+
             localOutput.Send(LedPayloadFactory.CreateFramePayload(BlackFrame, PanelsDeviceSessionService.PanelsAppId));
             localOutput.Stop();
         }
@@ -429,7 +468,8 @@ internal sealed class PanelsPlaybackService : IDisposable
     private Task SendFrameAsync(
         PanelsFrameComposer.PanelCompositionSession session,
         Esp32S3LedOutput? output,
-        DateTimeOffset utcNow)
+        DateTimeOffset utcNow,
+        bool sendToDevice)
     {
         var frame = session.RenderFrame(utcNow);
         lock (stateGate)
@@ -437,9 +477,106 @@ internal sealed class PanelsPlaybackService : IDisposable
             latestFrame = frame;
         }
 
-        output?.Send(LedPayloadFactory.CreateFramePayload(frame, PanelsDeviceSessionService.PanelsAppId));
+        if (sendToDevice)
+        {
+            output?.Send(LedPayloadFactory.CreateFramePayload(frame, PanelsDeviceSessionService.PanelsAppId));
+        }
+
         RaiseFrameUpdated(frame);
         return Task.CompletedTask;
+    }
+
+    private bool SupportsAnimatedWebpBatch(string deviceId)
+    {
+        return host
+            .GetDevicesSnapshot()
+            .Any(snapshot =>
+                string.Equals(snapshot.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase)
+                && snapshot.AnimatedWebpBatchSupported == true);
+    }
+
+    private async Task<PanelsBatchTransportState?> TryPrimeBatchTransportAsync(
+        PanelsFrameComposer.PanelCompositionSession session,
+        string deviceId,
+        CancellationToken cancellationToken)
+    {
+        var state = new PanelsBatchTransportState(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow);
+
+        for (var i = 0; i < 2; i++)
+        {
+            if (!await QueueNextBatchAsync(session, deviceId, state, cancellationToken).ConfigureAwait(false))
+            {
+                host.ClearPanelsBatches(deviceId, state.PanelsSessionId);
+                return null;
+            }
+        }
+
+        return state;
+    }
+
+    private async Task<bool> QueueNextBatchAsync(
+        PanelsFrameComposer.PanelCompositionSession session,
+        string deviceId,
+        PanelsBatchTransportState state,
+        CancellationToken cancellationToken)
+    {
+        var (frames, frameDurationsMs) = RenderBatchFrames(session, state.NextBatchStartUtc);
+        var encodedBatch = PanelsAnimatedWebpEncoder.Encode(frames, frameDurationsMs, LedDefaults.MatrixWidth, LedDefaults.MatrixHeight);
+        var registration = host.RegisterPanelsBatch(
+            deviceId,
+            state.PanelsSessionId,
+            state.NextBatchSequence,
+            encodedBatch.Payload,
+            encodedBatch.FrameCount,
+            encodedBatch.DurationMs);
+
+        var payload = new PanelsBatchCommandPayload
+        {
+            PanelsSessionId = registration.PanelsSessionId,
+            BatchSequence = registration.BatchSequence,
+            DownloadUrl = registration.DownloadUrl,
+            Sha256 = registration.Sha256,
+            FileSizeBytes = registration.FileSizeBytes,
+            ContentType = registration.ContentType,
+            FrameCount = registration.FrameCount,
+            DurationMs = registration.DurationMs,
+        };
+
+        var result = await host
+            .SendCommandTrackedAsync(
+                deviceId,
+                DeviceCommandType.QueuePanelsBatch,
+                payload.ToParameters(),
+                timeout: BatchCommandTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!result.Accepted || !result.Success)
+        {
+            return false;
+        }
+
+        state.Advance();
+        return true;
+    }
+
+    private static (List<RgbaColor[]> Frames, List<int> FrameDurationsMs) RenderBatchFrames(
+        PanelsFrameComposer.PanelCompositionSession session,
+        DateTimeOffset batchStartUtc)
+    {
+        var frames = new List<RgbaColor[]>(PanelsFrameComposer.TargetFps);
+        var frameDurationsMs = new List<int>(PanelsFrameComposer.TargetFps);
+
+        for (var frameIndex = 0; frameIndex < PanelsFrameComposer.TargetFps; frameIndex++)
+        {
+            var frameOffsetMs = (frameIndex * 1000) / PanelsFrameComposer.TargetFps;
+            var nextFrameOffsetMs = ((frameIndex + 1) * 1000) / PanelsFrameComposer.TargetFps;
+            var frameDurationMs = Math.Max(1, nextFrameOffsetMs - frameOffsetMs);
+            frames.Add(session.RenderFrame(batchStartUtc + TimeSpan.FromMilliseconds(frameOffsetMs)));
+            frameDurationsMs.Add(frameDurationMs);
+        }
+
+        return (frames, frameDurationsMs);
     }
 
     private void RaiseFrameUpdated(RgbaColor[] frame)
@@ -453,4 +590,25 @@ internal sealed class PanelsPlaybackService : IDisposable
     }
 
     private sealed record SuspendedPanelState(PanelDefinition PanelSnapshot, string TargetDeviceId);
+
+    private sealed class PanelsBatchTransportState
+    {
+        public PanelsBatchTransportState(string panelsSessionId, DateTimeOffset nextBatchStartUtc)
+        {
+            PanelsSessionId = panelsSessionId;
+            NextBatchStartUtc = nextBatchStartUtc;
+        }
+
+        public string PanelsSessionId { get; }
+
+        public ulong NextBatchSequence { get; private set; } = 1;
+
+        public DateTimeOffset NextBatchStartUtc { get; private set; }
+
+        public void Advance()
+        {
+            NextBatchSequence++;
+            NextBatchStartUtc += BatchDuration;
+        }
+    }
 }

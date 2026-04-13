@@ -69,6 +69,12 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - A fila de saida do device segue politica `newest-wins` (`capacity=1` + `DropOldest`), portanto o runtime prioriza o frame mais novo sob carga em vez de tentar entregar todos.
 - A entrada recomendada para `gifhub75` neste v1 e imagem/GIF ja preformatado externamente para `128x64`; o compositor ainda escala quando necessario, mas esse nao e o caminho ideal de qualidade/performance.
 - Mesmo com o visualizador principal operando em `Bins128`, `Paineis` continuam usando transporte dedicado `Frame128x64` para o HUB75 fisico.
+- Quando o device anuncia `animatedWebpBatchSupported = true`, o host troca o stream frame-a-frame por lotes animados `WebP` de `1 s / 30 frames`:
+  - o compositor continua autoritativo e resolve todos os widgets/sobreposicoes no host;
+  - o host guarda apenas `ativo + proximo` em memoria por sessao/device;
+  - o envio ao device acontece por `queue_panels_batch` + download HTTP autenticado no `Device.Server`;
+  - o fallback para `Frame128x64` continua automatico se o device nao suportar batches ou se a fila de lotes falhar.
+- O modo WebP batch e `play-once queue` no v1: o firmware toca o lote atual uma vez, troca no boundary para o proximo e, em underrun, segura o ultimo frame valido.
 - Quando o `Visualizador HUB75` assume prioridade, o runtime do painel entra em suspensao retomavel:
   - o loop/frame output para;
   - o painel deixa de aparecer como ativo na galeria;
@@ -101,6 +107,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [PanelWidgetDefinition](../../../src/App.WinUI/Models/Panels/PanelWidgetDefinition.cs#L1)
 - [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
 - [PanelsMediaCache](../../../src/App.WinUI/Services/Panels/PanelsMediaCache.cs#L1)
+- [PanelsAnimatedWebpEncoder](../../../src/App.WinUI/Services/Panels/PanelsAnimatedWebpEncoder.cs#L1)
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [PanelsDeviceSessionService](../../../src/App.WinUI/Services/Devices/PanelsDeviceSessionService.cs#L1)
 - [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
@@ -110,3 +117,5 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [Esp32S3LedOutput](../../../src/Output/Led/Esp32S3LedOutput.cs#L1)
 - [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1)
+- [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)

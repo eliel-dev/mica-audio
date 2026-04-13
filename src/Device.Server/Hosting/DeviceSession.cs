@@ -106,7 +106,8 @@ internal sealed class DeviceSession : IDisposable
         int? brightnessRequested = null,
         int? brightnessApplied = null,
         bool? testLedEnabled = null,
-        int? testLedDuty = null)
+        int? testLedDuty = null,
+        bool? animatedWebpBatchSupported = null)
     {
         var now = timeProvider.GetUtcNow();
         LastActivityUtc = now;
@@ -146,7 +147,8 @@ internal sealed class DeviceSession : IDisposable
             brightnessRequested,
             brightnessApplied,
             testLedEnabled,
-            testLedDuty);
+            testLedDuty,
+            animatedWebpBatchSupported);
     }
 
     public void MarkStats(

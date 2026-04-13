@@ -29,6 +29,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | `brightnessApplied` | `int?` | brilho efetivamente aplicado no painel |
 | `testLedEnabled` | `bool?` | estado legado/compatibilidade do LED auxiliar continuo |
 | `testLedDuty` | `int?` | duty atual do LED auxiliar em escala 8-bit (quando aplicavel) |
+| `animatedWebpBatchSupported` | `bool?` | capacidade declarada pelo firmware para receber batches animados `WebP` da sessao `Paineis` |
 | `streamFramesReceived` | `uint?` | quantidade de payloads de stream aceitos pelo firmware (`bins` ou `frame`) |
 | `streamFramesApplied` | `uint?` | quantidade de payloads novos efetivamente exibidos ao menos uma vez no painel HUB75 |
 | `hub75PresentFrames` | `uint?` | contador monotono de `flipDMABuffer()` realmente apresentados no HUB75 |
@@ -48,6 +49,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 7. `streamFramesApplied` representa payload novo efetivamente exibido ao menos uma vez; reapresentacoes do mesmo conteudo nao incrementam esse contador.
 8. `hub75PresentFrames` representa a cadencia fisica de apresentacao do HUB75; cada flip real incrementa esse contador monotono.
 9. `networkPollDeferCount` e emitido apenas pelo firmware nesta entrega e serve como diagnostico bruto do budget cooperativo de rede no `loop()`.
+10. `animatedWebpBatchSupported` funciona como capability bit para o host optar por `queue_panels_batch` em `Paineis`; `null` continua significando firmware legado sem suporte declarado.
 
 ## Persistencia local
 

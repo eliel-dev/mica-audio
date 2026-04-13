@@ -72,4 +72,6 @@ public sealed class DeviceTelemetryMessage
     public string? BoardModel { get; init; }
 
     public string? PanelType { get; init; }
+
+    public bool? AnimatedWebpBatchSupported { get; init; }
 }

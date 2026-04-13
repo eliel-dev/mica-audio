@@ -39,6 +39,7 @@ public sealed class DeviceTelemetryMessageTests
               "brightnessApplied": 120,
               "testLedEnabled": true,
               "testLedDuty": 120,
+              "animatedWebpBatchSupported": true,
               "firmwareVersion": "v1.2.3",
               "ipAddress": "192.168.1.23"
             }
@@ -71,6 +72,7 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Equal(120, telemetry.BrightnessApplied);
         Assert.True(telemetry.TestLedEnabled);
         Assert.Equal(120, telemetry.TestLedDuty);
+        Assert.True(telemetry.AnimatedWebpBatchSupported);
         Assert.Equal("v1.2.3", telemetry.FirmwareVersion);
         Assert.Equal("192.168.1.23", telemetry.IpAddress);
     }
@@ -114,6 +116,7 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Null(telemetry.BrightnessApplied);
         Assert.Null(telemetry.TestLedEnabled);
         Assert.Null(telemetry.TestLedDuty);
+        Assert.Null(telemetry.AnimatedWebpBatchSupported);
     }
 
     [Fact]

@@ -330,6 +330,15 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
+    public string GetPublicHttpBaseAddress()
+    {
+        var host = string.IsNullOrWhiteSpace(runtimeConfig.PublicHost)
+            ? runtimeConfig.ListenHost
+            : runtimeConfig.PublicHost;
+
+        return $"http://{host}:{runtimeConfig.Port}";
+    }
+
     public void SeedDevices(IEnumerable<DeviceRecord> devices)
     {
         ArgumentNullException.ThrowIfNull(devices);

@@ -258,6 +258,33 @@
 - `logs` publica eventos estruturados das categorias `wifi`, `mqtt`, `portal`, `ws`, `stream` e `command`.
 - `WStype_BIN` foi preservado intacto como hot path visual; WS-texto virou apenas compatibilidade passiva.
 - O firmware persiste `mqttHost`, `mqttPort` e `mqttRootTopic` em `Preferences`.
+
+## Atualizacao 2026-04 - Playback Efemero De Batches WebP Para `Paineis`
+
+- O firmware oficial ganhou um runtime dedicado para `queue_panels_batch`, inspirado no modelo de decode/playback desacoplado usado por projetos como Tronbyt:
+  - o `loop()` principal continua dono de Wi-Fi, MQTT, WS e comandos;
+  - uma task separada cuida do decode/playback do batch ativo.
+- O payload do comando tracked inclui:
+  - `panelsSessionId`
+  - `batchSequence`
+  - `downloadUrl`
+  - `sha256`
+  - `fileSizeBytes`
+  - `contentType = image/webp`
+  - `frameCount = 30`
+  - `durationMs = 1000`
+- Fluxo do device:
+  1. recebe `queue_panels_batch` via MQTT;
+  2. baixa o arquivo por `HTTPClient` usando a mesma autenticacao HTTP do device;
+  3. valida `sha256`, `fileSizeBytes` e `contentType`;
+  4. valida o lote `WebP` animado com `libwebp` (`WebPAnimDecoder`) antes de enfileirar;
+  5. toca o batch uma vez em task dedicada, convertendo cada frame RGBA para o framebuffer `RGB565`/DMA ja existente.
+- Politicas travadas do v1:
+  - batches ficam apenas em RAM/PSRAM, sem `FFat`;
+  - existe apenas `ativo + proximo`;
+  - se o proximo nao chegar a tempo, o device mantem o ultimo frame valido e registra underrun;
+  - stream WS bruto (`bins`/`frame`) cancela o playback WebP e volta a ser dono do painel imediatamente.
+- O firmware agora declara `animatedWebpBatchSupported = true` na telemetria para que o host habilite esse caminho apenas quando suportado.
 - O pacote oficial entregue pelo app agora inclui:
   - `esp32s3-devkitc1-128x64-dma_exp_merged.bin`
   - `esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json`

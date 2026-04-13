@@ -66,6 +66,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260209005" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3800.47" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.11.1" />
     <PackageReference Include="System.IO.Ports" Version="10.0.0" />
     <PackageReference Include="System.Management" Version="10.0.0" />
     <Manifest Include="$(ApplicationManifest)" />

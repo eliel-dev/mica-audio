@@ -93,6 +93,8 @@ public sealed class DeviceSnapshot
 
     public string? PanelType { get; init; }
 
+    public bool? AnimatedWebpBatchSupported { get; init; }
+
     public string? ChipModel { get; init; }
 
     public int? ChipRevision { get; init; }

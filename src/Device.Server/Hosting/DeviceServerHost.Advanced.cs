@@ -525,7 +525,8 @@ public sealed partial class DeviceServerHost
             telemetry.BrightnessRequested,
             telemetry.BrightnessApplied,
             telemetry.TestLedEnabled,
-            telemetry.TestLedDuty);
+            telemetry.TestLedDuty,
+            telemetry.AnimatedWebpBatchSupported);
         return true;
     }
 
@@ -692,6 +693,7 @@ public sealed partial class DeviceServerHost
             DeviceCommandType.SetAppConfig => "set_app_config",
             DeviceCommandType.SetBrightness => "set_brightness",
             DeviceCommandType.UpdateFirmware => "update_firmware",
+            DeviceCommandType.QueuePanelsBatch => "queue_panels_batch",
             _ => "unknown",
         };
     }

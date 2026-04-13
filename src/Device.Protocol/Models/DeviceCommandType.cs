@@ -10,4 +10,5 @@ public enum DeviceCommandType
     SetAppConfig = 7,
     SetBrightness = 8,
     UpdateFirmware = 9,
+    QueuePanelsBatch = 10,
 }

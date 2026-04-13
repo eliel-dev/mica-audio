@@ -23,6 +23,7 @@ public sealed partial class DeviceServerHost
         device.MapGet("/config", (Delegate)HandleDeviceConfig);
         device.MapGet("/firmware/latest", (Delegate)HandleDeviceFirmwareLatest);
         device.MapGet("/firmware/download", (Delegate)HandleDeviceFirmwareDownload);
+        device.MapGet("/panels/batches/{batchSequence:long}.webp", (Delegate)HandlePanelsBatchDownload);
         device.MapPost("/command-ack", (Delegate)HandleCommandAckAsync)
             .RequireRateLimiting(CommandAckRatePolicy);
 

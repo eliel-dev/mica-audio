@@ -92,6 +92,7 @@ internal static class DeviceRecordMutations
             ActiveAppName = string.IsNullOrWhiteSpace(activeAppName) ? source.ActiveAppName : activeAppName,
             BoardModel = string.IsNullOrWhiteSpace(boardModel) ? source.BoardModel : boardModel,
             PanelType = string.IsNullOrWhiteSpace(panelType) ? source.PanelType : panelType,
+            AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,
@@ -156,6 +157,7 @@ internal static class DeviceRecordMutations
             ActiveAppName = source.ActiveAppName,
             BoardModel = source.BoardModel,
             PanelType = source.PanelType,
+            AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,
@@ -205,7 +207,8 @@ internal static class DeviceRecordMutations
         int? brightnessRequested = null,
         int? brightnessApplied = null,
         bool? testLedEnabled = null,
-        int? testLedDuty = null)
+        int? testLedDuty = null,
+        bool? animatedWebpBatchSupported = null)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -256,6 +259,7 @@ internal static class DeviceRecordMutations
             ActiveAppName = string.IsNullOrWhiteSpace(activeAppName) ? source.ActiveAppName : activeAppName,
             BoardModel = string.IsNullOrWhiteSpace(boardModel) ? source.BoardModel : boardModel,
             PanelType = string.IsNullOrWhiteSpace(panelType) ? source.PanelType : panelType,
+            AnimatedWebpBatchSupported = animatedWebpBatchSupported ?? source.AnimatedWebpBatchSupported,
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,
@@ -333,6 +337,7 @@ internal static class DeviceRecordMutations
             ActiveAppName = source.ActiveAppName,
             BoardModel = source.BoardModel,
             PanelType = source.PanelType,
+            AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
             ChipModel = string.IsNullOrWhiteSpace(chipModel) ? source.ChipModel : chipModel,
             ChipRevision = chipRevision ?? source.ChipRevision,
             ChipCores = chipCores ?? source.ChipCores,
@@ -397,6 +402,7 @@ internal static class DeviceRecordMutations
             ActiveAppName = source.ActiveAppName,
             BoardModel = source.BoardModel,
             PanelType = source.PanelType,
+            AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,

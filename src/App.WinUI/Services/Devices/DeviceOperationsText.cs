@@ -59,6 +59,7 @@ internal static class DeviceOperationsText
             DeviceCommandType.SetAppConfig => "configurar app",
             DeviceCommandType.SetBrightness => "ajustar brilho do painel",
             DeviceCommandType.UpdateFirmware => "atualizar firmware",
+            DeviceCommandType.QueuePanelsBatch => "enfileirar lote WebP de paineis",
             _ => "comando",
         };
 

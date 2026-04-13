@@ -1,6 +1,7 @@
 using App.WinUI.Models.Panels;
 using App.WinUI.Services.Gif;
 using App.WinUI.Services.Panels;
+using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 
 namespace Integration.Smoke;
@@ -224,6 +225,29 @@ public sealed class PanelsFrameComposerTests
     public void TargetFps_ShouldBeThirtyForGifHub75Playback()
     {
         Assert.Equal(30, PanelsFrameComposer.TargetFps);
+    }
+
+    [Fact]
+    public void AnimatedWebpEncoder_ShouldEmitWebpContainerAndPreserveBatchMetadata()
+    {
+        var frameA = Enumerable
+            .Repeat(new RgbaColor(255, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
+            .ToArray();
+        var frameB = Enumerable
+            .Repeat(new RgbaColor(0, 0, 255, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
+            .ToArray();
+
+        var encoded = PanelsAnimatedWebpEncoder.Encode(
+            [frameA, frameB],
+            [33, 67],
+            LedDefaults.MatrixWidth,
+            LedDefaults.MatrixHeight);
+
+        Assert.Equal(2, encoded.FrameCount);
+        Assert.Equal(100, encoded.DurationMs);
+        Assert.True(encoded.Payload.Length > 12);
+        Assert.Equal("RIFF"u8.ToArray(), encoded.Payload[..4]);
+        Assert.Equal("WEBP"u8.ToArray(), encoded.Payload[8..12]);
     }
 
     private static string CreateTempDirectory()
