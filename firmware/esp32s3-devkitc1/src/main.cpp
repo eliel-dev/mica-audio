@@ -41,6 +41,7 @@ namespace {
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-60-fps-com-pacing-fisico-correto
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-diagnostic-matrix-envs
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-fallback-local-de-conectividade
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---freertos-render-task-plan
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 145;
@@ -106,6 +107,8 @@ constexpr uint32_t kMicrosPerSecond = 1000000UL;
 constexpr uint32_t kHub75TargetPresentIntervalUs =
     (kMicrosPerSecond + kHub75TargetPresentFps - 1u) / kHub75TargetPresentFps;
 constexpr uint32_t kHub75FallbackPresentIntervalUs = 20000UL;
+// DOCS: docs/handoffs/2026-04-14-freertos-render-task-plan.md#fase-0-baseline-e-instrumentacao
+constexpr uint32_t kRenderOverrunThresholdUs = kHub75TargetPresentIntervalUs;
 static_assert((kMatrixHeight % 2) == 0, "MICA_MATRIX_HEIGHT must be even.");
 static_assert(
     MICA_HUB75_LATCH_BLANKING >= 1 && MICA_HUB75_LATCH_BLANKING <= 4,
@@ -282,6 +285,9 @@ uint32_t gStreamFramesApplied = 0;
 uint32_t gStreamSequenceGapCount = 0;
 uint32_t gStreamInvalidFrameCount = 0;
 uint32_t gNetworkPollDeferCount = 0;
+// DOCS: docs/handoffs/2026-04-14-freertos-render-task-plan.md#fase-0-baseline-e-instrumentacao
+uint32_t gLastRenderUs = 0;
+uint32_t gRenderOverrunCount = 0;
 bool gProvisioningPortalActive = false;
 String gWifiState = kWifiStateConnecting;
 String gLastWifiEvent = "boot";
@@ -2871,6 +2877,12 @@ void sendTelemetry(bool force) {
   telemetry["streamSequenceGapCount"] = gStreamSequenceGapCount;
   telemetry["streamInvalidFrameCount"] = gStreamInvalidFrameCount;
   telemetry["networkPollDeferCount"] = gNetworkPollDeferCount;
+  if (gLastRenderUs > 0u) {
+    telemetry["renderTimeUs"] = gLastRenderUs;
+  }
+  if (gRenderOverrunCount > 0u) {
+    telemetry["renderOverrunCount"] = gRenderOverrunCount;
+  }
   telemetry["telemetrySequence"] = ++gTelemetrySequence;
   telemetry["brightnessCap"] = gBrightnessCap;
   telemetry["brightnessRequested"] = gStreamBrightness;
@@ -4612,6 +4624,7 @@ void loop() {
 
   const uint32_t nowUs = micros();
   if (gMatrixReady && shouldPresentMatrixFrame(nowUs)) {
+    const uint32_t renderStartUs = micros();
     bool presented = false;
     bool presentedStreamPayload = false;
     if (gHub75FallbackState != Hub75FallbackState::None) {
@@ -4638,6 +4651,12 @@ void loop() {
     }
 
     if (presented) {
+      const uint32_t renderElapsedUs = elapsedMicrosSince(renderStartUs);
+      gLastRenderUs = renderElapsedUs;
+      if (renderElapsedUs > kRenderOverrunThresholdUs) {
+        gRenderOverrunCount++;
+      }
+
       if (presentedStreamPayload) {
         gMatrixFrameDirty = false;
         if (gPendingMatrixPresentCountsAsApplied) {

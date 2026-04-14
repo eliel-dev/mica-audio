@@ -431,3 +431,19 @@
 - [board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)
 - [particao local 3MB APP / 9.9MB FATFS](../../../firmware/esp32s3-devkitc1/partitions/mica_app3M_fat9M_16MB.csv#L1)
 - [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L1)
+
+## Atualizacao 2026-04 - FreeRTOS render task plan
+
+- Plano incremental de migracao para uso explícito de FreeRTOS preservando o ecossistema Arduino/PlatformIO.
+- Fase 0 (esta entrega): instrumentacao de render sem alterar fluxo.
+  - Adicionados `gLastRenderUs` e `gRenderOverrunCount` em `main.cpp`.
+  - Telemetria passa a incluir `renderTimeUs` (omitido antes do primeiro render) e `renderOverrunCount` (omitido se zero).
+  - Threshold de overrun: `kRenderOverrunThresholdUs` = 1 frame a 60fps (~16666 µs).
+- Fases seguintes documentadas em `docs/handoffs/2026-04-14-freertos-render-task-plan.md`.
+- Invariantes que nao podem quebrar em nenhuma fase: provisioning serial, portal AP, Wi-Fi, WebSocket, stream bins, frame RGB565, telemetria, brilho, test LED, fallback, timeout de frames, playback WebP, OTA.
+- Arquitetura alvo: Core 0 = rede/conectividade (loop Arduino); Core 1 = render task dedicada (priority 3) + panelsBatchPlaybackTask existente (priority 2).
+- Sincronizacao: `portMUX gStreamBufferMux` se mantém; migracao para EventGroup em Fase 2; mutex de acesso ao `gMatrix` em Fase 3.
+
+## Referencias de plano FreeRTOS
+
+- [Handoff completo do plano](../../../docs/handoffs/2026-04-14-freertos-render-task-plan.md#L1)
