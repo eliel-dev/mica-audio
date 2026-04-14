@@ -37,6 +37,8 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | `streamInvalidFrameCount` | `uint?` | quantidade acumulada de payloads invalidos rejeitados |
 | `streamLastSequence` | `uint?` | ultimo numero de sequencia aceito do stream |
 | `networkPollDeferCount` | `uint?` | quantidade monotona de etapas elegiveis de rede adiadas para a iteracao seguinte por esgotamento do budget cooperativo do `loop()` |
+| `renderTimeUs` | `uint?` | tempo em microsegundos do ultimo ciclo de render que efetivamente apresentou um frame no HUB75; omitido se nenhum frame foi apresentado desde o boot |
+| `renderOverrunCount` | `uint?` | quantidade acumulada de ciclos de render que excederam o threshold de `kRenderOverrunThresholdUs` (1 frame a 60fps = ~16666 µs); omitido se zero |
 
 ## Regras de sanitizacao e pass-through
 
@@ -50,6 +52,8 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 8. `hub75PresentFrames` representa a cadencia fisica de apresentacao do HUB75; cada flip real incrementa esse contador monotono.
 9. `networkPollDeferCount` e emitido apenas pelo firmware nesta entrega e serve como diagnostico bruto do budget cooperativo de rede no `loop()`.
 10. `animatedWebpBatchSupported` funciona como capability bit para o host optar por `queue_panels_batch` em `Paineis`; `null` continua significando firmware legado sem suporte declarado.
+11. `renderTimeUs` so e emitido quando um frame foi efetivamente apresentado ao menos uma vez desde o boot; o servidor faz pass-through sem clamp.
+12. `renderOverrunCount` so e emitido quando `> 0`; serve como indicador de pressao no caminho de render antes da migracao FreeRTOS explícita.
 
 ## Persistencia local
 

@@ -35,6 +35,7 @@ Pontos principais do cutover HUB75 128x64:
 - [Board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)
 - [Particao local 3MB APP / 9.9MB FATFS](../../../firmware/esp32s3-devkitc1/partitions/mica_app3M_fat9M_16MB.csv#L1)
 - [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L1)
+- [Plano FreeRTOS render task (handoff)](../../../docs/handoffs/2026-04-14-freertos-render-task-plan.md#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
 - [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
