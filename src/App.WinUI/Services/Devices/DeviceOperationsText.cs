@@ -1,5 +1,7 @@
 using Device.Protocol.Models;
 
+// DOCS: docs/handoffs/2026-04-14-versioning-semver-e-ota-stages.md
+
 namespace App.WinUI.Services.Devices;
 
 internal static class DeviceOperationsText
@@ -72,6 +74,8 @@ internal static class DeviceOperationsText
 
         return stage.Trim().ToLowerInvariant() switch
         {
+            "queued" => "na fila",
+            "sent" => "enviado",
             "received" => "recebido",
             "metadata" => "validando pacote",
             "downloading" => "baixando firmware",

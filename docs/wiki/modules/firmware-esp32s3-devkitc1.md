@@ -3,8 +3,8 @@
 ## Referencias oficiais obrigatorias
 
 - Para qualquer integracao do `ESP32-S3` neste repositorio, consultar primeiro:
-  - `https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32s3/index.html`
-  - `https://github.com/espressif/esp-idf/blob/v5.5.3/docs/en/index.rst`
+  - `https://docs.espressif.com/projects/esp-idf/en/v5.5.4/esp32s3/index.html`
+  - `https://github.com/espressif/esp-idf/blob/v5.5.4/docs/en/index.rst`
 - Essa exigencia vale para decisoes de implementacao, configuracao, OTA, networking, boot, particoes e uso de APIs de baixo nivel do SoC.
 
 ## Fluxo de execucao

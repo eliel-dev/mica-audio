@@ -2,6 +2,7 @@ using App.WinUI.Infrastructure.Serial;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.UI;
 
 namespace App.WinUI.Views;
@@ -14,6 +15,7 @@ public sealed partial class SettingsPage
     private ComboBox serialMonitorPortComboBox = null!;
     private Button serialMonitorConnectButton = null!;
     private Button serialMonitorClearButton = null!;
+    private Button serialMonitorCopyAllButton = null!;
     private ToggleSwitch serialMonitorAutoFollowToggle = null!;
     private TextBlock serialMonitorStatusText = null!;
     private ListView serialMonitorListView = null!;
@@ -72,6 +74,7 @@ public sealed partial class SettingsPage
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         serialMonitorPortComboBox = new ComboBox
         {
@@ -94,6 +97,17 @@ public sealed partial class SettingsPage
         Grid.SetColumn(serialMonitorConnectButton, 1);
         actionsGrid.Children.Add(serialMonitorConnectButton);
 
+        serialMonitorCopyAllButton = new Button
+        {
+            Content = "Copiar tudo",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Style = Application.Current.Resources["AppChromeButtonStyle"] as Style,
+            IsEnabled = false,
+        };
+        serialMonitorCopyAllButton.Click += OnSerialMonitorCopyAllClicked;
+        Grid.SetColumn(serialMonitorCopyAllButton, 2);
+        actionsGrid.Children.Add(serialMonitorCopyAllButton);
+
         serialMonitorClearButton = new Button
         {
             Content = "Limpar",
@@ -102,7 +116,7 @@ public sealed partial class SettingsPage
             IsEnabled = false,
         };
         serialMonitorClearButton.Click += OnSerialMonitorClearClicked;
-        Grid.SetColumn(serialMonitorClearButton, 2);
+        Grid.SetColumn(serialMonitorClearButton, 3);
         actionsGrid.Children.Add(serialMonitorClearButton);
 
         host.Children.Add(actionsGrid);
@@ -230,11 +244,25 @@ public sealed partial class SettingsPage
         RefreshSerialMonitorView(serialMonitorService.GetStateSnapshot());
     }
 
+    private void OnSerialMonitorCopyAllClicked(object sender, RoutedEventArgs e)
+    {
+        var text = serialMonitorService.ExportAllText();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var data = new DataPackage();
+        data.SetText(text);
+        Clipboard.SetContent(data);
+    }
+
     private void RefreshSerialMonitorView(SerialMonitorSessionState state)
     {
         if (serialMonitorPortComboBox is null
             || serialMonitorConnectButton is null
             || serialMonitorClearButton is null
+            || serialMonitorCopyAllButton is null
             || serialMonitorStatusText is null
             || serialMonitorListView is null
             || serialMonitorPlaceholderText is null)
@@ -261,6 +289,7 @@ public sealed partial class SettingsPage
                 || !string.IsNullOrWhiteSpace(state.SelectedPortName));
 
         serialMonitorClearButton.IsEnabled = state.LineCount > 0;
+        serialMonitorCopyAllButton.IsEnabled = state.LineCount > 0;
         serialMonitorStatusText.Text = state.StatusText;
 
         UpdateSerialMonitorList(state.VisibleLines);
@@ -340,6 +369,7 @@ public sealed partial class SettingsPage
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 11.5,
                 TextWrapping = TextWrapping.WrapWholeWords,
+                IsTextSelectionEnabled = true,
                 Foreground = new SolidColorBrush(Color.FromArgb(255, 231, 231, 231)),
             },
         };

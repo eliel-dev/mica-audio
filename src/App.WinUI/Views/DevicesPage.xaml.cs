@@ -20,6 +20,7 @@ namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 // DOCS: docs/wiki/modules/app-winui.md
+// DOCS: docs/handoffs/2026-04-14-fix-slider-brilho-sempre-100.md
 public sealed partial class DevicesPage : Page
 {
     private const string LocalDraftScope = "__local__";
@@ -273,7 +274,8 @@ public sealed partial class DevicesPage : Page
         }
 
         var normalized = Math.Clamp((int)Math.Round(e.NewValue), SafeBrightnessMin, SafeBrightnessMax);
-        DashboardBrightnessValueText.Text = $"{normalized}/160";
+        var percentage = Math.Round((double)normalized / SafeBrightnessMax * 100.0);
+        DashboardBrightnessValueText.Text = $"{percentage:F0}%";
         brightnessCommitPending = true;
     }
 

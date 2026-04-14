@@ -45,7 +45,10 @@ internal sealed class PrecompiledFirmwareCatalogAdapter : IDeviceOfficialFirmwar
             artifact.FirmwarePath,
             artifact.ManifestPath,
             artifact.Manifest.Sha256,
-            artifact.Manifest.FileSizeBytes);
+            artifact.Manifest.FileSizeBytes,
+            OtaFilePath: artifact.OtaFirmwarePath,
+            OtaSha256: artifact.Manifest.OtaSha256,
+            OtaFileSizeBytes: artifact.Manifest.OtaFileSizeBytes);
         return true;
     }
 }

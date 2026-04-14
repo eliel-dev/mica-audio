@@ -2,6 +2,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
+// DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 public interface IDeviceOfficialFirmwareCatalog
 {
     bool TryResolveLatest(
@@ -21,4 +22,7 @@ public sealed record DeviceOfficialFirmwarePackage(
     string FilePath,
     string ManifestPath,
     string Sha256,
-    long FileSizeBytes);
+    long FileSizeBytes,
+    string? OtaFilePath = null,
+    string OtaSha256 = "",
+    long OtaFileSizeBytes = 0);

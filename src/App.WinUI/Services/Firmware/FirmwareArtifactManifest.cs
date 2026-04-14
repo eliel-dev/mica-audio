@@ -21,4 +21,10 @@ internal sealed class FirmwareArtifactManifest
     public string Sha256 { get; init; } = string.Empty;
 
     public long FileSizeBytes { get; init; }
+
+    public string OtaFileName { get; init; } = string.Empty;
+
+    public string OtaSha256 { get; init; } = string.Empty;
+
+    public long OtaFileSizeBytes { get; init; }
 }

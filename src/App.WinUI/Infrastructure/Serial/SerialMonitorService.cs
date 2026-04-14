@@ -51,6 +51,8 @@ internal interface ISerialMonitorService : IAsyncDisposable
     Task DisconnectAsync(CancellationToken cancellationToken = default);
 
     void Clear();
+
+    string ExportAllText();
 }
 
 // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-monitor-serial-em-configuracoes
@@ -265,6 +267,15 @@ internal sealed partial class SerialMonitorService : ISerialMonitorService
         }
 
         RaiseStateChanged();
+    }
+
+    public string ExportAllText()
+    {
+        lock (sync)
+        {
+            var lines = lineStore.Snapshot();
+            return string.Join(Environment.NewLine, lines.Select(l => l.Text));
+        }
     }
 
     public async ValueTask DisposeAsync()

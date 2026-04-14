@@ -11,6 +11,7 @@ namespace App.WinUI.Services.Firmware;
 
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
 // DOCS: docs/wiki/guides/setup-new-device.md#referencias-de-codigo
+// DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 internal sealed partial class PrecompiledFirmwareService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -856,7 +857,78 @@ internal sealed partial class PrecompiledFirmwareService
             BuiltAtUtc = manifest.BuiltAtUtc,
             Sha256 = sha256,
             FileSizeBytes = actualFileSize,
+            OtaFileName = manifest.OtaFileName,
+            OtaSha256 = manifest.OtaSha256,
+            OtaFileSizeBytes = manifest.OtaFileSizeBytes,
         };
+
+        if (!string.IsNullOrWhiteSpace(normalizedManifest.OtaFileName))
+        {
+            var firmwareDirectory = Path.GetDirectoryName(firmwarePath);
+            var otaPath = string.IsNullOrWhiteSpace(firmwareDirectory)
+                ? normalizedManifest.OtaFileName
+                : Path.Combine(firmwareDirectory, normalizedManifest.OtaFileName);
+
+            if (!File.Exists(otaPath))
+            {
+                error = $"Binario OTA referenciado no manifesto nao encontrado: {normalizedManifest.OtaFileName}";
+                return false;
+            }
+
+            long otaActualSize;
+            try
+            {
+                otaActualSize = new FileInfo(otaPath).Length;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                error = $"Falha ao ler metadados do binario OTA: {ex.Message}";
+                return false;
+            }
+
+            if (otaActualSize <= 0)
+            {
+                error = "Binario OTA invalido: tamanho zero.";
+                return false;
+            }
+
+            if (normalizedManifest.OtaFileSizeBytes > 0 && normalizedManifest.OtaFileSizeBytes != otaActualSize)
+            {
+                error = "Manifesto do firmware com tamanho OTA divergente do binario.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedManifest.OtaSha256))
+            {
+                if (!TryComputeSha256(otaPath, out var otaActualSha256, out error))
+                {
+                    return false;
+                }
+
+                if (!string.Equals(normalizedManifest.OtaSha256.ToLowerInvariant(), otaActualSha256, StringComparison.Ordinal))
+                {
+                    error = "Manifesto do firmware com hash OTA divergente do binario.";
+                    return false;
+                }
+            }
+
+            normalizedManifest = new FirmwareArtifactManifest
+            {
+                SchemaVersion = normalizedManifest.SchemaVersion,
+                FirmwareVersion = normalizedManifest.FirmwareVersion,
+                GitSha = normalizedManifest.GitSha,
+                Profile = normalizedManifest.Profile,
+                BoardModel = normalizedManifest.BoardModel,
+                PanelType = normalizedManifest.PanelType,
+                ControlPlane = normalizedManifest.ControlPlane,
+                BuiltAtUtc = normalizedManifest.BuiltAtUtc,
+                Sha256 = normalizedManifest.Sha256,
+                FileSizeBytes = normalizedManifest.FileSizeBytes,
+                OtaFileName = normalizedManifest.OtaFileName,
+                OtaSha256 = normalizedManifest.OtaSha256,
+                OtaFileSizeBytes = otaActualSize,
+            };
+        }
 
         return true;
     }

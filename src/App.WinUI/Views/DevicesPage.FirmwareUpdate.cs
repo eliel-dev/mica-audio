@@ -1,5 +1,6 @@
 using App.WinUI.Services.Firmware;
 using Device.Protocol.Models;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -7,6 +8,7 @@ namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/app-winui.md
 // DOCS: docs/wiki/reference/device-observability-dashboard.md
+// DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 public sealed partial class DevicesPage
 {
     private static readonly TimeSpan FirmwareVersionObservationTimeout = TimeSpan.FromSeconds(15);
@@ -130,30 +132,106 @@ public sealed partial class DevicesPage
         }
 
         var targetVersion = artifact.Manifest.FirmwareVersion;
-        PairingCodeText.Severity = InfoBarSeverity.Informational;
-        PairingCodeText.Message = $"OTA iniciada para {snapshot.DeviceId}; aguardando validacao segura de {targetVersion}.";
-        AddLocalLog($"Iniciando OTA para {snapshot.DeviceId}: atual={snapshot.FirmwareVersion ?? "desconhecida"} releaseOficial={targetVersion}; aguardando safe update mode.");
+        var currentVersion = string.IsNullOrWhiteSpace(snapshot.FirmwareVersion)
+            ? "desconhecida"
+            : snapshot.FirmwareVersion;
+
+        var progressBar = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Value = 0,
+            IsIndeterminate = false,
+            HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Stretch,
+        };
+        var stageText = new TextBlock
+        {
+            Text = "Iniciando OTA...",
+            Opacity = 0.82,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        var percentText = new TextBlock
+        {
+            Text = "0%",
+            HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Center,
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold,
+        };
+
+        var dialogContent = new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                new TextBlock { Text = $"Firmware atual: {currentVersion}", TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = $"Release: {targetVersion}", TextWrapping = TextWrapping.Wrap },
+                progressBar,
+                percentText,
+                stageText,
+            },
+        };
+
+        var dialog = new ContentDialog
+        {
+            Title = "Atualizando firmware",
+            XamlRoot = XamlRoot,
+            Content = dialogContent,
+            CloseButtonText = "Fechar",
+        };
+
+        void OnStateChanged(object? sender, EventArgs e)
+        {
+            var state = ops.GetStateSnapshot();
+            var deviceId = snapshot.DeviceId;
+            if (state.CommandByDevice.TryGetValue(deviceId, out var cmd))
+            {
+                _ = DispatcherQueue.TryEnqueue(() =>
+                {
+                    progressBar.Value = Math.Clamp(cmd.Percent, 0, 100);
+                    percentText.Text = $"{Math.Clamp(cmd.Percent, 0, 100)}%";
+                    stageText.Text = string.IsNullOrWhiteSpace(cmd.Status)
+                        ? "Processando..."
+                        : cmd.Status;
+                });
+            }
+        }
+
+        ops.StateChanged += OnStateChanged;
+        var showTask = dialog.ShowAsync();
+
+        AddLocalLog($"Iniciando OTA para {snapshot.DeviceId}: atual={currentVersion} releaseOficial={targetVersion}; aguardando safe update mode.");
 
         var result = await ops.UpdateFirmwareAsync(snapshot.DeviceId, targetVersion).ConfigureAwait(true);
-        if (!(result.Accepted && result.Completed && result.Success))
+        ops.StateChanged -= OnStateChanged;
+
+        progressBar.Value = 100;
+        percentText.Text = "100%";
+
+        if (result.Accepted && result.Completed && result.Success)
+        {
+            stageText.Text = "Firmware validado com sucesso!";
+            PairingCodeText.Severity = InfoBarSeverity.Success;
+            PairingCodeText.Message = $"Firmware atualizado e validado em {targetVersion}.";
+            AddLocalLog($"Safe update mode concluiu com sucesso em {snapshot.DeviceId}: {targetVersion}.");
+        }
+        else
         {
             var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
-            PairingCodeText.Severity = string.Equals(result.Stage, "rolled-back", StringComparison.OrdinalIgnoreCase)
-                ? InfoBarSeverity.Warning
-                : InfoBarSeverity.Error;
-            PairingCodeText.Message = string.Equals(result.Stage, "rolled-back", StringComparison.OrdinalIgnoreCase)
+            var isRollback = string.Equals(result.Stage, "rolled-back", StringComparison.OrdinalIgnoreCase);
+            stageText.Text = isRollback
+                ? "OTA revertida pelo safe update mode."
+                : $"Falha: {reason ?? "erro desconhecido"}";
+            PairingCodeText.Severity = isRollback ? InfoBarSeverity.Warning : InfoBarSeverity.Error;
+            PairingCodeText.Message = isRollback
                 ? $"OTA revertida em {snapshot.DeviceId} pelo safe update mode."
                 : $"OTA falhou para {snapshot.DeviceId}.";
             AddLocalLog($"Falha ao concluir OTA em {snapshot.DeviceId}: {reason ?? "erro desconhecido"}");
-            return;
         }
 
-        PairingCodeText.Severity = InfoBarSeverity.Success;
-        PairingCodeText.Message = $"Firmware atualizado e validado em {targetVersion}.";
-        AddLocalLog($"Safe update mode concluiu com sucesso em {snapshot.DeviceId}: {targetVersion}.");
+        try { showTask.Cancel(); } catch { /* dialog may already be closed */ }
 
         var confirmed = await WaitForFirmwareVersionAsync(snapshot.DeviceId, targetVersion, FirmwareVersionObservationTimeout).ConfigureAwait(true);
-        if (!confirmed)
+        if (!confirmed && result.Success)
         {
             AddLocalLog($"OTA validada para {snapshot.DeviceId}, mas o snapshot ainda nao refletiu {targetVersion} dentro da janela diagnostica.");
         }

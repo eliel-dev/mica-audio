@@ -5,6 +5,8 @@ using Microsoft.UI.Xaml.Controls;
 using System.Globalization;
 using Windows.UI;
 
+// DOCS: docs/handoffs/2026-04-14-fix-slider-brilho-sempre-100.md
+
 namespace App.WinUI.Views;
 
 public sealed partial class DevicesPage
@@ -103,9 +105,11 @@ public sealed partial class DevicesPage
             DashboardBrightnessStatusText.Text = brightnessStatusLabel;
             DashboardTelemetryHeartbeatText.Text = heartbeatLabel;
 
-            var sliderValue = snapshot?.BrightnessCap is int brightnessCap
-                ? Math.Clamp(brightnessCap, SafeBrightnessMin, SafeBrightnessMax)
-                : SafeBrightnessMax;
+            var sliderValue = snapshot?.BrightnessApplied is int appliedValue
+                ? Math.Clamp(appliedValue, SafeBrightnessMin, SafeBrightnessMax)
+                : (snapshot?.BrightnessCap is int brightnessCap
+                    ? Math.Clamp(brightnessCap, SafeBrightnessMin, SafeBrightnessMax)
+                    : SafeBrightnessMax);
             suppressBrightnessSliderEvents = true;
             DashboardBrightnessSlider.Value = sliderValue;
             suppressBrightnessSliderEvents = false;
@@ -269,9 +273,11 @@ public sealed partial class DevicesPage
         DashboardBrightnessStatusText.Text = BuildBrightnessStatusLabel(snapshot);
         DashboardTelemetryHeartbeatText.Text = BuildHeartbeatLabel(snapshot);
 
-        var sliderValue = snapshot?.BrightnessCap is int brightnessCap
-            ? Math.Clamp(brightnessCap, SafeBrightnessMin, SafeBrightnessMax)
-            : SafeBrightnessMax;
+        var sliderValue = snapshot?.BrightnessApplied is int appliedValue
+            ? Math.Clamp(appliedValue, SafeBrightnessMin, SafeBrightnessMax)
+            : (snapshot?.BrightnessCap is int brightnessCap
+                ? Math.Clamp(brightnessCap, SafeBrightnessMin, SafeBrightnessMax)
+                : SafeBrightnessMax);
         suppressBrightnessSliderEvents = true;
         DashboardBrightnessSlider.Value = sliderValue;
         suppressBrightnessSliderEvents = false;
@@ -494,8 +500,13 @@ public sealed partial class DevicesPage
     {
         var cap = snapshot?.BrightnessCap is int capValue
             ? Math.Clamp(capValue, SafeBrightnessMin, SafeBrightnessMax)
-            : SafeBrightnessMax;
-        return $"{cap}/160";
+            : (int?)null;
+        if (cap.HasValue)
+        {
+            var percentage = Math.Round((double)cap.Value / SafeBrightnessMax * 100.0);
+            return $"{percentage:F0}%";
+        }
+        return "-%";
     }
 
     private static string BuildBrightnessStatusLabel(DeviceSnapshot? snapshot)

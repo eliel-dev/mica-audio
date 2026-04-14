@@ -9,9 +9,14 @@ namespace App.WinUI.Views;
 public sealed partial class DevicesPage
 {
     // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
+    // DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
     private void ApplyState(DeviceOperationsState state)
     {
         currentState = state;
+
+        viewModel.CommandInProgress = state.CommandInProgress;
+        viewModel.CommandPercent = state.CommandPercent;
+        viewModel.CommandStatus = state.CommandStatus;
 
         ApplySelectionDetails();
         ApplyButtonState();

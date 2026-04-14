@@ -52,8 +52,8 @@
                                                              "https://learn.microsoft.com/en-us/dotnet/communitytoolkit/"
                                                          ],
                               "esp32s3_primary_sources":  [
-                                                              "https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32s3/index.html",
-                                                              "https://github.com/espressif/esp-idf/blob/v5.5.3/docs/en/index.rst"
+                                                              "https://docs.espressif.com/projects/esp-idf/en/v5.5.4/esp32s3/index.html",
+                                                              "https://github.com/espressif/esp-idf/blob/v5.5.4/docs/en/index.rst"
                                                           ]
                           },
     "forbidden_commands":  [

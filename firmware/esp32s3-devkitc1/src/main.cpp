@@ -42,6 +42,9 @@ namespace {
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-diagnostic-matrix-envs
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-fallback-local-de-conectividade
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md
+// DOCS: docs/handoffs/2026-04-14-serial-monitor-copy-e-a3-extracao-loop.md
+// DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
+// DOCS: docs/handoffs/2026-04-14-freertos-ota-background-task.md
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 145;
 constexpr size_t kStreamFrame128x64Rgb565Size = 16400;
@@ -80,6 +83,8 @@ constexpr uint8_t kPanelsBatchExpectedFrameCount = 30;
 constexpr unsigned long kPanelsBatchWaitChunkMs = 5;
 constexpr uint16_t kPanelsBatchTaskStackSize = 16384;
 constexpr UBaseType_t kPanelsBatchTaskPriority = 2;
+constexpr uint16_t kOtaDownloadTaskStackSize = 8192;
+constexpr UBaseType_t kOtaDownloadTaskPriority = 1;
 
 #ifndef MICA_HUB75_LATCH_BLANKING
 #define MICA_HUB75_LATCH_BLANKING 2
@@ -148,6 +153,7 @@ enum class Hub75FallbackState : uint8_t {
   NoWifi = 1,
   NoServer = 2,
   Portal = 3,
+  Updating = 4,
 };
 
 enum class Hub75BinsVisualStyle : uint8_t {
@@ -199,7 +205,6 @@ constexpr int kOnboardTestLedPin = -1;
 
 constexpr unsigned long kTestLedDurationMs = 1500;
 constexpr unsigned long kTestLedTogglePeriodMs = 120;
-constexpr uint8_t kTestLedPwmChannel = 0;
 constexpr uint16_t kTestLedPwmFrequencyHz = 5000;
 constexpr uint8_t kTestLedPwmResolutionBits = 8;
 
@@ -273,6 +278,17 @@ uint32_t gLoopWindowIterationCount = 0;
 uint32_t gLoopWindowHealthyCount = 0;
 uint8_t gLoopHealthyPercent = 0;
 bool gLoopHealthyPercentReady = false;
+uint32_t gPerfLoopMaxUs = 0;
+uint32_t gPerfNetworkMaxUs = 0;
+uint32_t gPerfRenderMaxUs = 0;
+uint32_t gPerfSerialMaxUs = 0;
+uint32_t gPerfLastReportLoopMaxUs = 0;
+uint32_t gPerfLastReportNetworkMaxUs = 0;
+uint32_t gPerfLastReportRenderMaxUs = 0;
+uint32_t gPerfLastReportSerialMaxUs = 0;
+uint32_t gPerfRenderSkipCount = 0;
+unsigned long gPerfLastReportMs = 0;
+uint32_t gPerfHub75PresentFramesAtLastReport = 0;
 uint32_t gTelemetrySequence = 0;
 uint32_t gDeviceLogSequence = 0;
 bool gHasStreamLastSequence = false;
@@ -290,6 +306,22 @@ Hub75FallbackState gHub75FallbackPendingState = Hub75FallbackState::None;
 unsigned long gHub75FallbackPendingSinceMs = 0;
 bool gHub75FallbackDirty = false;
 bool gHub75FallbackClearPending = false;
+bool gOtaInProgress = false;
+uint8_t gOtaProgressPercent = 0;
+const char* gOtaProgressStage = "";
+
+enum class OtaTaskResult : uint8_t {
+  Idle = 0,
+  Running = 1,
+  Success = 2,
+  Failed = 3,
+};
+
+volatile OtaTaskResult gOtaTaskResult = OtaTaskResult::Idle;
+TaskHandle_t gOtaDownloadTaskHandle = nullptr;
+String gOtaBridgeCommandId;
+String gOtaBridgeTargetVersion;
+uint8_t gOtaBridgeLastPercent = 0;
 String gAuxLedUnavailableReason;
 String gSerialInputBuffer;
 unsigned long gLastSerialHelloMs = 0;
@@ -370,6 +402,10 @@ void publishPendingOtaReportIfNeeded();
 void requestPendingOtaRollbackAndReboot(const char* errorCode, const String& errorMessage);
 bool tryFetchLatestFirmwareRelease(FirmwareReleaseInfo& info, const String& requestedVersion, String& errorCode, String& errorMessage);
 bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId, String& errorCode, String& errorMessage);
+bool publishPresence(const char* state);
+void otaDownloadTaskFn(void* parameter);
+void processOtaProgressBridge();
+void drawOtaProgressScreen(uint8_t percent, const char* stage);
 void initializePanelsBatchRuntime();
 bool beginHttpWithDeviceAuthUrl(HTTPClient& http, const String& url);
 bool tryParseUnsignedLongParameter(JsonVariantConst value, uint32_t& output);
@@ -420,6 +456,15 @@ struct FirmwareReleaseInfo {
   String downloadPath;
 };
 
+struct OtaTaskParams {
+  String downloadPath;
+  String sha256;
+  uint32_t fileSizeBytes;
+  String commandId;
+  String sourceVersion;
+  String firmwareVersion;
+};
+
 constexpr uint32_t ceilDivideU32(uint32_t numerator, uint32_t denominator) {
   return denominator == 0 ? 0u : (numerator + denominator - 1u) / denominator;
 }
@@ -432,6 +477,8 @@ const char* hub75FallbackStateName(Hub75FallbackState state) {
       return "no_server";
     case Hub75FallbackState::Portal:
       return "portal";
+    case Hub75FallbackState::Updating:
+      return "updating";
     case Hub75FallbackState::None:
     default:
       return "none";
@@ -1045,7 +1092,7 @@ void initializeOnboardTestLed() {
 #if defined(RGB_BUILTIN) || defined(PIN_NEOPIXEL)
   if (kOnboardTestLedPin >= 0) {
     gOnboardTestLedAvailable = true;
-    neopixelWrite(kOnboardTestLedPin, 0, 0, 0);
+    rgbLedWrite(kOnboardTestLedPin, 0, 0, 0);
     Serial.printf("[led] LED onboard habilitado no pino %d.\n", kOnboardTestLedPin);
     return;
   }
@@ -1069,16 +1116,13 @@ void initializeAuxLed() {
     return;
   }
 
-  if (ledcSetup(kTestLedPwmChannel, kTestLedPwmFrequencyHz, kTestLedPwmResolutionBits) <= 0) {
-    gAuxLedUnavailableReason = "falha no ledcSetup";
+  if (!ledcAttach(kTestLedPin, kTestLedPwmFrequencyHz, kTestLedPwmResolutionBits)) {
+    gAuxLedUnavailableReason = "falha no ledcAttach";
     gTestLedEnabled = false;
     gPrefs.putBool("testLedEnabled", false);
     Serial.printf("[led] Falha ao inicializar PWM do LED auxiliar (GPIO %d).\n", kTestLedPin);
     return;
   }
-
-  pinMode(kTestLedPin, OUTPUT);
-  ledcAttachPin(kTestLedPin, kTestLedPwmChannel);
   gTestLedPwmReady = true;
   gAuxLedAvailable = true;
   Serial.printf("[led] LED auxiliar habilitado no GPIO %d.\n", kTestLedPin);
@@ -1114,7 +1158,7 @@ void applyAuxTestLedDuty(uint8_t duty) {
     return;
   }
 
-  ledcWrite(kTestLedPwmChannel, duty);
+  ledcWrite(kTestLedPin, duty);
 }
 
 void applyOnboardTestLedDuty(uint8_t duty) {
@@ -1123,7 +1167,7 @@ void applyOnboardTestLedDuty(uint8_t duty) {
   }
 
 #if defined(RGB_BUILTIN) || defined(PIN_NEOPIXEL)
-  neopixelWrite(kOnboardTestLedPin, duty, duty, duty);
+  rgbLedWrite(kOnboardTestLedPin, duty, duty, duty);
 #else
   (void)duty;
 #endif
@@ -1288,9 +1332,55 @@ void drawConnectivityFallbackIcon(Hub75FallbackState state, uint16_t accentColor
       break;
   }
 }
+
+void drawOtaProgressScreen(uint8_t percent, const char* stage) {
+  if (!gMatrixReady || gMatrix == nullptr) {
+    return;
+  }
+
+  gOtaProgressPercent = percent;
+  gOtaProgressStage = stage;
+
+  clearMatrix();
+
+  const uint16_t accentColor = rgb888ToRgb565(48, 160, 255);
+  const uint16_t titleColor = rgb888ToRgb565(244, 244, 244);
+  const uint16_t subtitleColor = rgb888ToRgb565(158, 170, 180);
+  const uint16_t barBgColor = rgb888ToRgb565(36, 48, 60);
+
+  drawMatrixTextCentered("ATUALIZANDO", 14, titleColor, 1);
+  gMatrix->drawFastHLine(24, 20, kMatrixWidth - 48, rgb888ToRgb565(56, 68, 80));
+
+  constexpr int16_t barX = 10;
+  constexpr int16_t barY = 28;
+  constexpr int16_t barWidth = kMatrixWidth - 20;
+  constexpr int16_t barHeight = 8;
+  gMatrix->fillRect(barX, barY, barWidth, barHeight, barBgColor);
+  gMatrix->drawRect(barX, barY, barWidth, barHeight, rgb888ToRgb565(56, 68, 80));
+
+  const int16_t fillWidth = static_cast<int16_t>((static_cast<uint32_t>(percent) * static_cast<uint32_t>(barWidth - 2)) / 100u);
+  if (fillWidth > 0) {
+    gMatrix->fillRect(barX + 1, barY + 1, fillWidth, barHeight - 2, accentColor);
+  }
+
+  char percentText[8];
+  snprintf(percentText, sizeof(percentText), "%u%%", static_cast<unsigned>(percent));
+  drawMatrixTextCentered(percentText, 48, titleColor, 1);
+
+  if (stage != nullptr && stage[0] != '\0') {
+    drawMatrixTextCentered(stage, 58, subtitleColor, 1);
+  }
+
+  gMatrixBufferModes[gMatrixShadowBackBufferIndex] = MatrixBufferMode::Clear;
+  commitMatrixFrame();
+}
 #endif
 
 Hub75FallbackState resolveHub75FallbackCandidate() {
+  if (gOtaInProgress) {
+    return Hub75FallbackState::Updating;
+  }
+
   if (gProvisioningPortalActive) {
     return Hub75FallbackState::Portal;
   }
@@ -1387,6 +1477,13 @@ bool drawConnectivityFallback(Hub75FallbackState state) {
       subtitle = "Conecte no portal";
       accent = {96, 220, 255};
       break;
+    case Hub75FallbackState::Updating:
+#if defined(MICA_PROFILE_DMA_EXP)
+      drawOtaProgressScreen(gOtaProgressPercent, gOtaProgressStage);
+      return true;
+#else
+      return false;
+#endif
     case Hub75FallbackState::None:
     default:
       return false;
@@ -1411,6 +1508,9 @@ bool drawConnectivityFallback(Hub75FallbackState state) {
 bool commitMatrixFrame() {
 #if defined(MICA_PROFILE_DMA_EXP)
   if (gMatrix != nullptr) {
+#if CORE_DEBUG_LEVEL >= 3
+    configASSERT(xPortGetCoreID() == 1);
+#endif
     gMatrix->flipDMABuffer();
     gLastMatrixPresentUs = micros();
     gHub75PresentFrames++;
@@ -1861,10 +1961,8 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
     gWs.disconnect();
   }
 
-  if (gMatrixReady) {
-    clearMatrix();
-    commitMatrixFrame();
-  }
+  gOtaInProgress = true;
+  drawOtaProgressScreen(20, "recebido");
 
   HTTPClient http;
   if (!beginHttpWithDeviceAuth(http, info.downloadPath)) {
@@ -1907,7 +2005,7 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
 
   mbedtls_sha256_context shaContext;
   mbedtls_sha256_init(&shaContext);
-  if (mbedtls_sha256_starts_ret(&shaContext, 0) != 0) {
+  if (mbedtls_sha256_starts(&shaContext, 0) != 0) {
     Update.abort();
     mbedtls_sha256_free(&shaContext);
     errorCode = "firmware_sha_init_failed";
@@ -1949,7 +2047,7 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
     }
 
     lastDataMs = millis();
-    if (mbedtls_sha256_update_ret(&shaContext, buffer, static_cast<size_t>(readCount)) != 0) {
+    if (mbedtls_sha256_update(&shaContext, buffer, static_cast<size_t>(readCount)) != 0) {
       Update.abort();
       mbedtls_sha256_free(&shaContext);
       errorCode = "firmware_sha_update_failed";
@@ -1972,6 +2070,7 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
     if (progress >= static_cast<uint8_t>(lastProgress + 5u) || totalRead >= info.fileSizeBytes) {
       lastProgress = progress;
       sendCommandProgress(commandId, progress > 90u ? 90u : progress, "downloading", "Baixando e gravando firmware...");
+      drawOtaProgressScreen(progress > 90u ? 90u : progress, "baixando...");
     }
   }
 
@@ -1986,7 +2085,7 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
   }
 
   uint8_t shaBytes[32];
-  if (mbedtls_sha256_finish_ret(&shaContext, shaBytes) != 0) {
+  if (mbedtls_sha256_finish(&shaContext, shaBytes) != 0) {
     Update.abort();
     mbedtls_sha256_free(&shaContext);
     errorCode = "firmware_sha_finish_failed";
@@ -2004,6 +2103,7 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
   }
 
   sendCommandProgress(commandId, 92, "flashing", "Validando e finalizando imagem OTA...");
+  drawOtaProgressScreen(92, "gravando...");
   if (!Update.end()) {
     errorCode = "ota_end_failed";
     errorMessage = String("Falha ao finalizar OTA. code=") + Update.getError();
@@ -2017,6 +2117,244 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
   }
 
   return true;
+}
+
+// --- OTA Background Task (Core 0) ---
+// Runs the firmware download + SHA-256 verification + flash write entirely on Core 0.
+// Does NOT call MQTT (sendCommandProgress) or matrix (drawOtaProgressScreen) functions.
+// Communicates via volatile globals: gOtaProgressPercent, gOtaProgressStage, gOtaTaskResult.
+
+void otaDownloadTaskFn(void* parameter) {
+  OtaTaskParams* params = static_cast<OtaTaskParams*>(parameter);
+  gOtaTaskResult = OtaTaskResult::Running;
+  gOtaProgressPercent = 35;
+  gOtaProgressStage = "baixando...";
+
+  HTTPClient http;
+  if (!beginHttpWithDeviceAuth(http, params->downloadPath)) {
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "erro";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  int code = http.GET();
+  if (code < 200 || code >= 300) {
+    http.end();
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "erro";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  const int contentLength = http.getSize();
+  if (contentLength <= 0 || static_cast<uint32_t>(contentLength) != params->fileSizeBytes) {
+    http.end();
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "erro";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  if (!Update.begin(params->fileSizeBytes)) {
+    http.end();
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "erro";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  WiFiClient* stream = http.getStreamPtr();
+  if (stream == nullptr) {
+    Update.abort();
+    http.end();
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "erro";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  mbedtls_sha256_context shaContext;
+  mbedtls_sha256_init(&shaContext);
+  if (mbedtls_sha256_starts(&shaContext, 0) != 0) {
+    Update.abort();
+    mbedtls_sha256_free(&shaContext);
+    http.end();
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "erro";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  uint8_t buffer[4096];
+  uint32_t totalRead = 0u;
+  unsigned long lastDataMs = millis();
+  uint8_t lastProgress = 35u;
+  bool downloadOk = true;
+
+  while (totalRead < params->fileSizeBytes) {
+    const size_t availableBytes = stream->available();
+    if (availableBytes == 0u) {
+      if (!http.connected()) {
+        downloadOk = false;
+        break;
+      }
+
+      if (millis() - lastDataMs > 15000u) {
+        downloadOk = false;
+        break;
+      }
+
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+
+    const size_t chunkSize = availableBytes < sizeof(buffer) ? availableBytes : sizeof(buffer);
+    const int readCount = stream->readBytes(buffer, chunkSize);
+    if (readCount <= 0) {
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+
+    lastDataMs = millis();
+    if (mbedtls_sha256_update(&shaContext, buffer, static_cast<size_t>(readCount)) != 0) {
+      downloadOk = false;
+      break;
+    }
+
+    if (Update.write(buffer, static_cast<size_t>(readCount)) != static_cast<size_t>(readCount)) {
+      downloadOk = false;
+      break;
+    }
+
+    totalRead += static_cast<uint32_t>(readCount);
+    const uint8_t progress = static_cast<uint8_t>(35u + ((static_cast<uint64_t>(totalRead) * 55u) / params->fileSizeBytes));
+    if (progress >= static_cast<uint8_t>(lastProgress + 5u) || totalRead >= params->fileSizeBytes) {
+      lastProgress = progress;
+      gOtaProgressPercent = progress > 90u ? 90u : progress;
+    }
+  }
+
+  http.end();
+
+  if (!downloadOk || totalRead != params->fileSizeBytes) {
+    Update.abort();
+    mbedtls_sha256_free(&shaContext);
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "erro download";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  uint8_t shaBytes[32];
+  if (mbedtls_sha256_finish(&shaContext, shaBytes) != 0) {
+    Update.abort();
+    mbedtls_sha256_free(&shaContext);
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "erro sha256";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  mbedtls_sha256_free(&shaContext);
+  const String computedSha256 = bytesToLowerHex(shaBytes, sizeof(shaBytes));
+  if (!computedSha256.equalsIgnoreCase(params->sha256)) {
+    Update.abort();
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "sha256 invalido";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  gOtaProgressPercent = 92;
+  gOtaProgressStage = "gravando...";
+
+  if (!Update.end() || !Update.isFinished()) {
+    gOtaProgressPercent = 0;
+    gOtaProgressStage = "erro flash";
+    gOtaTaskResult = OtaTaskResult::Failed;
+    delete params;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  gOtaTaskResult = OtaTaskResult::Success;
+  delete params;
+  vTaskDelete(nullptr);
+}
+
+// --- OTA Progress Bridge (Core 1, main loop) ---
+
+void processOtaProgressBridge() {
+  const OtaTaskResult result = static_cast<OtaTaskResult>(gOtaTaskResult);
+  if (result == OtaTaskResult::Idle) {
+    return;
+  }
+
+  if (result == OtaTaskResult::Running) {
+    const uint8_t currentPercent = gOtaProgressPercent;
+    if (currentPercent >= static_cast<uint8_t>(gOtaBridgeLastPercent + 5u)) {
+      sendCommandProgress(gOtaBridgeCommandId,
+          currentPercent > 90u ? 90u : currentPercent,
+          "downloading", "Baixando e gravando firmware...");
+      gOtaBridgeLastPercent = currentPercent;
+    }
+    return;
+  }
+
+  if (result == OtaTaskResult::Success) {
+    gOtaDownloadTaskHandle = nullptr;
+
+    if (!persistPendingOtaContext(gOtaBridgeCommandId, kFirmwareVersion, gOtaBridgeTargetVersion)) {
+      gOtaInProgress = false;
+      gOtaTaskResult = OtaTaskResult::Idle;
+      gOtaBridgeLastPercent = 0;
+      sendCommandProgress(gOtaBridgeCommandId, 100, "failed",
+          "Firmware baixado, mas falha ao registrar contexto.", 0);
+      return;
+    }
+
+    sendCommandProgress(gOtaBridgeCommandId, 94, "rebooting",
+        "Firmware aplicado. Reiniciando para validacao segura.");
+    gOtaProgressPercent = 94;
+    gOtaProgressStage = "reiniciando...";
+    (void)publishPresence("offline");
+    delay(250);
+    ESP.restart();
+    return;
+  }
+
+  if (result == OtaTaskResult::Failed) {
+    gOtaDownloadTaskHandle = nullptr;
+    gOtaInProgress = false;
+
+    const char* failStage = gOtaProgressStage;
+    String failMessage = String("Falha OTA: ") + (failStage != nullptr ? failStage : "erro desconhecido");
+    (void)publishDeviceLog("warning", "command", "ota_task_failed", failMessage);
+    sendCommandProgress(gOtaBridgeCommandId, 100, "failed", failMessage, 0);
+
+    gOtaTaskResult = OtaTaskResult::Idle;
+    gOtaBridgeLastPercent = 0;
+    return;
+  }
 }
 
 void initializePanelsBatchRuntime() {
@@ -2114,7 +2452,7 @@ bool tryDownloadPanelsBatch(
 
   mbedtls_sha256_context shaContext;
   mbedtls_sha256_init(&shaContext);
-  if (mbedtls_sha256_starts_ret(&shaContext, 0) != 0) {
+  if (mbedtls_sha256_starts(&shaContext, 0) != 0) {
     free(data);
     mbedtls_sha256_free(&shaContext);
     errorCode = "panels_batch_sha_init_failed";
@@ -2153,7 +2491,7 @@ bool tryDownloadPanelsBatch(
     }
 
     lastDataMs = millis();
-    if (mbedtls_sha256_update_ret(&shaContext, data + totalRead, static_cast<size_t>(readCount)) != 0) {
+    if (mbedtls_sha256_update(&shaContext, data + totalRead, static_cast<size_t>(readCount)) != 0) {
       free(data);
       mbedtls_sha256_free(&shaContext);
       errorCode = "panels_batch_sha_update_failed";
@@ -2176,7 +2514,7 @@ bool tryDownloadPanelsBatch(
   }
 
   uint8_t shaBytes[32];
-  if (mbedtls_sha256_finish_ret(&shaContext, shaBytes) != 0) {
+  if (mbedtls_sha256_finish(&shaContext, shaBytes) != 0) {
     free(data);
     mbedtls_sha256_free(&shaContext);
     errorCode = "panels_batch_sha_finish_failed";
@@ -2749,10 +3087,15 @@ void processPendingOtaSafeUpdate() {
   if (gPendingOtaBootState == PendingOtaBootState::PendingVerify) {
     if (gPendingOtaValidationStartedMs == 0u) {
       gPendingOtaValidationStartedMs = millis();
+      gOtaInProgress = true;
+      drawOtaProgressScreen(97, "validando...");
     }
 
     if (millis() - gPendingOtaValidationStartedMs >= kOtaSelfTestWindowMs) {
       if (!String(kFirmwareVersion).equalsIgnoreCase(gPendingOtaTargetVersion)) {
+        drawOtaProgressScreen(0, "rollback!");
+        delay(2000);
+        gOtaInProgress = false;
         requestPendingOtaRollbackAndReboot(
             "ota_target_version_mismatch",
             "Safe update mode detectou firmware diferente da versao alvo apos o reboot.");
@@ -2761,11 +3104,18 @@ void processPendingOtaSafeUpdate() {
 
       const esp_err_t validationError = esp_ota_mark_app_valid_cancel_rollback();
       if (validationError != ESP_OK) {
+        drawOtaProgressScreen(0, "rollback!");
+        delay(2000);
+        gOtaInProgress = false;
         requestPendingOtaRollbackAndReboot(
             "ota_mark_valid_failed",
             String("Falha ao confirmar a imagem OTA: ") + esp_err_to_name(validationError) + ".");
         return;
       }
+
+      drawOtaProgressScreen(100, "concluido!");
+      delay(2000);
+      gOtaInProgress = false;
 
       gPendingOtaBootState = PendingOtaBootState::ValidatedPendingReport;
       gPendingOtaPendingVerifyAnnounced = false;
@@ -2833,6 +3183,50 @@ void updateLoopHealthyPercent(uint32_t loopDurationUs) {
   gLoopWindowIterationCount = 0;
   gLoopWindowHealthyCount = 0;
   gLoopWindowStartMs = nowMs;
+}
+
+void reportPerfMetrics() {
+  const unsigned long now = millis();
+  if (gPerfLastReportMs != 0 && (now - gPerfLastReportMs) < kTelemetryIntervalMs) {
+    return;
+  }
+
+  const uint32_t elapsed = gPerfLastReportMs == 0 ? 0 : static_cast<uint32_t>(now - gPerfLastReportMs);
+  const uint32_t presentedSinceLastReport = gHub75PresentFrames - gPerfHub75PresentFramesAtLastReport;
+  const uint32_t hub75Fps = (elapsed > 0)
+      ? static_cast<uint32_t>((static_cast<uint64_t>(presentedSinceLastReport) * 1000ULL) / elapsed)
+      : 0;
+
+  gPerfLastReportLoopMaxUs = gPerfLoopMaxUs;
+  gPerfLastReportNetworkMaxUs = gPerfNetworkMaxUs;
+  gPerfLastReportRenderMaxUs = gPerfRenderMaxUs;
+  gPerfLastReportSerialMaxUs = gPerfSerialMaxUs;
+
+  Serial.printf(
+      "[perf] loop_max_us=%lu net_max_us=%lu render_max_us=%lu serial_max_us=%lu hub75_fps=%lu render_skips=%lu\n",
+      static_cast<unsigned long>(gPerfLoopMaxUs),
+      static_cast<unsigned long>(gPerfNetworkMaxUs),
+      static_cast<unsigned long>(gPerfRenderMaxUs),
+      static_cast<unsigned long>(gPerfSerialMaxUs),
+      static_cast<unsigned long>(hub75Fps),
+      static_cast<unsigned long>(gPerfRenderSkipCount));
+
+  if (gPanelsBatchTaskHandle != nullptr) {
+    const UBaseType_t batchHwm = uxTaskGetStackHighWaterMark(gPanelsBatchTaskHandle);
+    const UBaseType_t loopHwm = uxTaskGetStackHighWaterMark(nullptr);
+    Serial.printf(
+        "[perf] loopTask_stack_hwm=%u batchTask_stack_hwm=%u\n",
+        static_cast<unsigned>(loopHwm),
+        static_cast<unsigned>(batchHwm));
+  }
+
+  gPerfLoopMaxUs = 0;
+  gPerfNetworkMaxUs = 0;
+  gPerfRenderMaxUs = 0;
+  gPerfSerialMaxUs = 0;
+  gPerfRenderSkipCount = 0;
+  gPerfHub75PresentFramesAtLastReport = gHub75PresentFrames;
+  gPerfLastReportMs = now;
 }
 
 void sendTelemetry(bool force) {
@@ -2915,6 +3309,12 @@ void sendTelemetry(bool force) {
     telemetry["activeAppName"] = gActiveAppName;
   }
   telemetry["animatedWebpBatchSupported"] = gAnimatedWebpBatchSupported;
+  if (gPerfLastReportMs > 0) {
+    telemetry["perfLoopMaxUs"] = gPerfLastReportLoopMaxUs;
+    telemetry["perfNetworkMaxUs"] = gPerfLastReportNetworkMaxUs;
+    telemetry["perfRenderMaxUs"] = gPerfLastReportRenderMaxUs;
+    telemetry["perfSerialMaxUs"] = gPerfLastReportSerialMaxUs;
+  }
 
   (void)publishMqttDocument(buildDeviceMqttTopic("status"), telemetry, true);
 }
@@ -3591,24 +3991,42 @@ void handleControlCommandMessage(const JsonDocument& control) {
       return;
     }
 
-    if (!performFirmwareOta(releaseInfo, commandId, errorCode, errorMessage)) {
-      (void)publishDeviceLog("warning", "command", errorCode.c_str(), errorMessage);
-      sendCommandProgress(commandId, 100, "failed", errorMessage, 0);
+    if (gOtaDownloadTaskHandle != nullptr || gOtaTaskResult != OtaTaskResult::Idle) {
+      sendCommandProgress(commandId, 100, "failed", "OTA ja em andamento.", 0);
       return;
     }
 
-    if (!persistPendingOtaContext(commandId, kFirmwareVersion, releaseInfo.firmwareVersion)) {
-      errorCode = "ota_context_persist_failed";
-      errorMessage = "Firmware baixado, mas nao foi possivel registrar o contexto do safe update mode antes do reboot.";
-      (void)publishDeviceLog("warning", "command", errorCode.c_str(), errorMessage);
-      sendCommandProgress(commandId, 100, "failed", errorMessage, 0);
-      return;
+    sendCommandProgress(commandId, 35, "metadata", "Firmware oficial validado.");
+    if (gWs.isConnected()) {
+      gWs.disconnect();
     }
 
-    sendCommandProgress(commandId, 94, "rebooting", "Firmware aplicado. Reiniciando para validacao segura.");
-    (void)publishPresence("offline");
-    delay(250);
-    ESP.restart();
+    gOtaInProgress = true;
+    gOtaProgressPercent = 20;
+    gOtaProgressStage = "recebido";
+    gHub75FallbackDirty = true;
+
+    gOtaBridgeCommandId = commandId;
+    gOtaBridgeTargetVersion = releaseInfo.firmwareVersion;
+    gOtaBridgeLastPercent = 35;
+    gOtaTaskResult = OtaTaskResult::Idle;
+
+    OtaTaskParams* params = new OtaTaskParams{
+      releaseInfo.downloadPath, releaseInfo.sha256, releaseInfo.fileSizeBytes,
+      commandId, String(kFirmwareVersion), releaseInfo.firmwareVersion
+    };
+
+    BaseType_t rc = xTaskCreatePinnedToCore(
+        otaDownloadTaskFn, "ota_download",
+        kOtaDownloadTaskStackSize, params,
+        kOtaDownloadTaskPriority, &gOtaDownloadTaskHandle, 0);
+
+    if (rc != pdPASS) {
+      delete params;
+      gOtaInProgress = false;
+      gOtaDownloadTaskHandle = nullptr;
+      sendCommandProgress(commandId, 100, "failed", "Falha ao criar task OTA.", 0);
+    }
     return;
   }
 
@@ -4361,109 +4779,8 @@ bool drawFrame128x64() {
   gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Frame;
   return commitMatrixFrame();
 }
-}  // namespace
 
-void setup() {
-  Serial.begin(115200);
-  Serial.println("[boot] inicializando firmware.");
-  Serial.printf(
-      "[ws] max_data_size=%u frame128x64_payload=%u\n",
-      static_cast<unsigned>(WEBSOCKETS_MAX_DATA_SIZE),
-      static_cast<unsigned>(kStreamFrame128x64Rgb565Size));
-  if (strcmp(kSecurityProfile, "dev") == 0) {
-    Serial.printf("MicaAudio firmware board=%s profile=%s security=%s\\n", kBoardModel, kFirmwareProfile, kSecurityProfile);
-  }
-
-  gPrefs.begin("micaaudio", false);
-  Serial.println("[wifi_connecting] preparando conectividade.");
-  setConnectivityState(kWifiStateConnecting, "boot", true);
-
-  gBrightnessCap = clampBrightnessToSafeRange(static_cast<int>(gPrefs.getUChar("brightnessCap", kBrightnessDefaultCap)));
-  gTestLedEnabled = gPrefs.getBool("testLedEnabled", false);
-  gStreamBrightness = gBrightnessCap;
-  gAppliedBrightness = resolveAppliedBrightness();
-  initializeColorConversionLookups();
-  resetMatrixShadowState();
-  initializeOnboardTestLed();
-  initializeAuxLed();
-
-  if (!initMatrixDisplay()) {
-    Serial.println("Painel HUB75 indisponivel: exibicao de barras desativada.");
-  }
-
-  updateTestLedDutyFromBrightness(resolveAppliedBrightness());
-  applyTestLedState();
-
-  gServerHost = gPrefs.getString("host", "");
-  gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
-  gMqttHost = gPrefs.getString("mqttHost", "");
-  gMqttPort = static_cast<uint16_t>(atoi(gPrefs.getString("mqttPort", "5273").c_str()));
-  gMqttRootTopic = gPrefs.getString("mqttRootTopic", kDefaultMqttRootTopic);
-  normalizeMqttConfig();
-  gDeviceId = gPrefs.getString("deviceId", "");
-  gToken = gPrefs.getString("token", "");
-  gActiveAppId = gPrefs.getString("activeAppId", "");
-  gActiveAppName = gPrefs.getString("activeAppName", "");
-  gActiveAppConfig = gPrefs.getString("activeAppConfig", "");
-  loadPendingOtaContext();
-  initializePendingOtaBootState();
-  initializePanelsBatchRuntime();
-
-  const bool missingServerConfig = gServerHost.isEmpty() || gServerPort == 0;
-  const bool missingDeviceCredentials = gDeviceId.isEmpty() || gToken.isEmpty();
-  if (missingServerConfig || missingDeviceCredentials) {
-    const char* bootReason = missingServerConfig
-        ? "boot_missing_server_config"
-        : "boot_missing_device_credentials";
-    Serial.printf("[boot] configuracao incompleta; abrindo provisioning portal (%s).\n", bootReason);
-    (void)startProvisioningPortal(bootReason);
-
-    gServerHost = gPrefs.getString("host", "");
-    gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
-    gMqttHost = gPrefs.getString("mqttHost", "");
-    gMqttPort = static_cast<uint16_t>(atoi(gPrefs.getString("mqttPort", "5273").c_str()));
-    gMqttRootTopic = gPrefs.getString("mqttRootTopic", kDefaultMqttRootTopic);
-    normalizeMqttConfig();
-    gDeviceId = gPrefs.getString("deviceId", "");
-    gToken = gPrefs.getString("token", "");
-  }
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin();
-
-  bool bootWifiConnected = false;
-  if (!gServerHost.isEmpty() && gServerPort != 0) {
-    unsigned long bootWifiWaitStart = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - bootWifiWaitStart) < 5000) {
-      processSerialProvisioning();
-      delay(120);
-    }
-
-    bootWifiConnected = WiFi.status() == WL_CONNECTED;
-  }
-
-  if (gServerHost.isEmpty() || gServerPort == 0 || gDeviceId.isEmpty() || gToken.isEmpty()) {
-    Serial.println("[wifi_connecting] aguardando provisioning por AP para concluir configuracao.");
-    setConnectivityState(kWifiStateDisconnected, "boot_missing_server_config", true);
-    gWifiDisconnectedSinceMs = millis();
-  } else if (bootWifiConnected) {
-    Serial.println("[wifi_connected] Wi-Fi conectado no boot.");
-    setConnectivityState(kWifiStateConnected, "wifi_connected", true);
-    connectMqtt();
-    connectWebSocket();
-  } else {
-    Serial.println("[wifi_connecting] sem Wi-Fi no boot, aguardando reconexao.");
-    setConnectivityState(kWifiStateDisconnected, "boot_waiting_wifi", true);
-    gWifiDisconnectedSinceMs = millis();
-  }
-
-  sendSerialHello();
-}
-
-void loop() {
-  const uint32_t loopStartedUs = micros();
-  processSerialProvisioning();
-  processPendingOtaSafeUpdate();
+void processNetworkPoll() {
   const uint32_t networkBudgetStartUs = micros();
   bool networkBudgetExhausted = false;
   auto shouldRunNetworkStep = [&](bool eligible) -> bool {
@@ -4586,7 +4903,9 @@ void loop() {
       gWsDisconnectedSinceMs = 0;
     }
   }
+}
 
+void processSignalTimeout() {
   const unsigned long nowMs = millis();
   updateHub75FallbackState(nowMs);
   if ((nowMs - gLastFrameMs) > kMatrixSignalTimeoutMs && !gMatrixSignalTimedOut) {
@@ -4605,50 +4924,185 @@ void loop() {
     gPendingMatrixPresentCountsAsApplied = false;
     markMatrixFrameDirty(false);
   }
+}
 
+bool processRenderFrame() {
+  const uint32_t nowUs = micros();
+  if (!gMatrixReady || !shouldPresentMatrixFrame(nowUs)) {
+    if (gMatrixReady) {
+      gPerfRenderSkipCount++;
+    }
+    return false;
+  }
+
+  bool presented = false;
+  bool presentedStreamPayload = false;
+  if (gHub75FallbackState != Hub75FallbackState::None) {
+    const bool isUpdating = gHub75FallbackState == Hub75FallbackState::Updating;
+    if (gHub75FallbackDirty || isUpdating) {
+      presented = drawConnectivityFallback(gHub75FallbackState);
+      if (presented && !isUpdating) {
+        gHub75FallbackDirty = false;
+      }
+    }
+  } else {
+    if (gFrameModeActive) {
+      if (gMatrixFrameDirty) {
+        presented = drawFrame128x64();
+        presentedStreamPayload = presented;
+      }
+    } else if (!gMatrixSignalTimedOut || gMatrixFrameDirty) {
+      presented = drawBinsVisual();
+      presentedStreamPayload = presented;
+    }
+
+    if (!presented && gHub75FallbackClearPending) {
+      presented = clearConnectivityFallbackFrame();
+    }
+  }
+
+  if (presented) {
+    if (presentedStreamPayload) {
+      gMatrixFrameDirty = false;
+      if (gPendingMatrixPresentCountsAsApplied) {
+        gStreamFramesApplied++;
+      }
+    }
+
+    gPendingMatrixPresentCountsAsApplied = false;
+    gHub75FallbackClearPending = false;
+  }
+
+  return presented;
+}
+
+}  // namespace
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("[boot] inicializando firmware.");
+  Serial.printf(
+      "[ws] max_data_size=%u frame128x64_payload=%u\n",
+      static_cast<unsigned>(WEBSOCKETS_MAX_DATA_SIZE),
+      static_cast<unsigned>(kStreamFrame128x64Rgb565Size));
+  if (strcmp(kSecurityProfile, "dev") == 0) {
+    Serial.printf("MicaAudio firmware board=%s profile=%s security=%s\\n", kBoardModel, kFirmwareProfile, kSecurityProfile);
+  }
+
+  gPrefs.begin("micaaudio", false);
+  Serial.println("[wifi_connecting] preparando conectividade.");
+  setConnectivityState(kWifiStateConnecting, "boot", true);
+
+  gBrightnessCap = clampBrightnessToSafeRange(static_cast<int>(gPrefs.getUChar("brightnessCap", kBrightnessDefaultCap)));
+  gTestLedEnabled = gPrefs.getBool("testLedEnabled", false);
+  gStreamBrightness = gBrightnessCap;
+  gAppliedBrightness = resolveAppliedBrightness();
+  initializeColorConversionLookups();
+  resetMatrixShadowState();
+  initializeOnboardTestLed();
+  initializeAuxLed();
+
+  if (!initMatrixDisplay()) {
+    Serial.println("Painel HUB75 indisponivel: exibicao de barras desativada.");
+  }
+
+  updateTestLedDutyFromBrightness(resolveAppliedBrightness());
+  applyTestLedState();
+
+  gServerHost = gPrefs.getString("host", "");
+  gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
+  gMqttHost = gPrefs.getString("mqttHost", "");
+  gMqttPort = static_cast<uint16_t>(atoi(gPrefs.getString("mqttPort", "5273").c_str()));
+  gMqttRootTopic = gPrefs.getString("mqttRootTopic", kDefaultMqttRootTopic);
+  normalizeMqttConfig();
+  gDeviceId = gPrefs.getString("deviceId", "");
+  gToken = gPrefs.getString("token", "");
+  gActiveAppId = gPrefs.getString("activeAppId", "");
+  gActiveAppName = gPrefs.getString("activeAppName", "");
+  gActiveAppConfig = gPrefs.getString("activeAppConfig", "");
+  loadPendingOtaContext();
+  initializePendingOtaBootState();
+  initializePanelsBatchRuntime();
+
+  const bool missingServerConfig = gServerHost.isEmpty() || gServerPort == 0;
+  const bool missingDeviceCredentials = gDeviceId.isEmpty() || gToken.isEmpty();
+  if (missingServerConfig || missingDeviceCredentials) {
+    const char* bootReason = missingServerConfig
+        ? "boot_missing_server_config"
+        : "boot_missing_device_credentials";
+    Serial.printf("[boot] configuracao incompleta; abrindo provisioning portal (%s).\n", bootReason);
+    (void)startProvisioningPortal(bootReason);
+
+    gServerHost = gPrefs.getString("host", "");
+    gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
+    gMqttHost = gPrefs.getString("mqttHost", "");
+    gMqttPort = static_cast<uint16_t>(atoi(gPrefs.getString("mqttPort", "5273").c_str()));
+    gMqttRootTopic = gPrefs.getString("mqttRootTopic", kDefaultMqttRootTopic);
+    normalizeMqttConfig();
+    gDeviceId = gPrefs.getString("deviceId", "");
+    gToken = gPrefs.getString("token", "");
+  }
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin();
+
+  bool bootWifiConnected = false;
+  if (!gServerHost.isEmpty() && gServerPort != 0) {
+    unsigned long bootWifiWaitStart = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - bootWifiWaitStart) < 5000) {
+      processSerialProvisioning();
+      delay(120);
+    }
+
+    bootWifiConnected = WiFi.status() == WL_CONNECTED;
+  }
+
+  if (gServerHost.isEmpty() || gServerPort == 0 || gDeviceId.isEmpty() || gToken.isEmpty()) {
+    Serial.println("[wifi_connecting] aguardando provisioning por AP para concluir configuracao.");
+    setConnectivityState(kWifiStateDisconnected, "boot_missing_server_config", true);
+    gWifiDisconnectedSinceMs = millis();
+  } else if (bootWifiConnected) {
+    Serial.println("[wifi_connected] Wi-Fi conectado no boot.");
+    setConnectivityState(kWifiStateConnected, "wifi_connected", true);
+    connectMqtt();
+    connectWebSocket();
+  } else {
+    Serial.println("[wifi_connecting] sem Wi-Fi no boot, aguardando reconexao.");
+    setConnectivityState(kWifiStateDisconnected, "boot_waiting_wifi", true);
+    gWifiDisconnectedSinceMs = millis();
+  }
+
+  sendSerialHello();
+}
+
+void loop() {
+  const uint32_t loopStartedUs = micros();
+  processSerialProvisioning();
+  const uint32_t serialDoneUs = micros();
+  processPendingOtaSafeUpdate();
+  processOtaProgressBridge();
+
+  const uint32_t networkStartUs = micros();
+  processNetworkPoll();
+
+  processSignalTimeout();
   setMatrixBrightness(resolveAppliedBrightness());
   updateTestLedDutyFromBrightness(gAppliedBrightness);
   updateTestLed();
 
-  const uint32_t nowUs = micros();
-  if (gMatrixReady && shouldPresentMatrixFrame(nowUs)) {
-    bool presented = false;
-    bool presentedStreamPayload = false;
-    if (gHub75FallbackState != Hub75FallbackState::None) {
-      if (gHub75FallbackDirty) {
-        presented = drawConnectivityFallback(gHub75FallbackState);
-        if (presented) {
-          gHub75FallbackDirty = false;
-        }
-      }
-    } else {
-      if (gFrameModeActive) {
-        if (gMatrixFrameDirty) {
-          presented = drawFrame128x64();
-          presentedStreamPayload = presented;
-        }
-      } else if (!gMatrixSignalTimedOut || gMatrixFrameDirty) {
-        presented = drawBinsVisual();
-        presentedStreamPayload = presented;
-      }
+  const uint32_t renderStartUs = micros();
+  processRenderFrame();
 
-      if (!presented && gHub75FallbackClearPending) {
-        presented = clearConnectivityFallbackFrame();
-      }
-    }
+  const uint32_t loopEndUs = micros();
+  const uint32_t serialUs = serialDoneUs - loopStartedUs;
+  const uint32_t networkUs = renderStartUs - networkStartUs;
+  const uint32_t renderUs = loopEndUs - renderStartUs;
+  const uint32_t loopTotalUs = loopEndUs - loopStartedUs;
+  if (loopTotalUs > gPerfLoopMaxUs) { gPerfLoopMaxUs = loopTotalUs; }
+  if (networkUs > gPerfNetworkMaxUs) { gPerfNetworkMaxUs = networkUs; }
+  if (renderUs > gPerfRenderMaxUs) { gPerfRenderMaxUs = renderUs; }
+  if (serialUs > gPerfSerialMaxUs) { gPerfSerialMaxUs = serialUs; }
 
-    if (presented) {
-      if (presentedStreamPayload) {
-        gMatrixFrameDirty = false;
-        if (gPendingMatrixPresentCountsAsApplied) {
-          gStreamFramesApplied++;
-        }
-      }
-
-      gPendingMatrixPresentCountsAsApplied = false;
-      gHub75FallbackClearPending = false;
-    }
-  }
-
-  updateLoopHealthyPercent(elapsedMicrosSince(loopStartedUs));
+  updateLoopHealthyPercent(loopTotalUs);
+  reportPerfMetrics();
 }
