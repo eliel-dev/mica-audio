@@ -9,7 +9,7 @@ namespace App.WinUI.Services.Devices.Onboarding;
 internal sealed partial class EspToolFlashService : IEspToolFlashService
 {
     private const int MaxCapturedOutputLines = 12;
-    private static readonly Regex PercentRegex = new(@"(\d{1,3})\s*%", RegexOptions.Compiled);
+    private static readonly Regex PercentRegex = new(@"(\d{1,3})(?:\.\d+)?\s*%", RegexOptions.Compiled);
     private readonly ILogger<EspToolFlashService> logger;
 
     public EspToolFlashService(ILogger<EspToolFlashService> logger)

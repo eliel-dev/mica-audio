@@ -116,6 +116,11 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         return pairing;
     }
 
+    internal PairingCodeInfo CreateHiddenPairingCode(TimeSpan ttl)
+    {
+        return integration.CreatePairingCode(ttl);
+    }
+
     public bool RemoveDevice(string deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId))

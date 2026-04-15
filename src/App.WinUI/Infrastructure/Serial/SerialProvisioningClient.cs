@@ -25,6 +25,8 @@ internal sealed record SerialProvisioningRequest
     public required string ServerBaseUrl { get; init; }
 
     public required string PairCode { get; init; }
+
+    public string? DeviceName { get; init; }
 }
 
 internal sealed record SerialProvisioningResult
@@ -76,6 +78,7 @@ internal sealed partial class SerialProvisioningClient : ISerialProvisioningClie
             ["password"] = request.Password,
             ["serverBaseUrl"] = request.ServerBaseUrl,
             ["pairCode"] = request.PairCode,
+            ["deviceName"] = string.IsNullOrWhiteSpace(request.DeviceName) ? null : request.DeviceName,
         });
 
         for (var attempt = 1; attempt <= HelloAttemptCount; attempt++)

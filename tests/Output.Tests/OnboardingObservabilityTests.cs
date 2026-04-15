@@ -38,9 +38,13 @@ public sealed class OnboardingObservabilityTests
                 flashService,
                 loggerFactory.CreateLogger<DeviceUsbOnboardingService>());
 
-            var result = await service.RunAsync(new DeviceOnboardingRequest { PortName = "COM7" });
+            var result = await service.RunAsync(new DeviceOnboardingRequest
+            {
+                PortName = "COM7",
+            });
 
             Assert.True(result.Success);
+            Assert.Equal("123456", result.PairCode);
             Assert.Equal("COM7", flashService.LastPortName);
             var activity = Assert.Single(activityCapture.CompletedActivities, item => item.OperationName == "device-onboarding.run");
             Assert.Equal(AppObservability.AppComponent, activity.GetTagItem(AppObservability.ComponentKey));
@@ -61,7 +65,7 @@ public sealed class OnboardingObservabilityTests
 
         try
         {
-            await CreateFirmwarePackageAsync(root, "ws-legacy");
+            await CreateFirmwarePackageAsync(root, "ws-legacy", new DateTimeOffset(2030, 3, 9, 18, 0, 0, TimeSpan.Zero));
 
             using var loggerFactory = LoggerFactory.Create(builder => { });
             var firmwareService = new PrecompiledFirmwareService(
@@ -78,7 +82,10 @@ public sealed class OnboardingObservabilityTests
                 flashService,
                 loggerFactory.CreateLogger<DeviceUsbOnboardingService>());
 
-            var result = await service.RunAsync(new DeviceOnboardingRequest { PortName = "COM8" });
+            var result = await service.RunAsync(new DeviceOnboardingRequest
+            {
+                PortName = "COM8",
+            });
 
             Assert.False(result.Success);
             Assert.Equal("firmware_incompatible", result.ErrorCode);
@@ -91,7 +98,10 @@ public sealed class OnboardingObservabilityTests
         }
     }
 
-    private static async Task CreateFirmwarePackageAsync(string root, string controlPlane)
+    private static async Task CreateFirmwarePackageAsync(
+        string root,
+        string controlPlane,
+        DateTimeOffset? builtAtUtc = null)
     {
         var firmwarePath = Path.Combine(root, "esp32s3-devkitc1-128x64-dma_exp_merged.bin");
         await File.WriteAllBytesAsync(firmwarePath, [0x01, 0x02, 0x03]);
@@ -104,7 +114,7 @@ public sealed class OnboardingObservabilityTests
             BoardModel = PrecompiledFirmwareService.Esp32S3DevKitC1Board,
             PanelType = PrecompiledFirmwareService.Hub75PanelP25_128x64_Smd2121_Scan32,
             ControlPlane = controlPlane,
-            BuiltAtUtc = new DateTimeOffset(2026, 3, 9, 18, 0, 0, TimeSpan.Zero),
+            BuiltAtUtc = builtAtUtc ?? new DateTimeOffset(2030, 3, 9, 18, 0, 0, TimeSpan.Zero),
         };
 
         var manifestPath = Path.Combine(root, PrecompiledFirmwareService.GetManifestFileName(Path.GetFileName(firmwarePath)));
@@ -157,7 +167,7 @@ public sealed class OnboardingObservabilityTests
             remove { }
         }
 
-        public string GetServerBaseAddress() => "http://127.0.0.1:5272";
+        public string GetServerBaseAddress() => "http://192.168.1.16:5272";
 
         public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
             => new() { Code = "123456", ExpiresAtUtc = DateTimeOffset.UtcNow.Add(ttl) };

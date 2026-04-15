@@ -83,6 +83,7 @@ public sealed partial class DevicesPage
     private StackPanel WizardPortPanel = null!;
     private ComboBox WizardPortComboBox = null!;
     private Button WizardRefreshPortsButton = null!;
+    private TextBlock WizardServerBaseAddressText = null!;
     private TextBlock WizardSummaryNoteText = null!;
     private TextBlock WizardStatusText = null!;
     private Grid WizardFlashProgressHost = null!;
@@ -716,7 +717,7 @@ public sealed partial class DevicesPage
 
         WizardSummaryNoteText = new TextBlock
         {
-            Text = "Selecione a porta COM e clique em Concluir para gravar o firmware.",
+            Text = "Selecione a porta COM e clique em Concluir para gravar o firmware. Depois, use o pair code no portal AP do ESP32.",
             Opacity = 0.72,
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
@@ -724,6 +725,41 @@ public sealed partial class DevicesPage
         WizardPortPanel.Children.Add(WizardSummaryNoteText);
 
         body.Children.Add(WizardPortPanel);
+
+        var serverPanel = new StackPanel
+        {
+            Spacing = 10,
+        };
+
+        serverPanel.Children.Add(new TextBlock
+        {
+            Text = "Servidor local para preencher no portal AP",
+            FontSize = 12,
+            Opacity = 0.86,
+        });
+
+        var serverInfoPanel = new StackPanel
+        {
+            Spacing = 4,
+        };
+        serverInfoPanel.Children.Add(new TextBlock
+        {
+            Text = "Copie este valor para o campo Servidor do portal do ESP32",
+            FontSize = 12,
+            Opacity = 0.86,
+        });
+
+        WizardServerBaseAddressText = new TextBlock
+        {
+            Text = "-",
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.72,
+        };
+        serverInfoPanel.Children.Add(WizardServerBaseAddressText);
+        serverPanel.Children.Add(serverInfoPanel);
+
+        body.Children.Add(serverPanel);
 
         WizardStatusText = new TextBlock
         {

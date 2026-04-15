@@ -1,41 +1,55 @@
-# Guia - Setup New Device (USB + AP)
+# Guia - Setup New Device (AP-first estavel)
 
 ## Objetivo
 
 Documentar o fluxo oficial e estavel de onboarding:
 
 1. selecionar porta COM no wizard
-2. gravar firmware
-3. exibir codigo de pareamento
-4. configurar Wi-Fi no portal AP do ESP32
+2. gravar firmware com `erase-all`
+3. exibir `pair code` no desktop
+4. conectar o celular ao AP `MicaAudio-Setup-xxxx`
+5. concluir provisioning no portal AP com `Servidor` + `pair code`
 
 ## Passos
 
 1. Abrir `Dispositivos`.
 2. Clicar em `Novo dispositivo` no rodape da lista.
 3. Selecionar a porta COM do ESP32 (`Atualizar portas` quando necessario).
-4. Clicar em `Concluir` para gravar o firmware.
-5. Anotar o codigo de pareamento exibido ao fim do flash.
-6. Conectar no AP `MicaAudio-Setup-xxxx`.
-7. No portal do ESP32, informar Wi-Fi/servidor e o codigo de pareamento.
+4. Conferir o `Servidor local para preencher no portal AP`.
+5. Clicar em `Concluir` e aguardar o flash.
+6. Ao final, copiar o `pair code` exibido pelo app.
+7. No celular, conectar ao Wi-Fi `MicaAudio-Setup-xxxx`.
+8. Abrir o portal do ESP32 e preencher:
+   - `Servidor`
+   - `Codigo pareamento`
+   - `Nome dispositivo` opcional
+9. Confirmar que o device aparece online no dashboard.
+
+## Observacao operacional
+
+1. Em flash limpo, ou sempre que faltarem `host/porta/deviceId/token`, o firmware abre o AP de setup imediatamente no `setup()`.
+2. O HUB75 prioriza `SETUP WIFI` sempre que o portal estiver ativo.
+3. O fallback por queda prolongada de Wi-Fi continua ativo para devices ja provisionados.
+4. `mica.serial.v1` continua no firmware e no desktop apenas como compatibilidade/diagnostico, fora do caminho oficial do wizard.
 
 ## Campo Servidor no portal AP
 
-1. O portal AP voltou a expor um campo editavel `Servidor`.
+1. O portal AP expõe um campo editavel `Servidor`.
 2. Formatos aceitos:
    - `http://192.168.1.16:5272`
    - `192.168.1.16:5272`
    - `192.168.1.16`
 3. Quando a porta nao for informada, o firmware assume `5272`.
 4. Se ja existir host salvo no ESP, o campo abre preenchido com esse valor.
-5. Se o valor digitado for invalido, o firmware nao apaga um host valido ja salvo; ele registra o erro em serial e reaproveita a configuracao anterior quando possivel.
+5. Se o valor digitado for invalido, o firmware nao apaga um host valido ja salvo; registra o erro em serial e reaproveita a configuracao anterior quando possivel.
 
 ## Observacao de protocolo
 
-1. O pareamento HTTP continua igual para o usuario final.
-2. A resposta de pareamento agora tambem entrega `mqttHost`, `mqttPort` e `mqttRootTopic`.
-3. O firmware persiste esses campos automaticamente e usa MQTT como control plane apos concluir o onboarding.
-4. O WS permanece reservado ao stream visual binario; nao ha passo extra de configuracao na UI para MQTT nesta fase.
+1. O `pair code` voltou a ser parte visivel do onboarding do desktop.
+2. O backend continua usando `/api/v1/pair`.
+3. A resposta de pareamento continua entregando `mqttHost`, `mqttPort` e `mqttRootTopic`.
+4. O firmware persiste esses campos automaticamente e usa MQTT como control plane apos concluir o onboarding.
+5. O WS permanece reservado ao stream visual binario.
 
 ## Contrato visual do wizard
 
@@ -55,15 +69,14 @@ Documentar o fluxo oficial e estavel de onboarding:
 1. Resolve firmware oficial `esp32s3-devkitc1-128x64-dma_exp_merged.bin`.
 2. Em workspace/dev, executa preflight de frescor do release oficial:
    - se o pacote oficial local estiver stale, roda `scripts/build-precompiled-firmware.ps1`;
-   - `pio run` sozinho nao atualiza o catalogo oficial usado pelo wizard.
+   - o frescor considera toda a arvore `firmware/esp32s3-devkitc1/src`.
 3. Valida manifesto sidecar `esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json`.
 4. So prossegue com flash quando o manifesto declarar `controlPlane = mqtt`.
-5. Flasha o ESP32-S3 via `esptool`, sempre com apagamento total da flash antes da gravacao.
-6. Gera `pair code` e mostra em modal.
-7. Finaliza wizard e orienta provisioning via AP.
-8. O portal AP permite confirmar ou editar manualmente o campo `Servidor` antes do pareamento.
-9. O device fica online no dashboard apos configuracao no portal.
-10. O status `Online` agora depende do control plane MQTT estar conectado.
+5. Valida que o `Servidor local` do desktop nao caiu em loopback.
+6. Flasha o ESP32-S3 via `esptool`, sempre com apagamento total da flash antes da gravacao.
+7. Gera um `pair code` de curta duracao e o exibe ao usuario.
+8. Orienta o usuario a concluir o provisioning manual no AP do ESP32.
+9. O status `Online` continua dependendo do control plane MQTT estar conectado.
 
 ## Perfil oficial do comando de flash
 
@@ -90,28 +103,30 @@ Consequencia operacional:
 1. Durante `Flashing`, o wizard exibe barra `0..100` + `%`.
 2. O percentual exibido vem da saida do `esptool` (`NN%` ou `NN %`).
 3. Antes da escrita, o wizard informa que a flash inteira esta sendo apagada.
-4. Em falha, o ultimo percentual permanece visivel junto da mensagem de erro.
+4. Em sucesso, o app passa a mostrar o `pair code` e as instrucoes do AP.
+5. Em falha, o ultimo percentual permanece visivel junto da mensagem de erro.
 
 ## Contrato serial `mica.serial.v1` (compatibilidade)
 
-1. O protocolo serial permanece no firmware e no app para compatibilidade/futuro.
-2. O onboarding oficial nao depende mais de handshake serial para concluir o fluxo.
+1. O protocolo serial nao faz mais parte do caminho oficial do wizard.
+2. O cliente serial e mantido apenas para compatibilidade futura e diagnostico de bancada.
+3. O AP `MicaAudio-Setup-xxxx` voltou a ser o baseline oficial de provisioning.
 
 ## Politica de seguranca para credenciais
 
-1. Senha Wi-Fi e efemera.
-2. Nao persistir senha em `settings.json`.
-3. Nao gravar senha em logs/handoffs.
+1. O app nao coleta mais `SSID` e `senha Wi-Fi` no wizard oficial.
+2. O `pair code` continua efemero.
+3. Nao gravar senhas do portal AP em logs/handoffs.
 
 ## Fallback operacional
 
 Se onboarding USB falhar:
 
 1. Validar porta COM e cabo.
-2. Atualizar lista de portas.
-3. Se a mensagem citar manifesto/compatibilidade, atualizar o pacote de firmware do app antes de repetir.
-4. Repetir onboarding.
-5. Provisionar manualmente pelo AP e repetir somente pareamento.
+2. Confirmar que o `Servidor local` mostrado no wizard nao caiu em loopback.
+3. Atualizar lista de portas.
+4. Repetir o flash.
+5. Se o firmware abrir o AP `MicaAudio-Setup-xxxx`, usar esse portal como caminho principal de provisioning.
 
 ## Diagnostico de firmware legado
 
@@ -122,12 +137,12 @@ Se onboarding USB falhar:
 ## Checklist rapido
 
 1. Botao `Novo dispositivo` visivel no rodape da lista.
-2. Wizard abre com selecao de porta COM + progresso de flash.
-3. Porta COM detectada automaticamente (ou via `Atualizar portas`).
-4. Ao fim do flash, app mostra codigo de pareamento.
-5. Portal AP mostra o campo `Servidor`, aceitando URL completa ou `host[:porta]`.
-6. Device conecta MQTT + WS automaticamente apos provisioning via AP.
-7. Device entra online apos subir o control plane MQTT.
+2. Wizard abre com selecao de porta COM + `Servidor local` em modo leitura.
+3. `SSID`, `Senha Wi-Fi` e `Nome do dispositivo` nao fazem parte do wizard oficial.
+4. Ao fim do flash, o app mostra o `pair code` e orienta o uso do AP `MicaAudio-Setup-xxxx`.
+5. Em boot limpo, o firmware abre o AP imediatamente.
+6. Portal AP continua mostrando o campo `Servidor`, aceitando URL completa ou `host[:porta]`.
+7. Device conecta MQTT + WS automaticamente apos provisioning via AP.
 8. Device novo nao deve aparecer como `Firmware legado`; se aparecer, refazer o flash com o pacote atualizado.
 
 ## Referencias de codigo

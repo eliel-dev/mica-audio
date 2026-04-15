@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Services.Firmware;
 using Microsoft.Extensions.Logging;
@@ -14,6 +15,7 @@ internal interface IDeviceUsbOnboardingService
 }
 
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
+// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-04---rollback-para-ap-first-estavel
 internal sealed partial class DeviceUsbOnboardingService : IDeviceUsbOnboardingService
 {
     private static readonly TimeSpan PairingCodeTtl = TimeSpan.FromMinutes(10);
@@ -57,6 +59,12 @@ internal sealed partial class DeviceUsbOnboardingService : IDeviceUsbOnboardingS
                 return Fail("port_required", "Porta COM obrigatoria para onboarding.");
             }
 
+            if (!TryResolveProvisioningServerBaseAddress(deviceOps.GetServerBaseAddress(), out var serverBaseAddress, out var serverAddressError))
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "server_unavailable");
+                return Fail("server_unavailable", serverAddressError);
+            }
+
             var firmwareRefresh = await firmwareService
                 .EnsureOfficialFirmwareFreshAsync(
                     PrecompiledFirmwareService.Esp32S3DevKitC1Board,
@@ -98,30 +106,30 @@ internal sealed partial class DeviceUsbOnboardingService : IDeviceUsbOnboardingS
                 return Fail("flash_failed", flash.Message);
             }
 
-            var pairing = deviceOps.CreatePairingCode(PairingCodeTtl);
+            var pairing = deviceOps.CreateHiddenPairingCode(PairingCodeTtl);
             activity?.SetTag("pairing.code.issued", true);
-            LogUsbOnboardingReady(logger, request.PortName, pairing.Code);
+            LogUsbOnboardingPairingReady(logger, request.PortName, serverBaseAddress);
 
             progress?.Report(new DeviceOnboardingProgress
             {
                 Stage = DeviceOnboardingStage.Pairing,
-                Message = "Flash concluido. Conecte no AP do dispositivo e use o codigo de pareamento exibido.",
-                Percent = 90,
+                Message = "Flash concluido. Abra o AP MicaAudio-Setup-xxxx e finalize o provisioning com o pair code.",
+                Percent = 100,
             });
 
             progress?.Report(new DeviceOnboardingProgress
             {
                 Stage = DeviceOnboardingStage.Done,
-                Message = "Flash concluido. Proximo passo: provisionar Wi-Fi via AP do ESP32.",
+                Message = "Flash concluido. O proximo passo e conectar ao AP do ESP32 e informar o pair code.",
                 Percent = 100,
             });
 
-            LogUsbOnboardingSucceeded(logger);
+            LogUsbOnboardingSucceeded(logger, request.PortName);
             return new DeviceOnboardingResult
             {
                 Success = true,
                 PairCode = pairing.Code,
-                Message = $"Firmware gravado. Use o codigo {pairing.Code} no portal AP do dispositivo.",
+                Message = $"Firmware gravado. Conecte ao Wi-Fi MicaAudio-Setup-xxxx e informe o servidor {serverBaseAddress} com o pair code exibido.",
             };
         }
         catch (Exception ex)
@@ -142,14 +150,44 @@ internal sealed partial class DeviceUsbOnboardingService : IDeviceUsbOnboardingS
         };
     }
 
-    [LoggerMessage(EventId = 1300, Level = LogLevel.Information, Message = "Onboarding USB em modo AP concluido. porta={PortName} pairCode={PairCode}")]
-    private static partial void LogUsbOnboardingReady(ILogger logger, string portName, string pairCode);
+    private static bool TryResolveProvisioningServerBaseAddress(string rawServerBaseAddress, out string normalizedServerBaseAddress, out string errorMessage)
+    {
+        normalizedServerBaseAddress = string.Empty;
+        errorMessage = string.Empty;
+
+        if (!Uri.TryCreate(rawServerBaseAddress, UriKind.Absolute, out var uri)
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(uri.Host))
+        {
+            errorMessage = "Servidor local invalido para onboarding. Reinicie o app e tente novamente.";
+            return false;
+        }
+
+        if (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = "Servidor local nao exposto na rede. Conecte o PC a uma interface LAN ou Wi-Fi valida antes de provisionar o device.";
+            return false;
+        }
+
+        if (IPAddress.TryParse(uri.Host, out var address)
+            && (IPAddress.IsLoopback(address) || IPAddress.Any.Equals(address) || IPAddress.IPv6Any.Equals(address)))
+        {
+            errorMessage = "Servidor local nao exposto na rede. Conecte o PC a uma interface LAN ou Wi-Fi valida antes de provisionar o device.";
+            return false;
+        }
+
+        normalizedServerBaseAddress = uri.GetLeftPart(UriPartial.Authority);
+        return true;
+    }
+
+    [LoggerMessage(EventId = 1300, Level = LogLevel.Information, Message = "Onboarding USB pronto para AP-first. porta={PortName} server={ServerBaseAddress}")]
+    private static partial void LogUsbOnboardingPairingReady(ILogger logger, string portName, string serverBaseAddress);
 
     [LoggerMessage(EventId = 1301, Level = LogLevel.Warning, Message = "Onboarding USB falhou no flash.")]
     private static partial void LogUsbOnboardingFlashFailed(ILogger logger);
 
-    [LoggerMessage(EventId = 1302, Level = LogLevel.Information, Message = "Onboarding USB concluiu com sucesso.")]
-    private static partial void LogUsbOnboardingSucceeded(ILogger logger);
+    [LoggerMessage(EventId = 1302, Level = LogLevel.Information, Message = "Onboarding USB concluiu o flash e gerou pair code. porta={PortName}")]
+    private static partial void LogUsbOnboardingSucceeded(ILogger logger, string portName);
 
     [LoggerMessage(EventId = 1303, Level = LogLevel.Warning, Message = "Onboarding USB falhou com excecao.")]
     private static partial void LogUsbOnboardingException(ILogger logger, Exception exception);

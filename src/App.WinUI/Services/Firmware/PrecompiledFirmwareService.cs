@@ -23,8 +23,7 @@ internal sealed partial class PrecompiledFirmwareService
     [
         Path.Combine("scripts", "build-precompiled-firmware.ps1"),
         Path.Combine("firmware", "esp32s3-devkitc1", "platformio.ini"),
-        Path.Combine("firmware", "esp32s3-devkitc1", "src", "main.cpp"),
-        Path.Combine("firmware", "esp32s3-devkitc1", "src", "firmware_version.h"),
+        Path.Combine("firmware", "esp32s3-devkitc1", "src"),
         Path.Combine("firmware", "esp32s3-devkitc1", "boards"),
         Path.Combine("firmware", "esp32s3-devkitc1", "partitions"),
         Path.Combine("firmware", "esp32s3-devkitc1", "scripts"),

@@ -48,6 +48,7 @@
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Observability\ObservabilityOptions.cs" Link="Shared\Infrastructure\ObservabilityOptions.cs" />
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialPortCatalogContracts.cs" Link="Shared\Serial\SerialPortCatalogContracts.cs" />
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialPortDescriptor.cs" Link="Shared\Serial\SerialPortDescriptor.cs" />
+    <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialProvisioningClient.cs" Link="Shared\Serial\SerialProvisioningClient.cs" />
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialMonitorService.cs" Link="Shared\Serial\SerialMonitorService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\GifScaleMode.cs" Link="Shared\GifScaleMode.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75FrameFormatter.cs" Link="Shared\Hub75FrameFormatter.cs" />

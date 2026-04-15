@@ -313,11 +313,12 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 
 ## Atualizacao 2026-03 - Onboarding USB sem mudanca no wire WS/HTTP
 
-- O onboarding de novo dispositivo passou a ter etapa USB (`mica.serial.v1`) entre app e firmware.
+- O onboarding de novo dispositivo continua sem mudanca nos contratos publicos WS/HTTP do servidor.
+- O fluxo oficial atual do desktop e `COM -> flash -> pair code -> AP`.
 - Nao houve mudanca nos contratos publicos WS/HTTP do servidor:
   - `/api/v1/pair` permanece o endpoint de pareamento;
   - `/ws/v1/stream` permanece para sessao e telemetria.
-- O serial onboarding apenas automatiza o preenchimento de host/credenciais/pair code antes da sessao WS.
+- `mica.serial.v1` permanece no codigo apenas como compatibilidade/diagnostico entre app e firmware, fora do caminho oficial do wizard.
 
 ## Atualizacao 2026-03 - Refactor core-first do host em .NET 10
 

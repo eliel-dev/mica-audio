@@ -12,7 +12,7 @@ namespace Integration.Smoke;
 public sealed class DeviceUsbOnboardingServiceTests
 {
     [Fact]
-    public async Task RunAsync_ShouldFlashAndReturnPairCode()
+    public async Task RunAsync_ShouldFlashAndReturnPairCodeForApProvisioning()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "mica-audio-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
@@ -62,6 +62,9 @@ public sealed class DeviceUsbOnboardingServiceTests
 
             Assert.True(result.Success);
             Assert.Equal("PAIR-TEST-123", result.PairCode);
+            Assert.Null(result.DeviceId);
+            Assert.Contains("MicaAudio-Setup-xxxx", result.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("http://192.168.1.16:5272", result.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Equal("COM7", flashService.LastPortName);
             Assert.Equal(firmwarePath, flashService.LastFirmwarePath);
             Assert.Equal(1, flashService.CallCount);
@@ -98,10 +101,11 @@ public sealed class DeviceUsbOnboardingServiceTests
     }
 
     [Fact]
-    public async Task RunAsync_ShouldUseRegeneratedOfficialReleaseWhenWorkspaceArtifactIsMissing()
+    public async Task RunAsync_ShouldUseRegeneratedOfficialReleaseWhenAnyFirmwareSourceUnderSrcIsStale()
     {
         var workspaceRoot = Path.Combine(Path.GetTempPath(), "mica-audio-onboarding-tests", Guid.NewGuid().ToString("N"));
         var outputRoot = Path.Combine(workspaceRoot, "artifacts");
+        Directory.CreateDirectory(outputRoot);
         Directory.CreateDirectory(Path.Combine(workspaceRoot, "scripts"));
         Directory.CreateDirectory(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src"));
         Directory.CreateDirectory(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards"));
@@ -110,20 +114,38 @@ public sealed class DeviceUsbOnboardingServiceTests
         await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "MicaAudio.sln"), "Microsoft Visual Studio Solution File");
         await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "platformio.ini"), "[env:esp32s3_devkitc1_dma_exp]");
         await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "main.cpp"), "int main() { return 0; }");
+        await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "mica_network.cpp"), "void processNetworkPoll() {}");
         await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "firmware_version.h"), "#define MICA_FIRMWARE_VERSION \"test\"");
         await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards", "board.json"), "{}");
         await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "partitions", "partitions.csv"), "# partitions");
         await File.WriteAllTextAsync(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "scripts", "patch.py"), "# patch");
         var sourceTimestamp = new DateTime(2026, 3, 20, 12, 0, 0, DateTimeKind.Utc);
-        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "platformio.ini"), sourceTimestamp);
-        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "main.cpp"), sourceTimestamp);
-        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "firmware_version.h"), sourceTimestamp);
-        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards", "board.json"), sourceTimestamp);
-        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "partitions", "partitions.csv"), sourceTimestamp);
-        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "scripts", "patch.py"), sourceTimestamp);
-        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards"), sourceTimestamp);
-        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "partitions"), sourceTimestamp);
-        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "scripts"), sourceTimestamp);
+        var baselineTimestamp = sourceTimestamp.AddMinutes(-30);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "platformio.ini"), baselineTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "main.cpp"), baselineTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "firmware_version.h"), baselineTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src", "mica_network.cpp"), sourceTimestamp);
+        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src"), sourceTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards", "board.json"), baselineTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "partitions", "partitions.csv"), baselineTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "scripts", "patch.py"), baselineTimestamp);
+        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "boards"), baselineTimestamp);
+        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "partitions"), baselineTimestamp);
+        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "scripts"), baselineTimestamp);
+        await File.WriteAllBytesAsync(Path.Combine(outputRoot, "esp32s3-devkitc1-128x64-dma_exp_merged.bin"), [0x01, 0x02, 0x03]);
+        await File.WriteAllTextAsync(
+            Path.Combine(outputRoot, "esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json"),
+            JsonSerializer.Serialize(new FirmwareArtifactManifest
+            {
+                SchemaVersion = 2,
+                FirmwareVersion = "1.9.9-stale",
+                GitSha = "stale123",
+                Profile = "dma_exp",
+                BoardModel = PrecompiledFirmwareService.Esp32S3DevKitC1Board,
+                PanelType = PrecompiledFirmwareService.Hub75PanelP25_128x64_Smd2121_Scan32,
+                ControlPlane = PrecompiledFirmwareService.RequiredControlPlane,
+                BuiltAtUtc = sourceTimestamp.AddMinutes(-10),
+            }));
         await File.WriteAllTextAsync(
             Path.Combine(workspaceRoot, "scripts", "build-precompiled-firmware.ps1"),
             """
@@ -152,8 +174,8 @@ $manifest = [ordered]@{
 }
 $manifest | ConvertTo-Json | Set-Content -Path $manifestPath -Encoding utf8
 """);
-        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "scripts", "build-precompiled-firmware.ps1"), sourceTimestamp);
-        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "scripts"), sourceTimestamp);
+        File.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "scripts", "build-precompiled-firmware.ps1"), baselineTimestamp);
+        Directory.SetLastWriteTimeUtc(Path.Combine(workspaceRoot, "scripts"), baselineTimestamp);
 
         try
         {
@@ -190,15 +212,44 @@ $manifest | ConvertTo-Json | Set-Content -Path $manifestPath -Encoding utf8
             }, progress);
 
             Assert.True(result.Success);
+            Assert.Equal("PAIR-TEST-123", result.PairCode);
             Assert.Equal("COM9", flashService.LastPortName);
             Assert.NotNull(flashService.LastFirmwarePath);
-            Assert.StartsWith(outputRoot, flashService.LastFirmwarePath!, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("esp32s3-devkitc1-128x64-dma_exp_merged.bin", Path.GetFileName(flashService.LastFirmwarePath));
             Assert.Contains(progressItems, item => item.Message.Contains("2.0.0-regenerated", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
             Directory.Delete(workspaceRoot, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task RunAsync_ShouldFailWhenServerBaseAddressIsLoopback()
+    {
+        var runtime = new FakeDeviceOperationsRuntime
+        {
+            ServerBaseAddress = "http://127.0.0.1:5272",
+        };
+        using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
+        var firmwareService = new PrecompiledFirmwareService(
+            Options.Create(new MicaAudioOptions { PrecompiledFirmwareDirectory = Path.GetTempPath() }),
+            NullLogger<PrecompiledFirmwareService>.Instance);
+        var flashService = new FakeFlashService();
+        var sut = new DeviceUsbOnboardingService(
+            coordinator,
+            firmwareService,
+            flashService,
+            NullLogger<DeviceUsbOnboardingService>.Instance);
+
+        var result = await sut.RunAsync(new DeviceOnboardingRequest
+        {
+            PortName = "COM5",
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("server_unavailable", result.ErrorCode);
+        Assert.Equal(0, flashService.CallCount);
     }
 
     private sealed class FakeFlashService : IEspToolFlashService
@@ -231,6 +282,8 @@ $manifest | ConvertTo-Json | Set-Content -Path $manifestPath -Encoding utf8
 
     private sealed class FakeDeviceOperationsRuntime : IDeviceOperationsRuntime
     {
+        public string ServerBaseAddress { get; set; } = "http://192.168.1.16:5272";
+
         public event EventHandler? DevicesChanged
         {
             add { }
@@ -255,7 +308,7 @@ $manifest | ConvertTo-Json | Set-Content -Path $manifestPath -Encoding utf8
             remove { }
         }
 
-        public string GetServerBaseAddress() => "http://127.0.0.1:5272";
+        public string GetServerBaseAddress() => ServerBaseAddress;
 
         public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
         {

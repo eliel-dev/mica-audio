@@ -24,6 +24,8 @@
    - `QIO 80MHz`
    - `16MB flash`
    - `OPI PSRAM` via `memory_type = qio_opi`
+   - `ARDUINO_USB_MODE=1`
+   - `ARDUINO_USB_CDC_ON_BOOT=1`
    - particao local `3MB APP / 9.9MB FATFS`
 
 ## Atualizacao 2026-03 - Perfil oficial N16R8 para DevKitC-1
@@ -51,10 +53,32 @@
 1. `platformio.ini` para largura, altura e o unico env oficial
 2. `boards/mica_esp32_s3_devkitc1_n16r8.json` para o perfil oficial da placa
 3. `partitions/mica_app3M_fat9M_16MB.csv` para o layout oficial `3MB APP / 9.9MB FATFS`
-4. `main.cpp` para parsing do stream e desenho
-5. `firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py` para preservar o override de payload WS no build oficial
-6. `firmware/esp32s3-devkitc1/scripts/patch_hub75_bulk_rgb565.py` para expor o writer bulk RGB565 na dependencia HUB75 pinada
-7. `scripts/build-precompiled-firmware.ps1` para gerar `BIN + manifesto` embarcados no app
+4. `main.cpp` para orquestracao de `setup()`, `loop()` e render
+5. `mica_types.h` para enums, structs e constantes compartilhadas
+6. `mica_globals.h/.cpp` para declaracao/definicao de globals
+7. `mica_display.h/.cpp` para HUB75, LEDs, fallback e pacing
+8. `mica_visuals.h/.cpp` para estilos visuais nativos de `Bins128`
+9. `mica_network.h/.cpp` para MQTT, WebSocket, HTTP e telemetria
+10. `mica_ota.h/.cpp` para OTA context, download e progress bridge
+11. `mica_panels.h/.cpp` para panels batch: download, validacao e playback
+12. `mica_commands.h/.cpp` para parser de comandos tracked
+13. `mica_provisioning.h/.cpp` para serial provisioning, WiFiManager e pairing
+14. `firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py` para preservar o override de payload WS no build oficial
+15. `firmware/esp32s3-devkitc1/scripts/patch_hub75_bulk_rgb565.py` para expor o writer bulk RGB565 na dependencia HUB75 pinada
+16. `scripts/build-precompiled-firmware.ps1` para gerar `BIN + manifesto` embarcados no app
+
+## Atualizacao 2026-04 - Rollback para AP-first estavel
+
+- Quando faltam `host/porta/deviceId/token` no boot, o firmware volta a abrir o AP `MicaAudio-Setup-xxxx` imediatamente.
+- O `setup()` chama `startProvisioningPortal(...)` direto no boot incompleto e recarrega `Preferences` apos o portal fechar.
+- O hotfix de `startConfigPortal()` direto foi preservado:
+  - sem voltar para `autoConnect()`;
+  - sem timeout de portal;
+  - com timeout explicito apenas para a tentativa STA do submit.
+- A janela serial-first de `60 s` deixou de fazer parte do caminho oficial.
+- `mica.serial.v1` continua no codigo apenas como compatibilidade/diagnostico.
+- O fallback por queda prolongada de Wi-Fi permanece ativo para devices ja provisionados.
+- Quando o portal esta ativo, o fallback HUB75 continua priorizando `SETUP WIFI`.
 
 ## Atualizacao 2026-03 - HUB75 128x64 single-canvas mapping
 
@@ -423,9 +447,67 @@
 - Quando o campo `Servidor` vier vazio ou invalido, o firmware preserva um host salvo valido e registra o motivo em serial/`lastWifiEvent`.
 - O contrato serial `mica.serial.v1` permanece no codigo apenas para compatibilidade futura e diagnostico.
 
+## Atualizacao 2026-04 - Module split Phase 1A
+
+- O `main.cpp` monolitico (~5108 linhas) foi dividido em 11 modulos com responsabilidades isoladas.
+- O `main.cpp` ficou com ~223 linhas, atuando apenas como orquestrador: `setup()`, `loop()`, `processSignalTimeout()` e `processRenderFrame()`.
+- Estrutura final dos modulos:
+
+| Modulo | Responsabilidade | Linhas |
+|---|---|---|
+| `main.cpp` | Orquestrador: setup, loop, render dispatch | ~223 |
+| `mica_types.h` | Header-only: enums, structs, constexpr | ~260 |
+| `mica_globals.h/.cpp` | Extern declarations + definicoes de globals | ~206/~195 |
+| `mica_display.h/.cpp` | HUB75 init, primitivas, shadow buffer, LEDs, fallback, pacing | ~108/~907 |
+| `mica_visuals.h/.cpp` | 10 estilos visuais nativos + dispatcher | ~42/~590 |
+| `mica_network.h/.cpp` | MQTT, WebSocket, HTTP, connectivity, telemetria | ~95/~970 |
+| `mica_ota.h/.cpp` | OTA context, boot state, download task, progress bridge | ~39/~580 |
+| `mica_panels.h/.cpp` | Panels batch: buffer, download, validate, queue, playback | ~46/~480 |
+| `mica_commands.h/.cpp` | handleControlCommandMessage + parameter parsing | ~6/~373 |
+| `mica_provisioning.h/.cpp` | Serial provisioning, WiFiManager portal, pairing | ~10/~330 |
+
+- Convencoes do split:
+  - Headers usam `#pragma once` e incluem apenas o necessario.
+  - Funcoes internas ao modulo ficam `static` no `.cpp`, sem declaracao no `.h`.
+  - Funcoes ordenadas no `.cpp` de forma que definicao vem antes de uso, eliminando forward declarations internas.
+  - `constexpr` namespace-scope no header e seguro (internal linkage implicito em C++).
+  - Default arguments ficam apenas no `.h`.
+- Nenhuma funcao foi renomeada; nomes exatos preservados para diff limpo.
+- Build metrics estabilizados: RAM 39.0%, Flash 48.5% (identicos ao monolito original).
+- 2 FreeRTOS tasks mantidas: `otaDownloadTaskFn` (Core 0) em `mica_ota.cpp`, `panelsBatchPlaybackTask` (Core 1) em `mica_panels.cpp`.
+
+## Atualizacao 2026-04 - Provisioning AP direto no setup
+
+- O caminho oficial de provisioning em `mica_provisioning.cpp` deixou de usar `WiFiManager::autoConnect()` quando o firmware ja sabe que precisa abrir o setup.
+- Motivo: no baseline `Arduino-ESP32 v3.3.8` sobre `ESP-IDF v5.5.4`, a tentativa STA previa ao portal podia atrasar ou impedir a aparicao do AP em flash limpo.
+- O firmware agora chama `startConfigPortal()` diretamente quando entra em provisioning explicito:
+  - boot com host/porta ausentes;
+  - boot com `deviceId/token` ausentes;
+  - fallback apos queda prolongada de Wi-Fi;
+  - entrada explicita em `enterProvisioningMode(...)`.
+- O submit do portal continua tentando conectar ao Wi-Fi informado, agora com timeout explicito alinhado a `kWifiConnectAttemptTimeoutMs`.
+- O nome salvo do device passa a ser carregado em `String` local antes de montar `WiFiManagerParameter`, evitando depender de `c_str()` sobre temporario no setup do portal.
+
 ## Referencias de codigo
 
 - [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
+- [mica_types.h](../../../firmware/esp32s3-devkitc1/src/mica_types.h#L1)
+- [mica_globals.h](../../../firmware/esp32s3-devkitc1/src/mica_globals.h#L1)
+- [mica_globals.cpp](../../../firmware/esp32s3-devkitc1/src/mica_globals.cpp#L1)
+- [mica_display.h](../../../firmware/esp32s3-devkitc1/src/mica_display.h#L1)
+- [mica_display.cpp](../../../firmware/esp32s3-devkitc1/src/mica_display.cpp#L1)
+- [mica_visuals.h](../../../firmware/esp32s3-devkitc1/src/mica_visuals.h#L1)
+- [mica_visuals.cpp](../../../firmware/esp32s3-devkitc1/src/mica_visuals.cpp#L1)
+- [mica_network.h](../../../firmware/esp32s3-devkitc1/src/mica_network.h#L1)
+- [mica_network.cpp](../../../firmware/esp32s3-devkitc1/src/mica_network.cpp#L1)
+- [mica_ota.h](../../../firmware/esp32s3-devkitc1/src/mica_ota.h#L1)
+- [mica_ota.cpp](../../../firmware/esp32s3-devkitc1/src/mica_ota.cpp#L1)
+- [mica_panels.h](../../../firmware/esp32s3-devkitc1/src/mica_panels.h#L1)
+- [mica_panels.cpp](../../../firmware/esp32s3-devkitc1/src/mica_panels.cpp#L1)
+- [mica_commands.h](../../../firmware/esp32s3-devkitc1/src/mica_commands.h#L1)
+- [mica_commands.cpp](../../../firmware/esp32s3-devkitc1/src/mica_commands.cpp#L1)
+- [mica_provisioning.h](../../../firmware/esp32s3-devkitc1/src/mica_provisioning.h#L1)
+- [mica_provisioning.cpp](../../../firmware/esp32s3-devkitc1/src/mica_provisioning.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
 - [patch_websockets_max_data_size.py](../../../firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py#L1)
 - [board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)

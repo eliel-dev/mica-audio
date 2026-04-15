@@ -26,7 +26,7 @@ public sealed partial class DevicesPage
     private async Task ShowNewDeviceWizardAsync()
     {
         await ShowWizardOverlayAsync(
-            "Selecione a porta COM para apagar toda a flash e gravar o firmware. O processo remove configuracoes anteriores do ESP32 e pode demorar mais. O Wi-Fi sera configurado no AP do ESP32 apos o flash.")
+            "Selecione a porta COM para apagar toda a flash e gravar o firmware. Depois do flash, conecte o celular ao AP MicaAudio-Setup-xxxx, abra o portal do ESP32 e conclua o onboarding com o pair code e o servidor local mostrados aqui.")
             .ConfigureAwait(true);
     }
 
@@ -37,7 +37,7 @@ public sealed partial class DevicesPage
         var currentVersion = string.IsNullOrWhiteSpace(snapshot.FirmwareVersion)
             ? "desconhecida"
             : snapshot.FirmwareVersion;
-        var summary = $"Atualizacao por USB para {snapshot.DeviceId}. O processo apaga toda a flash, grava {latestVersion} e exige novo provisionamento Wi-Fi/pareamento. Firmware atual: {currentVersion}.";
+        var summary = $"Atualizacao por USB para {snapshot.DeviceId}. O processo apaga toda a flash, grava {latestVersion} e depois exige reprovisionamento pelo AP MicaAudio-Setup-xxxx usando um novo pair code. Firmware atual: {currentVersion}.";
         await ShowWizardOverlayAsync(summary).ConfigureAwait(true);
     }
 
@@ -58,6 +58,7 @@ public sealed partial class DevicesPage
         WizardSummaryNoteText.Text = summaryNote;
         WizardPortComboBox.ItemsSource = Array.Empty<SerialPortDescriptor>();
         WizardPortComboBox.SelectedIndex = -1;
+        UpdateWizardServerBaseAddressUi();
         ResetWizardFlashProgressUi();
         ApplyWizardBusyState(false);
         ShowWizardOverlay();
@@ -116,6 +117,14 @@ public sealed partial class DevicesPage
         WizardFinishButton.Content = busy
             ? BuildButtonWithGlyph("\uE895", "Processando...")
             : BuildButtonWithGlyph("\uE73E", "Concluir");
+    }
+
+    private void UpdateWizardServerBaseAddressUi()
+    {
+        var serverBaseAddress = DeviceOps?.GetServerBaseAddress();
+        WizardServerBaseAddressText.Text = string.IsNullOrWhiteSpace(serverBaseAddress)
+            ? "Servidor local indisponivel."
+            : serverBaseAddress;
     }
 
     private void ResetWizardFlashProgressUi()
@@ -208,38 +217,25 @@ public sealed partial class DevicesPage
 
         if (result.Success)
         {
-            var pairCode = string.IsNullOrWhiteSpace(result.PairCode) ? "-" : result.PairCode;
-            PairingCodeText.Severity = InfoBarSeverity.Informational;
-            PairingCodeText.Message = $"Pareamento pendente: use o codigo {pairCode} no AP do dispositivo.";
+            var pairCodeText = string.IsNullOrWhiteSpace(result.PairCode) ? "-" : result.PairCode;
+            var serverBaseAddress = WizardServerBaseAddressText.Text;
+            PairingCodeText.Severity = InfoBarSeverity.Success;
+            PairingCodeText.Message = $"Flash concluido. Pair code: {pairCodeText}. Conecte ao Wi-Fi MicaAudio-Setup-xxxx e informe o servidor {serverBaseAddress} no portal do ESP32.";
             WizardStatusText.Text = result.Message;
-            AddLocalLog($"Flash concluido na porta {selectedPort.PortName}; aguardando provisionamento via AP.");
+            AddLocalLog($"Flash concluido na porta {selectedPort.PortName}. Use o AP MicaAudio-Setup-xxxx para finalizar o onboarding com o pair code exibido.");
             ApplyWizardBusyState(false);
-            await ShowPairCodeDialogAsync(pairCode).ConfigureAwait(true);
             HideNewDeviceWizard();
             return;
         }
 
         PairingCodeText.Severity = InfoBarSeverity.Error;
         PairingCodeText.Message = $"Onboarding falhou: {result.Message}";
-        WizardStatusText.Text = $"Falha ({result.ErrorCode ?? "erro"}): {result.Message}";
+        var pairCodeHint = string.IsNullOrWhiteSpace(result.PairCode)
+            ? string.Empty
+            : $" Codigo de pareamento para o AP: {result.PairCode}";
+        WizardStatusText.Text = $"Falha ({result.ErrorCode ?? "erro"}): {result.Message}{pairCodeHint}";
+        AddLocalLog($"Onboarding USB falhou na porta {selectedPort.PortName}: {result.ErrorCode ?? "erro"} - {result.Message}{pairCodeHint}");
         ApplyWizardBusyState(false);
-    }
-
-    private async Task ShowPairCodeDialogAsync(string pairCode)
-    {
-        var dialog = new ContentDialog
-        {
-            Title = "Flash concluido",
-            PrimaryButtonText = "Entendi",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot,
-            Content = "Codigo de pareamento: " + pairCode + Environment.NewLine
-                + "1) Conecte no AP MicaAudio-Setup-xxxx." + Environment.NewLine
-                + "2) Configure Wi-Fi/servidor no portal." + Environment.NewLine
-                + "3) Informe este codigo no campo de pareamento.",
-        };
-
-        await dialog.ShowAsync();
     }
 
     private static string DescribeOnboardingStage(DeviceOnboardingStage stage)
@@ -248,7 +244,7 @@ public sealed partial class DevicesPage
         {
             DeviceOnboardingStage.Flashing => "Flashing",
             DeviceOnboardingStage.Provisioning => "Provisionando",
-            DeviceOnboardingStage.Pairing => "Pareando",
+            DeviceOnboardingStage.Pairing => "Pair code",
             DeviceOnboardingStage.Verifying => "Verificando",
             DeviceOnboardingStage.Done => "Concluido",
             DeviceOnboardingStage.Failed => "Falha",

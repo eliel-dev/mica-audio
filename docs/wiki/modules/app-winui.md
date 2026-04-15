@@ -21,6 +21,25 @@
 5. processar `PcmFrame -> SpectrumFrame -> LedPayload` pelo runtime do pipeline
 6. renderizar `MainCanvas` e preview HUB75 com a mesma base `128x64`
 
+## Atualizacao 2026-04 - Rollback para AP-first estavel
+
+- O wizard de `Dispositivos > Novo dispositivo` voltou ao baseline operacional estavel:
+  - `porta COM`;
+  - flash com `erase-all`;
+  - exibicao de `pair code`;
+  - provisioning final no AP `MicaAudio-Setup-xxxx`.
+- O fluxo oficial nao coleta mais `SSID`, `senha Wi-Fi` nem `nome do device` antes do flash.
+- O endereco do servidor continua resolvido automaticamente via `DeviceIntegrationService.GetServerBaseAddress()`:
+  - o valor aparece em modo leitura na UI;
+  - o usuario usa esse valor no campo `Servidor` do portal AP;
+  - se cair em loopback (`127.0.0.1` ou `localhost`), o onboarding falha antes do flash.
+- `DeviceUsbOnboardingService` voltou a considerar sucesso ao final do flash:
+  1. valida release oficial + `controlPlane = mqtt`;
+  2. grava o firmware;
+  3. gera e devolve o `pair code`.
+- `SerialProvisioningClient` e `mica.serial.v1` permanecem no codigo apenas como compatibilidade/diagnostico, fora do caminho oficial do wizard.
+- O AP do ESP32 voltou a ser o caminho feliz no desktop imediatamente apos o flash.
+
 ## Atualizacao 2026-03 - Refresh automatico do release oficial de firmware
 
 - A `App.WinUI` continua trabalhando apenas com o conceito de release oficial local do firmware, validado por manifesto.

@@ -33,9 +33,9 @@ internal sealed record DeviceOnboardingResult
 
     public string? DeviceId { get; init; }
 
-    public string? PairCode { get; init; }
-
     public string? ErrorCode { get; init; }
+
+    public string? PairCode { get; init; }
 
     public string Message { get; init; } = string.Empty;
 }

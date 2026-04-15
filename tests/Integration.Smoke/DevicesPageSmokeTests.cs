@@ -19,10 +19,14 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetField("WizardPortPanel", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardPortComboBox", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardRefreshPortsButton", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("WizardServerBaseAddressText", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardFinishButton", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardFlashProgressHost", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardFlashProgressBar", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardFlashPercentText", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardSsidTextBox", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardPasswordBox", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardDeviceNameTextBox", flags));
 
         Assert.Null(typeof(DevicesPage).GetField("DeviceDetailsTabView", flags));
         Assert.Null(typeof(DevicesPage).GetField("StatisticsContentPanel", flags));
