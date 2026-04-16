@@ -83,6 +83,15 @@ public sealed partial class DevicesPage
     private StackPanel WizardPortPanel = null!;
     private ComboBox WizardPortComboBox = null!;
     private Button WizardRefreshPortsButton = null!;
+    // DOCS: docs/wiki/guides/setup-new-device.md#logs-seriais-no-wizard
+    private Button WizardDetailsToggleButton = null!;
+    private StackPanel WizardDiagnosticsPanel = null!;
+    private TextBlock WizardSerialStatusText = null!;
+    private Button WizardRecaptureBootButton = null!;
+    private Button WizardCopySerialLogsButton = null!;
+    private Button WizardClearSerialLogsButton = null!;
+    private ListView WizardSerialListView = null!;
+    private TextBlock WizardSerialPlaceholderText = null!;
     private TextBlock WizardServerBaseAddressText = null!;
     private TextBlock WizardSummaryNoteText = null!;
     private TextBlock WizardStatusText = null!;
@@ -717,7 +726,7 @@ public sealed partial class DevicesPage
 
         WizardSummaryNoteText = new TextBlock
         {
-            Text = "Selecione a porta COM e clique em Concluir para gravar o firmware. Depois, use o pair code no portal AP do ESP32.",
+            Text = "Selecione a porta COM e clique em Concluir para gravar o firmware. O flash usa a COM primeiro; depois disso, o wizard reabre a mesma porta a 115200 para acompanhar o boot, permite copiar a sessao inteira e ajuda a diagnosticar quando o AP nao aparece.",
             Opacity = 0.72,
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
@@ -769,6 +778,111 @@ public sealed partial class DevicesPage
             TextWrapping = TextWrapping.Wrap,
         };
         body.Children.Add(WizardStatusText);
+
+        var diagnosticsHeader = new Grid { ColumnSpacing = 8 };
+        diagnosticsHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        diagnosticsHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        diagnosticsHeader.Children.Add(new TextBlock
+        {
+            Text = "Diagnostico serial de boot",
+            FontSize = 12,
+            Opacity = 0.86,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        WizardDetailsToggleButton = CreateToolbarButton(BuildButtonWithGlyph("\uE712", "Ver mais"));
+        WizardDetailsToggleButton.Height = WizardControlHeight;
+        WizardDetailsToggleButton.Padding = new Thickness(10, 0, 10, 0);
+        WizardDetailsToggleButton.MinWidth = 94;
+        Grid.SetColumn(WizardDetailsToggleButton, 1);
+        diagnosticsHeader.Children.Add(WizardDetailsToggleButton);
+
+        body.Children.Add(diagnosticsHeader);
+
+        WizardDiagnosticsPanel = new StackPanel
+        {
+            Spacing = 10,
+            Visibility = Visibility.Collapsed,
+        };
+
+        WizardSerialStatusText = new TextBlock
+        {
+            Text = "O wizard vai assumir a porta serial depois do flash para mostrar o boot do ESP32-S3 e permitir copiar a sessao inteira de diagnostico.",
+            Opacity = 0.82,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        WizardDiagnosticsPanel.Children.Add(WizardSerialStatusText);
+
+        var diagnosticsActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+        };
+
+        WizardRecaptureBootButton = CreateToolbarButton(BuildButtonWithGlyph("\uE777", "Recapturar boot"));
+        WizardRecaptureBootButton.Height = WizardControlHeight;
+        WizardRecaptureBootButton.Padding = new Thickness(10, 0, 10, 0);
+        WizardRecaptureBootButton.MinWidth = 132;
+        diagnosticsActions.Children.Add(WizardRecaptureBootButton);
+
+        WizardCopySerialLogsButton = CreateToolbarButton(BuildButtonWithGlyph("\uE8C8", "Copiar logs"));
+        WizardCopySerialLogsButton.Height = WizardControlHeight;
+        WizardCopySerialLogsButton.Padding = new Thickness(10, 0, 10, 0);
+        WizardCopySerialLogsButton.MinWidth = 118;
+        diagnosticsActions.Children.Add(WizardCopySerialLogsButton);
+
+        WizardClearSerialLogsButton = CreateToolbarButton(BuildButtonWithGlyph("\uE894", "Limpar"));
+        WizardClearSerialLogsButton.Height = WizardControlHeight;
+        WizardClearSerialLogsButton.Padding = new Thickness(10, 0, 10, 0);
+        WizardClearSerialLogsButton.MinWidth = 92;
+        diagnosticsActions.Children.Add(WizardClearSerialLogsButton);
+
+        WizardDiagnosticsPanel.Children.Add(diagnosticsActions);
+
+        var serialSurface = new Border
+        {
+            MinHeight = 180,
+            MaxHeight = 240,
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
+            Background = new SolidColorBrush(Color.FromArgb(255, 15, 18, 24)),
+        };
+
+        var serialHost = new Grid();
+        WizardSerialListView = new ListView
+        {
+            SelectionMode = ListViewSelectionMode.None,
+            IsItemClickEnabled = false,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+            BorderThickness = new Thickness(0),
+            Margin = new Thickness(0),
+            MinHeight = 180,
+            MaxHeight = 240,
+        };
+        serialHost.Children.Add(WizardSerialListView);
+
+        WizardSerialPlaceholderText = new TextBlock
+        {
+            Text = "Os logs seriais de boot vao aparecer aqui depois do flash. Use 'Copiar logs' para exportar a sessao inteira ou 'Recapturar boot' se nada chegar.",
+            Margin = new Thickness(12),
+            Opacity = 0.68,
+            FontSize = 12,
+            FontFamily = new FontFamily("Consolas"),
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        serialHost.Children.Add(WizardSerialPlaceholderText);
+
+        serialSurface.Child = serialHost;
+        WizardDiagnosticsPanel.Children.Add(serialSurface);
+        body.Children.Add(WizardDiagnosticsPanel);
 
         WizardFlashProgressHost = new Grid
         {

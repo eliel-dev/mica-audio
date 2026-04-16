@@ -78,7 +78,24 @@
 - A janela serial-first de `60 s` deixou de fazer parte do caminho oficial.
 - `mica.serial.v1` continua no codigo apenas como compatibilidade/diagnostico.
 - O fallback por queda prolongada de Wi-Fi permanece ativo para devices ja provisionados.
-- Quando o portal esta ativo, o fallback HUB75 continua priorizando `SETUP WIFI`.
+- Depois que o display estiver inicializado, o fallback HUB75 continua priorizando `SETUP WIFI`.
+
+## Atualizacao 2026-04 - AP-first com HUB75 adiado no boot limpo
+
+- No baseline `Arduino-ESP32 v3.3.8` sobre `ESP-IDF v5.5.4`, os buffers RX estaticos do Wi-Fi continuam sendo alocados dentro de `esp_wifi_init()` em memoria DMA interna.
+- Para evitar `ESP_ERR_NO_MEM` no flash limpo:
+  - o `setup()` agora abre `Preferences`;
+  - carrega o estado minimo de provisioning;
+  - se faltarem `host/porta/deviceId/token`, chama `startProvisioningPortal(...)` antes de `initMatrixDisplay()`;
+  - so inicializa `MatrixPanel_I2S_DMA` e o restante do runtime depois que a decisao de provisioning termina.
+- Consequencia operacional:
+  - o AP `MicaAudio-Setup-xxxx` passa a ter prioridade sobre a mensagem imediata no HUB75;
+  - o primeiro portal bloqueante pode aparecer sem `SETUP WIFI` na matriz;
+  - o fallback HUB75 continua valido para portal/falha de rede quando o display ja estiver ativo.
+- Leituras de `Preferences` no boot/provisioning/OTA passaram a usar `isKey()` antes de `get*()`:
+  - flash limpo deixa de gerar cascata `NOT_FOUND`;
+  - chaves ausentes usam defaults seguros;
+  - o boot registra no maximo um resumo de chaves ausentes quando a configuracao minima ainda nao existe.
 
 ## Atualizacao 2026-03 - HUB75 128x64 single-canvas mapping
 

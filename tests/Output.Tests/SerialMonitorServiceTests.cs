@@ -129,6 +129,69 @@ public sealed class SerialMonitorServiceTests
     }
 
     [Fact]
+    public async Task ResetAttachedDeviceAsync_ShouldPulseCurrentPortWithoutDroppingConnection()
+    {
+        var fakePort = new FakeSerialMonitorPort("COM7");
+        var catalog = new FakeSerialPortCatalogService([
+            new SerialPortDescriptor { PortName = "COM7", DisplayName = "ESP32-S3", IsPreferredDevice = true, PriorityRank = 0 },
+        ]);
+        var factory = new FakeSerialMonitorPortFactory(fakePort);
+        using var loggerFactory = LoggerFactory.Create(static _ => { });
+        await using var service = new SerialMonitorService(catalog, factory, loggerFactory.CreateLogger<SerialMonitorService>());
+
+        await service.ConnectAsync("COM7");
+        await service.ResetAttachedDeviceAsync();
+
+        var snapshot = service.GetStateSnapshot();
+
+        Assert.Equal(1, fakePort.ResetCallCount);
+        Assert.Equal(SerialMonitorConnectionState.Connected, snapshot.ConnectionState);
+        Assert.Contains("Boot recapturado", snapshot.StatusText, StringComparison.Ordinal);
+
+        await service.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task ResetAttachedDeviceAsync_ShouldExposeErrorWhenNoPortIsConnected()
+    {
+        var catalog = new FakeSerialPortCatalogService([
+            new SerialPortDescriptor { PortName = "COM7", DisplayName = "ESP32-S3", IsPreferredDevice = true, PriorityRank = 0 },
+        ]);
+        var factory = new FakeSerialMonitorPortFactory(new FakeSerialMonitorPort("COM7"));
+        using var loggerFactory = LoggerFactory.Create(static _ => { });
+        await using var service = new SerialMonitorService(catalog, factory, loggerFactory.CreateLogger<SerialMonitorService>());
+
+        await service.ResetAttachedDeviceAsync();
+
+        var snapshot = service.GetStateSnapshot();
+
+        Assert.Equal(SerialMonitorConnectionState.Error, snapshot.ConnectionState);
+        Assert.Contains("Abra o monitor serial", snapshot.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExportAllText_ShouldReturnVisibleLinesJoinedInCaptureOrder()
+    {
+        var fakePort = new FakeSerialMonitorPort("COM7");
+        fakePort.EnqueueChunk("boot\r\nready\n");
+        var catalog = new FakeSerialPortCatalogService([
+            new SerialPortDescriptor { PortName = "COM7", DisplayName = "ESP32-S3", IsPreferredDevice = true, PriorityRank = 0 },
+        ]);
+        var factory = new FakeSerialMonitorPortFactory(fakePort);
+        using var loggerFactory = LoggerFactory.Create(static _ => { });
+        await using var service = new SerialMonitorService(catalog, factory, loggerFactory.CreateLogger<SerialMonitorService>());
+
+        await service.ConnectAsync("COM7");
+        await WaitForAsync(() => service.GetStateSnapshot().LineCount == 2);
+
+        var exported = service.ExportAllText();
+
+        Assert.Equal($"boot{Environment.NewLine}ready", exported);
+
+        await service.DisconnectAsync();
+    }
+
+    [Fact]
     public async Task ReadLoop_ShouldTransitionToErrorWhenPortThrowsWhileConnected()
     {
         var fakePort = new FakeSerialMonitorPort("COM7");
@@ -213,6 +276,10 @@ public sealed class SerialMonitorServiceTests
 
         public bool IsOpen { get; private set; }
 
+        public int ResetCallCount { get; private set; }
+
+        public (TimeSpan AssertDuration, TimeSpan RecoveryDuration)? LastResetWindow { get; private set; }
+
         public void EnqueueChunk(string chunk)
         {
             chunks.Enqueue(chunk);
@@ -235,6 +302,13 @@ public sealed class SerialMonitorServiceTests
 
         public void DiscardInBuffer()
         {
+        }
+
+        public Task ResetAsync(TimeSpan assertDuration, TimeSpan recoveryDuration, CancellationToken cancellationToken)
+        {
+            ResetCallCount++;
+            LastResetWindow = (assertDuration, recoveryDuration);
+            return Task.CompletedTask;
         }
 
         public string ReadExisting()

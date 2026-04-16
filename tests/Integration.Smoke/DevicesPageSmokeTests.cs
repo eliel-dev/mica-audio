@@ -19,6 +19,14 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetField("WizardPortPanel", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardPortComboBox", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardRefreshPortsButton", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("WizardDetailsToggleButton", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("WizardDiagnosticsPanel", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("WizardSerialStatusText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("WizardRecaptureBootButton", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("WizardCopySerialLogsButton", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("WizardClearSerialLogsButton", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("WizardSerialListView", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("WizardSerialPlaceholderText", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardServerBaseAddressText", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardFinishButton", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("WizardFlashProgressHost", flags));
@@ -130,6 +138,11 @@ public sealed class DevicesPageSmokeTests
 
         Assert.NotNull(typeof(DevicesPage).GetMethod("ShowNewDeviceWizardAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("ShowUsbFirmwareRefreshWizardAsync", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("PrepareWizardSerialMonitorAsync", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("BeginWizardSerialMonitoringAsync", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("RecaptureWizardBootAsync", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("CopyWizardSerialLogsToClipboard", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("EvaluateWizardSerialAutoStop", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("RefreshWizardPortsAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("RunWizardOnboardingAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("SaveFirmwareAsync", flags));

@@ -10,6 +10,25 @@ Documentar o fluxo oficial e estavel de onboarding:
 4. conectar o celular ao AP `MicaAudio-Setup-xxxx`
 5. concluir provisioning no portal AP com `Servidor` + `pair code`
 
+## Logs seriais no wizard
+
+1. O fluxo continua sequencial:
+   - `esptool` usa a porta COM durante o flash;
+   - ao terminar, o wizard reabre a mesma trilha USB a `115200`;
+   - o monitor serial passa a acompanhar o boot do ESP32-S3 sem disputar a COM com o flash.
+2. O bloco `Ver mais` fica recolhido por padrao e mostra:
+   - status atual da serial apos o flash;
+   - terminal monoespacado com buffer circular;
+   - acoes `Copiar logs`, `Recapturar boot` e `Limpar`.
+3. O painel se expande automaticamente quando:
+   - o flash falha;
+   - a porta nao reaparece depois do flash;
+   - o monitor reabre a COM, mas nao recebe linhas de boot dentro da janela diagnostica.
+4. `Recapturar boot` nao reflasha o device:
+   - ele apenas faz um reset controlado nas linhas da porta ja aberta;
+   - isso permite repetir o boot com o monitor ja anexado.
+5. Quando o wizard identifica um `hello` valido de `mica.serial.v1` com `deviceId` e esse device fica `Online` na UI, a sessao serial e encerrada automaticamente.
+
 ## Passos
 
 1. Abrir `Dispositivos`.
@@ -28,9 +47,11 @@ Documentar o fluxo oficial e estavel de onboarding:
 ## Observacao operacional
 
 1. Em flash limpo, ou sempre que faltarem `host/porta/deviceId/token`, o firmware abre o AP de setup imediatamente no `setup()`.
-2. O HUB75 prioriza `SETUP WIFI` sempre que o portal estiver ativo.
+2. Depois que o display estiver inicializado, o HUB75 continua priorizando `SETUP WIFI` sempre que o portal estiver ativo.
 3. O fallback por queda prolongada de Wi-Fi continua ativo para devices ja provisionados.
-4. `mica.serial.v1` continua no firmware e no desktop apenas como compatibilidade/diagnostico, fora do caminho oficial do wizard.
+4. No boot limpo, o AP-first pode abrir o portal antes da inicializacao do HUB75 para priorizar RAM interna do Wi-Fi; por isso, o primeiro portal bloqueante pode aparecer sem `SETUP WIFI` na matriz.
+5. `mica.serial.v1` continua no firmware e no desktop apenas como compatibilidade/diagnostico, fora do caminho oficial do wizard.
+6. Leitura de `Preferences` ausente em flash limpo passou a usar defaults seguros; `NOT_FOUND` em massa nao deve mais ser tratado como falha critica.
 
 ## Campo Servidor no portal AP
 
@@ -77,6 +98,7 @@ Documentar o fluxo oficial e estavel de onboarding:
 7. Gera um `pair code` de curta duracao e o exibe ao usuario.
 8. Orienta o usuario a concluir o provisioning manual no AP do ESP32.
 9. O status `Online` continua dependendo do control plane MQTT estar conectado.
+10. Depois do flash, o wizard passa a exibir logs seriais de boot sob demanda em `Ver mais`.
 
 ## Perfil oficial do comando de flash
 
@@ -105,6 +127,7 @@ Consequencia operacional:
 3. Antes da escrita, o wizard informa que a flash inteira esta sendo apagada.
 4. Em sucesso, o app passa a mostrar o `pair code` e as instrucoes do AP.
 5. Em falha, o ultimo percentual permanece visivel junto da mensagem de erro.
+6. O mesmo card passa a monitorar a serial a `115200` assim que a COM e liberada pelo flash.
 
 ## Contrato serial `mica.serial.v1` (compatibilidade)
 
@@ -127,6 +150,7 @@ Se onboarding USB falhar:
 3. Atualizar lista de portas.
 4. Repetir o flash.
 5. Se o firmware abrir o AP `MicaAudio-Setup-xxxx`, usar esse portal como caminho principal de provisioning.
+6. Se o AP nao aparecer, abrir `Ver mais`, usar `Copiar logs` para guardar a sessao inteira e depois `Recapturar boot` para repetir o boot com o monitor serial ja conectado.
 
 ## Diagnostico de firmware legado
 
@@ -140,10 +164,13 @@ Se onboarding USB falhar:
 2. Wizard abre com selecao de porta COM + `Servidor local` em modo leitura.
 3. `SSID`, `Senha Wi-Fi` e `Nome do dispositivo` nao fazem parte do wizard oficial.
 4. Ao fim do flash, o app mostra o `pair code` e orienta o uso do AP `MicaAudio-Setup-xxxx`.
-5. Em boot limpo, o firmware abre o AP imediatamente.
-6. Portal AP continua mostrando o campo `Servidor`, aceitando URL completa ou `host[:porta]`.
-7. Device conecta MQTT + WS automaticamente apos provisioning via AP.
-8. Device novo nao deve aparecer como `Firmware legado`; se aparecer, refazer o flash com o pacote atualizado.
+5. O bloco `Ver mais` fica recolhido por padrao e expande sozinho em erro/no-boot.
+6. `Copiar logs` exporta a sessao serial inteira sem depender de selecao manual linha a linha.
+7. `Recapturar boot` repete o reset com a serial ja anexada a `115200`.
+8. Em boot limpo, o firmware abre o AP imediatamente antes de inicializar o HUB75.
+9. Portal AP continua mostrando o campo `Servidor`, aceitando URL completa ou `host[:porta]`.
+10. Device conecta MQTT + WS automaticamente apos provisioning via AP.
+11. Device novo nao deve aparecer como `Firmware legado`; se aparecer, refazer o flash com o pacote atualizado.
 
 ## Referencias de codigo
 

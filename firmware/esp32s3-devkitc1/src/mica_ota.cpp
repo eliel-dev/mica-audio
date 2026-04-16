@@ -1,6 +1,8 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---ap-first-com-hub75-adiado-no-boot-limpo
 // DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 // DOCS: docs/handoffs/2026-04-14-freertos-ota-background-task.md
+// DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
 
 #include "mica_ota.h"
 
@@ -12,6 +14,7 @@
 #include "mica_display.h"
 #include "mica_globals.h"
 #include "mica_network.h"
+#include "mica_prefs.h"
 
 // ===========================================================================
 // OTA context & boot state
@@ -38,9 +41,9 @@ bool isRunningAppPendingVerify() {
 }
 
 void loadPendingOtaContext() {
-  gPendingOtaCommandId = gPrefs.getString(kPrefsOtaCommandId, "");
-  gPendingOtaSourceVersion = gPrefs.getString(kPrefsOtaSourceVersion, "");
-  gPendingOtaTargetVersion = gPrefs.getString(kPrefsOtaTargetVersion, "");
+  gPendingOtaCommandId = prefsGetStringOrDefault(kPrefsOtaCommandId, "");
+  gPendingOtaSourceVersion = prefsGetStringOrDefault(kPrefsOtaSourceVersion, "");
+  gPendingOtaTargetVersion = prefsGetStringOrDefault(kPrefsOtaTargetVersion, "");
   gPendingOtaFailureCode = "";
   gPendingOtaFailureMessage = "";
   gPendingOtaValidationStartedMs = 0;

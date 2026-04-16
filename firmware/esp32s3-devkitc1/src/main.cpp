@@ -5,6 +5,7 @@
 #include "mica_network.h"
 #include "mica_ota.h"
 #include "mica_panels.h"
+#include "mica_prefs.h"
 #include "mica_provisioning.h"
 
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
@@ -16,22 +17,60 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-diagnostic-matrix-envs
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-fallback-local-de-conectividade
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---rollback-para-ap-first-estavel
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---ap-first-com-hub75-adiado-no-boot-limpo
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md
 // DOCS: docs/handoffs/2026-04-14-serial-monitor-copy-e-a3-extracao-loop.md
 // DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 // DOCS: docs/handoffs/2026-04-14-freertos-ota-background-task.md
+// DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
 
-static void reloadProvisioningStateFromPrefs() {
-  gServerHost = gPrefs.getString("host", "");
-  gServerPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
-  gMqttHost = gPrefs.getString("mqttHost", "");
-  gMqttPort = static_cast<uint16_t>(atoi(gPrefs.getString("mqttPort", "5273").c_str()));
-  gMqttRootTopic = gPrefs.getString("mqttRootTopic", kDefaultMqttRootTopic);
+static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr) {
+  gServerHost = prefsGetStringOrDefault("host", "", summary);
+  gServerPort = prefsGetPortOrDefault("port", 5272, summary);
+  gMqttHost = prefsGetStringOrDefault("mqttHost", "", summary);
+  gMqttPort = prefsGetPortOrDefault("mqttPort", 5273, summary);
+  gMqttRootTopic = prefsGetStringOrDefault("mqttRootTopic", String(kDefaultMqttRootTopic), summary);
   normalizeMqttConfig();
-  gDeviceId = gPrefs.getString("deviceId", "");
-  gToken = gPrefs.getString("token", "");
+  gDeviceId = prefsGetStringOrDefault("deviceId", "", summary);
+  gToken = prefsGetStringOrDefault("token", "", summary);
 }
 
+static bool isProvisioningIncomplete() {
+  const bool missingServerConfig = gServerHost.isEmpty() || gServerPort == 0;
+  const bool missingDeviceCredentials = gDeviceId.isEmpty() || gToken.isEmpty();
+  return missingServerConfig || missingDeviceCredentials;
+}
+
+static const char* resolveProvisioningBootReason() {
+  return (gServerHost.isEmpty() || gServerPort == 0)
+      ? "boot_missing_server_config"
+      : "boot_missing_device_credentials";
+}
+
+static void loadRuntimeStateFromPrefs() {
+  gBrightnessCap = clampBrightnessToSafeRange(static_cast<int>(prefsGetUCharOrDefault("brightnessCap", kBrightnessDefaultCap)));
+  gTestLedEnabled = prefsGetBoolOrDefault("testLedEnabled", false);
+  gStreamBrightness = gBrightnessCap;
+  gAppliedBrightness = resolveAppliedBrightness();
+  initializeColorConversionLookups();
+  resetMatrixShadowState();
+  initializeOnboardTestLed();
+  initializeAuxLed();
+
+  if (!initMatrixDisplay()) {
+    Serial.println("Painel HUB75 indisponivel: exibicao de barras desativada.");
+  }
+
+  updateTestLedDutyFromBrightness(resolveAppliedBrightness());
+  applyTestLedState();
+
+  gActiveAppId = prefsGetStringOrDefault("activeAppId", "");
+  gActiveAppName = prefsGetStringOrDefault("activeAppName", "");
+  gActiveAppConfig = prefsGetStringOrDefault("activeAppConfig", "");
+  loadPendingOtaContext();
+  initializePendingOtaBootState();
+  initializePanelsBatchRuntime();
+}
 
 void processSignalTimeout() {
   const unsigned long nowMs = millis();
@@ -120,46 +159,24 @@ void setup() {
   Serial.println("[wifi_connecting] preparando conectividade.");
   setConnectivityState(kWifiStateConnecting, "boot", true);
 
-  gBrightnessCap = clampBrightnessToSafeRange(static_cast<int>(gPrefs.getUChar("brightnessCap", kBrightnessDefaultCap)));
-  gTestLedEnabled = gPrefs.getBool("testLedEnabled", false);
-  gStreamBrightness = gBrightnessCap;
-  gAppliedBrightness = resolveAppliedBrightness();
-  initializeColorConversionLookups();
-  resetMatrixShadowState();
-  initializeOnboardTestLed();
-  initializeAuxLed();
-
-  if (!initMatrixDisplay()) {
-    Serial.println("Painel HUB75 indisponivel: exibicao de barras desativada.");
-  }
-
-  updateTestLedDutyFromBrightness(resolveAppliedBrightness());
-  applyTestLedState();
-
-  reloadProvisioningStateFromPrefs();
-  gActiveAppId = gPrefs.getString("activeAppId", "");
-  gActiveAppName = gPrefs.getString("activeAppName", "");
-  gActiveAppConfig = gPrefs.getString("activeAppConfig", "");
-  loadPendingOtaContext();
-  initializePendingOtaBootState();
-  initializePanelsBatchRuntime();
+  PrefReadSummary provisioningPrefSummary;
+  reloadProvisioningStateFromPrefs(&provisioningPrefSummary);
 
   bool bootWifiConnected = false;
-  const bool missingServerConfig = gServerHost.isEmpty() || gServerPort == 0;
-  const bool missingDeviceCredentials = gDeviceId.isEmpty() || gToken.isEmpty();
-  bool provisioningIncomplete = missingServerConfig || missingDeviceCredentials;
+  bool provisioningIncomplete = isProvisioningIncomplete();
   if (provisioningIncomplete) {
-    const char* bootReason = missingServerConfig
-        ? "boot_missing_server_config"
-        : "boot_missing_device_credentials";
+    logPrefsMissingSummary("boot_incomplete", provisioningPrefSummary);
+    const char* bootReason = resolveProvisioningBootReason();
     Serial.printf(
         "[boot] configuracao incompleta; abrindo provisioning AP imediatamente (%s).\n",
         bootReason);
     (void)startProvisioningPortal(bootReason);
     reloadProvisioningStateFromPrefs();
-    provisioningIncomplete = gServerHost.isEmpty() || gServerPort == 0 || gDeviceId.isEmpty() || gToken.isEmpty();
+    provisioningIncomplete = isProvisioningIncomplete();
     bootWifiConnected = WiFi.status() == WL_CONNECTED;
   }
+
+  loadRuntimeStateFromPrefs();
 
   if (!provisioningIncomplete && !bootWifiConnected) {
     WiFi.mode(WIFI_STA);

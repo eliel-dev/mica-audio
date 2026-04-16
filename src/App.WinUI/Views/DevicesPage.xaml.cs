@@ -33,6 +33,7 @@ public sealed partial class DevicesPage : Page
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly PrecompiledFirmwareService firmwareService;
     private readonly ISerialPortCatalogService serialPortCatalogService;
+    private readonly ISerialMonitorService serialMonitorService;
     private readonly IDeviceUsbOnboardingService onboardingService;
     private readonly IAppCatalogService appCatalogService;
     private readonly IAppModifierStateStore modifierStore;
@@ -79,6 +80,7 @@ public sealed partial class DevicesPage : Page
         DeviceOperationsCoordinator deviceOps,
         PrecompiledFirmwareService firmwareService,
         ISerialPortCatalogService serialPortCatalogService,
+        ISerialMonitorService serialMonitorService,
         IDeviceUsbOnboardingService onboardingService,
         IAppCatalogService appCatalogService,
         IAppModifierStateStore modifierStore,
@@ -90,6 +92,7 @@ public sealed partial class DevicesPage : Page
         this.deviceOps = deviceOps;
         this.firmwareService = firmwareService;
         this.serialPortCatalogService = serialPortCatalogService;
+        this.serialMonitorService = serialMonitorService;
         this.onboardingService = onboardingService;
         this.appCatalogService = appCatalogService;
         this.modifierStore = modifierStore;
@@ -111,6 +114,8 @@ public sealed partial class DevicesPage : Page
     private PrecompiledFirmwareService? FirmwareService => firmwareService;
 
     private ISerialPortCatalogService? SerialPortCatalogService => serialPortCatalogService;
+
+    private ISerialMonitorService? SerialMonitorService => serialMonitorService;
 
     private IDeviceUsbOnboardingService? OnboardingService => onboardingService;
 

@@ -221,6 +221,7 @@ public partial class App : Application
             sp.GetRequiredService<DeviceOperationsCoordinator>(),
             sp.GetRequiredService<PrecompiledFirmwareService>(),
             sp.GetRequiredService<ISerialPortCatalogService>(),
+            sp.GetRequiredService<ISerialMonitorService>(),
             sp.GetRequiredService<IDeviceUsbOnboardingService>(),
             sp.GetRequiredService<IAppCatalogService>(),
             sp.GetRequiredService<IAppModifierStateStore>(),

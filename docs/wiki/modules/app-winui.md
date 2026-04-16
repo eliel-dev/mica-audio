@@ -40,6 +40,33 @@
 - `SerialProvisioningClient` e `mica.serial.v1` permanecem no codigo apenas como compatibilidade/diagnostico, fora do caminho oficial do wizard.
 - O AP do ESP32 voltou a ser o caminho feliz no desktop imediatamente apos o flash.
 
+## Atualizacao 2026-04 - Logs seriais sob demanda no wizard USB
+
+- O wizard USB passou a reutilizar o mesmo `ISerialMonitorService` da `SettingsPage`, sem criar uma segunda stack serial.
+- O fluxo ficou explicitamente sequencial:
+  - o flash ocupa a COM;
+  - a COM e liberada pelo `esptool`;
+  - o wizard reabre a serial a `115200` para acompanhar o boot.
+- A UX ganhou um bloco `Ver mais`, recolhido por padrao, com:
+  - status da reconexao serial;
+  - superficie monoespacada de logs;
+  - `Copiar logs` para exportar a sessao inteira do wizard;
+  - `Recapturar boot` para reset controlado com o monitor ja conectado;
+  - `Limpar` para zerar o buffer sem encerrar a sessao.
+- O painel abre sozinho quando o fluxo entra em diagnostico:
+  - falha de flash;
+  - porta nao reaparece;
+  - nenhum log chega apos a janela de reconexao.
+- O texto do wizard deixa explicito que:
+  - o flash usa a COM primeiro;
+  - os logs entram logo depois a `115200`;
+  - `Copiar logs` e o caminho oficial para exportar a sessao inteira quando o AP nao aparece.
+- O wizard parseia `mica.serial.v1` apenas para diagnostico:
+  - captura `hello.deviceId` quando presente;
+  - usa esse `deviceId` para encerrar automaticamente o monitor quando o device aparece `Online` na UI.
+- O caminho feliz nao mudou:
+  - `COM -> flash -> pair code -> AP MicaAudio-Setup-xxxx`.
+
 ## Atualizacao 2026-03 - Refresh automatico do release oficial de firmware
 
 - A `App.WinUI` continua trabalhando apenas com o conceito de release oficial local do firmware, validado por manifesto.

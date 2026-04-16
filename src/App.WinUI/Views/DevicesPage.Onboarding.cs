@@ -11,6 +11,9 @@ using WinRT.Interop;
 namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/guides/setup-new-device.md#contrato-visual-do-wizard
+// DOCS: docs/wiki/guides/setup-new-device.md#logs-seriais-no-wizard
+// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-04---logs-seriais-sob-demanda-no-wizard-usb
+// DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
 public sealed partial class DevicesPage
 {
     private async void OnDownloadFirmwareClicked(object sender, RoutedEventArgs e)
@@ -26,7 +29,7 @@ public sealed partial class DevicesPage
     private async Task ShowNewDeviceWizardAsync()
     {
         await ShowWizardOverlayAsync(
-            "Selecione a porta COM para apagar toda a flash e gravar o firmware. Depois do flash, conecte o celular ao AP MicaAudio-Setup-xxxx, abra o portal do ESP32 e conclua o onboarding com o pair code e o servidor local mostrados aqui.")
+            "Selecione a porta COM para apagar toda a flash e gravar o firmware. Depois do flash, o wizard assume a porta a 115200 para acompanhar o boot; se o AP MicaAudio-Setup-xxxx nao aparecer, use 'Ver mais' e 'Recapturar boot'.")
             .ConfigureAwait(true);
     }
 
@@ -37,7 +40,7 @@ public sealed partial class DevicesPage
         var currentVersion = string.IsNullOrWhiteSpace(snapshot.FirmwareVersion)
             ? "desconhecida"
             : snapshot.FirmwareVersion;
-        var summary = $"Atualizacao por USB para {snapshot.DeviceId}. O processo apaga toda a flash, grava {latestVersion} e depois exige reprovisionamento pelo AP MicaAudio-Setup-xxxx usando um novo pair code. Firmware atual: {currentVersion}.";
+        var summary = $"Atualizacao por USB para {snapshot.DeviceId}. O processo apaga toda a flash, grava {latestVersion} e depois reabre a serial a 115200 para diagnostico de boot antes do reprovisionamento no AP MicaAudio-Setup-xxxx com um novo pair code. Firmware atual: {currentVersion}.";
         await ShowWizardOverlayAsync(summary).ConfigureAwait(true);
     }
 
@@ -61,6 +64,7 @@ public sealed partial class DevicesPage
         WizardPortComboBox.SelectedIndex = -1;
         UpdateWizardServerBaseAddressUi();
         ResetWizardFlashProgressUi();
+        await PrepareWizardSerialMonitorAsync().ConfigureAwait(true);
         ApplyWizardBusyState(false);
         ShowWizardOverlay();
         await RefreshWizardPortsAsync().ConfigureAwait(true);
@@ -91,6 +95,22 @@ public sealed partial class DevicesPage
         };
 
         WizardRefreshPortsButton.Click += async (_, _) => await RefreshWizardPortsAsync().ConfigureAwait(true);
+        WizardDetailsToggleButton.Click += (_, _) => SetWizardDiagnosticsExpanded(!wizardDiagnosticsExpanded);
+        WizardRecaptureBootButton.Click += async (_, _) => await RecaptureWizardBootAsync().ConfigureAwait(true);
+        WizardCopySerialLogsButton.Click += (_, _) => CopyWizardSerialLogsToClipboard();
+        WizardClearSerialLogsButton.Click += (_, _) =>
+        {
+            var serialMonitor = SerialMonitorService;
+            if (serialMonitor is null)
+            {
+                return;
+            }
+
+            serialMonitor.Clear();
+            wizardSerialParsedLineCount = 0;
+            wizardCurrentSerialLines = Array.Empty<SerialMonitorLine>();
+            ApplyWizardSerialMonitorSnapshot(serialMonitor.GetStateSnapshot());
+        };
         WizardFinishButton.Click += async (_, _) =>
         {
             if (wizardOperationInFlight)
@@ -121,6 +141,9 @@ public sealed partial class DevicesPage
         wizardOperationInFlight = false;
         wizardCompletedSuccessfully = false;
         ResetWizardFlashProgressUi();
+        SetWizardDiagnosticsExpanded(false);
+        ReleaseWizardSerialMonitorSubscription();
+        _ = ShutdownWizardSerialMonitorAsync(clearLines: true);
     }
 
     private void ApplyWizardBusyState(bool busy)
@@ -130,6 +153,10 @@ public sealed partial class DevicesPage
         WizardFinishButton.IsEnabled = !busy;
         WizardPortComboBox.IsEnabled = !busy;
         WizardRefreshPortsButton.IsEnabled = !busy;
+        WizardDetailsToggleButton.IsEnabled = true;
+        WizardRecaptureBootButton.IsEnabled = !busy && wizardPreferredPort is not null;
+        WizardCopySerialLogsButton.IsEnabled = !busy && wizardCurrentSerialLines.Count > 0;
+        WizardClearSerialLogsButton.IsEnabled = !busy && wizardCurrentSerialLines.Count > 0;
         WizardFinishButton.Content = busy
             ? BuildButtonWithGlyph("\uE895", "Processando...")
             : BuildButtonWithGlyph(wizardCompletedSuccessfully ? "\uE8BB" : "\uE73E", wizardCompletedSuccessfully ? "Fechar" : "Concluir");
@@ -236,13 +263,15 @@ public sealed partial class DevicesPage
             var pairCodeText = string.IsNullOrWhiteSpace(result.PairCode) ? "-" : result.PairCode;
             var serverBaseAddress = WizardServerBaseAddressText.Text;
             wizardCompletedSuccessfully = true;
+            wizardPreferredPort = selectedPort;
             PairingCodeText.Severity = InfoBarSeverity.Success;
             PairingCodeText.Message = $"Flash concluido. Pair code: {pairCodeText}. Conecte ao Wi-Fi MicaAudio-Setup-xxxx e informe o servidor {serverBaseAddress} no portal do ESP32.";
-            WizardSummaryNoteText.Text = $"Flash concluido. Agora conecte o celular ao Wi-Fi MicaAudio-Setup-xxxx, abra o portal do ESP32 e use o pair code abaixo com o servidor exibido.";
+            WizardSummaryNoteText.Text = $"Flash concluido. A COM foi liberada para logs a 115200. Agora conecte o celular ao Wi-Fi MicaAudio-Setup-xxxx, abra o portal do ESP32 e use o pair code abaixo com o servidor exibido.";
             WizardStatusText.Text = $"Pair code: {pairCodeText}{Environment.NewLine}Servidor: {serverBaseAddress}{Environment.NewLine}{result.Message}";
             SetWizardFlashProgressUi(100, visible: true);
             AddLocalLog($"Flash concluido na porta {selectedPort.PortName}. Use o AP MicaAudio-Setup-xxxx para finalizar o onboarding com o pair code exibido.");
             ApplyWizardBusyState(false);
+            await BeginWizardSerialMonitoringAsync(selectedPort).ConfigureAwait(true);
             return;
         }
 
@@ -254,6 +283,9 @@ public sealed partial class DevicesPage
         WizardStatusText.Text = $"Falha ({result.ErrorCode ?? "erro"}): {result.Message}{pairCodeHint}";
         AddLocalLog($"Onboarding USB falhou na porta {selectedPort.PortName}: {result.ErrorCode ?? "erro"} - {result.Message}{pairCodeHint}");
         ApplyWizardBusyState(false);
+        wizardPreferredPort = selectedPort;
+        await BeginWizardSerialMonitoringAsync(selectedPort).ConfigureAwait(true);
+        SetWizardDiagnosticsExpanded(true);
     }
 
     private static string DescribeOnboardingStage(DeviceOnboardingStage stage)

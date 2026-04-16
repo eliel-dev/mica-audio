@@ -179,24 +179,25 @@ internal sealed partial class SerialProvisioningClient : ISerialProvisioningClie
                 buffer += chunk;
                 foreach (var line in DrainLines(ref buffer))
                 {
-                    if (!TryParseMessage(line, out var type, out var document))
+                    if (!MicaSerialProtocol.TryParseDocument(line, out _, out var document))
                     {
                         LogSerialHelloLine(logger, line);
                         continue;
                     }
 
+                    if (document is null)
+                    {
+                        continue;
+                    }
+
                     using (document)
                     {
-                        if (!string.Equals(type, "hello", StringComparison.OrdinalIgnoreCase))
+                        if (!MicaSerialProtocol.TryReadHello(document.RootElement, out var hello))
                         {
                             continue;
                         }
 
-                        var protocol = document.RootElement.TryGetProperty("protocol", out var protocolElement)
-                            ? protocolElement.GetString()
-                            : null;
-
-                        if (!string.Equals(protocol, "mica.serial.v1", StringComparison.OrdinalIgnoreCase))
+                        if (!string.Equals(hello.Protocol, MicaSerialProtocol.ProtocolId, StringComparison.OrdinalIgnoreCase))
                         {
                             continue;
                         }
@@ -204,9 +205,7 @@ internal sealed partial class SerialProvisioningClient : ISerialProvisioningClie
                         return new SerialProvisioningResult
                         {
                             Success = true,
-                            DeviceId = document.RootElement.TryGetProperty("deviceId", out var deviceElement)
-                                ? deviceElement.GetString()
-                                : null,
+                            DeviceId = hello.DeviceId,
                             Message = "Handshake serial concluido.",
                         };
                     }
@@ -243,9 +242,14 @@ internal sealed partial class SerialProvisioningClient : ISerialProvisioningClie
                 buffer += chunk;
                 foreach (var line in DrainLines(ref buffer))
                 {
-                    if (!TryParseMessage(line, out var type, out var document))
+                    if (!MicaSerialProtocol.TryParseDocument(line, out var type, out var document))
                     {
                         LogSerialLine(logger, line);
+                        continue;
+                    }
+
+                    if (document is null)
+                    {
                         continue;
                     }
 
@@ -287,19 +291,13 @@ internal sealed partial class SerialProvisioningClient : ISerialProvisioningClie
                         }
 
                         var ok = document.RootElement.TryGetProperty("ok", out var okElement) && okElement.GetBoolean();
-                        var resultMessage = document.RootElement.TryGetProperty("message", out var resultMsgElement)
-                            ? resultMsgElement.GetString() ?? string.Empty
-                            : string.Empty;
+                        var resultMessage = MicaSerialProtocol.ReadOptionalString(document.RootElement, "message") ?? string.Empty;
 
                         return new SerialProvisioningResult
                         {
                             Success = ok,
-                            DeviceId = document.RootElement.TryGetProperty("deviceId", out var deviceElement)
-                                ? deviceElement.GetString()
-                                : null,
-                            ErrorCode = document.RootElement.TryGetProperty("errorCode", out var errorElement)
-                                ? errorElement.GetString()
-                                : null,
+                            DeviceId = MicaSerialProtocol.ReadOptionalString(document.RootElement, "deviceId"),
+                            ErrorCode = MicaSerialProtocol.ReadOptionalString(document.RootElement, "errorCode"),
                             Message = ok ? "Provisionamento serial concluido." : (string.IsNullOrWhiteSpace(resultMessage) ? "Provisionamento serial falhou." : resultMessage),
                         };
                     }
@@ -381,34 +379,6 @@ internal sealed partial class SerialProvisioningClient : ISerialProvisioningClie
         }
 
         return 30;
-    }
-
-    private static bool TryParseMessage(string line, out string type, out JsonDocument document)
-    {
-        type = string.Empty;
-        document = null!;
-
-        if (string.IsNullOrWhiteSpace(line))
-        {
-            return false;
-        }
-
-        try
-        {
-            document = JsonDocument.Parse(line);
-            if (!document.RootElement.TryGetProperty("type", out var typeElement))
-            {
-                document.Dispose();
-                return false;
-            }
-
-            type = typeElement.GetString() ?? string.Empty;
-            return !string.IsNullOrWhiteSpace(type);
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static List<string> DrainLines(ref string buffer)

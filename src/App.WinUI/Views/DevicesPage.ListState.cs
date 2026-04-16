@@ -18,6 +18,7 @@ public sealed partial class DevicesPage
         viewModel.CommandPercent = state.CommandPercent;
         viewModel.CommandStatus = state.CommandStatus;
 
+        EvaluateWizardSerialAutoStop();
         ApplySelectionDetails();
         ApplyButtonState();
     }

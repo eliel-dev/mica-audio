@@ -1,6 +1,8 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---rollback-para-ap-first-estavel
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---ap-first-com-hub75-adiado-no-boot-limpo
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
+// DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
 
 #include "mica_provisioning.h"
 
@@ -11,6 +13,7 @@
 
 #include "mica_globals.h"
 #include "mica_network.h"
+#include "mica_prefs.h"
 
 // ===========================================================================
 // Internal helpers
@@ -343,7 +346,7 @@ static void handleSerialProvisioningLine(const String& line) {
 
   String deviceName = requestedDeviceName.length() > 0
       ? requestedDeviceName
-      : gPrefs.getString("name", kBoardDisplayName);
+      : prefsGetStringOrDefault("name", String(kBoardDisplayName));
   String pairErrorCode;
   String pairErrorMessage;
   sendSerialProgress(requestId, "pairing", "Executando pareamento com o servidor.");
@@ -417,10 +420,10 @@ bool startProvisioningPortal(const char* reason) {
   wm.setConnectTimeout(kWifiConnectAttemptTimeoutMs / 1000UL);
   wm.setSaveConnectTimeout(kWifiConnectAttemptTimeoutMs / 1000UL);
 
-  String savedHost = gPrefs.getString("host", "");
-  uint16_t savedPort = static_cast<uint16_t>(atoi(gPrefs.getString("port", "5272").c_str()));
+  String savedHost = prefsGetStringOrDefault("host", "");
+  uint16_t savedPort = prefsGetPortOrDefault("port", 5272);
   String savedServerBaseUrl = buildServerBaseUrl(savedHost, savedPort);
-  String savedDeviceName = gPrefs.getString("name", kBoardDisplayName);
+  String savedDeviceName = prefsGetStringOrDefault("name", String(kBoardDisplayName));
 
   WiFiManagerParameter pServer("server", "Servidor", savedServerBaseUrl.c_str(), 96);
   WiFiManagerParameter pPair("pair", "Codigo pareamento", "", 12);
@@ -434,6 +437,7 @@ bool startProvisioningPortal(const char* reason) {
   Serial.printf("[provisioning] AP=%s reason=%s\n", apName.c_str(), reason == nullptr ? "-" : reason);
   // Open the AP portal immediately when provisioning is explicitly requested.
   if (!wm.startConfigPortal(apName.c_str())) {
+    setProvisioningPortalActive(false, "portal_error");
     setConnectivityState(kWifiStatePortal, "portal_error", true);
     Serial.println("[provisioning] startConfigPortal retornou false; portal nao foi aberto ou foi encerrado sem conexao.");
     return false;

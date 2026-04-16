@@ -50,17 +50,22 @@ internal interface ISerialMonitorService : IAsyncDisposable
 
     Task DisconnectAsync(CancellationToken cancellationToken = default);
 
+    Task ResetAttachedDeviceAsync(CancellationToken cancellationToken = default);
+
     void Clear();
 
     string ExportAllText();
 }
 
 // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-monitor-serial-em-configuracoes
+// DOCS: docs/wiki/guides/setup-new-device.md#logs-seriais-no-wizard
 internal sealed partial class SerialMonitorService : ISerialMonitorService
 {
     internal const int DefaultBaudRate = 115200;
     internal const int MaxBufferedLines = 2000;
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan ResetAssertDuration = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan ResetRecoveryDuration = TimeSpan.FromMilliseconds(250);
 
     private readonly ISerialPortCatalogService serialPortCatalogService;
     private readonly ISerialMonitorPortFactory portFactory;
@@ -252,6 +257,52 @@ internal sealed partial class SerialMonitorService : ISerialMonitorService
         try
         {
             await DisconnectCoreAsync(waitForGate: false).ConfigureAwait(false);
+        }
+        finally
+        {
+            operationGate.Release();
+        }
+    }
+
+    public async Task ResetAttachedDeviceAsync(CancellationToken cancellationToken = default)
+    {
+        await operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ISerialMonitorPort? port;
+            lock (sync)
+            {
+                port = currentPort;
+            }
+
+            if (port is null)
+            {
+                ApplyDisconnectedError("Abra o monitor serial antes de recapturar o boot.");
+                return;
+            }
+
+            try
+            {
+                port.DiscardInBuffer();
+                await port.ResetAsync(ResetAssertDuration, ResetRecoveryDuration, cancellationToken).ConfigureAwait(false);
+
+                lock (sync)
+                {
+                    if (connectionState == SerialMonitorConnectionState.Connected)
+                    {
+                        statusText = $"Conectado em {port.PortName} a {DefaultBaudRate} baud. Boot recapturado.";
+                        errorText = null;
+                    }
+                }
+
+                RaiseStateChanged();
+            }
+            catch (Exception ex)
+            {
+                LogSerialMonitorResetFailed(logger, ex, port.PortName);
+                await DisconnectCoreAsync(waitForGate: false).ConfigureAwait(false);
+                ApplyDisconnectedError($"Falha ao recapturar boot em {port.PortName}: {ex.Message}", port.PortName);
+            }
         }
         finally
         {
@@ -528,6 +579,9 @@ internal sealed partial class SerialMonitorService : ISerialMonitorService
 
     [LoggerMessage(EventId = 1113, Level = LogLevel.Warning, Message = "Monitor serial perdeu a conexao. porta={PortName}")]
     private static partial void LogSerialMonitorReadFailed(ILogger logger, Exception exception, string portName);
+
+    [LoggerMessage(EventId = 1114, Level = LogLevel.Warning, Message = "Falha ao recapturar o boot via monitor serial. porta={PortName}")]
+    private static partial void LogSerialMonitorResetFailed(ILogger logger, Exception exception, string portName);
 }
 
 internal interface ISerialMonitorPortFactory
@@ -546,6 +600,8 @@ internal interface ISerialMonitorPort : IDisposable
     void DiscardInBuffer();
 
     string ReadExisting();
+
+    Task ResetAsync(TimeSpan assertDuration, TimeSpan recoveryDuration, CancellationToken cancellationToken);
 }
 
 internal sealed class SerialMonitorPortFactory : ISerialMonitorPortFactory
@@ -594,6 +650,20 @@ internal sealed class SerialMonitorPort : ISerialMonitorPort
     }
 
     public string ReadExisting() => port.ReadExisting();
+
+    public async Task ResetAsync(TimeSpan assertDuration, TimeSpan recoveryDuration, CancellationToken cancellationToken)
+    {
+        if (!port.IsOpen)
+        {
+            throw new InvalidOperationException("A porta serial precisa estar aberta para recapturar o boot.");
+        }
+
+        port.DtrEnable = false;
+        port.RtsEnable = true;
+        await Task.Delay(assertDuration, cancellationToken).ConfigureAwait(false);
+        port.RtsEnable = false;
+        await Task.Delay(recoveryDuration, cancellationToken).ConfigureAwait(false);
+    }
 
     public void Dispose() => port.Dispose();
 }
