@@ -59,6 +59,10 @@ public sealed partial class DevicesPage
         wizardOperationInFlight = false;
         wizardCompletedSuccessfully = false;
         WizardStatusText.Text = string.Empty;
+        if (WizardPairCodeText is not null)
+        {
+            WizardPairCodeText.Text = "-";
+        }
         WizardSummaryNoteText.Text = summaryNote;
         WizardPortComboBox.ItemsSource = Array.Empty<SerialPortDescriptor>();
         WizardPortComboBox.SelectedIndex = -1;
@@ -266,6 +270,10 @@ public sealed partial class DevicesPage
             wizardPreferredPort = selectedPort;
             PairingCodeText.Severity = InfoBarSeverity.Success;
             PairingCodeText.Message = $"Flash concluido. Pair code: {pairCodeText}. Conecte ao Wi-Fi MicaAudio-Setup-xxxx e informe o servidor {serverBaseAddress} no portal do ESP32.";
+            if (WizardPairCodeText is not null)
+            {
+                WizardPairCodeText.Text = pairCodeText;
+            }
             WizardSummaryNoteText.Text = $"Flash concluido. A COM foi liberada para logs a 115200. Agora conecte o celular ao Wi-Fi MicaAudio-Setup-xxxx, abra o portal do ESP32 e use o pair code abaixo com o servidor exibido.";
             WizardStatusText.Text = $"Pair code: {pairCodeText}{Environment.NewLine}Servidor: {serverBaseAddress}{Environment.NewLine}{result.Message}";
             SetWizardFlashProgressUi(100, visible: true);

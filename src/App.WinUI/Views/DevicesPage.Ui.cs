@@ -77,6 +77,7 @@ public sealed partial class DevicesPage
     private Ellipse PairingDot = null!;
     private TextBlock PairingFooterText = null!;
     private InfoBar PairingCodeText = null!;
+    private TextBlock WizardPairCodeText = null!;
 
     private Grid WizardOverlay = null!;
     private Border WizardCardBorder = null!;
@@ -769,6 +770,29 @@ public sealed partial class DevicesPage
         serverPanel.Children.Add(serverInfoPanel);
 
         body.Children.Add(serverPanel);
+
+        var pairCodePanel = new StackPanel
+        {
+            Spacing = 4,
+        };
+        pairCodePanel.Children.Add(new TextBlock
+        {
+            Text = "Codigo de pareamento (pair code)",
+            FontSize = 12,
+            Opacity = 0.86,
+        });
+
+        WizardPairCodeText = new TextBlock
+        {
+            Text = "-",
+            FontSize = 18,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontFamily = new FontFamily("Consolas"),
+            Opacity = 0.9,
+        };
+        pairCodePanel.Children.Add(WizardPairCodeText);
+
+        body.Children.Add(pairCodePanel);
 
         WizardStatusText = new TextBlock
         {
