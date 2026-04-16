@@ -54,6 +54,7 @@ public sealed partial class DevicesPage
         EnsureWizardBindings();
 
         wizardOperationInFlight = false;
+        wizardCompletedSuccessfully = false;
         WizardStatusText.Text = string.Empty;
         WizardSummaryNoteText.Text = summaryNote;
         WizardPortComboBox.ItemsSource = Array.Empty<SerialPortDescriptor>();
@@ -90,7 +91,21 @@ public sealed partial class DevicesPage
         };
 
         WizardRefreshPortsButton.Click += async (_, _) => await RefreshWizardPortsAsync().ConfigureAwait(true);
-        WizardFinishButton.Click += async (_, _) => await RunWizardOnboardingAsync().ConfigureAwait(true);
+        WizardFinishButton.Click += async (_, _) =>
+        {
+            if (wizardOperationInFlight)
+            {
+                return;
+            }
+
+            if (wizardCompletedSuccessfully)
+            {
+                HideNewDeviceWizard();
+                return;
+            }
+
+            await RunWizardOnboardingAsync().ConfigureAwait(true);
+        };
     }
 
     private void ShowWizardOverlay()
@@ -104,6 +119,7 @@ public sealed partial class DevicesPage
         WizardOverlay.Visibility = Visibility.Collapsed;
         WizardOverlay.IsHitTestVisible = false;
         wizardOperationInFlight = false;
+        wizardCompletedSuccessfully = false;
         ResetWizardFlashProgressUi();
     }
 
@@ -116,7 +132,7 @@ public sealed partial class DevicesPage
         WizardRefreshPortsButton.IsEnabled = !busy;
         WizardFinishButton.Content = busy
             ? BuildButtonWithGlyph("\uE895", "Processando...")
-            : BuildButtonWithGlyph("\uE73E", "Concluir");
+            : BuildButtonWithGlyph(wizardCompletedSuccessfully ? "\uE8BB" : "\uE73E", wizardCompletedSuccessfully ? "Fechar" : "Concluir");
     }
 
     private void UpdateWizardServerBaseAddressUi()
@@ -219,12 +235,14 @@ public sealed partial class DevicesPage
         {
             var pairCodeText = string.IsNullOrWhiteSpace(result.PairCode) ? "-" : result.PairCode;
             var serverBaseAddress = WizardServerBaseAddressText.Text;
+            wizardCompletedSuccessfully = true;
             PairingCodeText.Severity = InfoBarSeverity.Success;
             PairingCodeText.Message = $"Flash concluido. Pair code: {pairCodeText}. Conecte ao Wi-Fi MicaAudio-Setup-xxxx e informe o servidor {serverBaseAddress} no portal do ESP32.";
-            WizardStatusText.Text = result.Message;
+            WizardSummaryNoteText.Text = $"Flash concluido. Agora conecte o celular ao Wi-Fi MicaAudio-Setup-xxxx, abra o portal do ESP32 e use o pair code abaixo com o servidor exibido.";
+            WizardStatusText.Text = $"Pair code: {pairCodeText}{Environment.NewLine}Servidor: {serverBaseAddress}{Environment.NewLine}{result.Message}";
+            SetWizardFlashProgressUi(100, visible: true);
             AddLocalLog($"Flash concluido na porta {selectedPort.PortName}. Use o AP MicaAudio-Setup-xxxx para finalizar o onboarding com o pair code exibido.");
             ApplyWizardBusyState(false);
-            HideNewDeviceWizard();
             return;
         }
 

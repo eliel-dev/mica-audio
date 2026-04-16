@@ -65,6 +65,7 @@ public sealed partial class DevicesPage : Page
     private bool brightnessCommitPending;
     private bool wizardBindingsInitialized;
     private bool wizardOperationInFlight;
+    private bool wizardCompletedSuccessfully;
     private string? lastAppliedPreviewConfigSignature;
     private int previewConfigRefreshVersion;
     private bool dashboardWebViewInitialized;

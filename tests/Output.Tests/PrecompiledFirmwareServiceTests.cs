@@ -185,6 +185,46 @@ exit 0
     }
 
     [Fact]
+    public async Task TryResolveOfficialArtifact_ShouldIgnoreDirectoryTimestampAndTemporaryFirmwareVersionHeader()
+    {
+        var workspaceRoot = CreateWorkspace();
+        var outputRoot = Path.Combine(workspaceRoot, "artifacts");
+        try
+        {
+            var sourceTimestamp = new DateTimeOffset(2026, 3, 20, 12, 0, 0, TimeSpan.Zero);
+            var artifactTimestamp = new DateTimeOffset(2026, 3, 20, 12, 5, 0, TimeSpan.Zero);
+            var temporaryTimestamp = artifactTimestamp.AddMinutes(10);
+
+            TouchWorkspaceInputs(workspaceRoot, sourceTimestamp);
+            await WriteArtifactAsync(
+                outputRoot,
+                version: "v2026.03.20-fresh",
+                builtAtUtc: artifactTimestamp,
+                bytes: [0x01, 0x02, 0x03]);
+
+            var firmwareSrcRoot = Path.Combine(workspaceRoot, "firmware", "esp32s3-devkitc1", "src");
+            var temporaryHeaderPath = Path.Combine(firmwareSrcRoot, "firmware_version.auto.h");
+            await File.WriteAllTextAsync(temporaryHeaderPath, "#pragma once");
+            File.SetLastWriteTimeUtc(temporaryHeaderPath, temporaryTimestamp.UtcDateTime);
+            Directory.SetLastWriteTimeUtc(firmwareSrcRoot, temporaryTimestamp.UtcDateTime);
+
+            var service = CreateService(outputRoot, workspaceRoot);
+
+            Assert.True(service.TryResolveOfficialArtifact(
+                PrecompiledFirmwareService.Esp32S3DevKitC1Board,
+                PrecompiledFirmwareService.Hub75PanelP25_128x64_Smd2121_Scan32,
+                "dma_exp",
+                out var artifact,
+                out var error), error);
+            Assert.Equal("v2026.03.20-fresh", artifact.Manifest.FirmwareVersion);
+        }
+        finally
+        {
+            Directory.Delete(workspaceRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task EnsureOfficialFirmwareFreshAsync_ShouldFailWhenOfficialBuildScriptFails()
     {
         var workspaceRoot = CreateWorkspace();

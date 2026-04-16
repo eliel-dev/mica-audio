@@ -29,6 +29,11 @@ internal sealed partial class PrecompiledFirmwareService
         Path.Combine("firmware", "esp32s3-devkitc1", "scripts"),
     ];
 
+    private static readonly HashSet<string> IgnoredWorkspaceFreshnessFiles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "firmware_version.auto.h",
+    };
+
     public const string Esp32S3DevKitC1Board = "esp32s3_devkitc1";
     public const string Hub75PanelP25_128x64_Smd2121_Scan32 = "hub75_p2_5_128x64_smd2121_scan32";
     public const string RequiredControlPlane = "mqtt";
@@ -718,17 +723,26 @@ internal sealed partial class PrecompiledFirmwareService
                 error = $"insumo obrigatorio nao encontrado: {path}";
                 return false;
             }
-
-            latestUtc = Directory.GetLastWriteTimeUtc(path);
+            var foundRelevantEntry = false;
             foreach (var entry in Directory.EnumerateFileSystemEntries(path, "*", SearchOption.AllDirectories))
             {
-                var entryUtc = File.Exists(entry)
-                    ? File.GetLastWriteTimeUtc(entry)
-                    : Directory.GetLastWriteTimeUtc(entry);
-                if (entryUtc > latestUtc)
+                if (Directory.Exists(entry) || ShouldIgnoreWorkspaceFreshnessEntry(entry))
+                {
+                    continue;
+                }
+
+                var entryUtc = File.GetLastWriteTimeUtc(entry);
+                if (!foundRelevantEntry || entryUtc > latestUtc)
                 {
                     latestUtc = entryUtc;
+                    foundRelevantEntry = true;
                 }
+            }
+
+            if (!foundRelevantEntry)
+            {
+                error = $"nenhum arquivo relevante encontrado no insumo '{path}'";
+                return false;
             }
 
             return true;
@@ -739,6 +753,9 @@ internal sealed partial class PrecompiledFirmwareService
             return false;
         }
     }
+
+    private static bool ShouldIgnoreWorkspaceFreshnessEntry(string path)
+        => IgnoredWorkspaceFreshnessFiles.Contains(Path.GetFileName(path));
 
     private static bool TryResolveArtifactBuildTimestampUtc(ResolvedFirmwareArtifact artifact, out DateTimeOffset builtAtUtc)
     {
