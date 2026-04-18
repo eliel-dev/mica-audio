@@ -335,6 +335,34 @@
   - `mqttPort = 5273`
   - `mqttRootTopic = mica/v1/devices`
 
+## Atualizacao 2026-04 - Hardening Hibrido Do Runtime
+
+- O runtime oficial ficou explicitamente hibrido `Arduino + FreeRTOS`:
+  - `loopTask` no `Core 1` permanece dono de `gMqtt.loop()`, `gWs.loop()`, render HUB75, ponte de OTA e manutencao leve de estado;
+  - um `control worker` no `Core 0` virou o dono dos jobs lentos de `update_firmware` e `queue_panels_batch`, mas agora nasce sob demanda para nao cobrar heap interno fixo durante o boot do Wi-Fi;
+  - a task `panelsBatchPlaybackTask` saiu do `Core 1` e passou para o `Core 0`.
+- Callbacks MQTT e WS-texto deixaram de executar trabalho bloqueante:
+  - agora so validam o envelope minimo e enfileiram `ControlCommandEnvelope`;
+  - o parse/dispatch real acontece fora do callback;
+  - `queue_panels_batch` deixou de fazer download + SHA + validacao WebP dentro do handler do MQTT.
+- O fallback de provisioning continua com a mesma semantica funcional, mas a abertura efetiva do portal saiu do caminho sincrono de `processNetworkPoll()`.
+- O dominio de job lento agora e explicito:
+  - `enter_provisioning`, `update_firmware` e `queue_panels_batch` nao competem silenciosamente;
+  - `queue_panels_batch` preserva ordem via diferimento de um envelope quando outro batch ainda esta em andamento;
+  - OTA e provisioning continuam sendo mutuamente exclusivos.
+- O firmware oficial passou a usar `esp_task_wdt` em:
+  - `loopTask`
+  - `control worker` apenas enquanto um job lento esta em execucao, sem manter a task ociosa inscrita enquanto espera fila
+  - `panelsBatchPlaybackTask`
+  - `otaDownloadTaskFn`
+- A telemetria oficial ganhou campos de observabilidade operacional do runtime:
+  - `resetReason`
+  - `controlQueueDepth`
+  - `controlWorkerState`
+  - `panelsWorkerState`
+  - `lastSlowCommand`
+  - `lastSlowCommandDurationMs`
+
 ## Atualizacao 2026-03 - OTA autenticado por HTTP
 
 - O firmware oficial voltou a aceitar o comando wire `update_firmware`.

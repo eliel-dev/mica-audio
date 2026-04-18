@@ -13,6 +13,7 @@
 
 #include "mica_display.h"
 #include "mica_globals.h"
+#include "mica_commands.h"
 #include "mica_network.h"
 #include "mica_prefs.h"
 
@@ -422,6 +423,7 @@ bool performFirmwareOta(const FirmwareReleaseInfo& info, const String& commandId
 // Communicates via volatile globals: gOtaProgressPercent, gOtaProgressStage, gOtaTaskResult.
 
 void otaDownloadTaskFn(void* parameter) {
+  subscribeCurrentTaskToWatchdog();
   OtaTaskParams* params = static_cast<OtaTaskParams*>(parameter);
   gOtaTaskResult = OtaTaskResult::Running;
   gOtaProgressPercent = 35;
@@ -502,6 +504,7 @@ void otaDownloadTaskFn(void* parameter) {
   bool downloadOk = true;
 
   while (totalRead < params->fileSizeBytes) {
+    resetTaskWatchdog();
     const size_t availableBytes = stream->available();
     if (availableBytes == 0u) {
       if (!http.connected()) {
@@ -626,11 +629,15 @@ void processOtaProgressBridge() {
       gOtaInProgress = false;
       gOtaTaskResult = OtaTaskResult::Idle;
       gOtaBridgeLastPercent = 0;
+      completeSlowCommand(SlowCommandKind::UpdateFirmware);
+      setControlWorkerState(ControlWorkerState::Idle);
       sendCommandProgress(gOtaBridgeCommandId, 100, "failed",
           "Firmware baixado, mas falha ao registrar contexto.", 0);
       return;
     }
 
+    completeSlowCommand(SlowCommandKind::UpdateFirmware);
+    setControlWorkerState(ControlWorkerState::Idle);
     sendCommandProgress(gOtaBridgeCommandId, 94, "rebooting",
         "Firmware aplicado. Reiniciando para validacao segura.");
     gOtaProgressPercent = 94;
@@ -650,6 +657,8 @@ void processOtaProgressBridge() {
     (void)publishDeviceLog("warning", "command", "ota_task_failed", failMessage);
     sendCommandProgress(gOtaBridgeCommandId, 100, "failed", failMessage, 0);
 
+    completeSlowCommand(SlowCommandKind::UpdateFirmware);
+    setControlWorkerState(ControlWorkerState::Idle);
     gOtaTaskResult = OtaTaskResult::Idle;
     gOtaBridgeLastPercent = 0;
     return;

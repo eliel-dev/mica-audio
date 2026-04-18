@@ -1,5 +1,6 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---rollback-para-ap-first-estavel
+// DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 
 #include "mica_network.h"
 
@@ -443,6 +444,116 @@ bool trySanitizeLargestFreeBlock(uint32_t freeBytes, size_t largestRawBytes, uin
   return true;
 }
 
+static const char* resetReasonCodeToString(uint8_t code) {
+  switch (code) {
+    case 1:
+      return "POWERON_RESET";
+    case 3:
+      return "RTC_SW_SYS_RESET";
+    case 5:
+      return "DEEPSLEEP_RESET";
+    case 7:
+      return "TG0WDT_SYS_RESET";
+    case 8:
+      return "TG1WDT_SYS_RESET";
+    case 9:
+      return "RTCWDT_SYS_RESET";
+    case 10:
+      return "INTRUSION_RESET";
+    case 11:
+      return "TG0WDT_CPU_RESET";
+    case 12:
+      return "RTC_SW_CPU_RESET";
+    case 13:
+      return "RTCWDT_CPU_RESET";
+    case 15:
+      return "RTCWDT_BROWN_OUT_RESET";
+    case 16:
+      return "RTCWDT_RTC_RESET";
+    case 17:
+      return "TG1WDT_CPU_RESET";
+    case 18:
+      return "SUPER_WDT_RESET";
+    case 19:
+      return "GLITCH_RTC_RESET";
+    case 20:
+      return "EFUSE_RESET";
+    case 21:
+      return "USB_UART_CHIP_RESET";
+    case 22:
+      return "USB_JTAG_CHIP_RESET";
+    case 23:
+      return "POWER_GLITCH_RESET";
+    default:
+      return "NO_MEAN";
+  }
+}
+
+static const char* controlWorkerStateToTelemetry(ControlWorkerState state) {
+  switch (state) {
+    case ControlWorkerState::PanelsDownloading:
+      return "panels_downloading";
+    case ControlWorkerState::PanelsValidating:
+      return "panels_validating";
+    case ControlWorkerState::FetchingFirmware:
+      return "fetching_firmware";
+    case ControlWorkerState::AwaitingOtaResult:
+      return "awaiting_ota_result";
+    case ControlWorkerState::ProvisioningPending:
+      return "provisioning_pending";
+    case ControlWorkerState::Failed:
+      return "failed";
+    case ControlWorkerState::Idle:
+    default:
+      return "idle";
+  }
+}
+
+static const char* panelsWorkerStateToTelemetry(PanelsWorkerState state) {
+  switch (state) {
+    case PanelsWorkerState::PendingBatch:
+      return "pending_batch";
+    case PanelsWorkerState::Decoding:
+      return "decoding";
+    case PanelsWorkerState::Presenting:
+      return "presenting";
+    case PanelsWorkerState::Cancelled:
+      return "cancelled";
+    case PanelsWorkerState::Failed:
+      return "failed";
+    case PanelsWorkerState::Idle:
+    default:
+      return "idle";
+  }
+}
+
+static const char* slowCommandKindToTelemetry(SlowCommandKind kind) {
+  switch (kind) {
+    case SlowCommandKind::EnterProvisioning:
+      return "enter_provisioning";
+    case SlowCommandKind::UpdateFirmware:
+      return "update_firmware";
+    case SlowCommandKind::QueuePanelsBatch:
+      return "queue_panels_batch";
+    case SlowCommandKind::None:
+    default:
+      return "";
+  }
+}
+
+static uint32_t currentControlQueueDepth() {
+  uint32_t depth = 0;
+  if (gControlCommandQueue != nullptr) {
+    depth = static_cast<uint32_t>(uxQueueMessagesWaiting(gControlCommandQueue));
+  }
+
+  if (gDeferredControlCommand != nullptr) {
+    depth++;
+  }
+
+  return depth;
+}
+
 uint32_t elapsedMicrosSince(uint32_t startUs) {
   return static_cast<uint32_t>(micros() - startUs);
 }
@@ -607,6 +718,14 @@ void sendTelemetry(bool force) {
     telemetry["activeAppName"] = gActiveAppName;
   }
   telemetry["animatedWebpBatchSupported"] = gAnimatedWebpBatchSupported;
+  telemetry["resetReason"] = resetReasonCodeToString(gResetReasonCode);
+  telemetry["controlQueueDepth"] = currentControlQueueDepth();
+  telemetry["controlWorkerState"] = controlWorkerStateToTelemetry(gControlWorkerState);
+  telemetry["panelsWorkerState"] = panelsWorkerStateToTelemetry(gPanelsWorkerState);
+  if (gLastSlowCommand != SlowCommandKind::None) {
+    telemetry["lastSlowCommand"] = slowCommandKindToTelemetry(gLastSlowCommand);
+    telemetry["lastSlowCommandDurationMs"] = gLastSlowCommandDurationMs;
+  }
   if (gPerfLastReportMs > 0) {
     telemetry["perfLoopMaxUs"] = gPerfLastReportLoopMaxUs;
     telemetry["perfNetworkMaxUs"] = gPerfLastReportNetworkMaxUs;
@@ -642,12 +761,7 @@ void onMqttMessage(char* topic, uint8_t* payload, unsigned int length) {
     return;
   }
 
-  JsonDocument control;
-  if (deserializeJson(control, payload, length) != DeserializationError::Ok) {
-    return;
-  }
-
-  handleControlCommandMessage(control);
+  (void)enqueueIncomingControlCommand(ControlCommandSource::Mqtt, payload, length);
 }
 
 // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
@@ -767,11 +881,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
     return;
   }
 
-  JsonDocument control;
-  if (deserializeJson(control, payload, len) != DeserializationError::Ok) {
-    return;
-  }
-  handleControlCommandMessage(control);
+  (void)enqueueIncomingControlCommand(ControlCommandSource::WebSocket, payload, len);
 }
 
 void connectWebSocket() {
@@ -871,28 +981,19 @@ void processNetworkPoll() {
       finishNetworkStep();
     }
 
-    bool provisioningStarted = false;
     const bool shouldStartProvisioningFallback =
         !gProvisioningPortalActive
+        && !isProvisioningPortalLaunchPending()
         && gWifiDisconnectedSinceMs != 0
         && (millis() - gWifiDisconnectedSinceMs) > kWifiDisconnectProvisioningFallbackMs;
     if (shouldRunNetworkStep(shouldStartProvisioningFallback)) {
-      Serial.println("[wifi] fallback para provisioning apos queda prolongada.");
-      (void)startProvisioningPortal("wifi_disconnected_fallback");
-      gWifiDisconnectedSinceMs = 0;
-      provisioningStarted = true;
-      finishNetworkStep();
-    }
+      const bool requested = requestProvisioningPortalLaunch("", false, "wifi_disconnected_fallback", true);
+      if (requested) {
+        Serial.println("[wifi] fallback para provisioning agendado apos queda prolongada.");
+        gWifiDisconnectedSinceMs = 0;
+      }
 
-    if (provisioningStarted) {
-      if (shouldRunNetworkStep(true)) {
-        connectMqtt();
-        finishNetworkStep();
-      }
-      if (shouldRunNetworkStep(true)) {
-        connectWebSocket();
-        finishNetworkStep();
-      }
+      finishNetworkStep();
     }
   } else {
     if (gWifiDisconnectedSinceMs != 0) {

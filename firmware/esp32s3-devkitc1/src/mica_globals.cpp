@@ -101,6 +101,7 @@ uint32_t gStreamFramesApplied = 0;
 uint32_t gStreamSequenceGapCount = 0;
 uint32_t gStreamInvalidFrameCount = 0;
 uint32_t gNetworkPollDeferCount = 0;
+uint8_t gResetReasonCode = 0;
 
 // ---------------------------------------------------------------------------
 // Connectivity / fallback state
@@ -113,6 +114,10 @@ Hub75FallbackState gHub75FallbackPendingState = Hub75FallbackState::None;
 unsigned long gHub75FallbackPendingSinceMs = 0;
 bool gHub75FallbackDirty = false;
 bool gHub75FallbackClearPending = false;
+bool gProvisioningLaunchPending = false;
+bool gProvisioningLaunchClearCredentials = false;
+String gProvisioningLaunchCommandId;
+String gProvisioningLaunchReason;
 
 // ---------------------------------------------------------------------------
 // OTA state
@@ -149,6 +154,8 @@ String gPendingOtaFailureMessage;
 unsigned long gPendingOtaValidationStartedMs = 0;
 bool gPendingOtaPendingVerifyAnnounced = false;
 PendingOtaBootState gPendingOtaBootState = PendingOtaBootState::None;
+bool gTaskWatchdogReady = false;
+bool gLoopTaskWatchdogSubscribed = false;
 
 // ---------------------------------------------------------------------------
 // Color conversion LUTs
@@ -188,6 +195,21 @@ uint32_t gPanelsBatchCurrentSequence = 0;
 bool gPanelsBatchCancelRequested = false;
 bool gPanelsBatchUnderrun = false;
 bool gAnimatedWebpBatchSupported = true;
+PanelsWorkerState gPanelsWorkerState = PanelsWorkerState::Idle;
+
+// ---------------------------------------------------------------------------
+// Control runtime state
+// ---------------------------------------------------------------------------
+QueueHandle_t gControlCommandQueue = nullptr;
+QueueHandle_t gAsyncControlEventQueue = nullptr;
+QueueHandle_t gSlowCommandQueue = nullptr;
+TaskHandle_t gControlWorkerTaskHandle = nullptr;
+ControlCommandEnvelope* gDeferredControlCommand = nullptr;
+ControlWorkerState gControlWorkerState = ControlWorkerState::Idle;
+SlowCommandKind gActiveSlowCommand = SlowCommandKind::None;
+SlowCommandKind gLastSlowCommand = SlowCommandKind::None;
+uint32_t gLastSlowCommandDurationMs = 0;
+unsigned long gActiveSlowCommandStartedMs = 0;
 
 // ---------------------------------------------------------------------------
 // HUB75 DMA matrix (conditional)

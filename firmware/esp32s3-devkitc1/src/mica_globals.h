@@ -6,6 +6,7 @@
 #include <PubSubClient.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
+#include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
@@ -114,6 +115,7 @@ extern uint32_t gStreamFramesApplied;
 extern uint32_t gStreamSequenceGapCount;
 extern uint32_t gStreamInvalidFrameCount;
 extern uint32_t gNetworkPollDeferCount;
+extern uint8_t gResetReasonCode;
 
 // ---------------------------------------------------------------------------
 // Connectivity / fallback state
@@ -126,6 +128,10 @@ extern Hub75FallbackState gHub75FallbackPendingState;
 extern unsigned long gHub75FallbackPendingSinceMs;
 extern bool gHub75FallbackDirty;
 extern bool gHub75FallbackClearPending;
+extern bool gProvisioningLaunchPending;
+extern bool gProvisioningLaunchClearCredentials;
+extern String gProvisioningLaunchCommandId;
+extern String gProvisioningLaunchReason;
 
 // ---------------------------------------------------------------------------
 // OTA state
@@ -162,6 +168,8 @@ extern String gPendingOtaFailureMessage;
 extern unsigned long gPendingOtaValidationStartedMs;
 extern bool gPendingOtaPendingVerifyAnnounced;
 extern PendingOtaBootState gPendingOtaBootState;
+extern bool gTaskWatchdogReady;
+extern bool gLoopTaskWatchdogSubscribed;
 
 // ---------------------------------------------------------------------------
 // Color conversion LUTs
@@ -199,6 +207,21 @@ extern uint32_t gPanelsBatchCurrentSequence;
 extern bool gPanelsBatchCancelRequested;
 extern bool gPanelsBatchUnderrun;
 extern bool gAnimatedWebpBatchSupported;
+extern PanelsWorkerState gPanelsWorkerState;
+
+// ---------------------------------------------------------------------------
+// Control runtime state
+// ---------------------------------------------------------------------------
+extern QueueHandle_t gControlCommandQueue;
+extern QueueHandle_t gAsyncControlEventQueue;
+extern QueueHandle_t gSlowCommandQueue;
+extern TaskHandle_t gControlWorkerTaskHandle;
+extern ControlCommandEnvelope* gDeferredControlCommand;
+extern ControlWorkerState gControlWorkerState;
+extern SlowCommandKind gActiveSlowCommand;
+extern SlowCommandKind gLastSlowCommand;
+extern uint32_t gLastSlowCommandDurationMs;
+extern unsigned long gActiveSlowCommandStartedMs;
 
 // ---------------------------------------------------------------------------
 // HUB75 DMA matrix (conditional)

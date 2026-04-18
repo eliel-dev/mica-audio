@@ -1,4 +1,5 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
+// DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 
 #include "mica_panels.h"
 
@@ -13,6 +14,7 @@
 
 #include "mica_display.h"
 #include "mica_globals.h"
+#include "mica_commands.h"
 #include "mica_network.h"
 
 // ===========================================================================
@@ -66,6 +68,7 @@ void cancelPanelsBatchPlayback() {
   gPanelsBatchUnderrun = false;
   clearPanelsBatchBuffer(gPanelsBatchPending);
   xSemaphoreGive(gPanelsBatchMutex);
+  setPanelsWorkerState(PanelsWorkerState::Cancelled);
 }
 
 // ===========================================================================
@@ -77,6 +80,7 @@ void initializePanelsBatchRuntime() {
     gPanelsBatchMutex = xSemaphoreCreateMutex();
   }
 
+  setPanelsWorkerState(PanelsWorkerState::Idle);
   if (gPanelsBatchTaskHandle == nullptr) {
     BaseType_t result = xTaskCreatePinnedToCore(
         panelsBatchPlaybackTask,
@@ -85,7 +89,7 @@ void initializePanelsBatchRuntime() {
         nullptr,
         kPanelsBatchTaskPriority,
         &gPanelsBatchTaskHandle,
-        1);
+        0);
 
     if (result != pdPASS) {
       gAnimatedWebpBatchSupported = false;
@@ -183,6 +187,7 @@ bool tryDownloadPanelsBatch(
   size_t totalRead = 0;
   unsigned long lastDataMs = millis();
   while (totalRead < expectedSize) {
+    resetTaskWatchdog();
     const size_t availableBytes = stream->available();
     if (availableBytes == 0u) {
       if (!http.connected()) {
@@ -307,6 +312,7 @@ bool validatePanelsBatchWebp(
   uint32_t observedFrameCount = 0;
   int observedDurationMs = 0;
   while (WebPAnimDecoderHasMoreFrames(decoder)) {
+    resetTaskWatchdog();
     uint8_t* framePixels = nullptr;
     int timestampMs = 0;
     if (!WebPAnimDecoderGetNext(decoder, &framePixels, &timestampMs) || framePixels == nullptr) {
@@ -388,6 +394,7 @@ bool tryQueuePanelsBatchForPlayback(PanelsBatchBuffer& batch, String& errorCode,
   movePanelsBatchBuffer(batch, gPanelsBatchPending);
   gPanelsBatchUnderrun = false;
   xSemaphoreGive(gPanelsBatchMutex);
+  setPanelsWorkerState(PanelsWorkerState::PendingBatch);
 
   if (gPanelsBatchTaskHandle != nullptr) {
     xTaskNotifyGive(gPanelsBatchTaskHandle);
@@ -425,6 +432,7 @@ bool tryPresentWebpRgbaFrame(const uint8_t* rgbaPixels, size_t rgbaLength) {
 bool waitForPanelsBatchTimestampUs(int64_t batchStartedUs, int timestampMs) {
   const int64_t targetUs = batchStartedUs + (static_cast<int64_t>(timestampMs) * 1000LL);
   while (true) {
+    resetTaskWatchdog();
     if (gPanelsBatchMutex != nullptr && xSemaphoreTake(gPanelsBatchMutex, portMAX_DELAY) == pdTRUE) {
       const bool cancelled = gPanelsBatchCancelRequested;
       xSemaphoreGive(gPanelsBatchMutex);
@@ -449,15 +457,19 @@ bool waitForPanelsBatchTimestampUs(int64_t batchStartedUs, int timestampMs) {
 
 void panelsBatchPlaybackTask(void* parameter) {
   (void)parameter;
+  subscribeCurrentTaskToWatchdog();
   PanelsBatchBuffer current = {};
+  setPanelsWorkerState(PanelsWorkerState::Idle);
 
   while (true) {
+    resetTaskWatchdog();
     if (gPanelsBatchMutex != nullptr && xSemaphoreTake(gPanelsBatchMutex, portMAX_DELAY) == pdTRUE) {
       if (gPanelsBatchCancelRequested) {
         gPanelsBatchCancelRequested = false;
         clearPanelsBatchBuffer(current);
         gPanelsBatchCurrentSessionId = "";
         gPanelsBatchCurrentSequence = 0u;
+        setPanelsWorkerState(PanelsWorkerState::Cancelled);
       }
 
       if (current.data == nullptr && gPanelsBatchPending.data != nullptr) {
@@ -470,6 +482,7 @@ void panelsBatchPlaybackTask(void* parameter) {
     }
 
     if (current.data == nullptr) {
+      setPanelsWorkerState(PanelsWorkerState::Idle);
       ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(20));
       continue;
     }
@@ -483,17 +496,20 @@ void panelsBatchPlaybackTask(void* parameter) {
     WebPAnimDecoderOptionsInit(&options);
     options.color_mode = MODE_RGBA;
 
+    setPanelsWorkerState(PanelsWorkerState::Decoding);
     WebPAnimDecoder* decoder = WebPAnimDecoderNew(&webpData, &options);
     if (decoder == nullptr) {
-      (void)publishDeviceLog("error", "command", "panels_batch_decoder_create_failed", "Falha ao criar decoder do lote WebP.", false);
+      (void)enqueueAsyncDeviceLog("error", "command", "panels_batch_decoder_create_failed", "Falha ao criar decoder do lote WebP.", false);
+      setPanelsWorkerState(PanelsWorkerState::Failed);
       clearPanelsBatchBuffer(current);
       continue;
     }
 
     WebPAnimInfo info;
     if (!WebPAnimDecoderGetInfo(decoder, &info)) {
-      (void)publishDeviceLog("error", "command", "panels_batch_decoder_info_failed", "Falha ao ler metadados do lote WebP.", false);
+      (void)enqueueAsyncDeviceLog("error", "command", "panels_batch_decoder_info_failed", "Falha ao ler metadados do lote WebP.", false);
       WebPAnimDecoderDelete(decoder);
+      setPanelsWorkerState(PanelsWorkerState::Failed);
       clearPanelsBatchBuffer(current);
       continue;
     }
@@ -503,6 +519,7 @@ void panelsBatchPlaybackTask(void* parameter) {
     bool decodeFailed = false;
 
     while (WebPAnimDecoderHasMoreFrames(decoder)) {
+      resetTaskWatchdog();
       uint8_t* rgbaPixels = nullptr;
       int timestampMs = 0;
       if (!WebPAnimDecoderGetNext(decoder, &rgbaPixels, &timestampMs) || rgbaPixels == nullptr) {
@@ -510,6 +527,7 @@ void panelsBatchPlaybackTask(void* parameter) {
         break;
       }
 
+      setPanelsWorkerState(PanelsWorkerState::Presenting);
       if (!tryPresentWebpRgbaFrame(rgbaPixels, static_cast<size_t>(info.canvas_width) * static_cast<size_t>(info.canvas_height) * 4u)) {
         decodeFailed = true;
         break;
@@ -538,7 +556,12 @@ void panelsBatchPlaybackTask(void* parameter) {
     }
 
     if (decodeFailed) {
-      (void)publishDeviceLog("warning", "command", "panels_batch_decode_failed", "Falha ao reproduzir um lote WebP de Paineis.", false);
+      (void)enqueueAsyncDeviceLog("warning", "command", "panels_batch_decode_failed", "Falha ao reproduzir um lote WebP de Paineis.", false);
+      setPanelsWorkerState(PanelsWorkerState::Failed);
+    } else if (cancelled) {
+      setPanelsWorkerState(PanelsWorkerState::Cancelled);
+    } else {
+      setPanelsWorkerState(PanelsWorkerState::Idle);
     }
 
     clearPanelsBatchBuffer(current);

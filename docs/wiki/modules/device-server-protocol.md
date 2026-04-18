@@ -19,7 +19,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Encaminhamento de `update_firmware` com progresso tracked via `command-events`.
 - Controle de acesso de rede e rate limiting por endpoint critico.
 - Persistencia de metadados de hardware (`BoardModel`, `PanelType`) por dispositivo.
-- Pass-through de telemetria operacional e de conectividade (`loopHealthyPercent`, `loopLoadPercent` legado, `chipTemperatureCelsius`, `wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`).
+- Pass-through de telemetria operacional e de conectividade (`loopHealthyPercent`, `loopLoadPercent` legado, `chipTemperatureCelsius`, `wifiState`, `provisioningPortalActive`, `auxLedAvailable`, `testLedAvailable`, `lastWifiEvent`, `resetReason`, `controlQueueDepth`, `controlWorkerState`, `panelsWorkerState`, `lastSlowCommand`, `lastSlowCommandDurationMs`).
 - Persistencia round-trip de estatisticas estruturadas do firmware (`chip/sdk/heap/flash/sketch`).
 - Encaminhamento de logs estruturados do firmware para a UI via `DeviceLogReceived`.
 - Resolucao do firmware oficial por `boardModel + panelType + profile` a partir do pacote precompilado local do app.
@@ -264,6 +264,12 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
   - `freePsramBytes`
   - `largestPsramBlockBytes`
   - `wifiConnected`
+  - `resetReason`
+  - `controlQueueDepth`
+  - `controlWorkerState`
+  - `panelsWorkerState`
+  - `lastSlowCommand`
+  - `lastSlowCommandDurationMs`
 - O payload MQTT `status` e o modelo `DeviceTelemetryMessage` compartilham o mesmo contrato para esses campos.
 - O servidor mantem comportamento pass-through para esses campos (sem clamp ou renormalizacao no host).
 - `loopLoadPercent` permanece apenas como compatibilidade de leitura; o dashboard WebView2 usa `loopHealthyPercent` para o card e o historico de saude.

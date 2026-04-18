@@ -11,8 +11,10 @@
 #include <WiFi.h>
 #include <WiFiManager.h>
 
+#include "mica_commands.h"
 #include "mica_globals.h"
 #include "mica_network.h"
+#include "mica_panels.h"
 #include "mica_prefs.h"
 
 // ===========================================================================
@@ -195,6 +197,7 @@ static bool connectWifiWithTimeout(const String& ssid, const String& password, u
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
+    resetTaskWatchdog();
     if (millis() - start > timeoutMs) {
       return false;
     }
@@ -408,6 +411,7 @@ bool startProvisioningPortal(const char* reason) {
       reason == nullptr ? "portal_open" : reason,
       String("Abrindo portal de provisioning. motivo=") + (reason == nullptr ? "-" : reason),
       false);
+  cancelPanelsBatchPlayback();
   disconnectMqtt(true);
   gWs.disconnect();
   gLastTelemetryMs = 0;

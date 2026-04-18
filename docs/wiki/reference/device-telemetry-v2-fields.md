@@ -37,6 +37,12 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | `streamInvalidFrameCount` | `uint?` | quantidade acumulada de payloads invalidos rejeitados |
 | `streamLastSequence` | `uint?` | ultimo numero de sequencia aceito do stream |
 | `networkPollDeferCount` | `uint?` | quantidade monotona de etapas elegiveis de rede adiadas para a iteracao seguinte por esgotamento do budget cooperativo do `loop()` |
+| `resetReason` | `string?` | reset reason do CPU0 no boot atual, exposto com o nome curto da ROM (`POWERON_RESET`, `RTC_SW_SYS_RESET`, `TG0WDT_SYS_RESET`, etc.) |
+| `controlQueueDepth` | `uint?` | profundidade atual da fila de ingress do plano de controle, incluindo um comando lento diferido ainda nao despachado |
+| `controlWorkerState` | `string?` | estado resumido do worker de controle no Core 0 (`idle`, `panels_downloading`, `panels_validating`, `fetching_firmware`, `awaiting_ota_result`, `provisioning_pending`, `failed`) |
+| `panelsWorkerState` | `string?` | estado resumido do runtime de playback `Paineis` (`idle`, `pending_batch`, `decoding`, `presenting`, `cancelled`, `failed`) |
+| `lastSlowCommand` | `string?` | ultimo comando lento observado pelo runtime (`enter_provisioning`, `update_firmware`, `queue_panels_batch`) |
+| `lastSlowCommandDurationMs` | `long?` | duracao, em milissegundos, do ultimo comando lento concluido no boot atual |
 
 ## Regras de sanitizacao e pass-through
 
@@ -50,6 +56,9 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 8. `hub75PresentFrames` representa a cadencia fisica de apresentacao do HUB75; cada flip real incrementa esse contador monotono.
 9. `networkPollDeferCount` e emitido apenas pelo firmware nesta entrega e serve como diagnostico bruto do budget cooperativo de rede no `loop()`.
 10. `animatedWebpBatchSupported` funciona como capability bit para o host optar por `queue_panels_batch` em `Paineis`; `null` continua significando firmware legado sem suporte declarado.
+11. `resetReason` usa a causa do CPU0 para simplificar o diagnostico pos-boot no host; o campo nao tenta expor toda a matriz de causas por core.
+12. `controlQueueDepth` inclui o comando diferido em memoria quando `queue_panels_batch` aguardou o fim do job lento anterior para preservar ordem.
+13. `lastSlowCommandDurationMs` cobre apenas comandos lentos concluidos no boot atual; duracao de OTA bem-sucedida nao e persistida apos reboot.
 
 ## Persistencia local
 

@@ -1,5 +1,8 @@
-﻿#include <Arduino.h>
+#include <Arduino.h>
+#include <esp32s3/rom/rtc.h>
+
 #include "mica_globals.h"
+#include "mica_commands.h"
 #include "mica_display.h"
 #include "mica_visuals.h"
 #include "mica_network.h"
@@ -23,6 +26,7 @@
 // DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 // DOCS: docs/handoffs/2026-04-14-freertos-ota-background-task.md
 // DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
+// DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 
 static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr) {
   gServerHost = prefsGetStringOrDefault("host", "", summary);
@@ -143,10 +147,11 @@ bool processRenderFrame() {
   return presented;
 }
 
-
 void setup() {
   Serial.begin(115200);
+  gResetReasonCode = static_cast<uint8_t>(rtc_get_reset_reason(0));
   Serial.println("[boot] inicializando firmware.");
+  Serial.printf("[boot] reset_reason_cpu0=%u\n", static_cast<unsigned>(gResetReasonCode));
   Serial.printf(
       "[ws] max_data_size=%u frame128x64_payload=%u\n",
       static_cast<unsigned>(WEBSOCKETS_MAX_DATA_SIZE),
@@ -156,6 +161,12 @@ void setup() {
   }
 
   gPrefs.begin("micaaudio", false);
+  initializeControlCommandRuntime();
+  if (isTaskWatchdogReady()) {
+    subscribeCurrentTaskToWatchdog();
+    gLoopTaskWatchdogSubscribed = true;
+  }
+
   Serial.println("[wifi_connecting] preparando conectividade.");
   setConnectivityState(kWifiStateConnecting, "boot", true);
 
@@ -170,7 +181,18 @@ void setup() {
     Serial.printf(
         "[boot] configuracao incompleta; abrindo provisioning AP imediatamente (%s).\n",
         bootReason);
+    if (gLoopTaskWatchdogSubscribed) {
+      unsubscribeCurrentTaskFromWatchdog();
+      gLoopTaskWatchdogSubscribed = false;
+    }
+
     (void)startProvisioningPortal(bootReason);
+
+    if (isTaskWatchdogReady()) {
+      subscribeCurrentTaskToWatchdog();
+      gLoopTaskWatchdogSubscribed = true;
+    }
+
     reloadProvisioningStateFromPrefs();
     provisioningIncomplete = isProvisioningIncomplete();
     bootWifiConnected = WiFi.status() == WL_CONNECTED;
@@ -185,6 +207,7 @@ void setup() {
     unsigned long bootWifiWaitStart = millis();
     while (WiFi.status() != WL_CONNECTED && (millis() - bootWifiWaitStart) < 5000) {
       processSerialProvisioning();
+      resetTaskWatchdog();
       delay(120);
     }
 
@@ -218,9 +241,12 @@ void setup() {
 void loop() {
   const uint32_t loopStartedUs = micros();
   processSerialProvisioning();
+  processQueuedControlCommands();
+  processAsyncControlEvents();
   const uint32_t serialDoneUs = micros();
   processPendingOtaSafeUpdate();
   processOtaProgressBridge();
+  processProvisioningLaunchRequest();
 
   const uint32_t networkStartUs = micros();
   processNetworkPoll();
@@ -243,6 +269,7 @@ void loop() {
   if (renderUs > gPerfRenderMaxUs) { gPerfRenderMaxUs = renderUs; }
   if (serialUs > gPerfSerialMaxUs) { gPerfSerialMaxUs = serialUs; }
 
+  resetTaskWatchdog();
   updateLoopHealthyPercent(loopTotalUs);
   reportPerfMetrics();
 }

@@ -1,6 +1,7 @@
 namespace Device.Protocol.Models;
 
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#campos-do-payload-de-telemetria-ws
+// DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 public sealed class DeviceTelemetryMessage
 {
     public string DeviceId { get; init; } = string.Empty;
@@ -48,6 +49,18 @@ public sealed class DeviceTelemetryMessage
     public uint? StreamSequenceGapCount { get; init; }
 
     public uint? StreamInvalidFrameCount { get; init; }
+
+    public string? ResetReason { get; init; }
+
+    public uint? ControlQueueDepth { get; init; }
+
+    public string? ControlWorkerState { get; init; }
+
+    public string? PanelsWorkerState { get; init; }
+
+    public string? LastSlowCommand { get; init; }
+
+    public long? LastSlowCommandDurationMs { get; init; }
 
     public string? FirmwareVersion { get; init; }
 

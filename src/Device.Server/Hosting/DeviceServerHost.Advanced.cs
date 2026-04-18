@@ -7,6 +7,7 @@ using Serilog;
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#pontos-de-alteracao-frequente
+// DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(5);
@@ -520,6 +521,12 @@ public sealed partial class DeviceServerHost
             telemetry.Hub75PresentFrames,
             telemetry.StreamSequenceGapCount,
             telemetry.StreamInvalidFrameCount,
+            telemetry.ResetReason,
+            telemetry.ControlQueueDepth,
+            telemetry.ControlWorkerState,
+            telemetry.PanelsWorkerState,
+            telemetry.LastSlowCommand,
+            telemetry.LastSlowCommandDurationMs,
             telemetry.TelemetrySequence,
             telemetry.BrightnessCap,
             telemetry.BrightnessRequested,

@@ -2,6 +2,7 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-128x64-single-canvas-mapping
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---buffer-ws-para-frame-128x64
+// DOCS: docs/handoffs/2026-04-17-control-worker-watchdog-and-wifi-heap-regression-fix.md
 
 #include <Arduino.h>
 #include "firmware_version.h"
@@ -49,6 +50,12 @@ constexpr unsigned long kOtaSelfTestWindowMs = 10000;
 constexpr uint16_t kDefaultMqttPort = 5273;
 constexpr const char* kDefaultMqttRootTopic = "mica/v1/devices";
 constexpr uint16_t kMqttPacketBufferBytes = 32768;
+constexpr uint8_t kControlCommandQueueDepth = 8;
+constexpr uint8_t kAsyncControlEventQueueDepth = 12;
+constexpr uint8_t kSlowCommandQueueDepth = 2;
+constexpr uint8_t kMaxControlCommandsPerLoop = 4;
+constexpr uint8_t kMaxAsyncEventsPerLoop = 8;
+constexpr uint32_t kTaskWatchdogTimeoutMs = 30000;
 
 // ---------------------------------------------------------------------------
 // Matrix dimensions
@@ -68,6 +75,8 @@ constexpr uint8_t kPanelsBatchExpectedFrameCount = 30;
 constexpr unsigned long kPanelsBatchWaitChunkMs = 5;
 constexpr uint16_t kPanelsBatchTaskStackSize = 16384;
 constexpr UBaseType_t kPanelsBatchTaskPriority = 2;
+constexpr uint16_t kControlWorkerTaskStackSize = 12288;
+constexpr UBaseType_t kControlWorkerTaskPriority = 1;
 
 // ---------------------------------------------------------------------------
 // OTA task constants
@@ -254,6 +263,43 @@ enum class OtaTaskResult : uint8_t {
   Failed = 3,
 };
 
+enum class ControlCommandSource : uint8_t {
+  Mqtt = 0,
+  WebSocket = 1,
+};
+
+enum class SlowCommandKind : uint8_t {
+  None = 0,
+  EnterProvisioning = 1,
+  UpdateFirmware = 2,
+  QueuePanelsBatch = 3,
+};
+
+enum class ControlWorkerState : uint8_t {
+  Idle = 0,
+  PanelsDownloading = 1,
+  PanelsValidating = 2,
+  FetchingFirmware = 3,
+  AwaitingOtaResult = 4,
+  ProvisioningPending = 5,
+  Failed = 6,
+};
+
+enum class PanelsWorkerState : uint8_t {
+  Idle = 0,
+  PendingBatch = 1,
+  Decoding = 2,
+  Presenting = 3,
+  Cancelled = 4,
+  Failed = 5,
+};
+
+enum class AsyncControlEventKind : uint8_t {
+  CommandProgress = 0,
+  DeviceLog = 1,
+  StartOta = 2,
+};
+
 enum class PendingOtaBootState : uint8_t {
   None = 0,
   PendingVerify = 1,
@@ -298,6 +344,46 @@ struct PanelsBatchBuffer {
   size_t length = 0;
   uint16_t frameCount = 0;
   uint16_t durationMs = 0;
+};
+
+struct PanelsBatchDownloadRequest {
+  String panelsSessionId;
+  String downloadUrl;
+  String expectedSha256;
+  String expectedContentType;
+  uint32_t batchSequence = 0;
+  uint32_t fileSizeBytes = 0;
+  uint32_t frameCount = 0;
+  uint32_t durationMs = 0;
+};
+
+struct ControlCommandEnvelope {
+  ControlCommandSource source = ControlCommandSource::Mqtt;
+  String command;
+  String commandId;
+  String payloadJson;
+};
+
+struct SlowCommandRequest {
+  SlowCommandKind kind = SlowCommandKind::None;
+  String commandId;
+  String requestedVersion;
+  PanelsBatchDownloadRequest panels;
+};
+
+struct AsyncControlEvent {
+  AsyncControlEventKind kind = AsyncControlEventKind::CommandProgress;
+  String commandId;
+  uint8_t progressPercent = 0;
+  String stage;
+  String message;
+  int successFlag = -1;
+  String logLevel;
+  String logCategory;
+  String logEventCode;
+  bool includeTelemetrySequence = true;
+  OtaTaskParams* otaParams = nullptr;
+  String otaTargetVersion;
 };
 
 // ---------------------------------------------------------------------------

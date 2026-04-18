@@ -73,6 +73,18 @@ public sealed class DeviceRecord
 
     public uint? StreamInvalidFrameCount { get; init; }
 
+    public string? ResetReason { get; init; }
+
+    public uint? ControlQueueDepth { get; init; }
+
+    public string? ControlWorkerState { get; init; }
+
+    public string? PanelsWorkerState { get; init; }
+
+    public string? LastSlowCommand { get; init; }
+
+    public long? LastSlowCommandDurationMs { get; init; }
+
     public uint? TelemetrySequence { get; init; }
 
     public int? BrightnessCap { get; init; }

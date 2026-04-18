@@ -50,7 +50,13 @@ public class DeviceSessionTests
             freePsramBytes: 8192,
             largestPsramBlockBytes: 4096,
             wifiConnected: true,
-            wifiState: "connected");
+            wifiState: "connected",
+            resetReason: "RTC_SW_SYS_RESET",
+            controlQueueDepth: 1,
+            controlWorkerState: "idle",
+            panelsWorkerState: "pending_batch",
+            lastSlowCommand: "queue_panels_batch",
+            lastSlowCommandDurationMs: 640);
 
         Assert.Equal(timeProvider.GetUtcNow(), session.Record.LastTelemetryUtc);
         Assert.Equal(authUtc, session.Record.LastAuthUtc);
@@ -60,6 +66,10 @@ public class DeviceSessionTests
         Assert.Equal(46.5d, session.Record.ChipTemperatureCelsius);
         Assert.Equal("Visualizer", session.Record.ActiveAppName);
         Assert.Equal("hub75", session.Record.PanelType);
+        Assert.Equal("RTC_SW_SYS_RESET", session.Record.ResetReason);
+        Assert.Equal(1u, session.Record.ControlQueueDepth);
+        Assert.Equal("pending_batch", session.Record.PanelsWorkerState);
+        Assert.Equal(640L, session.Record.LastSlowCommandDurationMs);
     }
 
     [Fact]
