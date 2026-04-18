@@ -268,8 +268,7 @@ public sealed partial class DevicesPage
             var serverBaseAddress = WizardServerBaseAddressText.Text;
             wizardCompletedSuccessfully = true;
             wizardPreferredPort = selectedPort;
-            PairingCodeText.Severity = InfoBarSeverity.Success;
-            PairingCodeText.Message = $"Flash concluido. Pair code: {pairCodeText}. Conecte ao Wi-Fi MicaAudio-Setup-xxxx e informe o servidor {serverBaseAddress} no portal do ESP32.";
+            ShowInlineStatusMessage(InfoBarSeverity.Success, $"Flash concluido. Pair code: {pairCodeText}. Conecte ao Wi-Fi MicaAudio-Setup-xxxx e informe o servidor {serverBaseAddress} no portal do ESP32.");
             if (WizardPairCodeText is not null)
             {
                 WizardPairCodeText.Text = pairCodeText;
@@ -283,8 +282,7 @@ public sealed partial class DevicesPage
             return;
         }
 
-        PairingCodeText.Severity = InfoBarSeverity.Error;
-        PairingCodeText.Message = $"Onboarding falhou: {result.Message}";
+        ShowInlineStatusMessage(InfoBarSeverity.Error, $"Onboarding falhou: {result.Message}");
         var pairCodeHint = string.IsNullOrWhiteSpace(result.PairCode)
             ? string.Empty
             : $" Codigo de pareamento para o AP: {result.PairCode}";
@@ -317,8 +315,7 @@ public sealed partial class DevicesPage
         var service = FirmwareService;
         if (service is null)
         {
-            PairingCodeText.Severity = InfoBarSeverity.Error;
-            PairingCodeText.Message = "Firmware: servico indisponivel.";
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Firmware: servico indisponivel.");
             AddLocalLog("Servico de firmware indisponivel.");
             return;
         }
@@ -327,16 +324,14 @@ public sealed partial class DevicesPage
         var option = options.Count > 0 ? options[0] : null;
         if (option is null)
         {
-            PairingCodeText.Severity = InfoBarSeverity.Error;
-            PairingCodeText.Message = "Firmware: opcao indisponivel.";
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Firmware: opcao indisponivel.");
             AddLocalLog("Nenhuma opcao de firmware disponivel.");
             return;
         }
 
         if (!service.TryResolveSource(option.Id, out _, out var resolveError))
         {
-            PairingCodeText.Severity = InfoBarSeverity.Error;
-            PairingCodeText.Message = "Firmware: arquivo ausente.";
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Firmware: arquivo ausente.");
             AddLocalLog(resolveError);
             return;
         }
@@ -348,16 +343,14 @@ public sealed partial class DevicesPage
         }
         catch (Exception ex)
         {
-            PairingCodeText.Severity = InfoBarSeverity.Error;
-            PairingCodeText.Message = "Firmware: erro ao abrir seletor.";
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Firmware: erro ao abrir seletor.");
             AddLocalLog($"Falha ao abrir seletor de arquivo: {ex.Message}");
             return;
         }
 
         if (targetFile is null)
         {
-            PairingCodeText.Severity = InfoBarSeverity.Warning;
-            PairingCodeText.Message = "Firmware: download cancelado.";
+            ShowInlineStatusMessage(InfoBarSeverity.Warning, "Firmware: download cancelado.");
             AddLocalLog("Salvamento de firmware cancelado pelo usuario.");
             return;
         }
@@ -365,14 +358,12 @@ public sealed partial class DevicesPage
         try
         {
             await service.CopyToAsync(option.Id, targetFile.Path).ConfigureAwait(true);
-            PairingCodeText.Severity = InfoBarSeverity.Success;
-            PairingCodeText.Message = $"Firmware: salvo em {targetFile.Name}.";
+            ShowInlineStatusMessage(InfoBarSeverity.Success, $"Firmware: salvo em {targetFile.Name}.");
             AddLocalLog($"Firmware salvo em: {targetFile.Path}");
         }
         catch (Exception ex)
         {
-            PairingCodeText.Severity = InfoBarSeverity.Error;
-            PairingCodeText.Message = "Firmware: erro ao salvar arquivo.";
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Firmware: erro ao salvar arquivo.");
             AddLocalLog($"Falha ao salvar firmware: {ex.Message}");
         }
     }

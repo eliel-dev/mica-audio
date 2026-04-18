@@ -26,16 +26,14 @@ public sealed partial class DevicesPage
         var (artifact, error) = await TryResolveLatestFirmwareArtifactAsync(snapshot).ConfigureAwait(true);
         if (artifact is null)
         {
-            PairingCodeText.Severity = InfoBarSeverity.Warning;
-            PairingCodeText.Message = "Release oficial indisponivel para este dispositivo.";
+            ShowInlineStatusMessage(InfoBarSeverity.Warning, "Release oficial indisponivel para este dispositivo.");
             AddLocalLog(error);
             return;
         }
 
         if (!IsFirmwareUpdateAvailable(snapshot, artifact.Manifest.FirmwareVersion))
         {
-            PairingCodeText.Severity = InfoBarSeverity.Informational;
-            PairingCodeText.Message = $"Dispositivo ja esta no ultimo release {artifact.Manifest.FirmwareVersion}.";
+            ShowInlineStatusMessage(InfoBarSeverity.Informational, $"Dispositivo ja esta no ultimo release {artifact.Manifest.FirmwareVersion}.");
             AddLocalLog($"Atualizacao ignorada para {snapshot.DeviceId}: device ja esta no ultimo release {artifact.Manifest.FirmwareVersion}.");
             return;
         }
@@ -210,8 +208,7 @@ public sealed partial class DevicesPage
         if (result.Accepted && result.Completed && result.Success)
         {
             stageText.Text = "Firmware validado com sucesso!";
-            PairingCodeText.Severity = InfoBarSeverity.Success;
-            PairingCodeText.Message = $"Firmware atualizado e validado em {targetVersion}.";
+            ShowInlineStatusMessage(InfoBarSeverity.Success, $"Firmware atualizado e validado em {targetVersion}.");
             AddLocalLog($"Safe update mode concluiu com sucesso em {snapshot.DeviceId}: {targetVersion}.");
         }
         else
@@ -221,10 +218,11 @@ public sealed partial class DevicesPage
             stageText.Text = isRollback
                 ? "OTA revertida pelo safe update mode."
                 : $"Falha: {reason ?? "erro desconhecido"}";
-            PairingCodeText.Severity = isRollback ? InfoBarSeverity.Warning : InfoBarSeverity.Error;
-            PairingCodeText.Message = isRollback
+            ShowInlineStatusMessage(
+                isRollback ? InfoBarSeverity.Warning : InfoBarSeverity.Error,
+                isRollback
                 ? $"OTA revertida em {snapshot.DeviceId} pelo safe update mode."
-                : $"OTA falhou para {snapshot.DeviceId}.";
+                : $"OTA falhou para {snapshot.DeviceId}.");
             AddLocalLog($"Falha ao concluir OTA em {snapshot.DeviceId}: {reason ?? "erro desconhecido"}");
         }
 

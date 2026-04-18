@@ -44,6 +44,12 @@ Documentar o fluxo oficial e estavel de onboarding:
    - `Nome dispositivo` opcional
 9. Confirmar que o device aparece online no dashboard.
 
+## Pair code fora do wizard
+
+1. O botao `Parear` da `DevicesPage` gera um `pair code` efemero sem abrir o wizard USB.
+2. O codigo aparece em um banner inline logo abaixo da barra de comandos e pode ser copiado ali mesmo.
+3. Esse caminho existe para casos em que o flash/log foi feito por ferramenta externa e o usuario so precisa do pareamento no backend.
+
 ## Observacao operacional
 
 1. Em flash limpo, ou sempre que faltarem `host/porta/deviceId/token`, o firmware abre o AP de setup imediatamente no `setup()`.
@@ -99,6 +105,7 @@ Documentar o fluxo oficial e estavel de onboarding:
 8. Orienta o usuario a concluir o provisioning manual no AP do ESP32.
 9. O status `Online` continua dependendo do control plane MQTT estar conectado.
 10. Depois do flash, o wizard passa a exibir logs seriais de boot sob demanda em `Ver mais`.
+11. Fora do wizard, a acao `Parear` tambem pode emitir um novo `pair code` no banner inline da `DevicesPage`.
 
 ## Perfil oficial do comando de flash
 

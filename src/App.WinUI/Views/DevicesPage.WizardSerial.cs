@@ -300,8 +300,7 @@ public sealed partial class DevicesPage
         var deviceId = string.IsNullOrWhiteSpace(snapshot.DeviceId) ? "-" : snapshot.DeviceId;
         WizardStatusText.Text = $"Provisionamento concluido. Device online: {deviceId}. Os logs seriais foram encerrados automaticamente.";
         WizardSummaryNoteText.Text = "Provisionamento concluido. O device ficou online no app e o monitor serial do wizard foi encerrado.";
-        PairingCodeText.Severity = InfoBarSeverity.Success;
-        PairingCodeText.Message = $"Onboarding concluido. Device online: {deviceId}.";
+        ShowInlineStatusMessage(InfoBarSeverity.Success, $"Onboarding concluido. Device online: {deviceId}.");
         AddLocalLog($"Wizard serial encerrou automaticamente apos {deviceId} ficar online.");
         await ShutdownWizardSerialMonitorAsync(clearLines: false).ConfigureAwait(true);
     }

@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
 using Windows.UI;
 
 namespace App.WinUI.Views;
@@ -73,10 +72,8 @@ public sealed partial class DevicesPage
     private TextBox DeviceLogsTextBox = null!;
     private ScrollViewer? DeviceLogsScrollViewer;
 
-    private Border PairingFooterBorder = null!;
-    private Ellipse PairingDot = null!;
-    private TextBlock PairingFooterText = null!;
     private InfoBar PairingCodeText = null!;
+    private Button PairingCopyCodeButton = null!;
     private TextBlock WizardPairCodeText = null!;
 
     private Grid WizardOverlay = null!;
@@ -112,15 +109,17 @@ public sealed partial class DevicesPage
         };
 
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         root.Children.Add(BuildGlobalActionsBar());
+        root.Children.Add(BuildInlineStatusBanner());
 
         var shell = new Grid { ColumnSpacing = 8 };
         shell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(340) });
         DevicesDetailsColumn = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
         shell.ColumnDefinitions.Add(DevicesDetailsColumn);
-        Grid.SetRow(shell, 1);
+        Grid.SetRow(shell, 2);
 
         shell.Children.Add(BuildDeviceListPanel());
         shell.Children.Add(BuildDetailsPanel());
@@ -129,19 +128,6 @@ public sealed partial class DevicesPage
         root.Children.Add(BuildWizardOverlay());
 
         Content = root;
-
-        PairingCodeText = new InfoBar
-        {
-            IsOpen = false,
-            Visibility = Visibility.Collapsed,
-            IsClosable = false,
-            Message = "Pareamento: -",
-            Severity = InfoBarSeverity.Informational,
-        };
-
-        PairingCodeText.RegisterPropertyChangedCallback(InfoBar.MessageProperty, (_, _) => SyncPairingFooter());
-        PairingCodeText.RegisterPropertyChangedCallback(InfoBar.SeverityProperty, (_, _) => SyncPairingFooter());
-        SyncPairingFooter();
     }
 
     // DOCS: docs/wiki/reference/device-observability-dashboard.md
@@ -200,6 +186,36 @@ public sealed partial class DevicesPage
 
         host.Child = commandBar;
         return host;
+    }
+
+    // DOCS: docs/wiki/modules/app-winui.md
+    // DOCS: docs/wiki/guides/setup-new-device.md#passos
+    private InfoBar BuildInlineStatusBanner()
+    {
+        PairingCopyCodeButton = new Button
+        {
+            Content = "Copiar codigo",
+            MinWidth = 132,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        PairingCopyCodeButton.Click += OnCopyPairingCodeClicked;
+
+        PairingCodeText = new InfoBar
+        {
+            IsOpen = false,
+            Visibility = Visibility.Collapsed,
+            IsClosable = true,
+            Severity = InfoBarSeverity.Informational,
+            Message = "Pareamento: -",
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+        PairingCodeText.RegisterPropertyChangedCallback(InfoBar.IsOpenProperty, (_, _) =>
+        {
+            PairingCodeText.Visibility = PairingCodeText.IsOpen ? Visibility.Visible : Visibility.Collapsed;
+        });
+
+        Grid.SetRow(PairingCodeText, 1);
+        return PairingCodeText;
     }
 
     private Border BuildDeviceListPanel()
@@ -542,47 +558,6 @@ public sealed partial class DevicesPage
         return DashboardStatusSectionBorder;
     }
 
-    private Border BuildPairingFooter()
-    {
-        PairingFooterBorder = new Border
-        {
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(PanelCornerRadius),
-            Background = ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32)),
-            Padding = new Thickness(12, 6, 12, 6),
-            Margin = new Thickness(0),
-        };
-
-        var row = new Grid { ColumnSpacing = 8 };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var dot = new Ellipse
-        {
-            Width = 8,
-            Height = 8,
-            Fill = ResolveBrush("AppAccentBrush", Color.FromArgb(255, 96, 205, 255)),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        row.Children.Add(dot);
-
-        var text = new TextBlock
-        {
-            Text = "Pareamento: -",
-            Opacity = 0.82,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        Grid.SetColumn(text, 1);
-        row.Children.Add(text);
-
-        PairingFooterBorder.Child = row;
-
-        Grid.SetRow(PairingFooterBorder, 1);
-        return PairingFooterBorder;
-    }
-
     private void ScrollDeviceLogsToOffset(bool scrollToEnd)
     {
         if (DeviceLogsTextBox is null)
@@ -635,7 +610,7 @@ public sealed partial class DevicesPage
             VerticalAlignment = VerticalAlignment.Stretch,
             IsHitTestVisible = false,
         };
-        Grid.SetRowSpan(WizardOverlay, 2);
+        Grid.SetRowSpan(WizardOverlay, 3);
 
         WizardCardBorder = new Border
         {
@@ -1181,27 +1156,6 @@ public sealed partial class DevicesPage
             Child = content,
         };
     }
-
-    private void SyncPairingFooter()
-    {
-        if (PairingFooterText is null || PairingDot is null || PairingCodeText is null)
-        {
-            return;
-        }
-
-        PairingFooterText.Text = PairingCodeText.Message;
-
-        var dotColor = PairingCodeText.Severity switch
-        {
-            InfoBarSeverity.Success => Color.FromArgb(255, 108, 203, 95),
-            InfoBarSeverity.Warning => Color.FromArgb(255, 252, 225, 0),
-            InfoBarSeverity.Error => Color.FromArgb(255, 255, 99, 132),
-            _ => Color.FromArgb(255, 96, 205, 255),
-        };
-
-        PairingDot.Fill = new SolidColorBrush(dotColor);
-    }
-
     private static Brush ResolveBrush(string key, Color fallback)
     {
         return UiResourceResolver.ResolveBrush(key, fallback);

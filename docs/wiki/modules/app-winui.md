@@ -480,8 +480,15 @@
 - O wizard `Novo dispositivo` voltou para etapa funcional unica:
   - selecao de porta COM + flash de firmware.
 - SSID/senha deixaram de ser coletados pela UI nesse fluxo.
-- Ao fim do flash, o app exibe `pair code` em modal com instrucoes de provisioning via AP.
+- Ao fim do flash, o app exibe `pair code` no proprio contexto da `DevicesPage`, com instrucoes de provisioning via AP.
 - O onboarding oficial nao depende mais de handshake serial para concluir.
+
+## Atualizacao 2026-04 - Pair code inline na DevicesPage
+
+- O botao `Parear` voltou a emitir um `pair code` visivel inline logo abaixo da barra global de comandos.
+- O banner inline permite copiar o codigo sem abrir o wizard USB.
+- O mesmo surface inline passou a concentrar avisos e sucessos operacionais da `DevicesPage`.
+- Esse fluxo permite usar ferramenta externa de flash/log e ainda assim gerar o `pair code` oficial no desktop.
 
 ## Atualizacao 2026-03 - Paridade visual com HTML canonico
 
@@ -514,7 +521,7 @@
   - `write_flash --no-compress 0x0 <firmware.bin>`
 - O wizard de `Novo dispositivo` mostra barra de progresso + percentual real na etapa `Flashing`.
 - O percentual e derivado diretamente das linhas de saida do `esptool` (`NN%` e `NN %`).
-- Em sucesso, o wizard encerra apos mostrar o `pair code` e orientar configuracao no AP do ESP32.
+- Em sucesso, o wizard mantem o `pair code` visivel na `DevicesPage` e orienta a configuracao no AP do ESP32.
 
 ## Referencias de codigo
 

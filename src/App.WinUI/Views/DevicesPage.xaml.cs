@@ -262,8 +262,7 @@ public sealed partial class DevicesPage : Page
         }
 
         var code = DeviceOps.CreatePairingCode(TimeSpan.FromMinutes(10));
-        PairingCodeText.Severity = InfoBarSeverity.Informational;
-        PairingCodeText.Message = $"Pareamento: {code.Code} (expira {code.ExpiresAtUtc:HH:mm:ss} UTC)";
+        ShowPairingCodeNotice(code.Code, code.ExpiresAtUtc);
         AddLocalLog($"Codigo de pareamento gerado: {code.Code}.");
     }
 
@@ -312,8 +311,7 @@ public sealed partial class DevicesPage : Page
         var selectedDeviceId = GetSelectedDeviceId();
         if (string.IsNullOrWhiteSpace(selectedDeviceId))
         {
-            PairingCodeText.Severity = InfoBarSeverity.Warning;
-            PairingCodeText.Message = "Selecione um dispositivo para copiar o link do dashboard.";
+            ShowInlineStatusMessage(InfoBarSeverity.Warning, "Selecione um dispositivo para copiar o link do dashboard.");
             AddLocalLog("Nao foi possivel copiar o link do dashboard: nenhum dispositivo selecionado.");
             return;
         }
@@ -321,8 +319,7 @@ public sealed partial class DevicesPage : Page
         var dashboardUri = BuildDashboardShareUri(currentState.ServerBaseAddress, selectedDeviceId);
         if (dashboardUri is null)
         {
-            PairingCodeText.Severity = InfoBarSeverity.Warning;
-            PairingCodeText.Message = "Servidor local ainda nao esta acessivel na rede.";
+            ShowInlineStatusMessage(InfoBarSeverity.Warning, "Servidor local ainda nao esta acessivel na rede.");
             AddLocalLog("Nao foi possivel copiar o link do dashboard: URL local nao compartilhavel.");
             return;
         }
@@ -331,8 +328,7 @@ public sealed partial class DevicesPage : Page
         data.SetText(dashboardUri.ToString());
         Clipboard.SetContent(data);
 
-        PairingCodeText.Severity = InfoBarSeverity.Success;
-        PairingCodeText.Message = $"Link do dashboard copiado: {dashboardUri}";
+        ShowInlineStatusMessage(InfoBarSeverity.Success, $"Link do dashboard copiado: {dashboardUri}");
         AddLocalLog($"Link do dashboard copiado: {dashboardUri}");
     }
 
@@ -461,8 +457,7 @@ public sealed partial class DevicesPage : Page
 
         if (!ops.RemoveDevice(selected.DeviceId))
         {
-            PairingCodeText.Severity = InfoBarSeverity.Error;
-            PairingCodeText.Message = "Falha ao remover dispositivo.";
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Falha ao remover dispositivo.");
             AddLocalLog($"Falha ao remover dispositivo: {selected.DeviceId}");
             return;
         }
@@ -474,21 +469,18 @@ public sealed partial class DevicesPage : Page
         {
             if (revokeSucceeded)
             {
-                PairingCodeText.Severity = InfoBarSeverity.Success;
-                PairingCodeText.Message = $"Dispositivo revogado e removido: {selected.DeviceId}";
+                ShowInlineStatusMessage(InfoBarSeverity.Success, $"Dispositivo revogado e removido: {selected.DeviceId}");
                 AddLocalLog($"Dispositivo revogado e removido localmente: {selected.DeviceId}");
             }
             else
             {
-                PairingCodeText.Severity = InfoBarSeverity.Warning;
-                PairingCodeText.Message = $"Dispositivo removido localmente; revogacao nao concluida: {selected.DeviceId}";
+                ShowInlineStatusMessage(InfoBarSeverity.Warning, $"Dispositivo removido localmente; revogacao nao concluida: {selected.DeviceId}");
                 AddLocalLog($"Dispositivo removido localmente, mas revogacao falhou: {selected.DeviceId} ({revokeFailureMessage ?? "erro desconhecido"})");
             }
         }
         else
         {
-            PairingCodeText.Severity = InfoBarSeverity.Success;
-            PairingCodeText.Message = $"Dispositivo removido: {selected.DeviceId}";
+            ShowInlineStatusMessage(InfoBarSeverity.Success, $"Dispositivo removido: {selected.DeviceId}");
             AddLocalLog($"Dispositivo removido localmente: {selected.DeviceId}");
         }
 

@@ -147,4 +147,32 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetMethod("RunWizardOnboardingAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("SaveFirmwareAsync", flags));
     }
+
+    [Fact]
+    public void DevicesPageShouldExposeInlinePairingBannerControls()
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+
+        Assert.NotNull(typeof(DevicesPage).GetField("PairingCodeText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("PairingCopyCodeButton", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("BuildInlineStatusBanner", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("ShowInlineStatusMessage", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("ShowPairingCodeNotice", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("OnCopyPairingCodeClicked", flags));
+    }
+
+    [Fact]
+    public void BuildPairingCodeBannerMessage_ShouldIncludeCodeExpiryAndUsageHint()
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Static;
+
+        var method = typeof(DevicesPage).GetMethod("BuildPairingCodeBannerMessage", flags);
+        Assert.NotNull(method);
+
+        var message = method!.Invoke(null, ["ABC123", new DateTimeOffset(2026, 4, 18, 14, 30, 0, TimeSpan.Zero)]) as string;
+
+        Assert.Equal(
+            "Pareamento: ABC123 (expira 14:30:00 UTC). Use este codigo no pareamento do dispositivo.",
+            message);
+    }
 }
