@@ -3,6 +3,7 @@ using App.WinUI.Services.Gif;
 using App.WinUI.Services.Panels;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
+using System.Reflection;
 
 namespace Integration.Smoke;
 
@@ -38,6 +39,42 @@ public sealed class PanelsFrameComposerTests
         Assert.Equal(128 * 64, frame.Length);
         Assert.Contains(frame, static pixel => (pixel.R | pixel.G | pixel.B) != 0);
         Assert.Empty(session.GetWidgetErrors());
+    }
+
+    [Fact]
+    public async Task PanelCompositionSession_RenderFrameInto_ShouldMatchRenderFrame()
+    {
+        var composer = new PanelsFrameComposer();
+        var panel = new PanelDefinition
+        {
+            Name = "Clock",
+            Widgets =
+            [
+                new PanelWidgetDefinition
+                {
+                    WidgetId = "clock-1",
+                    AppId = "analogclock",
+                    X = 8,
+                    Y = 8,
+                    Width = 48,
+                    Height = 24,
+                },
+            ],
+        };
+
+        using var session = await composer.CreateSessionAsync(panel);
+        var utcNow = new DateTimeOffset(2026, 3, 9, 18, 15, 0, TimeSpan.Zero);
+        var expected = session.RenderFrame(utcNow);
+        var target = Enumerable
+            .Repeat(new RgbaColor(1, 2, 3, 4), expected.Length)
+            .ToArray();
+
+        var renderInto = typeof(PanelsFrameComposer.PanelCompositionSession)
+            .GetMethod("RenderFrameInto", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+        Assert.NotNull(renderInto);
+        renderInto!.Invoke(session, [utcNow, target]);
+        Assert.Equal(expected, target);
     }
 
     [Fact]

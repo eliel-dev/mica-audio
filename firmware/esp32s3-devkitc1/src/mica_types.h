@@ -3,6 +3,7 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-128x64-single-canvas-mapping
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---buffer-ws-para-frame-128x64
 // DOCS: docs/handoffs/2026-04-17-control-worker-watchdog-and-wifi-heap-regression-fix.md
+// DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 
 #include <Arduino.h>
 #include "firmware_version.h"
@@ -31,6 +32,8 @@ constexpr const char* kPanelsBatchExpectedContentType = "image/webp";
 // Timing and network constants
 // ---------------------------------------------------------------------------
 constexpr unsigned long kWifiDisconnectProvisioningFallbackMs = 20000;
+constexpr unsigned long kWifiBootConnectGraceMs = 5000;
+constexpr unsigned long kWifiReconnectRetryMs = 5000;
 constexpr unsigned long kMqttReconnectRetryMs = 5000;
 constexpr unsigned long kWsReconnectRetryMs = 60000;
 constexpr unsigned long kWsAutoReconnectIntervalMs = 2000;
@@ -73,6 +76,7 @@ constexpr uint8_t kPanelsBatchTargetFps = 30;
 constexpr uint16_t kPanelsBatchDurationMs = 1000;
 constexpr uint8_t kPanelsBatchExpectedFrameCount = 30;
 constexpr unsigned long kPanelsBatchWaitChunkMs = 5;
+constexpr bool kPanelsPerfLoggingEnabled = false;
 constexpr uint16_t kPanelsBatchTaskStackSize = 16384;
 constexpr UBaseType_t kPanelsBatchTaskPriority = 2;
 constexpr uint16_t kControlWorkerTaskStackSize = 12288;

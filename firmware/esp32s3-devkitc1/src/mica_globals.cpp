@@ -42,6 +42,7 @@ unsigned long gLastFrameMs = 0;
 unsigned long gWsDisconnectedSinceMs = 0;
 unsigned long gMqttDisconnectedSinceMs = 0;
 unsigned long gWifiDisconnectedSinceMs = 0;
+unsigned long gLastWifiReconnectAttemptMs = 0;
 unsigned long gLastTelemetryMs = 0;
 
 // ---------------------------------------------------------------------------
@@ -85,6 +86,10 @@ uint32_t gPerfLastReportLoopMaxUs = 0;
 uint32_t gPerfLastReportNetworkMaxUs = 0;
 uint32_t gPerfLastReportRenderMaxUs = 0;
 uint32_t gPerfLastReportSerialMaxUs = 0;
+uint32_t gPerfPanelsDecodeMaxUs = 0;
+uint32_t gPerfPanelsPresentMaxUs = 0;
+uint32_t gPerfLastReportPanelsDecodeMaxUs = 0;
+uint32_t gPerfLastReportPanelsPresentMaxUs = 0;
 uint32_t gPerfRenderSkipCount = 0;
 unsigned long gPerfLastReportMs = 0;
 uint32_t gPerfHub75PresentFramesAtLastReport = 0;
@@ -192,7 +197,7 @@ TaskHandle_t gPanelsBatchTaskHandle = nullptr;
 PanelsBatchBuffer gPanelsBatchPending = {};
 String gPanelsBatchCurrentSessionId;
 uint32_t gPanelsBatchCurrentSequence = 0;
-bool gPanelsBatchCancelRequested = false;
+volatile bool gPanelsBatchCancelRequested = false;
 bool gPanelsBatchUnderrun = false;
 bool gAnimatedWebpBatchSupported = true;
 PanelsWorkerState gPanelsWorkerState = PanelsWorkerState::Idle;

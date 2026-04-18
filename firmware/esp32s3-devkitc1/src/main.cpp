@@ -27,6 +27,7 @@
 // DOCS: docs/handoffs/2026-04-14-freertos-ota-background-task.md
 // DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
+// DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 
 static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr) {
   gServerHost = prefsGetStringOrDefault("host", "", summary);
@@ -37,18 +38,6 @@ static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr)
   normalizeMqttConfig();
   gDeviceId = prefsGetStringOrDefault("deviceId", "", summary);
   gToken = prefsGetStringOrDefault("token", "", summary);
-}
-
-static bool isProvisioningIncomplete() {
-  const bool missingServerConfig = gServerHost.isEmpty() || gServerPort == 0;
-  const bool missingDeviceCredentials = gDeviceId.isEmpty() || gToken.isEmpty();
-  return missingServerConfig || missingDeviceCredentials;
-}
-
-static const char* resolveProvisioningBootReason() {
-  return (gServerHost.isEmpty() || gServerPort == 0)
-      ? "boot_missing_server_config"
-      : "boot_missing_device_credentials";
 }
 
 static void loadRuntimeStateFromPrefs() {
@@ -177,7 +166,7 @@ void setup() {
   bool provisioningIncomplete = isProvisioningIncomplete();
   if (provisioningIncomplete) {
     logPrefsMissingSummary("boot_incomplete", provisioningPrefSummary);
-    const char* bootReason = resolveProvisioningBootReason();
+    const char* bootReason = resolveProvisioningIncompleteReason();
     Serial.printf(
         "[boot] configuracao incompleta; abrindo provisioning AP imediatamente (%s).\n",
         bootReason);
@@ -201,11 +190,13 @@ void setup() {
   loadRuntimeStateFromPrefs();
 
   if (!provisioningIncomplete && !bootWifiConnected) {
+    WiFi.setAutoReconnect(true);
     WiFi.mode(WIFI_STA);
     WiFi.begin();
+    gLastWifiReconnectAttemptMs = millis();
 
     unsigned long bootWifiWaitStart = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - bootWifiWaitStart) < 5000) {
+    while (WiFi.status() != WL_CONNECTED && (millis() - bootWifiWaitStart) < kWifiBootConnectGraceMs) {
       processSerialProvisioning();
       resetTaskWatchdog();
       delay(120);
@@ -227,12 +218,14 @@ void setup() {
   } else if (bootWifiConnected) {
     Serial.println("[wifi_connected] Wi-Fi conectado no boot.");
     setConnectivityState(kWifiStateConnected, "wifi_connected", true);
+    gLastWifiReconnectAttemptMs = 0;
     connectMqtt();
     connectWebSocket();
   } else {
-    Serial.println("[wifi_connecting] sem Wi-Fi no boot, aguardando reconexao.");
-    setConnectivityState(kWifiStateDisconnected, "boot_waiting_wifi", true);
+    Serial.println("[wifi_waiting_saved_config] sem Wi-Fi no boot; mantendo STA com credenciais salvas.");
+    setConnectivityState(kWifiStateDisconnected, "wifi_waiting_saved_config", true);
     gWifiDisconnectedSinceMs = millis();
+    gLastWifiReconnectAttemptMs = millis();
   }
 
   sendSerialHello();

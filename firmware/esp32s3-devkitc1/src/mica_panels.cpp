@@ -1,5 +1,6 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
+// DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
 
 #include "mica_panels.h"
 
@@ -410,12 +411,15 @@ bool tryPresentWebpRgbaFrame(const uint8_t* rgbaPixels, size_t rgbaLength) {
 
   const uint8_t nextFrameIndex = static_cast<uint8_t>(gFrameRgb565ActiveIndex ^ 1u);
   uint16_t* frameBackBuffer = gFrameRgb565Buffers[nextFrameIndex];
-  for (size_t pixelIndex = 0; pixelIndex < kMatrixPixelCount; pixelIndex++) {
-    const size_t offset = pixelIndex * 4u;
-    frameBackBuffer[pixelIndex] = rgb888ToRgb565(
-        rgbaPixels[offset],
-        rgbaPixels[offset + 1u],
-        rgbaPixels[offset + 2u]);
+  const uint8_t* source = rgbaPixels;
+  const uint8_t* sourceEnd = rgbaPixels + (kMatrixPixelCount * 4u);
+  uint16_t* destination = frameBackBuffer;
+  while (source < sourceEnd) {
+    *destination++ = static_cast<uint16_t>(
+        ((source[0] & 0xF8u) << 8)
+        | ((source[1] & 0xFCu) << 3)
+        | (source[2] >> 3));
+    source += 4;
   }
 
   portENTER_CRITICAL(&gStreamBufferMux);
@@ -433,12 +437,8 @@ bool waitForPanelsBatchTimestampUs(int64_t batchStartedUs, int timestampMs) {
   const int64_t targetUs = batchStartedUs + (static_cast<int64_t>(timestampMs) * 1000LL);
   while (true) {
     resetTaskWatchdog();
-    if (gPanelsBatchMutex != nullptr && xSemaphoreTake(gPanelsBatchMutex, portMAX_DELAY) == pdTRUE) {
-      const bool cancelled = gPanelsBatchCancelRequested;
-      xSemaphoreGive(gPanelsBatchMutex);
-      if (cancelled) {
-        return false;
-      }
+    if (gPanelsBatchCancelRequested) {
+      return false;
     }
 
     const int64_t nowUs = esp_timer_get_time();
@@ -522,15 +522,25 @@ void panelsBatchPlaybackTask(void* parameter) {
       resetTaskWatchdog();
       uint8_t* rgbaPixels = nullptr;
       int timestampMs = 0;
+      const int64_t decodeStartedUs = esp_timer_get_time();
       if (!WebPAnimDecoderGetNext(decoder, &rgbaPixels, &timestampMs) || rgbaPixels == nullptr) {
         decodeFailed = true;
         break;
       }
+      const uint32_t decodeDurationUs = static_cast<uint32_t>(esp_timer_get_time() - decodeStartedUs);
+      if (decodeDurationUs > gPerfPanelsDecodeMaxUs) {
+        gPerfPanelsDecodeMaxUs = decodeDurationUs;
+      }
 
       setPanelsWorkerState(PanelsWorkerState::Presenting);
+      const int64_t presentStartedUs = esp_timer_get_time();
       if (!tryPresentWebpRgbaFrame(rgbaPixels, static_cast<size_t>(info.canvas_width) * static_cast<size_t>(info.canvas_height) * 4u)) {
         decodeFailed = true;
         break;
+      }
+      const uint32_t presentDurationUs = static_cast<uint32_t>(esp_timer_get_time() - presentStartedUs);
+      if (presentDurationUs > gPerfPanelsPresentMaxUs) {
+        gPerfPanelsPresentMaxUs = presentDurationUs;
       }
 
       if (!waitForPanelsBatchTimestampUs(batchStartedUs, timestampMs)) {

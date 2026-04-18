@@ -56,6 +56,7 @@ extern unsigned long gLastFrameMs;
 extern unsigned long gWsDisconnectedSinceMs;
 extern unsigned long gMqttDisconnectedSinceMs;
 extern unsigned long gWifiDisconnectedSinceMs;
+extern unsigned long gLastWifiReconnectAttemptMs;
 extern unsigned long gLastTelemetryMs;
 
 // ---------------------------------------------------------------------------
@@ -99,6 +100,10 @@ extern uint32_t gPerfLastReportLoopMaxUs;
 extern uint32_t gPerfLastReportNetworkMaxUs;
 extern uint32_t gPerfLastReportRenderMaxUs;
 extern uint32_t gPerfLastReportSerialMaxUs;
+extern uint32_t gPerfPanelsDecodeMaxUs;
+extern uint32_t gPerfPanelsPresentMaxUs;
+extern uint32_t gPerfLastReportPanelsDecodeMaxUs;
+extern uint32_t gPerfLastReportPanelsPresentMaxUs;
 extern uint32_t gPerfRenderSkipCount;
 extern unsigned long gPerfLastReportMs;
 extern uint32_t gPerfHub75PresentFramesAtLastReport;
@@ -204,7 +209,7 @@ extern TaskHandle_t gPanelsBatchTaskHandle;
 extern PanelsBatchBuffer gPanelsBatchPending;
 extern String gPanelsBatchCurrentSessionId;
 extern uint32_t gPanelsBatchCurrentSequence;
-extern bool gPanelsBatchCancelRequested;
+extern volatile bool gPanelsBatchCancelRequested;
 extern bool gPanelsBatchUnderrun;
 extern bool gAnimatedWebpBatchSupported;
 extern PanelsWorkerState gPanelsWorkerState;

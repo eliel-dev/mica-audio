@@ -11,8 +11,11 @@ namespace App.WinUI.Services.Panels;
 
 // DOCS: docs/wiki/modules/paineis.md#runtime-em-background
 // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-prioridade-hub75-visualizador-sobre-paineis
+// DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
 internal sealed class PanelsPlaybackService : IDisposable
 {
+    private static readonly bool EnableBatchPerfLogging =
+        AppContext.TryGetSwitch("MicaAudio.Panels.BatchPerfLogging", out var enabled) && enabled;
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(1000d / PanelsFrameComposer.TargetFps);
     private static readonly TimeSpan BatchDuration = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan BatchPreloadLead = TimeSpan.FromMilliseconds(250);
@@ -520,8 +523,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         PanelsBatchTransportState state,
         CancellationToken cancellationToken)
     {
-        var (frames, frameDurationsMs) = RenderBatchFrames(session, state.NextBatchStartUtc);
-        var encodedBatch = PanelsAnimatedWebpEncoder.Encode(frames, frameDurationsMs, LedDefaults.MatrixWidth, LedDefaults.MatrixHeight);
+        var encodedBatch = RenderEncodedBatch(session, state.NextBatchStartUtc);
         var registration = host.RegisterPanelsBatch(
             deviceId,
             state.PanelsSessionId,
@@ -560,23 +562,56 @@ internal sealed class PanelsPlaybackService : IDisposable
         return true;
     }
 
-    private static (List<RgbaColor[]> Frames, List<int> FrameDurationsMs) RenderBatchFrames(
+    private static PanelsEncodedBatch RenderEncodedBatch(
         PanelsFrameComposer.PanelCompositionSession session,
         DateTimeOffset batchStartUtc)
     {
-        var frames = new List<RgbaColor[]>(PanelsFrameComposer.TargetFps);
-        var frameDurationsMs = new List<int>(PanelsFrameComposer.TargetFps);
+        long renderTicks = 0;
+        var totalStartTimestamp = Stopwatch.GetTimestamp();
+        var encodedBatch = PanelsAnimatedWebpEncoder.Encode(
+            PanelsFrameComposer.TargetFps,
+            LedDefaults.MatrixWidth,
+            LedDefaults.MatrixHeight,
+            (frameIndex, targetFrame) =>
+            {
+                var renderStartTimestamp = Stopwatch.GetTimestamp();
+                session.RenderFrameInto(
+                    batchStartUtc + TimeSpan.FromMilliseconds(GetBatchFrameOffsetMs(frameIndex)),
+                    targetFrame);
+                renderTicks += Stopwatch.GetTimestamp() - renderStartTimestamp;
+            },
+            GetBatchFrameDurationMs);
 
-        for (var frameIndex = 0; frameIndex < PanelsFrameComposer.TargetFps; frameIndex++)
+        if (EnableBatchPerfLogging)
         {
-            var frameOffsetMs = (frameIndex * 1000) / PanelsFrameComposer.TargetFps;
-            var nextFrameOffsetMs = ((frameIndex + 1) * 1000) / PanelsFrameComposer.TargetFps;
-            var frameDurationMs = Math.Max(1, nextFrameOffsetMs - frameOffsetMs);
-            frames.Add(session.RenderFrame(batchStartUtc + TimeSpan.FromMilliseconds(frameOffsetMs)));
-            frameDurationsMs.Add(frameDurationMs);
+            var totalTicks = Stopwatch.GetTimestamp() - totalStartTimestamp;
+            LogBatchPerf(renderTicks, Math.Max(0L, totalTicks - renderTicks), encodedBatch);
         }
 
-        return (frames, frameDurationsMs);
+        return encodedBatch;
+    }
+
+    private static int GetBatchFrameOffsetMs(int frameIndex)
+    {
+        return (frameIndex * (int)BatchDuration.TotalMilliseconds) / PanelsFrameComposer.TargetFps;
+    }
+
+    private static int GetBatchFrameDurationMs(int frameIndex)
+    {
+        var frameOffsetMs = GetBatchFrameOffsetMs(frameIndex);
+        var nextFrameOffsetMs = GetBatchFrameOffsetMs(frameIndex + 1);
+        return Math.Max(1, nextFrameOffsetMs - frameOffsetMs);
+    }
+
+    private static void LogBatchPerf(long renderTicks, long encodeTicks, PanelsEncodedBatch encodedBatch)
+    {
+        Debug.WriteLine(
+            $"[panels-perf] render_batch_ms={TicksToMilliseconds(renderTicks):F2} encode_batch_ms={TicksToMilliseconds(encodeTicks):F2} frames={encodedBatch.FrameCount} payload_bytes={encodedBatch.Payload.Length}");
+    }
+
+    private static double TicksToMilliseconds(long ticks)
+    {
+        return ticks <= 0 ? 0d : (ticks * 1000d) / Stopwatch.Frequency;
     }
 
     private void RaiseFrameUpdated(RgbaColor[] frame)

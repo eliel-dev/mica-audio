@@ -77,8 +77,33 @@
   - com timeout explicito apenas para a tentativa STA do submit.
 - A janela serial-first de `60 s` deixou de fazer parte do caminho oficial.
 - `mica.serial.v1` continua no codigo apenas como compatibilidade/diagnostico.
-- O fallback por queda prolongada de Wi-Fi permanece ativo para devices ja provisionados.
+- O fallback por queda prolongada de Wi-Fi permanece ativo apenas para devices com provisioning incompleto.
 - Depois que o display estiver inicializado, o fallback HUB75 continua priorizando `SETUP WIFI`.
+
+## Atualizacao 2026-04 - Reconnect apos reset com credenciais salvas
+
+- O firmware oficial passou a separar claramente dois estados:
+  - `provisioning incompleto`: pode abrir o portal AP automaticamente;
+  - `device ja provisionado`: nao reabre o portal AP sozinho so porque o Wi-Fi ainda nao voltou.
+- A regra canonica de `provisioning incompleto` saiu do `main.cpp` e passou a morar em `mica_provisioning.cpp`, virando fonte unica de verdade para:
+  - boot `AP-first`;
+  - fallback automatico para provisioning no runtime.
+- No boot de device ja provisionado:
+  - o firmware fixa `WiFi.setAutoReconnect(true)` antes de `WiFi.begin()`;
+  - usa uma grace curta `kWifiBootConnectGraceMs = 5000`;
+  - se o STA ainda nao conectou ao fim dessa janela, segue o boot normal em modo de reconexao, sem reclassificar o device como incompleto.
+- O runtime agora aplica reconnect cooperativo explicito para credenciais salvas:
+  - `kWifiReconnectRetryMs = 5000`;
+  - cada retry usa `WiFi.reconnect()`;
+  - se o STA nao estiver ativo, o firmware religa `WIFI_STA` e reaplica `WiFi.begin()` com a configuracao salva.
+- Logs seriais oficiais desta fase:
+  - `wifi_waiting_saved_config`
+  - `wifi_reconnect_retry`
+  - `wifi_reconnected`
+- Consequencia operacional:
+  - `power cycle` e botao `reset` devem reconectar com as credenciais ja persistidas;
+  - se o roteador estiver fora do ar, o device permanece offline tentando reconectar;
+  - o portal AP automatico fica reservado a ausencia real de `host/porta/deviceId/token` ou entrada manual em provisioning.
 
 ## Atualizacao 2026-04 - AP-first com HUB75 adiado no boot limpo
 
@@ -362,6 +387,18 @@
   - `panelsWorkerState`
   - `lastSlowCommand`
   - `lastSlowCommandDurationMs`
+
+## Atualizacao 2026-04 - Otimizacao Conservadora Do Pipeline WebP De `Paineis`
+
+- O hot path de playback WebP foi enxugado sem mudar o wire:
+  - a espera entre frames deixou de pegar `mutex` a cada iteracao e agora consulta um sinal de cancelamento de leitura barata;
+  - a conversao `RGBA -> RGB565` do frame apresentado passou a usar caminhada linear por ponteiro, reduzindo trabalho por pixel no batch task.
+- O caminho de medicao local ganhou contadores leves para batches WebP:
+  - `decode_max_us` e `present_max_us` entram no reporter de perf existente;
+  - a emissao serial detalhada desses campos fica default-off por `kPanelsPerfLoggingEnabled = false`.
+- A semantica operacional foi preservada:
+  - sem mudanca em `queue_panels_batch`, `frameCount`, `durationMs` ou no fallback para stream WS bruto;
+  - sem mover stacks ou buffers quentes para `PSRAM` como estrategia principal de performance.
 
 ## Atualizacao 2026-03 - OTA autenticado por HTTP
 

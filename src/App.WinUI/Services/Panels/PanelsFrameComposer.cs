@@ -9,6 +9,7 @@ using MicaAudio.Core.Presets;
 namespace App.WinUI.Services.Panels;
 
 // DOCS: docs/wiki/modules/paineis.md#compositor-hub75
+// DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
 [SupportedOSPlatform("windows")]
 internal sealed class PanelsFrameComposer
 {
@@ -85,7 +86,6 @@ internal sealed class PanelsFrameComposer
     {
         private readonly PanelDefinition panel;
         private readonly List<IPanelWidgetRuntime> widgetRuntimes;
-        private readonly RgbaColor[] scratch = new RgbaColor[LedDefaults.MatrixWidth * LedDefaults.MatrixHeight];
 
         internal PanelCompositionSession(PanelDefinition panel, List<IPanelWidgetRuntime> widgetRuntimes)
         {
@@ -104,13 +104,26 @@ internal sealed class PanelsFrameComposer
 
         public RgbaColor[] RenderFrame(DateTimeOffset utcNow)
         {
-            PanelsMatrixDrawHelpers.Clear(scratch);
-            foreach (var runtime in widgetRuntimes)
+            var frame = new RgbaColor[LedDefaults.MatrixWidth * LedDefaults.MatrixHeight];
+            RenderFrameInto(utcNow, frame);
+            return frame;
+        }
+
+        public void RenderFrameInto(DateTimeOffset utcNow, RgbaColor[] targetFrame)
+        {
+            ArgumentNullException.ThrowIfNull(targetFrame);
+            if (targetFrame.Length != LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
             {
-                runtime.Render(utcNow, scratch, LedDefaults.MatrixWidth, LedDefaults.MatrixHeight);
+                throw new ArgumentException(
+                    $"Target frame has {targetFrame.Length} pixels but expected {LedDefaults.MatrixWidth * LedDefaults.MatrixHeight}.",
+                    nameof(targetFrame));
             }
 
-            return scratch.ToArray();
+            PanelsMatrixDrawHelpers.Clear(targetFrame);
+            foreach (var runtime in widgetRuntimes)
+            {
+                runtime.Render(utcNow, targetFrame, LedDefaults.MatrixWidth, LedDefaults.MatrixHeight);
+            }
         }
 
         public void Dispose()

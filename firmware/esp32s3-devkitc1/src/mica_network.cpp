@@ -1,6 +1,7 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---rollback-para-ap-first-estavel
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
+// DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 
 #include "mica_network.h"
 
@@ -558,6 +559,28 @@ uint32_t elapsedMicrosSince(uint32_t startUs) {
   return static_cast<uint32_t>(micros() - startUs);
 }
 
+static bool isWifiStationModeEnabled() {
+  const uint8_t modeBits = static_cast<uint8_t>(WiFi.getMode());
+  return (modeBits & static_cast<uint8_t>(WIFI_MODE_STA)) != 0u;
+}
+
+static bool startSavedWifiReconnectAttempt(bool& restartedSta) {
+  restartedSta = false;
+  WiFi.setAutoReconnect(true);
+  if (!isWifiStationModeEnabled()) {
+    WiFi.mode(WIFI_STA);
+    restartedSta = true;
+  }
+
+  if (WiFi.reconnect()) {
+    return true;
+  }
+
+  WiFi.mode(WIFI_STA);
+  restartedSta = true;
+  return WiFi.begin() != WL_CONNECT_FAILED;
+}
+
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#saude-oficial-do-loop
 void updateLoopHealthyPercent(uint32_t loopDurationUs) {
   const unsigned long nowMs = millis();
@@ -610,6 +633,8 @@ void reportPerfMetrics() {
   gPerfLastReportNetworkMaxUs = gPerfNetworkMaxUs;
   gPerfLastReportRenderMaxUs = gPerfRenderMaxUs;
   gPerfLastReportSerialMaxUs = gPerfSerialMaxUs;
+  gPerfLastReportPanelsDecodeMaxUs = gPerfPanelsDecodeMaxUs;
+  gPerfLastReportPanelsPresentMaxUs = gPerfPanelsPresentMaxUs;
 
   Serial.printf(
       "[perf] loop_max_us=%lu net_max_us=%lu render_max_us=%lu serial_max_us=%lu hub75_fps=%lu render_skips=%lu\n",
@@ -629,10 +654,19 @@ void reportPerfMetrics() {
         static_cast<unsigned>(batchHwm));
   }
 
+  if (kPanelsPerfLoggingEnabled && gPanelsBatchTaskHandle != nullptr) {
+    Serial.printf(
+        "[perf/panels] decode_max_us=%lu present_max_us=%lu\n",
+        static_cast<unsigned long>(gPerfPanelsDecodeMaxUs),
+        static_cast<unsigned long>(gPerfPanelsPresentMaxUs));
+  }
+
   gPerfLoopMaxUs = 0;
   gPerfNetworkMaxUs = 0;
   gPerfRenderMaxUs = 0;
   gPerfSerialMaxUs = 0;
+  gPerfPanelsDecodeMaxUs = 0;
+  gPerfPanelsPresentMaxUs = 0;
   gPerfRenderSkipCount = 0;
   gPerfHub75PresentFramesAtLastReport = gHub75PresentFrames;
   gPerfLastReportMs = now;
@@ -974,15 +1008,41 @@ void processNetworkPoll() {
 
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
   if (!wifiConnected) {
+    const bool provisioningIncomplete = isProvisioningIncomplete();
     if (shouldRunNetworkStep(gWifiDisconnectedSinceMs == 0)) {
       gWifiDisconnectedSinceMs = millis();
-      setConnectivityState(kWifiStateDisconnected, "wifi_disconnected", true);
-      Serial.println("[wifi] desconectado, aguardando reconexao.");
+      gLastWifiReconnectAttemptMs = provisioningIncomplete ? 0 : gWifiDisconnectedSinceMs;
+      if (provisioningIncomplete) {
+        setConnectivityState(kWifiStateDisconnected, "wifi_disconnected", true);
+        Serial.println("[wifi] desconectado, aguardando reconexao.");
+      } else {
+        setConnectivityState(kWifiStateDisconnected, "wifi_waiting_saved_config", true);
+        Serial.println("[wifi_waiting_saved_config] credenciais salvas presentes; aguardando reconexao.");
+      }
+      finishNetworkStep();
+    }
+
+    const bool shouldRetrySavedWifi =
+        !provisioningIncomplete
+        && !gProvisioningPortalActive
+        && !isProvisioningPortalLaunchPending()
+        && gLastWifiReconnectAttemptMs != 0
+        && (millis() - gLastWifiReconnectAttemptMs) >= kWifiReconnectRetryMs;
+    if (shouldRunNetworkStep(shouldRetrySavedWifi)) {
+      bool restartedSta = false;
+      const bool reconnectStarted = startSavedWifiReconnectAttempt(restartedSta);
+      gLastWifiReconnectAttemptMs = millis();
+      setConnectivityState(kWifiStateDisconnected, "wifi_reconnect_retry");
+      Serial.printf(
+          "[wifi_reconnect_retry] reconnect_started=%s sta_restarted=%s\n",
+          reconnectStarted ? "true" : "false",
+          restartedSta ? "true" : "false");
       finishNetworkStep();
     }
 
     const bool shouldStartProvisioningFallback =
-        !gProvisioningPortalActive
+        provisioningIncomplete
+        && !gProvisioningPortalActive
         && !isProvisioningPortalLaunchPending()
         && gWifiDisconnectedSinceMs != 0
         && (millis() - gWifiDisconnectedSinceMs) > kWifiDisconnectProvisioningFallbackMs;
@@ -991,13 +1051,16 @@ void processNetworkPoll() {
       if (requested) {
         Serial.println("[wifi] fallback para provisioning agendado apos queda prolongada.");
         gWifiDisconnectedSinceMs = 0;
+        gLastWifiReconnectAttemptMs = 0;
       }
 
       finishNetworkStep();
     }
   } else {
-    if (gWifiDisconnectedSinceMs != 0) {
+    const bool wifiWasDisconnected = gWifiDisconnectedSinceMs != 0;
+    if (wifiWasDisconnected) {
       gWifiDisconnectedSinceMs = 0;
+      gLastWifiReconnectAttemptMs = 0;
     }
 
     if (shouldRunNetworkStep(gProvisioningPortalActive)) {
@@ -1006,7 +1069,12 @@ void processNetworkPoll() {
     }
 
     if (shouldRunNetworkStep(true)) {
-      setConnectivityState(kWifiStateConnected, "wifi_connected");
+      if (wifiWasDisconnected) {
+        Serial.println("[wifi_reconnected] Wi-Fi reconectado.");
+        setConnectivityState(kWifiStateConnected, "wifi_reconnected", true);
+      } else {
+        setConnectivityState(kWifiStateConnected, "wifi_connected");
+      }
       finishNetworkStep();
     }
     if (shouldRunNetworkStep(true)) {

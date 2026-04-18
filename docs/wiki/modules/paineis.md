@@ -74,6 +74,10 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
   - o host guarda apenas `ativo + proximo` em memoria por sessao/device;
   - o envio ao device acontece por `queue_panels_batch` + download HTTP autenticado no `Device.Server`;
   - o fallback para `Frame128x64` continua automatico se o device nao suportar batches ou se a fila de lotes falhar.
+- O caminho oficial de batch deixou de materializar `30` arrays RGBA por segundo antes do encode:
+  - `PanelCompositionSession` agora aceita render em buffer fornecido pelo chamador (`RenderFrameInto(...)`);
+  - o encode WebP consome um unico framebuffer RGBA reutilizavel no hot path;
+  - `PanelsPlaybackService` passou a renderizar e codificar o lote de forma incremental, reduzindo churn de heap e copias no host.
 - O modo WebP batch e `play-once queue` no v1: o firmware toca o lote atual uma vez, troca no boundary para o proximo e, em underrun, segura o ultimo frame valido.
 - Quando o `Visualizador HUB75` assume prioridade, o runtime do painel entra em suspensao retomavel:
   - o loop/frame output para;

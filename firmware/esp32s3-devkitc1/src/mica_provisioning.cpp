@@ -3,6 +3,7 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---ap-first-com-hub75-adiado-no-boot-limpo
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
 // DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
+// DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 
 #include "mica_provisioning.h"
 
@@ -25,6 +26,18 @@ static void sendSerialJson(JsonDocument& document) {
   String payload;
   serializeJson(document, payload);
   Serial.println(payload);
+}
+
+bool isProvisioningIncomplete() {
+  const bool missingServerConfig = gServerHost.isEmpty() || gServerPort == 0;
+  const bool missingDeviceCredentials = gDeviceId.isEmpty() || gToken.isEmpty();
+  return missingServerConfig || missingDeviceCredentials;
+}
+
+const char* resolveProvisioningIncompleteReason() {
+  return (gServerHost.isEmpty() || gServerPort == 0)
+      ? "boot_missing_server_config"
+      : "boot_missing_device_credentials";
 }
 
 void sendSerialHello() {
@@ -191,6 +204,7 @@ static bool tryApplyProvisioningPortalServer(
 }
 
 static bool connectWifiWithTimeout(const String& ssid, const String& password, unsigned long timeoutMs) {
+  WiFi.setAutoReconnect(true);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid.c_str(), password.c_str());
   setConnectivityState(kWifiStateConnecting, "wifi_connecting", true);
@@ -206,6 +220,7 @@ static bool connectWifiWithTimeout(const String& ssid, const String& password, u
   }
 
   gWifiDisconnectedSinceMs = 0;
+  gLastWifiReconnectAttemptMs = 0;
   setConnectivityState(kWifiStateConnected, "wifi_connected", true);
   return true;
 }
@@ -450,6 +465,7 @@ bool startProvisioningPortal(const char* reason) {
   setProvisioningPortalActive(false, "wifi_connected");
   Serial.println("[portal_close] provisioning encerrado apos conexao Wi-Fi.");
   gWifiDisconnectedSinceMs = 0;
+  gLastWifiReconnectAttemptMs = 0;
   setConnectivityState(kWifiStateConnected, "wifi_connected", true);
 
   gPrefs.putString("name", pName.getValue());
