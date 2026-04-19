@@ -11,6 +11,7 @@ using WinRT.Interop;
 namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
+// DOCS: docs/wiki/guides/build-export-firmware.md#guia---download-de-firmware-pre-compilado
 public sealed partial class ServerPage : Page
 {
     private readonly List<string> localLogs = new();
@@ -153,20 +154,23 @@ public sealed partial class ServerPage : Page
             return;
         }
 
-        if (!service.TryResolveSource(optionId, out _, out var resolveError))
+        SetDownloadUiState(true, $"Download: validando release oficial de {option.DisplayName}", 10);
+
+        var export = await service.PrepareOfficialFirmwareExportAsync(optionId).ConfigureAwait(true);
+        if (!export.Success || export.ResolvedArtifact is null)
         {
-            SetDownloadUiState(false, "Download: arquivo ausente", 0);
-            AddLocalLog(resolveError);
+            SetDownloadUiState(false, "Download: release oficial indisponivel", 0);
+            AddLocalLog(export.FailureReason);
             UpdateLogs(currentState.Logs);
             return;
         }
 
-        SetDownloadUiState(true, $"Download: preparando {option.DisplayName}", 10);
+        SetDownloadUiState(true, $"Download: preparando {option.DisplayName}", 30);
 
         StorageFile? targetFile;
         try
         {
-            targetFile = await PickDestinationFileAsync(option).ConfigureAwait(true);
+            targetFile = await PickDestinationFileAsync(export.SuggestedFileName).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -187,7 +191,7 @@ public sealed partial class ServerPage : Page
         try
         {
             SetDownloadUiState(true, "Download: copiando firmware...", 70);
-            await service.CopyToAsync(optionId, targetFile.Path).ConfigureAwait(true);
+            await service.CopyArtifactToAsync(export.ResolvedArtifact, targetFile.Path).ConfigureAwait(true);
             SetDownloadUiState(false, "Download: concluido", 100);
             AddLocalLog($"Firmware salvo em: {targetFile.Path}");
             UpdateLogs(currentState.Logs);
@@ -200,11 +204,11 @@ public sealed partial class ServerPage : Page
         }
     }
 
-    private static async Task<StorageFile?> PickDestinationFileAsync(PrecompiledFirmwareOption option)
+    private static async Task<StorageFile?> PickDestinationFileAsync(string suggestedFileName)
     {
         var picker = new FileSavePicker
         {
-            SuggestedFileName = option.FileName,
+            SuggestedFileName = suggestedFileName,
             SuggestedStartLocation = PickerLocationId.Downloads,
         };
 

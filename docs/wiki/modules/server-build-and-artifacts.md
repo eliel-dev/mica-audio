@@ -14,7 +14,7 @@ O catalogo ativo nao expoe mais Matrix Portal S3, painel `64x32` nem o perfil `s
   - `scripts/build-precompiled-firmware.ps1`
 - Em workspace/dev, a `App.WinUI` agora faz duas coisas:
   - warm-up assincromo no startup para detectar se o release oficial local ficou stale em relacao aos fontes do firmware;
-  - preflight obrigatorio antes de OTA e antes do wizard USB, regenerando o pacote oficial quando necessario.
+  - preflight obrigatorio antes de OTA, antes do wizard USB e antes do download manual do BIN, regenerando o pacote oficial quando necessario.
 - O frescor do release oficial e comparado contra os insumos reais do firmware:
   - `scripts/build-precompiled-firmware.ps1`
   - `firmware/esp32s3-devkitc1/platformio.ini`
@@ -24,6 +24,8 @@ O catalogo ativo nao expoe mais Matrix Portal S3, painel `64x32` nem o perfil `s
   - `firmware/esp32s3-devkitc1/partitions/`
   - `firmware/esp32s3-devkitc1/scripts/`
 - Se o app identificar release stale e a regeneracao oficial falhar, o catalogo deixa de anunciar `Ultimo release` em vez de continuar expondo o pacote velho como se estivesse atual.
+- Os botoes `Baixar firmware` em `Dispositivos` e `Servidor` tambem falham de forma estrita quando o app nao consegue provar que o release oficial esta fresco.
+- O download manual continua copiando o mesmo binario oficial interno, mas o nome sugerido ao usuario no `FileSavePicker` agora incorpora `firmwareVersion` do manifesto oficial.
 
 ## Manifesto oficial
 

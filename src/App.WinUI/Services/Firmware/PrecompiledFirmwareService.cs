@@ -10,6 +10,7 @@ using MicaAudio.Core.Config;
 namespace App.WinUI.Services.Firmware;
 
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
+// DOCS: docs/wiki/guides/build-export-firmware.md#guia---download-de-firmware-pre-compilado
 // DOCS: docs/wiki/guides/setup-new-device.md#referencias-de-codigo
 // DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 internal sealed partial class PrecompiledFirmwareService
@@ -283,6 +284,29 @@ internal sealed partial class PrecompiledFirmwareService
         }
     }
 
+    public async Task<OfficialFirmwareExportResult> PrepareOfficialFirmwareExportAsync(
+        string optionId,
+        CancellationToken cancellationToken = default)
+    {
+        var refresh = await EnsureOfficialFirmwareFreshAsync(optionId, cancellationToken).ConfigureAwait(false);
+        if (!refresh.IsFresh || refresh.ResolvedArtifact is null)
+        {
+            return new OfficialFirmwareExportResult(
+                Success: false,
+                FailureReason: string.IsNullOrWhiteSpace(refresh.FailureReason)
+                    ? "Release oficial do firmware indisponivel."
+                    : refresh.FailureReason,
+                ResolvedArtifact: null,
+                SuggestedFileName: string.Empty);
+        }
+
+        return new OfficialFirmwareExportResult(
+            Success: true,
+            FailureReason: string.Empty,
+            ResolvedArtifact: refresh.ResolvedArtifact,
+            SuggestedFileName: BuildSuggestedExportFileName(refresh.ResolvedArtifact));
+    }
+
     public bool TryResolveSource(string optionId, out string sourcePath, out string error)
     {
         sourcePath = string.Empty;
@@ -347,6 +371,29 @@ internal sealed partial class PrecompiledFirmwareService
             throw new InvalidOperationException(error);
         }
 
+        await CopyResolvedFileToAsync(sourcePath, destinationPath, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task CopyArtifactToAsync(
+        ResolvedFirmwareArtifact artifact,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(artifact);
+
+        if (string.IsNullOrWhiteSpace(destinationPath))
+        {
+            throw new ArgumentException("Destino invalido.", nameof(destinationPath));
+        }
+
+        await CopyResolvedFileToAsync(artifact.FirmwarePath, destinationPath, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task CopyResolvedFileToAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
         var destinationDirectory = Path.GetDirectoryName(destinationPath);
         if (string.IsNullOrWhiteSpace(destinationDirectory))
         {
@@ -968,6 +1015,38 @@ internal sealed partial class PrecompiledFirmwareService
         }
     }
 
+    private static string BuildSuggestedExportFileName(ResolvedFirmwareArtifact artifact)
+    {
+        var originalFileName = artifact.Option.FileName;
+        var stem = Path.GetFileNameWithoutExtension(originalFileName);
+        var extension = Path.GetExtension(originalFileName);
+        var version = SanitizeFileNameComponent(artifact.Manifest.FirmwareVersion);
+        return string.IsNullOrWhiteSpace(extension)
+            ? $"{stem}_{version}"
+            : $"{stem}_{version}{extension}";
+    }
+
+    private static string SanitizeFileNameComponent(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "unknown-version";
+        }
+
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var sanitized = new string(
+            value
+                .Trim()
+                .Select(character => invalidChars.Contains(character) ? '-' : character)
+                .ToArray())
+            .Trim()
+            .Trim('.');
+
+        return string.IsNullOrWhiteSpace(sanitized)
+            ? "unknown-version"
+            : sanitized;
+    }
+
     private void Log(string message)
     {
         LogFirmwareMessage(logger, message);
@@ -1008,3 +1087,9 @@ internal sealed partial class PrecompiledFirmwareService
         string OutputRoot,
         IReadOnlyList<string> FreshnessInputs);
 }
+
+internal sealed record OfficialFirmwareExportResult(
+    bool Success,
+    string FailureReason,
+    ResolvedFirmwareArtifact? ResolvedArtifact,
+    string SuggestedFileName);

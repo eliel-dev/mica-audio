@@ -2,28 +2,39 @@
 
 ## Objetivo
 
-Baixar um BIN pre-compilado na aba `Dispositivos` e salvar no local escolhido para flash manual externo.
+Baixar o release oficial fresco do firmware e salvar um BIN no local escolhido para flash manual externo.
 
 ## Passos
 
-1. Abrir a aba `Dispositivos`.
-2. Clicar em `Novo dispositivo`.
-3. Escolher `Placa`, `Painel` e `Firmware` no wizard.
-4. Clicar em `Baixar firmware`.
-5. Escolher o destino no `FileSavePicker` e confirmar.
-6. Validar no log da tela que o download foi concluido.
+1. Abrir a aba `Dispositivos` ou `Servidor`.
+2. Clicar em `Baixar firmware`.
+3. O app executa um preflight do release oficial com `EnsureOfficialFirmwareFreshAsync(...)`.
+4. Se o release oficial estiver stale e o script oficial conseguir regenerar o pacote, o download segue com o novo artefato.
+5. Se o app nao conseguir provar que o release oficial esta fresco, o download falha sem fallback silencioso para um `merged.bin` potencialmente stale.
+6. Escolher o destino no `FileSavePicker` e confirmar.
+7. Validar no log da tela que o download foi concluido.
+
+## Nome do arquivo exportado
+
+- O nome interno do artefato oficial continua estavel:
+  - `esp32s3-devkitc1-128x64-dma_exp_merged.bin`
+- O nome sugerido ao usuario no save picker inclui a versao do manifesto oficial:
+  - formato: `<base>_<firmwareVersion>.bin`
+  - exemplo: `esp32s3-devkitc1-128x64-dma_exp_merged_v0.0.0-8-g4f86ce0-dirty.bin`
+- O rename vale apenas para o arquivo exportado pelo usuario; o pipeline interno de build, manifesto e OTA continua usando o nome interno estavel.
 
 ## Referencias de codigo
 
-- [DevicesPage.ShowNewDeviceSetupDialogAsync](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L163) - assinatura: `private async Task ShowNewDeviceSetupDialogAsync()`
-- [DevicesPage.DownloadFirmwareFromSelectionAsync](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L349) - assinatura: `private async Task DownloadFirmwareFromSelectionAsync(...)`
-- [PrecompiledFirmwareService.GetOptions](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L73) - assinatura: `IReadOnlyList<PrecompiledFirmwareOption> GetOptions(...)`
-- [PrecompiledFirmwareService.CopyToAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L144) - assinatura: `Task CopyToAsync(string optionId, string destinationPath, CancellationToken)`
+- [DevicesPage.SaveFirmwareAsync](../../../src/App.WinUI/Views/DevicesPage.Onboarding.cs#L1)
+- [ServerPage.SaveFirmwareAsync](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1)
+- [PrecompiledFirmwareService.PrepareOfficialFirmwareExportAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
+- [PrecompiledFirmwareService.CopyArtifactToAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
 
 ## Checklist rapido
 
-- [ ] O wizard abre pela aba `Dispositivos`.
-- [ ] A selecao placa/painel/perfil retorna o BIN esperado.
+- [ ] O botao `Baixar firmware` funciona em `Dispositivos` e `Servidor`.
+- [ ] O download usa o release oficial fresco, nao uma copia bruta stale.
+- [ ] O nome sugerido inclui a versao oficial mostrada na UI.
 - [ ] Cancelar o FileSavePicker nao gera erro.
 - [ ] O arquivo salvo possui tamanho maior que zero.
 - [ ] O log informa caminho final salvo.

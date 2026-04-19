@@ -11,6 +11,7 @@ using WinRT.Interop;
 namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/guides/setup-new-device.md#contrato-visual-do-wizard
+// DOCS: docs/wiki/guides/build-export-firmware.md#guia---download-de-firmware-pre-compilado
 // DOCS: docs/wiki/guides/setup-new-device.md#logs-seriais-no-wizard
 // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-04---logs-seriais-sob-demanda-no-wizard-usb
 // DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
@@ -329,17 +330,18 @@ public sealed partial class DevicesPage
             return;
         }
 
-        if (!service.TryResolveSource(option.Id, out _, out var resolveError))
+        var export = await service.PrepareOfficialFirmwareExportAsync(option.Id).ConfigureAwait(true);
+        if (!export.Success || export.ResolvedArtifact is null)
         {
-            ShowInlineStatusMessage(InfoBarSeverity.Error, "Firmware: arquivo ausente.");
-            AddLocalLog(resolveError);
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Firmware: release oficial indisponivel.");
+            AddLocalLog(export.FailureReason);
             return;
         }
 
         StorageFile? targetFile;
         try
         {
-            targetFile = await PickFirmwareDestinationFileAsync(option).ConfigureAwait(true);
+            targetFile = await PickFirmwareDestinationFileAsync(export.SuggestedFileName).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -357,7 +359,7 @@ public sealed partial class DevicesPage
 
         try
         {
-            await service.CopyToAsync(option.Id, targetFile.Path).ConfigureAwait(true);
+            await service.CopyArtifactToAsync(export.ResolvedArtifact, targetFile.Path).ConfigureAwait(true);
             ShowInlineStatusMessage(InfoBarSeverity.Success, $"Firmware: salvo em {targetFile.Name}.");
             AddLocalLog($"Firmware salvo em: {targetFile.Path}");
         }
@@ -368,11 +370,11 @@ public sealed partial class DevicesPage
         }
     }
 
-    private static async Task<StorageFile?> PickFirmwareDestinationFileAsync(PrecompiledFirmwareOption option)
+    private static async Task<StorageFile?> PickFirmwareDestinationFileAsync(string suggestedFileName)
     {
         var picker = new FileSavePicker
         {
-            SuggestedFileName = option.FileName,
+            SuggestedFileName = suggestedFileName,
             SuggestedStartLocation = PickerLocationId.Downloads,
         };
 

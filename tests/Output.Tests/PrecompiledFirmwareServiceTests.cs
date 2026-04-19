@@ -259,6 +259,69 @@ exit 7
         }
     }
 
+    [Fact]
+    public async Task PrepareOfficialFirmwareExportAsync_ShouldReturnVersionedSuggestedFileName()
+    {
+        var workspaceRoot = CreateWorkspace();
+        var outputRoot = Path.Combine(workspaceRoot, "artifacts");
+        try
+        {
+            TouchWorkspaceInputs(workspaceRoot, new DateTimeOffset(2026, 3, 20, 12, 0, 0, TimeSpan.Zero));
+            await WriteArtifactAsync(
+                outputRoot,
+                version: "v2026.03.20-fresh",
+                builtAtUtc: new DateTimeOffset(2026, 3, 20, 12, 5, 0, TimeSpan.Zero),
+                bytes: [0x01, 0x02, 0x03]);
+
+            var service = CreateService(outputRoot, workspaceRoot);
+            var export = await service.PrepareOfficialFirmwareExportAsync("esp32s3_devkitc1_128x64_dma_exp");
+
+            Assert.True(export.Success, export.FailureReason);
+            Assert.NotNull(export.ResolvedArtifact);
+            Assert.Equal("esp32s3-devkitc1-128x64-dma_exp_merged_v2026.03.20-fresh.bin", export.SuggestedFileName);
+            Assert.Equal("esp32s3-devkitc1-128x64-dma_exp_merged.bin", export.ResolvedArtifact!.Option.FileName);
+            Assert.Equal("v2026.03.20-fresh", export.ResolvedArtifact.Manifest.FirmwareVersion);
+        }
+        finally
+        {
+            Directory.Delete(workspaceRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PrepareOfficialFirmwareExportAsync_ShouldFailStrictlyWhenFreshOfficialReleaseIsUnavailable()
+    {
+        var workspaceRoot = CreateWorkspace();
+        var outputRoot = Path.Combine(workspaceRoot, "artifacts");
+        try
+        {
+            await WriteArtifactAsync(
+                outputRoot,
+                version: "v2026.03.14-stale",
+                builtAtUtc: new DateTimeOffset(2026, 3, 14, 3, 2, 28, TimeSpan.Zero),
+                bytes: [0x01, 0x02, 0x03]);
+            TouchWorkspaceInputs(workspaceRoot, new DateTimeOffset(2026, 3, 20, 12, 0, 0, TimeSpan.Zero));
+            await WriteBuildScriptAsync(
+                workspaceRoot,
+                @"
+Write-Error 'simulated build failure'
+exit 7
+");
+
+            var service = CreateService(outputRoot, workspaceRoot);
+            var export = await service.PrepareOfficialFirmwareExportAsync("esp32s3_devkitc1_128x64_dma_exp");
+
+            Assert.False(export.Success);
+            Assert.Null(export.ResolvedArtifact);
+            Assert.Equal(string.Empty, export.SuggestedFileName);
+            Assert.Contains("falhou", export.FailureReason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(workspaceRoot, recursive: true);
+        }
+    }
+
     private static PrecompiledFirmwareService CreateService(string precompiledFirmwareDirectory, string? workspaceRoot = null)
     {
         return new PrecompiledFirmwareService(
