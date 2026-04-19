@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <esp32s3/rom/rtc.h>
 
 #include "mica_globals.h"
@@ -28,6 +29,7 @@
 // DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
+// DOCS: docs/handoffs/2026-04-18-provisioned-boot-wifi-before-hub75.md
 
 static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr) {
   gServerHost = prefsGetStringOrDefault("host", "", summary);
@@ -40,20 +42,38 @@ static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr)
   gToken = prefsGetStringOrDefault("token", "", summary);
 }
 
-static void loadRuntimeStateFromPrefs() {
+static uint32_t sanitizeLargestFreeBlock(size_t largestRawBytes, uint32_t freeBytes) {
+  if (freeBytes == 0 || largestRawBytes == 0) {
+    return 0;
+  }
+
+  const size_t clampedBytes = largestRawBytes > freeBytes ? freeBytes : largestRawBytes;
+  return clampedBytes > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(clampedBytes);
+}
+
+static void logBootMemorySnapshot(const char* stage) {
+  const uint32_t freeHeapBytes = ESP.getFreeHeap();
+  const uint32_t largestHeapBlockBytes =
+      sanitizeLargestFreeBlock(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), freeHeapBytes);
+  const uint32_t largestDmaBlockBytes =
+      sanitizeLargestFreeBlock(heap_caps_get_largest_free_block(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL), freeHeapBytes);
+
+  Serial.printf(
+      "[boot_mem] stage=%s freeHeapBytes=%lu largestHeapBlockBytes=%lu largestDmaBlockBytes=%lu\n",
+      stage != nullptr ? stage : "unknown",
+      static_cast<unsigned long>(freeHeapBytes),
+      static_cast<unsigned long>(largestHeapBlockBytes),
+      static_cast<unsigned long>(largestDmaBlockBytes));
+}
+
+static void loadLightRuntimeStateFromPrefs() {
   gBrightnessCap = clampBrightnessToSafeRange(static_cast<int>(prefsGetUCharOrDefault("brightnessCap", kBrightnessDefaultCap)));
   gTestLedEnabled = prefsGetBoolOrDefault("testLedEnabled", false);
   gStreamBrightness = gBrightnessCap;
   gAppliedBrightness = resolveAppliedBrightness();
   initializeColorConversionLookups();
-  resetMatrixShadowState();
   initializeOnboardTestLed();
   initializeAuxLed();
-
-  if (!initMatrixDisplay()) {
-    Serial.println("Painel HUB75 indisponivel: exibicao de barras desativada.");
-  }
-
   updateTestLedDutyFromBrightness(resolveAppliedBrightness());
   applyTestLedState();
 
@@ -62,7 +82,16 @@ static void loadRuntimeStateFromPrefs() {
   gActiveAppConfig = prefsGetStringOrDefault("activeAppConfig", "");
   loadPendingOtaContext();
   initializePendingOtaBootState();
+}
+
+static void initializeHub75RuntimeFromPrefs() {
+  logBootMemorySnapshot("before_hub75_init");
+  resetMatrixShadowState();
+  if (!initMatrixDisplay()) {
+    Serial.println("Painel HUB75 indisponivel: exibicao de barras desativada.");
+  }
   initializePanelsBatchRuntime();
+  logBootMemorySnapshot("after_hub75_init");
 }
 
 void processSignalTimeout() {
@@ -187,9 +216,10 @@ void setup() {
     bootWifiConnected = WiFi.status() == WL_CONNECTED;
   }
 
-  loadRuntimeStateFromPrefs();
+  loadLightRuntimeStateFromPrefs();
 
   if (!provisioningIncomplete && !bootWifiConnected) {
+    logBootMemorySnapshot("before_saved_wifi_begin");
     WiFi.setAutoReconnect(true);
     WiFi.mode(WIFI_STA);
     WiFi.begin();
@@ -203,7 +233,10 @@ void setup() {
     }
 
     bootWifiConnected = WiFi.status() == WL_CONNECTED;
+    logBootMemorySnapshot("after_saved_wifi_grace");
   }
+
+  initializeHub75RuntimeFromPrefs();
 
   if (provisioningIncomplete) {
     if (bootWifiConnected) {

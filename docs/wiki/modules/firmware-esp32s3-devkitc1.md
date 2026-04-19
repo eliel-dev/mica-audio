@@ -122,6 +122,32 @@
   - chaves ausentes usam defaults seguros;
   - o boot registra no maximo um resumo de chaves ausentes quando a configuracao minima ainda nao existe.
 
+## Atualizacao 2026-04 - Boot provisionado sobe STA antes do HUB75
+
+- O hotfix AP-first do boot limpo nao era suficiente para devices ja provisionados:
+  - o `setup()` ainda carregava o runtime pesado do HUB75 antes do primeiro `WiFi.begin()`;
+  - isso podia disputar RAM interna/DMA com `esp_wifi_init()` e gerar `ESP_ERR_NO_MEM`, `Expected to init 4 rx buffer, actual is 3/0` e `STA enable failed`.
+- O fluxo oficial do boot provisionado agora foi quebrado em duas fases:
+  - `boot leve` antes do primeiro `WiFi.begin()`: `Preferences`, regra de provisioning, brilho/LEDs auxiliares, OTA boot state e filas minimas do loop;
+  - `boot HUB75` so depois da grace inicial de reconnect: `resetMatrixShadowState()`, `initMatrixDisplay()` e `initializePanelsBatchRuntime()`.
+- Consequencia operacional:
+  - o device provisionado tenta subir o STA salvo antes de inicializar `MatrixPanel_I2S_DMA`;
+  - o painel pode aparecer alguns segundos depois do reset/power cycle;
+  - o portal AP automatico continua restrito a provisioning incompleto.
+- Observabilidade oficial de boot:
+  - `boot_mem stage=before_saved_wifi_begin`
+  - `boot_mem stage=after_saved_wifi_grace`
+  - `boot_mem stage=before_hub75_init`
+  - `boot_mem stage=after_hub75_init`
+  - cada log registra `freeHeapBytes`, `largestHeapBlockBytes` e `largestDmaBlockBytes`.
+- O runtime de controle tambem deixou de reservar heap interno desnecessario no boot:
+  - `gSlowCommandQueue` voltou a nascer apenas sob demanda junto do `control worker`;
+  - `initializeControlCommandRuntime()` cria apenas as filas minimas de ingress/async.
+- O setup do `esp_task_wdt` foi ajustado para reduzir ruido de boot:
+  - primeiro tenta `esp_task_wdt_reconfigure(...)`;
+  - so chama `esp_task_wdt_init(...)` quando o TWDT ainda nao existe;
+  - isso remove o log repetido `TWDT already initialized` sem desabilitar o watchdog.
+
 ## Atualizacao 2026-03 - HUB75 128x64 single-canvas mapping
 
 - O contrato visual oficial continua sendo um unico canvas `128x64`, igual ao preview WinUI e ao stream `Frame128x64 RGB565`.

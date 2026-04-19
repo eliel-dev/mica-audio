@@ -2,6 +2,7 @@
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#campos-do-payload-de-telemetria-ws
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-17-control-worker-watchdog-and-wifi-heap-regression-fix.md
+// DOCS: docs/handoffs/2026-04-18-provisioned-boot-wifi-before-hub75.md
 
 #include "mica_commands.h"
 
@@ -189,9 +190,9 @@ static void initializeTaskWatchdogRuntime() {
   config.idle_core_mask = 0;
   config.trigger_panic = true;
 
-  esp_err_t result = esp_task_wdt_init(&config);
+  esp_err_t result = esp_task_wdt_reconfigure(&config);
   if (result == ESP_ERR_INVALID_STATE) {
-    result = esp_task_wdt_reconfigure(&config);
+    result = esp_task_wdt_init(&config);
   }
 
   if (result == ESP_OK) {
@@ -729,10 +730,6 @@ void initializeControlCommandRuntime() {
 
   if (gAsyncControlEventQueue == nullptr) {
     gAsyncControlEventQueue = xQueueCreate(kAsyncControlEventQueueDepth, sizeof(AsyncControlEvent*));
-  }
-
-  if (gSlowCommandQueue == nullptr) {
-    gSlowCommandQueue = xQueueCreate(kSlowCommandQueueDepth, sizeof(SlowCommandRequest*));
   }
 }
 
