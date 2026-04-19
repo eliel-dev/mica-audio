@@ -69,16 +69,16 @@
       },
       "Magick.NET-Q8-AnyCPU": {
         "type": "Transitive",
-        "resolved": "14.11.1",
-        "contentHash": "okzVwr299MM6vq2L+YR51ywoXITr3Ewiu6FXsBEj3egKQ0XJI1fn5E2WiBAnxAhlPnvnUE2pdeNvj6IBdmOjKA==",
+        "resolved": "14.12.0",
+        "contentHash": "YGEgNTZ6DaMhXgJYLClRrmEe6CMsEL5E8hy4c2iH/aEmj41ojFAtA/PIXYH1AOYINNEUX/83nLp/y5obt9P/vw==",
         "dependencies": {
-          "Magick.NET.Core": "14.11.1"
+          "Magick.NET.Core": "14.12.0"
         }
       },
       "Magick.NET.Core": {
         "type": "Transitive",
-        "resolved": "14.11.1",
-        "contentHash": "e9ejYUe6+GgbB6KBOpMp0jVDS72u0siDBz0RKSjBAEIZcigKDXDsOcoPLmLJJJqhorx3C4soRak2hCL/gaKdcg=="
+        "resolved": "14.12.0",
+        "contentHash": "QPyuk1Lxp1xgSTP8xomnoZjeOtUeTSoeSuEckhGaUAi6GdZ5d2PmZqzr0O4m/zPbC4So/yg5rr2QO4vYD6fB5g=="
       },
       "Microsoft.CodeCoverage": {
         "type": "Transitive",
@@ -899,7 +899,7 @@
           "CommunityToolkit.Mvvm": "[8.4.0, )",
           "Device.Protocol": "[1.0.0, )",
           "Device.Server": "[1.0.0, )",
-          "Magick.NET-Q8-AnyCPU": "[14.11.1, )",
+          "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
           "MicaAudio.Core": "[1.0.0, )",
           "Microsoft.Extensions.Caching.Hybrid": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.3, )",
@@ -968,10 +968,10 @@
     "net10.0-windows10.0.22621/win-arm64": {
       "Magick.NET-Q8-AnyCPU": {
         "type": "Transitive",
-        "resolved": "14.11.1",
-        "contentHash": "okzVwr299MM6vq2L+YR51ywoXITr3Ewiu6FXsBEj3egKQ0XJI1fn5E2WiBAnxAhlPnvnUE2pdeNvj6IBdmOjKA==",
+        "resolved": "14.12.0",
+        "contentHash": "YGEgNTZ6DaMhXgJYLClRrmEe6CMsEL5E8hy4c2iH/aEmj41ojFAtA/PIXYH1AOYINNEUX/83nLp/y5obt9P/vw==",
         "dependencies": {
-          "Magick.NET.Core": "14.11.1"
+          "Magick.NET.Core": "14.12.0"
         }
       },
       "Microsoft.Graphics.Win2D": {
@@ -1096,10 +1096,10 @@
     "net10.0-windows10.0.22621/win-x64": {
       "Magick.NET-Q8-AnyCPU": {
         "type": "Transitive",
-        "resolved": "14.11.1",
-        "contentHash": "okzVwr299MM6vq2L+YR51ywoXITr3Ewiu6FXsBEj3egKQ0XJI1fn5E2WiBAnxAhlPnvnUE2pdeNvj6IBdmOjKA==",
+        "resolved": "14.12.0",
+        "contentHash": "YGEgNTZ6DaMhXgJYLClRrmEe6CMsEL5E8hy4c2iH/aEmj41ojFAtA/PIXYH1AOYINNEUX/83nLp/y5obt9P/vw==",
         "dependencies": {
-          "Magick.NET.Core": "14.11.1"
+          "Magick.NET.Core": "14.12.0"
         }
       },
       "Microsoft.Graphics.Win2D": {
@@ -1224,10 +1224,10 @@
     "net10.0-windows10.0.22621/win-x86": {
       "Magick.NET-Q8-AnyCPU": {
         "type": "Transitive",
-        "resolved": "14.11.1",
-        "contentHash": "okzVwr299MM6vq2L+YR51ywoXITr3Ewiu6FXsBEj3egKQ0XJI1fn5E2WiBAnxAhlPnvnUE2pdeNvj6IBdmOjKA==",
+        "resolved": "14.12.0",
+        "contentHash": "YGEgNTZ6DaMhXgJYLClRrmEe6CMsEL5E8hy4c2iH/aEmj41ojFAtA/PIXYH1AOYINNEUX/83nLp/y5obt9P/vw==",
         "dependencies": {
-          "Magick.NET.Core": "14.11.1"
+          "Magick.NET.Core": "14.12.0"
         }
       },
       "Microsoft.Graphics.Win2D": {
