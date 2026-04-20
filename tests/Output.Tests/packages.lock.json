@@ -20,11 +20,11 @@
       },
       "System.Drawing.Common": {
         "type": "Direct",
-        "requested": "[10.0.0, )",
-        "resolved": "10.0.0",
-        "contentHash": "kohT9ZZlkB5R5ifihCBnPJLdIUQGiTj1ZI6z4LKatr+F4MmIJJu7qQpBkqt9280ivtnSvlTx9qZEY+CpJ0zMkA==",
+        "requested": "[10.0.6, )",
+        "resolved": "10.0.6",
+        "contentHash": "AUKnAjTnSB4XDjIGWrGDXm5amaMFgaEb/GeOKFlQ26FDuFtgLKY/nv06kTBwobAgHplhH/wWWAGPu0I0Mh+I/g==",
         "dependencies": {
-          "Microsoft.Win32.SystemEvents": "10.0.0"
+          "Microsoft.Win32.SystemEvents": "10.0.6"
         }
       },
       "xunit": {
@@ -65,8 +65,8 @@
       },
       "Microsoft.Win32.SystemEvents": {
         "type": "Transitive",
-        "resolved": "10.0.0",
-        "contentHash": "bYdnhuD0XxcVTrxc8RyBjXo+AXYWJPnda3clhGz2Kakleyun1PyrzYV8RezT7ZYmR9OBSOgvpFQcvHo/K8Y90w=="
+        "resolved": "10.0.6",
+        "contentHash": "+O34uwacm8jHOSsasFV8U9+kSiDPqk/v8umwYl6BIrp/fUaeqRdF/aJcIZvNZ9RhNw+TKlL8oO1HsSEE4Ej/ww=="
       },
       "Newtonsoft.Json": {
         "type": "Transitive",
