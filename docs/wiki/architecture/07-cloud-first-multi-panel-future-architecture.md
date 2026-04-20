@@ -3,6 +3,9 @@
 > **Status:** future-state / ainda nao implementado por completo.
 >
 > Este documento define a arquitetura alvo do Mica para operacao cloud-first, suporte multi-board, suporte multi-panel e onboarding desacoplado do desktop.
+> A direcao aqui combina referencias de `Tronbyt`, `Pixoo` e `Tidbyt/Pixlet`, mas preserva decisoes proprias do Mica para `ESP32`, `HUB75`, `multi-board`, `cloud-first` e `realtime client-owned`.
+>
+> **Classificacao editorial na wiki:** este tambem e um documento de `futuras implementacoes`, mas permanece em `architecture/` por ser a especificacao canonica do target-state arquitetural do projeto.
 
 ## Objetivo
 
@@ -28,6 +31,17 @@ Descrever o estado futuro recomendado do Mica para:
 7. O desktop deixa de ser o flasher oficial do target-state.
 8. Home Assistant entra como integracao do servidor.
 9. ESPHome permanece complementar e opcional, nao substitui o firmware principal do painel HUB75.
+10. O Mica se inspira em tres familias de referencia com papeis diferentes:
+    - `Tronbyt` para desacoplamento `server + firmware + clients`;
+    - `Pixoo` para modelo hibrido `cloud + runtime local`;
+    - `Tidbyt/Pixlet` para runtime de widgets/paineis, catalogo, instalacoes, preview e API de distribuicao.
+11. O Mica nao copia o stack Tidbyt integralmente; ele reaproveita apenas os padroes de produto e operacao que ajudam no ecossistema Mica.
+12. No vocabulrio futuro do Mica, a unidade principal nao e um `app` isolado, e sim um `painel` composto por `widgets`.
+13. Cada widget funciona como um mini-app configuravel:
+    - possui identidade propria;
+    - possui configuracao propria;
+    - participa da composicao visual do painel;
+    - pode ficar sobreposto a outros widgets no mesmo painel.
 
 ## Topologia alvo
 
@@ -70,6 +84,14 @@ O servidor pode:
 3. gerar lotes para o tamanho do painel alvo;
 4. entregar conteudo pronto ao firmware.
 
+Referencia util do ecossistema Tidbyt:
+
+1. `Pixlet` valida a separacao entre:
+   - render local para preview e desenvolvimento;
+   - render/export para distribuicao;
+   - entrega posterior ao device.
+2. O Mica pode adotar essa mesma separacao para widgets cloud-safe sem assumir `Pixlet` como engine obrigatoria.
+
 ### Client-derived realtime
 
 Este grupo cobre conteudo que existe na maquina local e precisa nascer nela:
@@ -84,6 +106,7 @@ Regra fechada:
 1. audio bruto nao sobe para a nuvem;
 2. o cliente captura e processa localmente;
 3. o cliente publica apenas payload compacto e pronto para roteamento.
+4. Aqui o Mica diverge explicitamente do modelo mais cloud-rendered do Tidbyt: o visualizador de audio e as metricas locais continuam pertencendo ao cliente.
 
 Exemplos de payload futuro:
 
@@ -119,6 +142,7 @@ Regra fechada:
 1. o desktop nao e mais o flasher oficial no estado alvo;
 2. o app desktop e o app Android ficam responsaveis por gerar `pair code` e operar o ecossistema;
 3. o portal AP vira o baseline de claim/configuracao do firmware limpo.
+4. A referencia util do Tidbyt aqui nao e o onboarding movel deles, e sim o lifecycle de `instalacao` e vinculacao de paineis/composicoes ao device depois que o device ja entrou no ecossistema.
 
 ```mermaid
 sequenceDiagram
@@ -163,6 +187,18 @@ Regra fechada:
 1. `MQTT` sai do caminho publico cloud-first;
 2. `MQTT` pode continuar apenas como legado/local durante transicao;
 3. o servidor atual `HTTP + WS + MQTT embutido no WinUI` passa a ser baseline temporario, nao o estado final.
+4. A API publica do Tidbyt e uma boa referencia conceitual para distinguir:
+   - `device push`
+   - `install`
+   - `installations`
+   - `preview`
+   - `logs/versions`
+   mas o Mica nao assume compatibilidade wire nem paridade literal de endpoints.
+5. No Mica, esses conceitos futuros se aplicam principalmente a:
+   - `push` de conteudo pontual;
+   - `install` de um painel;
+   - `preview` de uma composicao de widgets;
+   - gestao de configuracoes e versoes da composicao ativa.
 
 ## Taxonomia futura de hardware e display
 
@@ -261,6 +297,37 @@ Regras fechadas:
 2. `Matrix Portal S3` nao recebe artefato oficial `128x64`;
 3. a UI futura deve apresentar apenas variantes oficialmente suportadas.
 
+### Widgets, paineis e configuracao
+
+No Mica, a unidade principal de experiencia e o `painel`. Um painel agrupa widgets renderizados no mesmo canvas e os widgets podem ficar sobrepostos.
+
+Cada widget funciona como um mini-app configuravel dentro do painel:
+
+1. possui sua propria configuracao;
+2. pode ter estado e preview proprios;
+3. participa da composicao visual do painel;
+4. pode coexistir e se sobrepor a outros widgets.
+
+O ecossistema futuro do Mica deve usar como referencia de produto o Tidbyt para tres distincoes importantes:
+
+1. `push` efemero, para mostrar um conteudo ou composicao uma vez;
+2. `install` persistente, para colocar um painel na rotacao normal do device;
+3. `preview`, para validar visual e configuracao antes de efetivar a instalacao do painel.
+
+Tambem entra como referencia futura a ideia de configuracao tipada por widget, inspirada no `schema` do Tidbyt:
+
+- `Text`
+- `Toggle`
+- `Color`
+- `Typeahead`
+- campos dinamicos equivalentes
+
+Regra fechada:
+
+1. isso inspira o modelo do Mica para widgets e paineis;
+2. isso nao obriga o projeto a adotar `Starlark`;
+3. isso nao obriga o projeto a usar `Pixlet` como engine oficial.
+
 ## Pipeline de midia e resize no servidor
 
 GIFs e imagens passam a ser pre-formatados pelo servidor para o painel alvo.
@@ -311,6 +378,7 @@ Implicacoes arquiteturais:
 1. o servidor precisa conhecer a geometria real do device;
 2. o blob resultante deve ser cacheavel por `board/panel/profile/source`;
 3. lotes `WebP` e midias derivadas nao podem existir apenas em memoria do processo no target-state cloud.
+4. O fato de o ecossistema Tidbyt/Pixlet tratar render como saida `WebP` ou `GIF` reforca que o Mica esta na direcao correta ao prever um pipeline server-side de render/export para midias cloud-safe.
 
 ## Servidor em nuvem e Render
 
@@ -364,6 +432,91 @@ Limitacao fechada:
 1. Android nao equivale ao WASAPI loopback do Windows;
 2. playback capture depende da plataforma e do app-fonte permitir captura;
 3. o produto deve tratar isso como limitacao explicita, nao como garantia universal.
+4. O Mica diverge do Tidbyt ao manter audio visualizer e metricas locais como conteudo `client-owned`, nao como algo prioritariamente cloud-rendered.
+
+## Referencias uteis do ecossistema Tidbyt
+
+O ecossistema Tidbyt e util para o Mica principalmente como referencia de produto, runtime e API, nao como blueprint de firmware.
+
+### Pixlet
+
+`Pixlet` se descreve como `app runtime and UX toolkit for highly-constrained displays`.
+
+Isso e util para o Mica como referencia de:
+
+1. runtime de widgets e paineis para displays pequenos;
+2. fluxo `build -> render -> serve -> push`;
+3. separacao entre authoring de composicoes, preview local e distribuicao para device.
+
+### Build, render, serve e push
+
+O Tidbyt ajuda a deixar mais clara a distincao entre:
+
+1. preview local de desenvolvimento;
+2. render offline/export;
+3. envio ao device;
+4. exibicao pontual versus instalacao persistente.
+
+No Mica, isso ajuda a orientar a separacao entre:
+
+1. editor/preview local;
+2. render server-side para widgets cloud-safe;
+3. `push` efemero para testes, notificacoes e comandos pontuais;
+4. `install` persistente para paineis ativos compostos por widgets.
+
+### API publica
+
+A API publica do Tidbyt e uma referencia util para o shape conceitual de operacao remota de devices:
+
+1. `push`
+2. `install`
+3. `installations`
+4. `preview`
+5. `logs`
+6. `versions`
+
+No Mica, isso sugere um modelo publico mais rico que apenas "enviar frame" ou "ativar painel", sem obrigar compatibilidade literal de endpoints.
+
+### Schema
+
+O `schema` do Tidbyt e uma referencia forte para configuracao tipada de widgets.
+
+Isso e util no Mica para:
+
+1. editor compartilhado de configuracao;
+2. futuras UIs WinUI, Android e web;
+3. persistencia de configuracao mais previsivel;
+4. catalogo de widgets com configuracao validavel;
+5. composicao de paineis onde cada widget carrega sua propria configuracao.
+
+### Authoring Apps
+
+O guia `Authoring Apps` do Tidbyt e especialmente util para o Mica em:
+
+1. defaults obrigatorios;
+2. politicas de cache por widget;
+3. secrets;
+4. tratamento de erro sem quebrar o widget inteiro;
+5. profiling/performance.
+
+### Widgets, animations, fonts e modules
+
+Essas referencias sao uteis para o Mica como base de:
+
+1. composicao declarativa em displays pequenos;
+2. tipografia e legibilidade em baixa resolucao;
+3. primitives de animacao;
+4. pequenos modulos utilitarios para widgets orientados a dados.
+
+## O que o Mica nao copia do Tidbyt
+
+Para evitar leitura ambigua desta arquitetura:
+
+1. o Mica nao fica preso a um runtime unico tipo `Pixlet`;
+2. o Mica nao terceiriza o realtime de audio para o cloud;
+3. o Mica nao adota o formato, SDK ou API do Tidbyt como contrato publico do projeto;
+4. o Mica continua centrado em `ESP32 + HUB75 + multi-board`;
+5. o Mica preserva a ideia de `realtime local` como responsabilidade do cliente.
 
 ## Home Assistant e ESPHome
 
@@ -552,3 +705,14 @@ Ganho esperado:
 - [Render - Web Services](https://render.com/docs/web-services)
 - [Render - WebSockets](https://render.com/docs/websocket)
 - [Render - Docker](https://render.com/docs/docker)
+- [Tidbyt Dev](https://tidbyt.dev/)
+- [Tidbyt - Getting Started](https://tidbyt.dev/docs/overview/getting-started)
+- [Tidbyt - Build for Tidbyt](https://tidbyt.dev/docs/build/build-for-tidbyt)
+- [Tidbyt API](https://tidbyt.dev/docs/api)
+- [Pixlet README](https://github.com/tidbyt/pixlet)
+- [Pixlet - Schema](https://raw.githubusercontent.com/tidbyt/pixlet/main/docs/schema/schema.md)
+- [Pixlet - Authoring Apps](https://raw.githubusercontent.com/tidbyt/pixlet/main/docs/authoring_apps.md)
+- [Pixlet - Widgets](https://raw.githubusercontent.com/tidbyt/pixlet/main/docs/widgets.md)
+- [Pixlet - Animations](https://raw.githubusercontent.com/tidbyt/pixlet/main/docs/animation.md)
+- [Pixlet - Fonts](https://raw.githubusercontent.com/tidbyt/pixlet/main/docs/fonts.md)
+- [Pixlet - Modules](https://raw.githubusercontent.com/tidbyt/pixlet/main/docs/modules.md)
