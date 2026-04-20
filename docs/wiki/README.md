@@ -19,6 +19,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 ## Navegacao rapida por tarefa
 
 - Quero mexer em captura/analise/render: [architecture/01-system-overview.md](architecture/01-system-overview.md)
+- Quero entender a arquitetura futura cloud-first e multi-panel: [architecture/07-cloud-first-multi-panel-future-architecture.md](architecture/07-cloud-first-multi-panel-future-architecture.md)
 - Quero operar dispositivos e setup de firmware: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
 - Quero entender o dashboard nativo de observabilidade por device: [reference/device-observability-dashboard.md](reference/device-observability-dashboard.md)
 - Quero configurar novo dispositivo: [guides/setup-new-device.md](guides/setup-new-device.md)
@@ -47,6 +48,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [04 - Threading and concurrency](architecture/04-threading-concurrency.md)
 - [05 - Device session and reconnect](architecture/05-device-session-and-reconnect.md)
 - [06 - Errors, timeouts and recovery](architecture/06-errors-timeouts-and-recovery.md)
+- [07 - Cloud-first multi-panel future architecture](architecture/07-cloud-first-multi-panel-future-architecture.md)
 
 ### Modulos
 - [App.WinUI](modules/app-winui.md)
