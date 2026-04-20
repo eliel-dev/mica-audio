@@ -10,6 +10,7 @@ Descrever o fluxo ativo de GIF HUB75 no modelo atual, onde o GIF entra como widg
 - O compositor desktop continua sendo a origem do `Frame128x64` enviado ao ESP32.
 - O playback usa `30 Hz` como teto de apresentacao.
 - GIF animado respeita os delays reais do arquivo; o loop nao usa mais um indice global fixo de tick.
+- GIF animado e decodificado em frames coalescidos/full-frame, respeitando transparencia e disposal para evitar rastro no preview e no device.
 - Sob carga, o pipeline prioriza o frame mais novo (`newest-wins`) na fila WebSocket do device.
 
 ## Passos
@@ -19,7 +20,7 @@ Descrever o fluxo ativo de GIF HUB75 no modelo atual, onde o GIF entra como widg
 3. Selecione o widget e defina a fonte do GIF no inspetor.
 4. Prefira GIF/imagem ja tratado para `128x64` antes de salvar o painel.
 5. Salve o painel e ative-o para um device.
-6. O runtime desktop compoe o frame `128x64` final, resolve o frame ativo por timeline da midia e o envia ao ESP32.
+6. O runtime desktop compoe o frame `128x64` final, resolve o frame ativo por timeline da midia sobre frames GIF ja coalescidos e o envia ao ESP32.
 
 ## Referencias de codigo
 
@@ -34,6 +35,7 @@ Descrever o fluxo ativo de GIF HUB75 no modelo atual, onde o GIF entra como widg
 - [ ] O widget GIF aceita arquivo ou pasta.
 - [ ] O preview do painel mostra o poster frame ou a animacao quando ativo.
 - [ ] GIF animado respeita os delays reais do arquivo.
+- [ ] GIF animado nao deixa rastro de quadros anteriores quando a midia usa transparencia/disposal.
 - [ ] O runtime apresenta ate `30 FPS`.
 - [ ] O device recebe `Frame128x64`.
 - [ ] Nao existe mais dependencia da antiga sessao `Apps` para executar GIF HUB75.

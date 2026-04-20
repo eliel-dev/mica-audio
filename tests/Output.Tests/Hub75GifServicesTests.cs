@@ -9,6 +9,7 @@ namespace Output.Tests;
 public sealed class Hub75GifServicesTests
 {
     private const string SinglePixelGifBase64 = "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+    private const string AnimatedDisposalGifBase64 = "R0lGODlhBAAEAPAAAAAAAP8AACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJCgAAACwAAAAABAAEAAACBUwAhstQACH5BAkKAAAALAAAAAAEAAQAAAIFBBKGxlwAOw==";
 
     [Fact]
     public void Hub75FrameFormatter_Fit_ShouldPreserveAspectWithBorders()
@@ -83,6 +84,24 @@ public sealed class Hub75GifServicesTests
 
         var frame = Assert.Single(frames);
         Assert.Equal(Hub75GifDecoder.DefaultFrameDurationMs, frame.DurationMs);
+    }
+
+    [Fact]
+    public void Hub75GifDecoder_AnimatedGifWithBackgroundDisposal_ShouldNotKeepPixelsFromPreviousFrame()
+    {
+        var decoder = new Hub75GifDecoder();
+        var gifBytes = Convert.FromBase64String(AnimatedDisposalGifBase64);
+
+        var frames = decoder.Decode(gifBytes);
+
+        Assert.Equal(2, frames.Count);
+
+        var first = frames[0];
+        var second = frames[1];
+
+        Assert.Equal(new RgbaColor(255, 0, 0, 255), first.Pixels[0]);
+        Assert.Equal(new RgbaColor(0, 0, 0, 0), second.Pixels[0]);
+        Assert.Equal(new RgbaColor(255, 0, 0, 255), second.Pixels[2]);
     }
 
     [Theory]

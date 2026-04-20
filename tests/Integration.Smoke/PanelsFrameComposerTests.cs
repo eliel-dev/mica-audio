@@ -11,6 +11,7 @@ public sealed class PanelsFrameComposerTests
 {
     private const string RedPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY/jPwPAfAAUAAf+mXJtdAAAAAElFTkSuQmCC";
     private const string BluePngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY2Bg+P8fAAMCAf/Jsq3uAAAAAElFTkSuQmCC";
+    private const string AnimatedDisposalGifBase64 = "R0lGODlhBAAEAPAAAAAAAP8AACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJCgAAACwAAAAABAAEAAACBUwAhstQACH5BAkKAAAALAAAAAAEAAQAAAIFBBKGxlwAOw==";
 
     [Fact]
     public async Task CreateSessionAsync_ShouldRenderClockWidgetIntoFullFrame()
@@ -214,6 +215,51 @@ public sealed class PanelsFrameComposerTests
             Assert.Equal(128 * 64, poster.Frame.Length);
             Assert.Empty(poster.WidgetErrors);
             Assert.Contains(poster.Frame, static pixel => (pixel.R | pixel.G | pixel.B) != 0);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CreateSessionAsync_ShouldNotLeaveGhostTrailForAnimatedGifWithBackgroundDisposal()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var gifPath = Path.Combine(root, "trail.gif");
+            await File.WriteAllBytesAsync(gifPath, Convert.FromBase64String(AnimatedDisposalGifBase64));
+
+            var composer = new PanelsFrameComposer();
+            var panel = new PanelDefinition
+            {
+                Widgets =
+                [
+                    new PanelWidgetDefinition
+                    {
+                        WidgetId = "gif-trail",
+                        AppId = "gifhub75",
+                        X = 0,
+                        Y = 0,
+                        Width = 4,
+                        Height = 4,
+                        RuntimeState = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["sourcePath"] = gifPath,
+                        },
+                    },
+                ],
+            };
+
+            using var session = await composer.CreateSessionAsync(panel);
+
+            var firstFrame = session.RenderFrame(DateTimeOffset.UtcNow);
+            var secondFrame = session.RenderFrame(DateTimeOffset.UtcNow.AddMilliseconds(120));
+
+            Assert.Equal(new RgbaColor(255, 0, 0, 255), firstFrame[0]);
+            Assert.Equal(new RgbaColor(0, 0, 0, 255), secondFrame[0]);
+            Assert.Equal(new RgbaColor(255, 0, 0, 255), secondFrame[2]);
         }
         finally
         {

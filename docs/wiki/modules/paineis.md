@@ -54,6 +54,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - `analogclock` e renderizado nativamente no compositor com texto `5x7` e barra de segundos.
 - `gifhub75` usa decodificacao propria por widget, inclusive para arquivos estaticos e slideshow local por pasta.
 - GIF animado agora preserva os delays reais do arquivo por frame; o compositor resolve o frame ativo por timeline da midia, nao mais por indice global fixo.
+- O decoder de `gifhub75` coalesce os frames animados antes do formatter/blit, respeitando transparencia e disposal para evitar ghosting no preview e no transporte `WebP`.
 - `PanelsMediaCache` trata midia animada como sequencia temporal (`frames + durationMs + totalDurationMs`), o que evita redecodificacao e permite playback mais fiel.
 - Quando a midia ja entra no tamanho do widget, o compositor faz fast path e reaproveita os pixels sem reescala desnecessaria.
 - Posters de `gifhub75` decodificam apenas o primeiro frame util da midia; a animacao completa fica reservada ao playback real ou ao preview manual do editor.

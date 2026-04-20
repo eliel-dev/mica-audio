@@ -8,6 +8,15 @@
         "resolved": "8.0.0",
         "contentHash": "EMkj/2F6n6IVPrvGYkqzGJs6phuGGkq6N+E7KW9rNyzNxXbwQ1KfMqWyXNf9nCNEQOA6IjFwmOLvkriwKE7Orw=="
       },
+      "Magick.NET-Q8-AnyCPU": {
+        "type": "Direct",
+        "requested": "[14.12.0, )",
+        "resolved": "14.12.0",
+        "contentHash": "YGEgNTZ6DaMhXgJYLClRrmEe6CMsEL5E8hy4c2iH/aEmj41ojFAtA/PIXYH1AOYINNEUX/83nLp/y5obt9P/vw==",
+        "dependencies": {
+          "Magick.NET.Core": "14.12.0"
+        }
+      },
       "Microsoft.Extensions.Caching.Hybrid": {
         "type": "Direct",
         "requested": "[10.0.0, )",
@@ -201,6 +210,11 @@
         "dependencies": {
           "Grpc.Core.Api": "2.70.0"
         }
+      },
+      "Magick.NET.Core": {
+        "type": "Transitive",
+        "resolved": "14.12.0",
+        "contentHash": "QPyuk1Lxp1xgSTP8xomnoZjeOtUeTSoeSuEckhGaUAi6GdZ5d2PmZqzr0O4m/zPbC4So/yg5rr2QO4vYD6fB5g=="
       },
       "Microsoft.CodeCoverage": {
         "type": "Transitive",
