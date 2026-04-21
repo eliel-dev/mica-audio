@@ -1,0 +1,23 @@
+---
+import AtlasStatusChip from './AtlasStatusChip.astro';
+import { CAPABILITY_META, KIND_META } from '../data/atlas-data.mjs';
+
+const { capability, kind, sourceHref, sourcePath, status, summary } = Astro.props;
+const capabilityMeta = capability ? CAPABILITY_META[capability] : null;
+const kindMeta = kind ? KIND_META[kind] : null;
+---
+
+<div class="atlas-doc-meta not-content">
+	<div class="atlas-doc-meta-head">
+		<div class="atlas-doc-meta-tags">
+			<AtlasStatusChip status={status} compact />
+			{capabilityMeta && <span class="atlas-meta-tag">{capabilityMeta.label}</span>}
+			{kindMeta && <span class="atlas-meta-tag">{kindMeta.label}</span>}
+		</div>
+		<a class="atlas-doc-source-link" href={sourceHref} target="_blank" rel="noopener noreferrer">
+			Abrir documento canonico
+		</a>
+	</div>
+	{summary && <p class="atlas-doc-summary">{summary}</p>}
+	<div class="atlas-doc-path">{sourcePath}</div>
+</div>

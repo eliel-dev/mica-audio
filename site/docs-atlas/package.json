@@ -1,0 +1,25 @@
+{
+  "name": "site-docs-atlas",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "sync:wiki": "node ./scripts/sync-wiki-docs.mjs",
+    "predev": "npm run sync:wiki",
+    "dev": "astro dev",
+    "start": "astro dev",
+    "prebuild": "npm run sync:wiki",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.38.3",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/ibm-plex-sans": "^5.2.8",
+    "@fontsource/silkscreen": "^5.2.8",
+    "astro": "^6.0.1",
+    "mermaid": "^11.14.0",
+    "sharp": "^0.34.2",
+    "zod": "^4.3.6"
+  }
+}

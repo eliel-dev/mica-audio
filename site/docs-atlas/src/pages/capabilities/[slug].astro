@@ -1,0 +1,114 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import AtlasStatusChip from '../../components/AtlasStatusChip.astro';
+import { capabilityCards, toDocHref } from '../../data/atlas-data.mjs';
+
+// DOCS: ../../../../docs/wiki/README.md#navegacao-rapida-por-tarefa
+// DOCS: ../../../../docs/handoffs/2026-04-20-mica-atlas-structural-site.md
+
+export function getStaticPaths() {
+	return capabilityCards.map((capability) => ({
+		params: { slug: capability.slug },
+		props: { capability },
+	}));
+}
+
+const { capability } = Astro.props;
+const gaps = capability.entries.flatMap((entry) => entry.gaps ?? []);
+const nextSteps = capability.entries.flatMap((entry) => entry.nextSteps ?? []);
+---
+
+<StarlightPage
+	frontmatter={{
+		title: capability.label,
+		description: capability.description,
+		editUrl: false,
+	}}
+>
+	<div class="atlas-shell atlas-capability-page">
+		<section class="atlas-surface atlas-section-intro">
+			<div class="atlas-label">{capability.shortLabel}</div>
+			<p class="atlas-display-title">{capability.label}</p>
+			<p>{capability.description}</p>
+		</section>
+
+		<section class="atlas-home-columns">
+			<div class="atlas-surface atlas-column-panel">
+				<div class="atlas-label">FOCUS</div>
+				<h2>Escopo curado</h2>
+				<ul class="atlas-bullet-list">
+					{capability.focus.map((item) => <li>{item}</li>)}
+				</ul>
+			</div>
+			<div class="atlas-surface atlas-column-panel">
+				<div class="atlas-label">STATUS</div>
+				<h2>Cobertura</h2>
+				<div class="atlas-coverage-grid">
+					<div>
+						<span>Implementado</span>
+						<strong>{capability.counts.implemented}</strong>
+					</div>
+					<div>
+						<span>Parcial</span>
+						<strong>{capability.counts.partial}</strong>
+					</div>
+					<div>
+						<span>Futuro</span>
+						<strong>{capability.counts.future}</strong>
+					</div>
+					<div>
+						<span>Checklist</span>
+						<strong>{capability.counts.checklist}</strong>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="atlas-doc-list">
+			{
+				capability.entries.map((entry) => (
+					<article class="atlas-surface atlas-doc-row">
+						<div class="atlas-doc-row-head">
+							<div>
+								<AtlasStatusChip status={entry.status} />
+								<h2>{entry.title}</h2>
+							</div>
+							<a class="atlas-inline-link" href={toDocHref(entry.sourcePath)}>
+								Ler documento
+							</a>
+						</div>
+						<p>{entry.summary}</p>
+						<div class="atlas-doc-row-tags">
+							{entry.tags.map((tag) => <span class="atlas-meta-tag">{tag}</span>)}
+						</div>
+					</article>
+				))
+			}
+		</section>
+
+		<section class="atlas-home-columns">
+			<div class="atlas-surface atlas-column-panel">
+				<div class="atlas-label">GAPS</div>
+				<h2>Lacunas da area</h2>
+				{gaps.length ? (
+					<ul class="atlas-bullet-list">
+						{gaps.map((item) => <li>{item}</li>)}
+					</ul>
+				) : (
+					<p>Nenhuma lacuna explicita foi curada nesta capacidade.</p>
+				)}
+			</div>
+			<div class="atlas-surface atlas-column-panel">
+				<div class="atlas-label">NEXT</div>
+				<h2>Proximos passos</h2>
+				{nextSteps.length ? (
+					<ul class="atlas-bullet-list">
+						{nextSteps.map((item) => <li>{item}</li>)}
+					</ul>
+				) : (
+					<p>Nenhum proximo passo curado nesta capacidade.</p>
+				)}
+			</div>
+		</section>
+	</div>
+</StarlightPage>

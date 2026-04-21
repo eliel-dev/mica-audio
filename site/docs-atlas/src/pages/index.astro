@@ -1,0 +1,113 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import AtlasStatusChip from '../components/AtlasStatusChip.astro';
+import { capabilityCards, statusCards } from '../data/atlas-data.mjs';
+
+// DOCS: ../../../docs/wiki/README.md#como-usar-esta-wiki
+// DOCS: ../../../docs/handoffs/2026-04-20-mica-atlas-structural-site.md
+---
+
+<StarlightPage
+	frontmatter={{
+		title: 'Mica Atlas',
+		description: 'Panorama curado da wiki tecnica do Mica Audio por capacidade, status e leitura canonica.',
+		template: 'splash',
+		editUrl: false,
+	}}
+	hasSidebar={false}
+>
+	<div class="atlas-shell atlas-home">
+		<section class="atlas-surface atlas-hero">
+			<div class="atlas-hero-copy">
+				<div class="atlas-label">ATLAS V1</div>
+				<p class="atlas-display-title">Mica Atlas</p>
+				<p>
+					`docs/wiki` continua sendo a fonte canonica. O Atlas organiza leitura, status,
+					capacidades e checklists sem mover o conteudo tecnico original.
+				</p>
+			</div>
+			<div class="atlas-hero-actions">
+				<a class="atlas-link-button" href="/docs/README/">Abrir indice da wiki</a>
+				<a class="atlas-link-button is-secondary" href="/future/">Abrir futuro</a>
+			</div>
+		</section>
+
+		<section class="atlas-status-strip" aria-label="Resumo por status">
+			{
+				statusCards.map((statusCard) => (
+					<a
+						class="atlas-surface atlas-kpi atlas-kpi-link"
+						href={statusCard.href}
+						aria-label={`Abrir itens com status ${statusCard.label}`}
+					>
+						<div class="atlas-kpi-top">
+							<AtlasStatusChip status={statusCard.slug} />
+						</div>
+						<div class="atlas-kpi-value">{statusCard.count}</div>
+						<div class="atlas-kpi-label">itens curados</div>
+					</a>
+				))
+			}
+		</section>
+
+		<section class="atlas-section">
+			<div class="atlas-section-heading">
+				<div class="atlas-label">CAPABILITIES</div>
+				<h2>Mapa de capacidades</h2>
+			</div>
+			<div class="atlas-capability-grid">
+				{
+					capabilityCards.map((capability) => (
+						<article class="atlas-surface atlas-capability-card">
+							<div class="atlas-capability-top">
+								<div>
+									<div class="atlas-label">{capability.shortLabel}</div>
+									<h3>{capability.label}</h3>
+								</div>
+								<a class="atlas-inline-link" href={`/capabilities/${capability.slug}/`}>
+									Abrir
+								</a>
+							</div>
+							<p>{capability.description}</p>
+							<ul class="atlas-bullet-list">
+								{capability.focus.map((item) => <li>{item}</li>)}
+							</ul>
+							<div class="atlas-card-footer">
+								<span>{capability.entries.length} documentos curados</span>
+								<span>{capability.counts.implemented} implementados</span>
+							</div>
+						</article>
+					))
+				}
+			</div>
+		</section>
+
+		<section class="atlas-home-columns">
+			<div class="atlas-surface atlas-column-panel">
+				<div class="atlas-label">CANONICAL SOURCE</div>
+				<h2>Markdown</h2>
+				<p>
+					Arquivos atuais continuam como fonte canonica do conteudo tecnico. O site deriva
+					rotas de leitura e status a partir do catalogo manual e do sync local.
+				</p>
+				<ul class="atlas-bullet-list">
+					<li>`docs/wiki/**/*.md` permanece editavel como hoje.</li>
+					<li>`site/docs-atlas` so organiza, classifica e renderiza.</li>
+					<li>Os gaps aparecem dentro das capacidades, nao na home inteira.</li>
+				</ul>
+			</div>
+			<div class="atlas-surface atlas-column-panel">
+				<div class="atlas-label">CURATED ENTRYPOINTS</div>
+				<h2>Atalhos</h2>
+				<div class="atlas-quick-links">
+					<a href="/capabilities/firmware-boards/">Firmware e Boards</a>
+					<a href="/capabilities/onboarding-pairing/">Onboarding e Pairing</a>
+					<a href="/capabilities/panels-widgets/">Paineis e Widgets</a>
+					<a href="/capabilities/observability/">Observabilidade</a>
+					<a href="/capabilities/cloud-future/">Cloud Future</a>
+					<a href="/future/">Futuras implementacoes</a>
+				</div>
+			</div>
+		</section>
+	</div>
+</StarlightPage>

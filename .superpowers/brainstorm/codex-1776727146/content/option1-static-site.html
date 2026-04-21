@@ -1,0 +1,471 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mica Atlas - Opcao 1</title>
+  <style>
+    :root {
+      --bg: #060b12;
+      --bg2: #0a1017;
+      --panel: #0c1622;
+      --panel2: #0f1b2a;
+      --panel3: #111f31;
+      --line: rgba(94, 234, 255, 0.16);
+      --line2: rgba(255,255,255,0.06);
+      --cyan: #5eeaff;
+      --magenta: #ff64b4;
+      --amber: #ffb84d;
+      --green: #74ffbb;
+      --text: #edf8ff;
+      --muted: #88a3b8;
+      --muted2: #6b8396;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(rgba(94,234,255,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(94,234,255,.03) 1px, transparent 1px);
+      background-size: 26px 26px;
+      opacity: .35;
+      pointer-events: none;
+    }
+    .page {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 292px 1fr;
+      min-height: 100vh;
+    }
+    .sidebar {
+      background: #09111a;
+      border-right: 1px solid var(--line);
+      padding: 24px 20px;
+    }
+    .brand {
+      font: 700 28px/1 Silkscreen, "Consolas", monospace;
+      color: var(--cyan);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .blurb {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      margin-bottom: 26px;
+      max-width: 210px;
+    }
+    .label {
+      font: 400 10px/1.3 Silkscreen, "Consolas", monospace;
+      text-transform: uppercase;
+      color: var(--cyan);
+      letter-spacing: .14em;
+      margin-bottom: 12px;
+    }
+    .section { margin-bottom: 24px; }
+    .nav { display: grid; gap: 10px; }
+    .nav-item {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line2);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .nav-item.active {
+      border-color: var(--cyan);
+      background: #0d1b29;
+      box-shadow: inset 0 0 0 1px rgba(94,234,255,.12);
+    }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line2);
+      background: #0b1520;
+      color: #bad7e6;
+      font: 400 10px/1 Silkscreen, "Consolas", monospace;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .main { padding: 28px 30px 40px; }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.38fr .7fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line2);
+      border-radius: 20px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
+    }
+    .hero-main { padding: 24px 26px; }
+    .hero-side { padding: 20px 22px; }
+    .hero-title {
+      font: 700 44px/.98 Georgia, serif;
+      letter-spacing: -.03em;
+      margin: 8px 0 10px;
+      max-width: 760px;
+    }
+    .hero-copy {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+      max-width: 760px;
+    }
+    .chip-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .chip {
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line2);
+      background: #0b1520;
+      color: var(--cyan);
+      font: 400 10px/1 Silkscreen, "Consolas", monospace;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+    }
+    .search {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: #0a131d;
+      border: 1px solid var(--line2);
+      color: var(--text);
+      font-size: 15px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .stat {
+      padding: 18px;
+      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line2);
+    }
+    .stat .k {
+      font: 400 10px/1.3 Silkscreen, "Consolas", monospace;
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      color: #9ad3de;
+    }
+    .stat .v {
+      font-size: 36px;
+      font-weight: 800;
+      margin: 10px 0 6px;
+      line-height: 1;
+    }
+    .stat .d {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .stat.cyan { border-left: 3px solid var(--cyan); }
+    .stat.amber { border-left: 3px solid var(--amber); }
+    .stat.magenta { border-left: 3px solid var(--magenta); }
+    .stat.green { border-left: 3px solid var(--green); }
+    .layout {
+      display: grid;
+      grid-template-columns: 1.18fr .82fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel { padding: 22px; }
+    .section-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 4px 0 0;
+      max-width: 760px;
+    }
+    .cap-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .cap-card, .doc-card, .flow-card {
+      padding: 16px;
+      border-radius: 16px;
+      background: var(--panel2);
+      border: 1px solid var(--line2);
+    }
+    .cap-title, .doc-name, .flow-name {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .cap-copy, .doc-meta, .flow-meta {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+    .state {
+      margin-top: 12px;
+      font: 400 10px/1.3 Silkscreen, "Consolas", monospace;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .ok { color: var(--green); }
+    .warn { color: var(--amber); }
+    .future { color: var(--magenta); }
+    .flows {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .flow-step {
+      padding: 16px;
+      border-radius: 16px;
+      background: var(--panel3);
+      border: 1px solid var(--line2);
+      position: relative;
+    }
+    .flow-step::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -7px;
+      width: 14px;
+      height: 1px;
+      background: rgba(255,255,255,.12);
+    }
+    .flow-step:last-child::after { display: none; }
+    .flow-index {
+      color: var(--cyan);
+      font: 400 10px/1.2 Silkscreen, "Consolas", monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .doc-kind {
+      color: #98ced9;
+      font: 400 10px/1.3 Silkscreen, "Consolas", monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .footer-note {
+      margin-top: 12px;
+      color: var(--muted2);
+      font: 400 10px/1.3 Silkscreen, "Consolas", monospace;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    @media (max-width: 1220px) {
+      .page, .hero, .layout { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .cap-grid, .flows, .docs-grid { grid-template-columns: 1fr; }
+      .flow-step::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <aside class="sidebar">
+      <div class="brand">Mica Atlas</div>
+      <div class="blurb">Site estático dedicado para organizar a documentação do projeto por capacidade, status e prioridade.</div>
+
+      <div class="section">
+        <div class="label">Navegação</div>
+        <div class="nav">
+          <div class="nav-item active">Panorama</div>
+          <div class="nav-item">Firmware e Boards</div>
+          <div class="nav-item">Onboarding e Pairing</div>
+          <div class="nav-item">Paineis e Widgets</div>
+          <div class="nav-item">Observabilidade</div>
+          <div class="nav-item">Cloud futuro</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="label">Catálogo</div>
+        <div class="pill-row">
+          <div class="pill">Implementado</div>
+          <div class="pill">Parcial</div>
+          <div class="pill">Futuro</div>
+          <div class="pill">Checklist</div>
+          <div class="pill">Canônico</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="label">Modelo</div>
+        <div style="color:var(--muted);font-size:13px;line-height:1.6">Markdown continua sendo a fonte de verdade. O site só organiza, classifica e aponta para os documentos corretos.</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="hero">
+        <div class="card hero-main">
+          <div class="label">Opção 1</div>
+          <div class="hero-title">Site estático dedicado com catálogo manual e markdown canônico.</div>
+          <div class="hero-copy">A home é um painel de estado do projeto. O conteúdo entra por capacidades do produto, não por pastas da wiki. O catálogo manual diz o que está implementado, parcial, futuro ou só em checklist.</div>
+          <div class="chip-row">
+            <div class="chip">site separado</div>
+            <div class="chip">status-first</div>
+            <div class="chip">capacidades-first</div>
+            <div class="chip">somente leitura</div>
+          </div>
+        </div>
+
+        <div class="card hero-side">
+          <div class="label">Busca</div>
+          <div style="font-size:24px;font-weight:700;max-width:280px">Entradas por fluxo, área e iniciativa.</div>
+          <div class="search">firmware / AP-first / espconnect / widgets / cloud</div>
+          <div class="footer-note">o site organiza. os docs continuam no repo.</div>
+        </div>
+      </section>
+
+      <section class="stats">
+        <article class="stat cyan">
+          <div class="k">Implementado</div>
+          <div class="v">37</div>
+          <div class="d">Fluxos e documentos operacionais já consolidados.</div>
+        </article>
+        <article class="stat amber">
+          <div class="k">Parcial</div>
+          <div class="v">12</div>
+          <div class="d">Áreas com rollout incompleto ou refinamento pendente.</div>
+        </article>
+        <article class="stat magenta">
+          <div class="k">Futuro</div>
+          <div class="v">09</div>
+          <div class="d">Arquiteturas alvo e futuras implementações ainda abertas.</div>
+        </article>
+        <article class="stat green">
+          <div class="k">Checklist</div>
+          <div class="v">24</div>
+          <div class="d">Itens rastreáveis por iniciativa e experimento.</div>
+        </article>
+      </section>
+
+      <section class="layout">
+        <article class="card panel">
+          <div class="label">Capacidades</div>
+          <div class="section-title">Entrada principal por área do produto.</div>
+          <div class="cap-grid">
+            <div class="cap-card">
+              <div class="cap-title">Firmware e Boards</div>
+              <div class="cap-copy">Board oficial, perfis de painel, runtime HUB75, futuras variações e limites por hardware.</div>
+              <div class="state ok">Majoritariamente implementado</div>
+            </div>
+            <div class="cap-card">
+              <div class="cap-title">Onboarding e Pairing</div>
+              <div class="cap-copy">Wizard USB, AP portal, pair code e ferramentas externas complementares.</div>
+              <div class="state ok">Implementado</div>
+            </div>
+            <div class="cap-card">
+              <div class="cap-title">Paineis e Widgets</div>
+              <div class="cap-copy">Composição de canvas, widgets sobrepostos, GIF/WebP e mídia redimensionada.</div>
+              <div class="state warn">Implementado com roadmap</div>
+            </div>
+            <div class="cap-card">
+              <div class="cap-title">Cloud futuro</div>
+              <div class="cap-copy">Servidor desacoplado, clientes remotos, catálogo multi-board e Android futuro.</div>
+              <div class="state future">Target-state</div>
+            </div>
+          </div>
+        </article>
+
+        <aside class="card panel">
+          <div class="label">Fonte de verdade</div>
+          <div class="section-title" style="font-size:24px;max-width:320px">Catálogo manual sobre markdown existente.</div>
+          <div class="cap-grid" style="grid-template-columns:1fr;margin-top:16px">
+            <div class="cap-card">
+              <div class="cap-title">Documento canônico</div>
+              <div class="cap-copy">Cada item do site aponta para um `.md` real do repo.</div>
+            </div>
+            <div class="cap-card">
+              <div class="cap-title">Metadados de status</div>
+              <div class="cap-copy">Status, prioridade, categoria e lacunas vêm de um catálogo manual confiável.</div>
+            </div>
+            <div class="cap-card">
+              <div class="cap-title">Subconjunto curado</div>
+              <div class="cap-copy">A v1 mostra primeiro o núcleo útil. O restante entra depois sem quebrar a estrutura.</div>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="card panel" style="margin-bottom:16px">
+        <div class="label">Fluxo da opção 1</div>
+        <div class="section-title">Como o sistema se organiza.</div>
+        <div class="flows">
+          <div class="flow-step">
+            <div class="flow-index">01</div>
+            <div class="flow-name">Markdown</div>
+            <div class="flow-meta">Arquivos atuais continuam como fonte canônica do conteúdo técnico.</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-index">02</div>
+            <div class="flow-name">Catálogo manual</div>
+            <div class="flow-meta">Status, prioridade, capacidade e tipo de documento são definidos de forma explícita.</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-index">03</div>
+            <div class="flow-name">Site estático</div>
+            <div class="flow-meta">A home e as áreas derivam do catálogo e renderizam leitura organizada.</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-index">04</div>
+            <div class="flow-name">Drill-down</div>
+            <div class="flow-meta">Cada cartão abre o detalhe do item e aponta para o documento canônico.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card panel">
+        <div class="label">Exemplos de itens</div>
+        <div class="section-title">Objetos do catálogo na home.</div>
+        <div class="docs-grid">
+          <div class="doc-card">
+            <div class="doc-kind">Guia</div>
+            <div class="doc-name">setup-new-device.md</div>
+            <div class="doc-meta">Documento operacional para onboarding do device.</div>
+            <div class="state ok">Implementado</div>
+          </div>
+          <div class="doc-card">
+            <div class="doc-kind">Arquitetura</div>
+            <div class="doc-name">07-cloud-first-...</div>
+            <div class="doc-meta">Especificação do target-state arquitetural do projeto.</div>
+            <div class="state future">Futuro</div>
+          </div>
+          <div class="doc-card">
+            <div class="doc-kind">Futura implementação</div>
+            <div class="doc-name">espconnect-usb-tool...</div>
+            <div class="doc-meta">Checklist de viabilidade para ferramenta externa de flash e USB.</div>
+            <div class="state future">Checklist futuro</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,85 @@
+---
+import DefaultHead from '@astrojs/starlight/components/Head.astro';
+---
+
+<DefaultHead />
+
+<script>
+	let initialized = false;
+	let mermaidModulePromise;
+
+	async function getMermaid() {
+		mermaidModulePromise ??= import('mermaid').then((module) => module.default);
+		return mermaidModulePromise;
+	}
+
+	async function initMermaid() {
+		if (initialized) {
+			return getMermaid();
+		}
+
+		const mermaid = await getMermaid();
+		mermaid.initialize({
+			startOnLoad: false,
+			theme: 'base',
+			securityLevel: 'loose',
+			fontFamily: 'IBM Plex Sans, sans-serif',
+			themeVariables: {
+				background: '#0a0f14',
+				primaryColor: '#0f1821',
+				primaryBorderColor: '#2fe0ff',
+				primaryTextColor: '#edf4ff',
+				lineColor: '#2fe0ff',
+				secondaryColor: '#10161d',
+				tertiaryColor: '#0c1117',
+			},
+		});
+
+		initialized = true;
+		return mermaid;
+	}
+
+	async function renderMermaidBlocks() {
+		const mermaid = await initMermaid();
+
+		const blocks = document.querySelectorAll('pre code.language-mermaid');
+		for (const block of blocks) {
+			const container = block.closest('pre');
+			if (!container || container.dataset.atlasMermaid === 'done') {
+				continue;
+			}
+
+			const graphDefinition = block.textContent?.trim();
+			if (!graphDefinition) {
+				continue;
+			}
+
+			try {
+				const renderId = `atlas-mermaid-${Math.random().toString(36).slice(2)}`;
+				const { svg, bindFunctions } = await mermaid.render(renderId, graphDefinition);
+				const host = document.createElement('div');
+				host.className = 'atlas-mermaid-host';
+				host.innerHTML = svg;
+				container.replaceWith(host);
+				bindFunctions?.(host);
+			} catch (error) {
+				console.error('Atlas mermaid render failed', error);
+				container.dataset.atlasMermaid = 'done';
+			}
+
+			container.dataset.atlasMermaid = 'done';
+		}
+	}
+
+	function bootMermaid() {
+		void renderMermaidBlocks();
+	}
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', bootMermaid, { once: true });
+	} else {
+		bootMermaid();
+	}
+
+	document.addEventListener('astro:page-load', bootMermaid);
+</script>

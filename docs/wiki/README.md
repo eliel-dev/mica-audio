@@ -8,8 +8,9 @@ Documentacao tecnica versionada junto com o codigo para acelerar manutencao, onb
 2. Leia o modulo alvo em `modules/`.
 3. Aplique um guia em `guides/`.
 4. Consulte `reference/code-index.md` para achar classes e metodos.
-5. Para fluxo solo com IA, leia `ai/agent-entrypoint.md`.
-6. Rode a validacao local:
+5. Se quiser leitura por capacidade e status, rode o Atlas em `site/docs-atlas`.
+6. Para fluxo solo com IA, leia `ai/agent-entrypoint.md`.
+7. Rode a validacao local:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
@@ -18,6 +19,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 
 ## Navegacao rapida por tarefa
 
+- Quero navegar a wiki por capacidade e status no Atlas: [site/docs-atlas/README.md](../../site/docs-atlas/README.md)
 - Quero mexer em captura/analise/render: [architecture/01-system-overview.md](architecture/01-system-overview.md)
 - Quero entender a arquitetura futura cloud-first e multi-panel: [architecture/07-cloud-first-multi-panel-future-architecture.md](architecture/07-cloud-first-multi-panel-future-architecture.md)
 - Quero avaliar GPIOViewer como diagnostico futuro: [future-implementations/gpio-viewer-diagnostic-viability-checklist.md](future-implementations/gpio-viewer-diagnostic-viability-checklist.md)
