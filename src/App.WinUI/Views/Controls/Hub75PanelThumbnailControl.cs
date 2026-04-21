@@ -1,10 +1,8 @@
 using App.WinUI.Models.Apps;
 using App.WinUI.Views.Controls.Renderers;
-using Microsoft.Graphics.Canvas.UI.Xaml;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
+using Microsoft.Graphics.Canvas.UI.Xaml;
 using Windows.UI;
 
 namespace App.WinUI.Views.Controls;

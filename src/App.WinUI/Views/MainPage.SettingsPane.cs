@@ -1,5 +1,4 @@
 using App.WinUI.Services.Gif;
-using Microsoft.UI.Xaml;
 
 namespace App.WinUI.Views;
 

@@ -1,7 +1,5 @@
 using App.WinUI.Services.Devices;
 using Device.Protocol.Models;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 
 namespace App.WinUI.Views;
 

@@ -1,8 +1,5 @@
 using App.WinUI.Models.Apps;
-using App.WinUI.Views;
 using MicaAudio.Core.Presets;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Windows.UI;
 
 namespace App.WinUI.Views.Controls;

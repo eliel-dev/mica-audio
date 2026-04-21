@@ -1,11 +1,8 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using App.WinUI.Models.Apps;
-using App.WinUI.Views;
+using MicaAudio.Core.Presets;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using MicaAudio.Core.Presets;
 using Windows.UI;
 
 namespace App.WinUI.Views.Controls;

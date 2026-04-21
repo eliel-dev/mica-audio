@@ -1,6 +1,6 @@
 using System.Globalization;
-using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
+using Microsoft.Extensions.Options;
 
 namespace App.WinUI.Services.Logging;
 

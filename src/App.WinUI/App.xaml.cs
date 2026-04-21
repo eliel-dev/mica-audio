@@ -1,8 +1,6 @@
-using System.Text;
-using App.WinUI.Infrastructure.Serial;
+using App.WinUI.Infrastructure;
 using App.WinUI.Infrastructure.Http;
 using App.WinUI.Infrastructure.Observability;
-using App.WinUI.Infrastructure;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
@@ -11,25 +9,22 @@ using App.WinUI.Services.Logging;
 using App.WinUI.Services.Monitoring;
 using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
-using App.WinUI.Views;
 using Audio.Loopback.Capture;
 using Device.Server.Hosting;
-using Microsoft.Extensions.Caching.Hybrid;
+using MicaAudio.Core.Config;
+using MicaAudio.Core.Presets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
-using MicaAudio.Core.Config;
-using MicaAudio.Core.Presets;
 using Output.Led;
 
 namespace App.WinUI;
 
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
 // DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
+// DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
@@ -165,8 +160,6 @@ public partial class App : Application
             return coordinator;
         });
         services.AddSingleton<Hub75VisualizerSessionService>();
-        services.AddSingleton<ISerialPortCatalogService, SerialPortCatalogService>();
-        services.AddSingleton<ISerialMonitorService, SerialMonitorService>();
 
         services.AddSingleton<IAppCatalogService, AppCatalogService>();
         services.AddSingleton<IAppModifierStateStore, AppModifierStateStore>();
@@ -240,8 +233,7 @@ public partial class App : Application
 
         services.AddTransient<SettingsPage>(sp => new SettingsPage(
             sp.GetRequiredService<SettingsRepository>(),
-            sp.GetRequiredService<AppSettingsDomainService>(),
-            sp.GetRequiredService<ISerialMonitorService>()));
+            sp.GetRequiredService<AppSettingsDomainService>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>

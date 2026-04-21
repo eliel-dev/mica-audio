@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
-using Microsoft.Graphics.Canvas;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
+using Microsoft.Graphics.Canvas;
 using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services.Visualizer;

@@ -194,19 +194,17 @@
   - a mudanca persiste em `settings.json`;
   - o status local informa se o ambiente ficou em fallback solido.
 
-## Atualizacao 2026-03 - Monitor serial em Configuracoes
+## Atualizacao 2026-04 - Remocao do monitor serial de Configuracoes
 
-- `Configuracoes` agora concentra duas trilhas:
-  - `Geral`, com toggle de Mica e card `Logs de erro`;
-  - `Monitor serial`, com porta `COM` manual, `Conectar/Desconectar`, `Limpar`, `Auto-scroll` e terminal monoespacado em estilo Arduino IDE.
-- O monitor serial em `Configuracoes` e independente da selecao atual da `DevicesPage` e trabalha sempre em `115200` baud neste v1.
-- A `DevicesPage` continua focada apenas no dashboard seguro do device selecionado.
-- O contrato de logging do app foi simplificado:
-  - `crash.log` em `%LocalAppData%\MicaAudio` virou o arquivo unico de erro;
+- `Configuracoes` ficou restrita a `Geral`, com toggle de Mica e card `Logs de erro`.
+- O desktop nao abre mais porta `COM` nem mantem monitor serial interno; diagnostico serial de campo deve ser feito por ferramenta externa.
+- A `DevicesPage` continua focada no dashboard seguro do device selecionado, download manual, pareamento e OTA para devices online.
+- O contrato de logging do app permanece simplificado:
+  - `crash.log` em `%LocalAppData%\MicaAudio` e o arquivo unico de erro;
   - `AppLogStore` continua mantendo eventos em memoria para uso interno;
   - apenas entradas `Error` passam a ser persistidas em disco;
 - `Info` e `Warning` deixam de ser gravados em `app-logs.json`.
-- `DeviceLogBook` e logs estruturados continuam no backend para diagnostico interno, mas deixaram de ser a superficie exibida na `SettingsPage`.
+- `DeviceLogBook` e logs estruturados continuam no backend para diagnostico interno, mas nao sao exibidos na `SettingsPage`.
 
 ## Atualizacao 2026-03 - Monitoramento local com HWiNFO64
 
@@ -319,7 +317,7 @@
   - `set-brightness`
   - `test-led`
   - `remove-device`, preservando o `ContentDialog` nativo de confirmacao.
-- `Configuracoes` agora hospeda um monitor serial local por `COM` manual; o dashboard web continua sem incorporar console serial bruto.
+- `Configuracoes` permanece restrita a preferencias gerais e logs de erro; console serial bruto fica fora do desktop e deve usar ferramenta externa.
 - A referencia de contrato desta entrega esta em [device-observability-dashboard](../reference/device-observability-dashboard.md#objetivo).
 
 ## Atualizacao 2026-03 - Link do dashboard do device para celular
@@ -347,7 +345,6 @@
 - [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
 - [DevicesPage WebView dashboard](../../../src/App.WinUI/Views/DevicesPage.WebViewDashboard.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
-- [SettingsPage observability](../../../src/App.WinUI/Views/SettingsPage.Observability.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppCacheKeys](../../../src/App.WinUI/Infrastructure/Cache/AppCacheKeys.cs#L1)
 - [AppObservability](../../../src/App.WinUI/Infrastructure/Observability/AppObservability.cs#L1)

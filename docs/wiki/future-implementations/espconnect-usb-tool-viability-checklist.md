@@ -44,7 +44,7 @@ Conclusao parcial: o ESPConnect e mais proximo de uma “mesa de manutencao USB�
 
 O Mica ja cobre partes importantes do fluxo oficial por meios proprios:
 
-1. Setup oficial do device por USB + AP portal, documentado em [setup-new-device](../guides/setup-new-device.md).
+1. Setup oficial do device por download de firmware + flash externo + AP portal, documentado em [setup-new-device](../guides/setup-new-device.md).
 2. Download do firmware precompilado oficial, documentado em [build-export-firmware](../guides/build-export-firmware.md).
 3. Emissao de `pair code` fora do wizard pelo botao `Parear`.
 4. Dashboard e telemetria estruturada no host, documentados em [dashboard nativo de observabilidade por device](../reference/device-observability-dashboard.md).
@@ -73,7 +73,7 @@ Apesar de ser muito util, o ESPConnect nao deve ser confundido com parte do runt
 Limitadores importantes:
 
 - depende de navegador Chromium com `Web Serial` no desktop;
-- disputa a porta USB com qualquer outro app, incluindo monitor serial do Mica;
+- disputa a porta USB com qualquer outra ferramenta serial/flash externa;
 - nao resolve `pairing`, backend ou onboarding de produto sozinho;
 - nao substitui OTA;
 - nao substitui observabilidade estruturada do Mica;
@@ -81,8 +81,8 @@ Limitadores importantes:
 
 Em termos praticos:
 
-- se o Mica estiver com a serial aberta, o ESPConnect nao consegue usar a mesma porta;
-- se o ESPConnect estiver conectado, o wizard/monitor serial do Mica nao deve tentar capturar a mesma COM;
+- se outra ferramenta externa estiver com a serial aberta, o ESPConnect nao consegue usar a mesma porta;
+- como o Mica desktop nao abre mais serial, o conflito passa a ser entre ferramentas externas;
 - a experiencia oficial do produto nao deve depender dele para funcionar.
 
 ## Inferencia central
@@ -113,7 +113,7 @@ Antes de qualquer spike real, validar:
 - [ ] se os logs seriais capturados pelo ESPConnect ajudam no diagnostico de boot do Mica;
 - [ ] se backup e restore de particoes podem ser usados sem contaminar cenarios de teste;
 - [ ] se o `NVS Inspector` deve ficar restrito a engenharia e nunca a suporte de primeiro nivel;
-- [ ] se a wiki do Mica precisa documentar conflito de porta USB quando o app local estiver com serial aberta;
+- [ ] se a wiki do Mica precisa documentar conflito de porta USB entre ferramentas externas;
 - [ ] se o ESPConnect realmente reduz atrito o suficiente para ser promovido a ferramenta recomendada de bancada;
 - [ ] se vale documentar um passo a passo oficial “Mica + ESPConnect” sem alterar o onboarding interno.
 
@@ -124,7 +124,7 @@ O ESPConnect so deve virar ferramenta explicitamente recomendada pelo projeto se
 - funcionar bem com o artefato oficial atual do Mica;
 - nao exigir alteracao de firmware para flash manual basico;
 - nao conflitar com o fluxo de `pair code` e AP portal;
-- ter beneficio pratico claro sobre o wizard USB interno para casos de bancada;
+- ter beneficio pratico claro sobre outros caminhos externos de bancada;
 - poder ser apresentado como opcional, sem fragilizar o caminho oficial do produto.
 
 ## Referencias

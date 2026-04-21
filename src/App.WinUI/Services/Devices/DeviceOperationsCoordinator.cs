@@ -1,10 +1,9 @@
-using App.WinUI.Services;
-using App.WinUI.Services.Logging;
-using App.WinUI.Infrastructure.Observability;
-using Device.Protocol.Models;
-using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Globalization;
+using App.WinUI.Infrastructure.Observability;
+using App.WinUI.Services.Logging;
+using Device.Protocol.Models;
+using Microsoft.Extensions.Logging;
 
 namespace App.WinUI.Services.Devices;
 

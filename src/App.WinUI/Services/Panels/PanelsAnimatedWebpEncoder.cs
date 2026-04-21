@@ -1,6 +1,5 @@
 using ImageMagick;
 using ImageMagick.Formats;
-using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 
 namespace App.WinUI.Services.Panels;

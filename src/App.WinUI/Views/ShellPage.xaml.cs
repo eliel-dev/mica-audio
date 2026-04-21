@@ -1,7 +1,5 @@
-﻿using App.WinUI.Services.Devices;
+using App.WinUI.Services.Devices;
 using App.WinUI.ViewModels;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 
 namespace App.WinUI.Views;
 

@@ -2,6 +2,7 @@ using App.WinUI.Models.Apps;
 using Device.Protocol.Models;
 // DOCS: docs/wiki/reference/code-index.md#pontos-de-ui-para-operacao-de-devices
 namespace App.WinUI.Services.Devices;
+
 internal static class DevicePreviewVisibilityPolicy
 {
     public static bool ShouldShowInlinePreview(DeviceStatus status, AppCatalogItem? previewItem)

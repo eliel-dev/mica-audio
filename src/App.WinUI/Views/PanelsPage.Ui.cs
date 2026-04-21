@@ -1,9 +1,6 @@
 using App.WinUI.Views.Controls;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
-using MicaAudio.Core.Led;
 using Windows.UI;
 
 namespace App.WinUI.Views;

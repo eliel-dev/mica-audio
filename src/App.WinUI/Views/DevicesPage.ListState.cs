@@ -1,8 +1,6 @@
-using App.WinUI.Models.Apps;
 using App.WinUI.Services.Devices;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
-using System.Globalization;
 
 namespace App.WinUI.Views;
 

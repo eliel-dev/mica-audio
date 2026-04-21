@@ -1,5 +1,4 @@
 using System.Reflection;
-using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Views;
 
 namespace Integration.Smoke;
@@ -7,26 +6,28 @@ namespace Integration.Smoke;
 public sealed class SettingsPageSmokeTests
 {
     [Fact]
-    public void SettingsPageShouldDeclareSerialMonitorFields()
+    public void SettingsPageShouldNotDeclareSerialMonitorFields()
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
 
-        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorPortComboBox", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorConnectButton", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorClearButton", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorAutoFollowToggle", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorStatusText", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorListView", flags));
-        Assert.NotNull(typeof(SettingsPage).GetField("serialMonitorPlaceholderText", flags));
+        Assert.Null(typeof(SettingsPage).GetField("serialMonitorPortComboBox", flags));
+        Assert.Null(typeof(SettingsPage).GetField("serialMonitorConnectButton", flags));
+        Assert.Null(typeof(SettingsPage).GetField("serialMonitorClearButton", flags));
+        Assert.Null(typeof(SettingsPage).GetField("serialMonitorAutoFollowToggle", flags));
+        Assert.Null(typeof(SettingsPage).GetField("serialMonitorStatusText", flags));
+        Assert.Null(typeof(SettingsPage).GetField("serialMonitorListView", flags));
+        Assert.Null(typeof(SettingsPage).GetField("serialMonitorPlaceholderText", flags));
     }
 
     [Fact]
-    public void SettingsPageShouldKeepSerialMonitorBuilders()
+    public void SettingsPageShouldNotKeepSerialMonitorBuilders()
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
 
-        Assert.NotNull(typeof(SettingsPage).GetMethod("BuildDeviceObservabilityCard", flags));
-        Assert.NotNull(typeof(SettingsPage).GetMethod("BuildSerialMonitorContent", flags));
+        Assert.Null(typeof(SettingsPage).GetMethod("BuildDeviceObservabilityCard", flags));
+        Assert.Null(typeof(SettingsPage).GetMethod("BuildSerialMonitorContent", flags));
+        Assert.Null(typeof(SettingsPage).GetMethod("ActivateSerialMonitorAsync", flags));
+        Assert.Null(typeof(SettingsPage).GetMethod("DeactivateSerialMonitorAsync", flags));
     }
 
     [Theory]
@@ -62,31 +63,14 @@ public sealed class SettingsPageSmokeTests
     }
 
     [Fact]
-    public void ResolveSerialMonitorPlaceholder_ShouldDescribeDisconnectedAndConnectedStates()
+    public void SettingsPageConstructor_ShouldNotRequireSerialMonitorService()
     {
-        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Static;
+        var parameterTypes = typeof(SettingsPage)
+            .GetConstructors(BindingFlags.NonPublic | BindingFlags.Instance)
+            .SelectMany(static constructor => constructor.GetParameters())
+            .Select(static parameter => parameter.ParameterType.FullName)
+            .ToArray();
 
-        var method = typeof(SettingsPage).GetMethod("ResolveSerialMonitorPlaceholder", flags);
-        Assert.NotNull(method);
-
-        var disconnected = (string?)method!.Invoke(null, new object?[]
-        {
-            new SerialMonitorSessionState
-            {
-                ConnectionState = SerialMonitorConnectionState.Disconnected,
-                AvailablePorts = [new SerialPortDescriptor { PortName = "COM7", DisplayName = "ESP32-S3", IsPreferredDevice = true, PriorityRank = 0 }],
-                SelectedPortName = "COM7",
-            },
-        });
-        var connected = (string?)method.Invoke(null, new object?[]
-        {
-            new SerialMonitorSessionState
-            {
-                ConnectionState = SerialMonitorConnectionState.Connected,
-            },
-        });
-
-        Assert.Equal("Pronto para monitorar COM7.", disconnected);
-        Assert.Equal("Conectado. Aguardando saida serial do firmware...", connected);
+        Assert.DoesNotContain("App.WinUI.Infrastructure.Serial.ISerialMonitorService", parameterTypes);
     }
 }

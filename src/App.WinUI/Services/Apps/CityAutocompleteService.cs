@@ -1,11 +1,10 @@
-using App.WinUI.Infrastructure.Http;
-using App.WinUI.Infrastructure.Observability;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using App.WinUI.Infrastructure.Http;
+using App.WinUI.Infrastructure.Observability;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
 using Polly.Timeout;

@@ -1,20 +1,17 @@
 using System.Diagnostics;
-using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Services;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using MicaAudio.Core.Presets;
+using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
 namespace App.WinUI.Views;
 
-// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-monitor-serial-em-configuracoes
+// DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
+// DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
-    private readonly ISerialMonitorService serialMonitorService;
     private AppSettings currentSettings = new();
     private bool suppressMicaBackdropChanged;
     private ToggleSwitch micaBackdropToggle = null!;
@@ -24,29 +21,20 @@ public sealed partial class SettingsPage : Page
 
     internal SettingsPage(
         SettingsRepository settingsRepository,
-        AppSettingsDomainService settingsDomainService,
-        ISerialMonitorService serialMonitorService)
+        AppSettingsDomainService settingsDomainService)
     {
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
-        this.serialMonitorService = serialMonitorService;
 
         InitializeComponent();
         Content = BuildLayout();
         Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         UpdateErrorLogsInfo();
         await LoadGeneralSettingsAsync();
-        await ActivateSerialMonitorAsync();
-    }
-
-    private async void OnUnloaded(object sender, RoutedEventArgs e)
-    {
-        await DeactivateSerialMonitorAsync();
     }
 
     private async Task LoadGeneralSettingsAsync()
@@ -187,7 +175,6 @@ public sealed partial class SettingsPage : Page
         });
         contentStack.Children.Add(BuildWindowAppearanceCard());
         contentStack.Children.Add(BuildErrorLogsCard());
-        contentStack.Children.Add(BuildDeviceObservabilityCard());
 
         scrollViewer.Content = contentStack;
         contentBorder.Child = scrollViewer;

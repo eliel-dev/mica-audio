@@ -1,9 +1,7 @@
+using System.Globalization;
 using App.WinUI.Services;
 using App.WinUI.Services.Monitoring;
 using App.WinUI.ViewModels;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using System.Globalization;
 
 namespace App.WinUI.Views;
 

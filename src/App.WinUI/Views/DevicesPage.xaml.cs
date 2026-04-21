@@ -6,11 +6,8 @@ using App.WinUI.Services.Firmware;
 using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.Web.WebView2.Core;
 using Output.Led;
 using Windows.ApplicationModel.DataTransfer;
 

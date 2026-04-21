@@ -1,6 +1,6 @@
 using App.WinUI.Models.Apps;
-using Microsoft.Graphics.Canvas;
 using MicaAudio.Core.Presets;
+using Microsoft.Graphics.Canvas;
 
 namespace App.WinUI.Views.Controls;
 

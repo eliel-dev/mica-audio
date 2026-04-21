@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Documentar o dashboard por device agora servido localmente em HTML/JS para o `WebView2` da `DevicesPage`, mantendo o console serial bruto fora do dashboard web e usando um DTO proprio do servidor para a superficie web.
+Documentar o dashboard por device agora servido localmente em HTML/JS para o `WebView2` da `DevicesPage`, mantendo diagnostico serial bruto fora do desktop/dashboard e usando um DTO proprio do servidor para a superficie web.
 
 ## Superficie da UI
 
@@ -11,8 +11,8 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
   - painel direito agora hospeda um `WebView2` full-size;
   - sem selecao, a coluna direita continua colapsada.
 - `SettingsPage`:
-  - `Monitor serial` permanece em `Configuracoes`, por `COM` manual;
-  - `Estatisticas` seguem fora da UI por enquanto.
+  - permanece restrita a `Geral`, Mica e logs de erro;
+  - nao hospeda console serial nem estatisticas do device.
 
 ## Transporte do dashboard
 
@@ -156,7 +156,7 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
 ## Logs e estatisticas fora do dashboard
 
 - `Logs` estruturados continuam no `DeviceLogBook`, mas nao sao mais a superficie mostrada na `SettingsPage`.
-- `Configuracoes` agora mostra um `Monitor serial` local e cru, independente do `deviceId` do dashboard.
+- Diagnostico serial bruto foi removido da `SettingsPage` e deve ser feito por ferramenta externa quando necessario.
 - `stats` MQTT continuam persistidos em `DeviceRecord` e `DeviceSnapshot`.
 - O dashboard HTML consome somente o DTO projetado pelo servidor; ele nao conhece `DeviceSnapshot` nem `DeviceLogEntry`.
 
@@ -181,7 +181,6 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
 - [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
 - [DevicesPage WebView dashboard](../../../src/App.WinUI/Views/DevicesPage.WebViewDashboard.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
-- [SettingsPage observability](../../../src/App.WinUI/Views/SettingsPage.Observability.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [DeviceServerHost routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1)
 - [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)

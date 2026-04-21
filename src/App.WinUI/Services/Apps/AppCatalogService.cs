@@ -2,9 +2,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using App.WinUI.Infrastructure.Cache;
 using App.WinUI.Models.Apps;
+using MicaAudio.Core.Config;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Options;
-using MicaAudio.Core.Config;
 
 namespace App.WinUI.Services.Apps;
 

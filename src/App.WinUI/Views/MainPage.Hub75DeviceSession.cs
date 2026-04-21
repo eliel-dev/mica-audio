@@ -1,5 +1,3 @@
-using App.WinUI.Services.Devices;
-
 namespace App.WinUI.Views;
 
 public partial class MainPage

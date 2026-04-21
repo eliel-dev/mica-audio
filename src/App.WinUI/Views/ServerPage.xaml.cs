@@ -1,8 +1,6 @@
+using System.Globalization;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Firmware;
-using System.Globalization;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;

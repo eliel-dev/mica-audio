@@ -1,5 +1,3 @@
-using Windows.UI;
-
 namespace App.WinUI.Views.Controls.Renderers;
 
 internal sealed class DecorativePreviewRenderer : IAppPreviewRenderer

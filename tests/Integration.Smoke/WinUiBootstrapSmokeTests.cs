@@ -1,6 +1,5 @@
 using System.Reflection;
 using App.WinUI;
-using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
@@ -24,7 +23,6 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<DeviceOperationsCoordinator>());
         Assert.NotNull(provider.GetService<IAppCatalogService>());
         Assert.NotNull(provider.GetService<IAppModifierStateStore>());
-        Assert.NotNull(provider.GetService<ISerialMonitorService>());
         Assert.NotNull(provider.GetService<MainPageViewModel>());
         Assert.NotNull(provider.GetService<DevicesPageViewModel>());
         Assert.NotNull(provider.GetService<PanelsPageViewModel>());
@@ -62,6 +60,16 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.True(isService.IsService(typeof(SettingsPage)));
         Assert.True(isService.IsService(typeof(ShellPage)));
         Assert.True(isService.IsService(typeof(ShellPageContentFactory)));
+    }
+
+    [Fact]
+    public void BuildServiceProvider_ShouldNotRegisterSerialMonitorServices()
+    {
+        var serialMonitorType = Type.GetType("App.WinUI.Infrastructure.Serial.ISerialMonitorService, App.WinUI");
+        var serialCatalogType = Type.GetType("App.WinUI.Infrastructure.Serial.ISerialPortCatalogService, App.WinUI");
+
+        Assert.Null(serialMonitorType);
+        Assert.Null(serialCatalogType);
     }
 
     [Fact]

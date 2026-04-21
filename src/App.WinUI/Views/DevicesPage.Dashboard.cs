@@ -1,8 +1,6 @@
+using System.Globalization;
 using App.WinUI.Services.Devices;
 using Device.Protocol.Models;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using System.Globalization;
 using Windows.UI;
 
 // DOCS: docs/handoffs/2026-04-14-fix-slider-brilho-sempre-100.md

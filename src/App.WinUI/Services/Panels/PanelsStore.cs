@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using App.WinUI.Models.Panels;
+using MicaAudio.Core.Config;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MicaAudio.Core.Config;
 
 namespace App.WinUI.Services.Panels;
 

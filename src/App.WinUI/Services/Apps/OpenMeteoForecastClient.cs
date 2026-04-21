@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using App.WinUI.Infrastructure.Http;
 using App.WinUI.Infrastructure.Observability;
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 
 namespace App.WinUI.Services.Apps;

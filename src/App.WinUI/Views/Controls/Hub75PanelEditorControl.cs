@@ -1,13 +1,11 @@
 using App.WinUI.Models.Panels;
+using MicaAudio.Core.Led;
+using MicaAudio.Core.Presets;
 using Microsoft.Graphics.Canvas.Text;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Input;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using MicaAudio.Core.Led;
-using MicaAudio.Core.Presets;
 using Windows.Foundation;
 using Windows.UI;
 

@@ -1,9 +1,9 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Device.Protocol.Models;
-using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
+using Microsoft.Extensions.Options;
 
 namespace App.WinUI.Services.Devices;
 

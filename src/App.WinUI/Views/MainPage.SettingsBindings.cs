@@ -1,10 +1,7 @@
 using App.WinUI.Services.Gif;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using MicaAudio.Core.Audio;
-using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Visual.Win2D.Engine;
 
 namespace App.WinUI.Views;

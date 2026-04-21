@@ -1,8 +1,6 @@
 using App.WinUI.Services.Firmware;
 using Device.Protocol.Models;
 using Microsoft.UI.Text;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 
 namespace App.WinUI.Views;
 

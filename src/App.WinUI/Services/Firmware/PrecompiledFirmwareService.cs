@@ -3,9 +3,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using MicaAudio.Core.Config;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MicaAudio.Core.Config;
 
 namespace App.WinUI.Services.Firmware;
 

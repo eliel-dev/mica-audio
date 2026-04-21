@@ -3,8 +3,6 @@ using System.Text;
 using System.Text.Json;
 using App.WinUI.Models.Apps;
 using App.WinUI.Services.Apps;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 
 namespace App.WinUI.Views.Controls;
 

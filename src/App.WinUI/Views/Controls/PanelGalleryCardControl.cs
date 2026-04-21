@@ -1,8 +1,4 @@
 using System.ComponentModel;
-using App.WinUI.Views;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.UI;
 

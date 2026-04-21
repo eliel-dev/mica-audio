@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Linq;
 using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Services.Logging;
 using Microsoft.Extensions.Logging;

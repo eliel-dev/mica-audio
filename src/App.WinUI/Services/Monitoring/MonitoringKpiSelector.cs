@@ -200,19 +200,19 @@ internal static class MonitoringKpiSelector
         switch (fallback)
         {
             case MonitoringSystemMemoryFallback systemMemory:
-            {
-                var bytes = preferAvailable ? systemMemory.AvailableBytes : systemMemory.UsedBytes;
-                valueText = FormatMemoryBytes(bytes);
-                progress = systemMemory.TotalBytes > 0UL ? ClampFraction(bytes / (double)systemMemory.TotalBytes) : null;
-                return true;
-            }
+                {
+                    var bytes = preferAvailable ? systemMemory.AvailableBytes : systemMemory.UsedBytes;
+                    valueText = FormatMemoryBytes(bytes);
+                    progress = systemMemory.TotalBytes > 0UL ? ClampFraction(bytes / (double)systemMemory.TotalBytes) : null;
+                    return true;
+                }
             case MonitoringGpuMemoryFallback gpuMemory:
-            {
-                var bytes = preferAvailable ? gpuMemory.AvailableBytes : gpuMemory.UsedBytes;
-                valueText = FormatMemoryBytes(bytes);
-                progress = gpuMemory.TotalBytes > 0UL ? ClampFraction(bytes / (double)gpuMemory.TotalBytes) : null;
-                return true;
-            }
+                {
+                    var bytes = preferAvailable ? gpuMemory.AvailableBytes : gpuMemory.UsedBytes;
+                    valueText = FormatMemoryBytes(bytes);
+                    progress = gpuMemory.TotalBytes > 0UL ? ClampFraction(bytes / (double)gpuMemory.TotalBytes) : null;
+                    return true;
+                }
             default:
                 valueText = string.Empty;
                 progress = null;
@@ -248,15 +248,15 @@ internal static class MonitoringKpiSelector
         switch (fallback)
         {
             case MonitoringSystemMemoryFallback systemMemory:
-            {
-                capacity = BuildFallbackCapacity(systemMemory.UsedBytes, systemMemory.AvailableBytes, systemMemory.TotalBytes);
-                return true;
-            }
+                {
+                    capacity = BuildFallbackCapacity(systemMemory.UsedBytes, systemMemory.AvailableBytes, systemMemory.TotalBytes);
+                    return true;
+                }
             case MonitoringGpuMemoryFallback gpuMemory:
-            {
-                capacity = BuildFallbackCapacity(gpuMemory.UsedBytes, gpuMemory.AvailableBytes, gpuMemory.TotalBytes);
-                return true;
-            }
+                {
+                    capacity = BuildFallbackCapacity(gpuMemory.UsedBytes, gpuMemory.AvailableBytes, gpuMemory.TotalBytes);
+                    return true;
+                }
             default:
                 capacity = MonitoringKpiCapacity.Unavailable();
                 return false;
