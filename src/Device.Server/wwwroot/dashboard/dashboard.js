@@ -435,7 +435,11 @@
 
     const embeddedMode = HOST_BRIDGE_AVAILABLE;
     const ledEnabled = embeddedMode && !!selectedDeviceId && device.testLedAvailable !== false;
-    const firmwareUpdateAvailable = embeddedMode && !!selectedDeviceId && device.firmwareUpdateSupported === true && device.firmwareUpdateAvailable === true;
+    const firmwareUpdateAvailable = embeddedMode
+      && !!selectedDeviceId
+      && device.online === true
+      && device.firmwareUpdateSupported === true
+      && device.firmwareUpdateAvailable === true;
     $("btn-led").style.display = embeddedMode ? "" : "none";
     $("btn-rm").style.display = embeddedMode ? "" : "none";
     $("btn-led").disabled = !ledEnabled;
@@ -602,7 +606,11 @@
     };
 
     const updateFirmwareHandler = () => {
-      if (!selectedDeviceId || !currentDevice || currentDevice.firmwareUpdateSupported !== true || currentDevice.firmwareUpdateAvailable !== true) {
+      if (!selectedDeviceId
+        || !currentDevice
+        || currentDevice.online !== true
+        || currentDevice.firmwareUpdateSupported !== true
+        || currentDevice.firmwareUpdateAvailable !== true) {
         return;
       }
 

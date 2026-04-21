@@ -7,7 +7,7 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
 ## Superficie da UI
 
 - `DevicesPage`:
-  - painel esquerdo continua nativo em WinUI (`ListView`, previews inline, wizard USB);
+  - painel esquerdo continua nativo em WinUI (`ListView`, previews inline, acoes globais de firmware e pairing);
   - painel direito agora hospeda um `WebView2` full-size;
   - sem selecao, a coluna direita continua colapsada.
 - `SettingsPage`:
@@ -106,10 +106,10 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
   - `Ultimo release` significa o pacote oficial de firmware embarcado no app, nao uma tag separada de GitHub;
   - quando a versao atual nao existe no snapshot, a UI mostra `Firmware atual nao identificado`;
   - quando nao existir pacote oficial compativel, a UI mostra `Sem release oficial`;
-  - o CTA `Atualizar firmware` so aparece quando existir pacote oficial compativel e a versao atual estiver vazia ou diferente do ultimo release.
+  - o CTA `Atualizar firmware` so aparece quando existir pacote oficial compativel, a versao atual diferir do ultimo release e o device estiver online para OTA agora.
 - O CTA de firmware fica acima de `Testar LEDs`:
-  - device online abre dialogo nativo com OTA como acao principal e fallback `Reflash por USB`;
-  - device offline mantem o CTA visivel, mas o dialogo oferece apenas o reflash oficial por USB;
+  - device online abre dialogo nativo com OTA como unica acao;
+  - device offline continua vendo `Firmware atual` e `Ultimo release`, mas nao recebe CTA de update;
   - o dialogo nativo usa os rotulos `Firmware atual` e `Ultimo release`.
 - A barra superior da tela de dispositivos expõe `Copiar link do dashboard`:
   - gera um link LAN para o device selecionado com `/dashboard?deviceId=<id>`;

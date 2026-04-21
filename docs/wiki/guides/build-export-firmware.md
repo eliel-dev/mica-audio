@@ -4,6 +4,8 @@
 
 Baixar o release oficial fresco do firmware e salvar um BIN no local escolhido para flash manual externo.
 
+Este e o caminho oficial de campo quando voce nao vai usar OTA: o app so garante o BIN oficial mais atual; a gravacao fica a cargo de ferramenta externa.
+
 ## Passos
 
 1. Abrir a aba `Dispositivos` ou `Servidor`.

@@ -8,7 +8,7 @@ namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/app-winui.md
 // DOCS: docs/wiki/reference/device-observability-dashboard.md
-// DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
+// DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
 public sealed partial class DevicesPage
 {
     private static readonly TimeSpan FirmwareVersionObservationTimeout = TimeSpan.FromSeconds(15);
@@ -38,26 +38,26 @@ public sealed partial class DevicesPage
             return;
         }
 
-        var action = await ShowFirmwareUpdateDialogAsync(snapshot, artifact).ConfigureAwait(true);
-        switch (action)
+        if (snapshot.Status != DeviceStatus.Online)
         {
-            case FirmwareUpdateAction.StartOta:
-                await StartFirmwareOtaAsync(snapshot, artifact).ConfigureAwait(true);
-                break;
+            ShowInlineStatusMessage(InfoBarSeverity.Warning, "Atualizacao OTA indisponivel: o dispositivo precisa estar online.");
+            AddLocalLog($"Atualizacao OTA bloqueada para {snapshot.DeviceId}: device offline.");
+            return;
+        }
 
-            case FirmwareUpdateAction.StartUsbReflash:
-                await ShowUsbFirmwareRefreshWizardAsync(snapshot, artifact.Manifest.FirmwareVersion).ConfigureAwait(true);
-                break;
+        var shouldStartOta = await ShowFirmwareUpdateDialogAsync(snapshot, artifact).ConfigureAwait(true);
+        if (shouldStartOta)
+        {
+            await StartFirmwareOtaAsync(snapshot, artifact).ConfigureAwait(true);
         }
     }
 
-    private async Task<FirmwareUpdateAction> ShowFirmwareUpdateDialogAsync(DeviceSnapshot snapshot, ResolvedFirmwareArtifact artifact)
+    private async Task<bool> ShowFirmwareUpdateDialogAsync(DeviceSnapshot snapshot, ResolvedFirmwareArtifact artifact)
     {
         var currentVersion = string.IsNullOrWhiteSpace(snapshot.FirmwareVersion)
             ? "Firmware atual nao identificado"
             : snapshot.FirmwareVersion;
         var latestVersion = artifact.Manifest.FirmwareVersion;
-        var online = snapshot.Status == DeviceStatus.Online;
 
         var content = new StackPanel
         {
@@ -76,9 +76,7 @@ public sealed partial class DevicesPage
                 },
                 new TextBlock
                 {
-                    Text = online
-                        ? "O dispositivo esta online. Voce pode iniciar a atualizacao OTA agora ou optar pelo reflash oficial por USB."
-                        : "O dispositivo esta offline. O caminho disponivel agora e o reflash oficial por USB, que apaga a flash e exige novo provisionamento.",
+                    Text = "O dispositivo esta online e elegivel para OTA. O pacote manual continua disponivel no botao 'Baixar firmware' para gravacao externa quando voce precisar.",
                     TextWrapping = TextWrapping.Wrap,
                     Opacity = 0.82,
                 },
@@ -90,35 +88,13 @@ public sealed partial class DevicesPage
             Title = "Atualizar firmware",
             XamlRoot = XamlRoot,
             Content = content,
+            PrimaryButtonText = "Atualizar agora",
             CloseButtonText = "Cancelar",
+            DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (online)
-        {
-            dialog.PrimaryButtonText = "Atualizar agora";
-            dialog.SecondaryButtonText = "Reflash por USB";
-            dialog.DefaultButton = ContentDialogButton.Primary;
-        }
-        else
-        {
-            dialog.PrimaryButtonText = "Reflash por USB";
-            dialog.DefaultButton = ContentDialogButton.Primary;
-        }
-
         var result = await dialog.ShowAsync();
-        if (online)
-        {
-            return result switch
-            {
-                ContentDialogResult.Primary => FirmwareUpdateAction.StartOta,
-                ContentDialogResult.Secondary => FirmwareUpdateAction.StartUsbReflash,
-                _ => FirmwareUpdateAction.Cancelled,
-            };
-        }
-
-        return result == ContentDialogResult.Primary
-            ? FirmwareUpdateAction.StartUsbReflash
-            : FirmwareUpdateAction.Cancelled;
+        return result == ContentDialogResult.Primary;
     }
 
     private async Task StartFirmwareOtaAsync(DeviceSnapshot snapshot, ResolvedFirmwareArtifact artifact)
@@ -290,14 +266,8 @@ public sealed partial class DevicesPage
     private static bool IsFirmwareUpdateAvailable(DeviceSnapshot snapshot, string latestFirmwareVersion)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        return !string.IsNullOrWhiteSpace(latestFirmwareVersion)
+        return snapshot.Status == DeviceStatus.Online
+            && !string.IsNullOrWhiteSpace(latestFirmwareVersion)
             && !string.Equals(snapshot.FirmwareVersion, latestFirmwareVersion, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private enum FirmwareUpdateAction
-    {
-        Cancelled = 0,
-        StartOta = 1,
-        StartUsbReflash = 2,
     }
 }

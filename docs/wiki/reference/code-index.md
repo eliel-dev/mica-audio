@@ -103,7 +103,7 @@ Observacoes ativas:
 - A DevicesPage diferencia App ativo (online) de Ultimo app conhecido (offline), com acoes no card de resumo (`Testar LED` e `Remover`).
 - O botao `Remover` consolida o fluxo: online tenta revogar/reiniciar e remove local; offline remove apenas local.
 - A DevicesPage usa apenas miniatura inline da lista para preview de app; o painel da direita nao tem preview maior.
-- A DevicesPage agora usa `WebView2` no painel direito e carrega o dashboard HTML local em `/dashboard`, mantendo a lista de devices e o wizard USB no shell WinUI nativo.
+- A DevicesPage agora usa `WebView2` no painel direito e carrega o dashboard HTML local em `/dashboard`, mantendo a lista de devices e as acoes globais de firmware/pairing no shell WinUI nativo.
 - O dashboard HTML recebe selecao via `postMessage`, consome `WS /ws/device/{deviceId}` e preserva no host WinUI as acoes reais de brilho, teste de LED e remocao.
 - `Configuracoes` agora expoe um monitor serial local por `COM` manual; o dashboard principal continua focado em visualizacao/controle do device selecionado.
 - O DeviceServerHost aplica grace curto de detach WS (500ms) e detach por identidade de socket para reduzir flapping em reconexao rapida.

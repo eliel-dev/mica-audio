@@ -1,9 +1,7 @@
-using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Models.Apps;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
-using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
 using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
@@ -20,7 +18,7 @@ namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 // DOCS: docs/wiki/modules/app-winui.md
-// DOCS: docs/handoffs/2026-04-14-fix-slider-brilho-sempre-100.md
+// DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
 public sealed partial class DevicesPage : Page
 {
     private const string LocalDraftScope = "__local__";
@@ -32,9 +30,6 @@ public sealed partial class DevicesPage : Page
     private readonly DevicesPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly PrecompiledFirmwareService firmwareService;
-    private readonly ISerialPortCatalogService serialPortCatalogService;
-    private readonly ISerialMonitorService serialMonitorService;
-    private readonly IDeviceUsbOnboardingService onboardingService;
     private readonly IAppCatalogService appCatalogService;
     private readonly IAppModifierStateStore modifierStore;
     private readonly SettingsRepository settingsRepository;
@@ -64,9 +59,6 @@ public sealed partial class DevicesPage : Page
     private bool suppressBrightnessSliderEvents;
     private bool suppressDeviceSelectionChanged;
     private bool brightnessCommitPending;
-    private bool wizardBindingsInitialized;
-    private bool wizardOperationInFlight;
-    private bool wizardCompletedSuccessfully;
     private string? lastAppliedPreviewConfigSignature;
     private int previewConfigRefreshVersion;
     private bool dashboardWebViewInitialized;
@@ -79,9 +71,6 @@ public sealed partial class DevicesPage : Page
         DevicesPageViewModel viewModel,
         DeviceOperationsCoordinator deviceOps,
         PrecompiledFirmwareService firmwareService,
-        ISerialPortCatalogService serialPortCatalogService,
-        ISerialMonitorService serialMonitorService,
-        IDeviceUsbOnboardingService onboardingService,
         IAppCatalogService appCatalogService,
         IAppModifierStateStore modifierStore,
         SettingsRepository settingsRepository,
@@ -91,9 +80,6 @@ public sealed partial class DevicesPage : Page
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
         this.firmwareService = firmwareService;
-        this.serialPortCatalogService = serialPortCatalogService;
-        this.serialMonitorService = serialMonitorService;
-        this.onboardingService = onboardingService;
         this.appCatalogService = appCatalogService;
         this.modifierStore = modifierStore;
         this.settingsRepository = settingsRepository;
@@ -112,12 +98,6 @@ public sealed partial class DevicesPage : Page
     private DeviceOperationsCoordinator? DeviceOps => deviceOps;
 
     private PrecompiledFirmwareService? FirmwareService => firmwareService;
-
-    private ISerialPortCatalogService? SerialPortCatalogService => serialPortCatalogService;
-
-    private ISerialMonitorService? SerialMonitorService => serialMonitorService;
-
-    private IDeviceUsbOnboardingService? OnboardingService => onboardingService;
 
     private IAppCatalogService? AppCatalogService => appCatalogService;
 
@@ -172,7 +152,6 @@ public sealed partial class DevicesPage : Page
         lastAppliedPreviewConfigSignature = null;
         previewConfigRefreshVersion++;
         DetachDashboardWebViewBridge();
-        HideNewDeviceWizard();
         ClearRenderedItems();
     }
 

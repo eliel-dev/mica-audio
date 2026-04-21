@@ -8,6 +8,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/reference/device-observability-dashboard.md
 // DOCS: docs/wiki/modules/device-server-protocol.md
+// DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
 public sealed partial class DeviceServerHost
 {
     private readonly object dashboardGate = new();
@@ -216,7 +217,8 @@ public sealed partial class DeviceServerHost
         return new FirmwareUpdateState(
             package.FirmwareVersion,
             Supported: true,
-            Available: !string.Equals(snapshot.FirmwareVersion, package.FirmwareVersion, StringComparison.OrdinalIgnoreCase));
+            Available: snapshot.Status == DeviceStatus.Online
+                && !string.Equals(snapshot.FirmwareVersion, package.FirmwareVersion, StringComparison.OrdinalIgnoreCase));
     }
 
     private static int? ComputePercent(long? freeBytes, long? totalBytes)

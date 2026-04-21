@@ -5,28 +5,18 @@ using Windows.UI;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/guides/setup-new-device.md#passos
+// DOCS: docs/wiki/reference/device-observability-dashboard.md
+// DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
 public sealed partial class DevicesPage
 {
     private const double PanelCornerRadius = 8d;
     private const double SectionCornerRadius = 8d;
-    private const double WizardCardWidth = 560d;
-    private const double WizardHorizontalMargin = 14d;
-    private const double WizardCornerRadius = 10d;
-    private const double WizardHeaderVerticalPadding = 14d;
-    private const double WizardHeaderHorizontalPadding = 16d;
-    private const double WizardBodyVerticalPadding = 14d;
-    private const double WizardBodyHorizontalPadding = 16d;
-    private const double WizardFooterVerticalPadding = 10d;
-    private const double WizardFooterHorizontalPadding = 16d;
-    private const double WizardStepHeight = 4d;
-    private const double WizardStepGap = 8d;
-    private const double WizardControlHeight = 34d;
+    private const double ToolbarControlHeight = 34d;
     private const double DetailHeaderPadding = 24d;
     private const double MetricsGridGap = 16d;
 
-    // DOCS: docs/wiki/guides/setup-new-device.md#passos
     private ListView DevicesList = null!;
-    private Button NewDeviceButton = null!;
     private ColumnDefinition DevicesDetailsColumn = null!;
     private Grid DeviceDetailsGrid = null!;
     private WebView2 DeviceDashboardWebView = null!;
@@ -74,30 +64,6 @@ public sealed partial class DevicesPage
 
     private InfoBar PairingCodeText = null!;
     private Button PairingCopyCodeButton = null!;
-    private TextBlock WizardPairCodeText = null!;
-
-    private Grid WizardOverlay = null!;
-    private Border WizardCardBorder = null!;
-    private StackPanel WizardPortPanel = null!;
-    private ComboBox WizardPortComboBox = null!;
-    private Button WizardRefreshPortsButton = null!;
-    // DOCS: docs/wiki/guides/setup-new-device.md#logs-seriais-no-wizard
-    private Button WizardDetailsToggleButton = null!;
-    private StackPanel WizardDiagnosticsPanel = null!;
-    private TextBlock WizardSerialStatusText = null!;
-    private Button WizardRecaptureBootButton = null!;
-    private Button WizardCopySerialLogsButton = null!;
-    private Button WizardClearSerialLogsButton = null!;
-    private ListView WizardSerialListView = null!;
-    private TextBlock WizardSerialPlaceholderText = null!;
-    private TextBlock WizardServerBaseAddressText = null!;
-    private TextBlock WizardSummaryNoteText = null!;
-    private TextBlock WizardStatusText = null!;
-    private Grid WizardFlashProgressHost = null!;
-    private ProgressBar WizardFlashProgressBar = null!;
-    private TextBlock WizardFlashPercentText = null!;
-    private Button WizardCloseButton = null!;
-    private Button WizardFinishButton = null!;
 
     private void InitializeComponent()
     {
@@ -125,7 +91,6 @@ public sealed partial class DevicesPage
         shell.Children.Add(BuildDetailsPanel());
 
         root.Children.Add(shell);
-        root.Children.Add(BuildWizardOverlay());
 
         Content = root;
     }
@@ -222,39 +187,12 @@ public sealed partial class DevicesPage
     {
         var leftCard = CreatePanelBorder(new Thickness(0), cornerRadius: PanelCornerRadius, elevated: false);
 
-        var leftGrid = new Grid();
-        leftGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        leftGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
         DevicesList = new ListView
         {
             Margin = new Thickness(8, 14, 8, 8),
         };
         DevicesList.SelectionChanged += OnDeviceSelectionChanged;
-        Grid.SetRow(DevicesList, 0);
-        leftGrid.Children.Add(DevicesList);
-
-        var actionsHost = new Grid
-        {
-            Padding = new Thickness(10),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 1, 0, 0),
-        };
-
-        NewDeviceButton = new Button
-        {
-            Content = BuildButtonWithGlyph("\uE710", "Novo dispositivo"),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            MinHeight = 36,
-            Padding = new Thickness(12, 0, 12, 0),
-        };
-        NewDeviceButton.Click += OnNewDeviceClicked;
-        actionsHost.Children.Add(NewDeviceButton);
-
-        Grid.SetRow(actionsHost, 1);
-        leftGrid.Children.Add(actionsHost);
-
-        leftCard.Child = leftGrid;
+        leftCard.Child = DevicesList;
         return leftCard;
     }
     private Grid BuildDetailsPanel()
@@ -427,7 +365,7 @@ public sealed partial class DevicesPage
             StepFrequency = 1,
             Value = 160,
             IsEnabled = false,
-            Height = WizardControlHeight,
+            Height = ToolbarControlHeight,
         };
         DashboardBrightnessSlider.ValueChanged += OnBrightnessSliderValueChanged;
         DashboardBrightnessSlider.PointerCaptureLost += OnBrightnessSliderPointerCaptureLost;
@@ -598,351 +536,6 @@ public sealed partial class DevicesPage
         }
 
         return null;
-    }
-
-    private Grid BuildWizardOverlay()
-    {
-        WizardOverlay = new Grid
-        {
-            Background = new SolidColorBrush(Color.FromArgb(115, 0, 0, 0)),
-            Visibility = Visibility.Collapsed,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            IsHitTestVisible = false,
-        };
-        Grid.SetRowSpan(WizardOverlay, 3);
-
-        WizardCardBorder = new Border
-        {
-            Width = WizardCardWidth,
-            MaxWidth = WizardCardWidth,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(WizardHorizontalMargin),
-            CornerRadius = new CornerRadius(WizardCornerRadius),
-            BorderThickness = new Thickness(1),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            Background = new SolidColorBrush(Color.FromArgb(255, 35, 38, 43)),
-        };
-
-        var cardGrid = new Grid();
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-        var header = new Grid
-        {
-            Padding = new Thickness(WizardHeaderHorizontalPadding, WizardHeaderVerticalPadding, WizardHeaderHorizontalPadding, WizardHeaderVerticalPadding),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 0, 0, 1),
-        };
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var title = new TextBlock
-        {
-            Text = "Novo dispositivo",
-            FontSize = 15,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        header.Children.Add(title);
-
-        WizardCloseButton = CreateToolbarButton(BuildButtonWithGlyph("\uE8BB", string.Empty));
-        WizardCloseButton.Width = 46;
-        WizardCloseButton.Height = WizardControlHeight;
-        WizardCloseButton.VerticalAlignment = VerticalAlignment.Center;
-        WizardCloseButton.Padding = new Thickness(0);
-        Grid.SetColumn(WizardCloseButton, 1);
-        header.Children.Add(WizardCloseButton);
-
-        cardGrid.Children.Add(header);
-
-        var body = new StackPanel
-        {
-            Spacing = 10,
-            Padding = new Thickness(WizardBodyHorizontalPadding, WizardBodyVerticalPadding, WizardBodyHorizontalPadding, WizardBodyVerticalPadding),
-        };
-        Grid.SetRow(body, 1);
-
-        WizardPortPanel = new StackPanel
-        {
-            Spacing = 10,
-        };
-        WizardPortPanel.Children.Add(new TextBlock
-        {
-            Text = "Dispositivo USB (Porta COM)",
-            FontSize = 12,
-            Opacity = 0.86,
-        });
-
-        var comRow = new Grid { ColumnSpacing = 8 };
-        comRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        comRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        WizardPortComboBox = new ComboBox
-        {
-            Height = WizardControlHeight,
-            MinWidth = 300,
-            DisplayMemberPath = "Label",
-            PlaceholderText = "Selecione uma porta COM",
-        };
-        WizardPortComboBox.BorderThickness = new Thickness(1);
-        WizardPortComboBox.BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81));
-        WizardPortComboBox.Background = new SolidColorBrush(Color.FromArgb(50, 0, 0, 0));
-        comRow.Children.Add(WizardPortComboBox);
-
-        WizardRefreshPortsButton = CreateToolbarButton(BuildButtonWithGlyph("\uE72C", "Atualizar portas"));
-        WizardRefreshPortsButton.Height = WizardControlHeight;
-        WizardRefreshPortsButton.Padding = new Thickness(12, 0, 12, 0);
-        Grid.SetColumn(WizardRefreshPortsButton, 1);
-        comRow.Children.Add(WizardRefreshPortsButton);
-
-        WizardPortPanel.Children.Add(comRow);
-
-        WizardSummaryNoteText = new TextBlock
-        {
-            Text = "Selecione a porta COM e clique em Concluir para gravar o firmware. O flash usa a COM primeiro; depois disso, o wizard reabre a mesma porta a 115200 para acompanhar o boot, permite copiar a sessao inteira e ajuda a diagnosticar quando o AP nao aparece.",
-            Opacity = 0.72,
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        WizardPortPanel.Children.Add(WizardSummaryNoteText);
-
-        body.Children.Add(WizardPortPanel);
-
-        var serverPanel = new StackPanel
-        {
-            Spacing = 10,
-        };
-
-        serverPanel.Children.Add(new TextBlock
-        {
-            Text = "Servidor local para preencher no portal AP",
-            FontSize = 12,
-            Opacity = 0.86,
-        });
-
-        var serverInfoPanel = new StackPanel
-        {
-            Spacing = 4,
-        };
-        serverInfoPanel.Children.Add(new TextBlock
-        {
-            Text = "Copie este valor para o campo Servidor do portal do ESP32",
-            FontSize = 12,
-            Opacity = 0.86,
-        });
-
-        WizardServerBaseAddressText = new TextBlock
-        {
-            Text = "-",
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.72,
-        };
-        serverInfoPanel.Children.Add(WizardServerBaseAddressText);
-        serverPanel.Children.Add(serverInfoPanel);
-
-        body.Children.Add(serverPanel);
-
-        var pairCodePanel = new StackPanel
-        {
-            Spacing = 4,
-        };
-        pairCodePanel.Children.Add(new TextBlock
-        {
-            Text = "Codigo de pareamento (pair code)",
-            FontSize = 12,
-            Opacity = 0.86,
-        });
-
-        WizardPairCodeText = new TextBlock
-        {
-            Text = "-",
-            FontSize = 18,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            FontFamily = new FontFamily("Consolas"),
-            Opacity = 0.9,
-        };
-        pairCodePanel.Children.Add(WizardPairCodeText);
-
-        body.Children.Add(pairCodePanel);
-
-        WizardStatusText = new TextBlock
-        {
-            Text = string.Empty,
-            Opacity = 0.85,
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        body.Children.Add(WizardStatusText);
-
-        var diagnosticsHeader = new Grid { ColumnSpacing = 8 };
-        diagnosticsHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        diagnosticsHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        diagnosticsHeader.Children.Add(new TextBlock
-        {
-            Text = "Diagnostico serial de boot",
-            FontSize = 12,
-            Opacity = 0.86,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-
-        WizardDetailsToggleButton = CreateToolbarButton(BuildButtonWithGlyph("\uE712", "Ver mais"));
-        WizardDetailsToggleButton.Height = WizardControlHeight;
-        WizardDetailsToggleButton.Padding = new Thickness(10, 0, 10, 0);
-        WizardDetailsToggleButton.MinWidth = 94;
-        Grid.SetColumn(WizardDetailsToggleButton, 1);
-        diagnosticsHeader.Children.Add(WizardDetailsToggleButton);
-
-        body.Children.Add(diagnosticsHeader);
-
-        WizardDiagnosticsPanel = new StackPanel
-        {
-            Spacing = 10,
-            Visibility = Visibility.Collapsed,
-        };
-
-        WizardSerialStatusText = new TextBlock
-        {
-            Text = "O wizard vai assumir a porta serial depois do flash para mostrar o boot do ESP32-S3 e permitir copiar a sessao inteira de diagnostico.",
-            Opacity = 0.82,
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        WizardDiagnosticsPanel.Children.Add(WizardSerialStatusText);
-
-        var diagnosticsActions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-        };
-
-        WizardRecaptureBootButton = CreateToolbarButton(BuildButtonWithGlyph("\uE777", "Recapturar boot"));
-        WizardRecaptureBootButton.Height = WizardControlHeight;
-        WizardRecaptureBootButton.Padding = new Thickness(10, 0, 10, 0);
-        WizardRecaptureBootButton.MinWidth = 132;
-        diagnosticsActions.Children.Add(WizardRecaptureBootButton);
-
-        WizardCopySerialLogsButton = CreateToolbarButton(BuildButtonWithGlyph("\uE8C8", "Copiar logs"));
-        WizardCopySerialLogsButton.Height = WizardControlHeight;
-        WizardCopySerialLogsButton.Padding = new Thickness(10, 0, 10, 0);
-        WizardCopySerialLogsButton.MinWidth = 118;
-        diagnosticsActions.Children.Add(WizardCopySerialLogsButton);
-
-        WizardClearSerialLogsButton = CreateToolbarButton(BuildButtonWithGlyph("\uE894", "Limpar"));
-        WizardClearSerialLogsButton.Height = WizardControlHeight;
-        WizardClearSerialLogsButton.Padding = new Thickness(10, 0, 10, 0);
-        WizardClearSerialLogsButton.MinWidth = 92;
-        diagnosticsActions.Children.Add(WizardClearSerialLogsButton);
-
-        WizardDiagnosticsPanel.Children.Add(diagnosticsActions);
-
-        var serialSurface = new Border
-        {
-            MinHeight = 180,
-            MaxHeight = 240,
-            Padding = new Thickness(0),
-            CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            Background = new SolidColorBrush(Color.FromArgb(255, 15, 18, 24)),
-        };
-
-        var serialHost = new Grid();
-        WizardSerialListView = new ListView
-        {
-            SelectionMode = ListViewSelectionMode.None,
-            IsItemClickEnabled = false,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
-            BorderThickness = new Thickness(0),
-            Margin = new Thickness(0),
-            MinHeight = 180,
-            MaxHeight = 240,
-        };
-        serialHost.Children.Add(WizardSerialListView);
-
-        WizardSerialPlaceholderText = new TextBlock
-        {
-            Text = "Os logs seriais de boot vao aparecer aqui depois do flash. Use 'Copiar logs' para exportar a sessao inteira ou 'Recapturar boot' se nada chegar.",
-            Margin = new Thickness(12),
-            Opacity = 0.68,
-            FontSize = 12,
-            FontFamily = new FontFamily("Consolas"),
-            TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-        serialHost.Children.Add(WizardSerialPlaceholderText);
-
-        serialSurface.Child = serialHost;
-        WizardDiagnosticsPanel.Children.Add(serialSurface);
-        body.Children.Add(WizardDiagnosticsPanel);
-
-        WizardFlashProgressHost = new Grid
-        {
-            ColumnSpacing = 10,
-            Visibility = Visibility.Collapsed,
-        };
-        WizardFlashProgressHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        WizardFlashProgressHost.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        WizardFlashProgressBar = new ProgressBar
-        {
-            Minimum = 0,
-            Maximum = 100,
-            Value = 0,
-            Height = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        WizardFlashProgressHost.Children.Add(WizardFlashProgressBar);
-
-        WizardFlashPercentText = new TextBlock
-        {
-            Text = "0%",
-            Opacity = 0.9,
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        Grid.SetColumn(WizardFlashPercentText, 1);
-        WizardFlashProgressHost.Children.Add(WizardFlashPercentText);
-
-        body.Children.Add(WizardFlashProgressHost);
-
-        cardGrid.Children.Add(body);
-
-        var footer = new Grid
-        {
-            Padding = new Thickness(WizardFooterHorizontalPadding, WizardFooterVerticalPadding, WizardFooterHorizontalPadding, WizardFooterVerticalPadding),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 1, 0, 0),
-        };
-        Grid.SetRow(footer, 2);
-
-        var footerActions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = 8,
-        };
-
-        WizardFinishButton = CreateToolbarButton(BuildButtonWithGlyph("\uE73E", "Concluir"));
-        WizardFinishButton.MinWidth = 110;
-        WizardFinishButton.Height = WizardControlHeight;
-
-        footerActions.Children.Add(WizardFinishButton);
-        footer.Children.Add(footerActions);
-
-        cardGrid.Children.Add(footer);
-
-        WizardCardBorder.Child = cardGrid;
-        WizardOverlay.Children.Add(WizardCardBorder);
-
-        return WizardOverlay;
     }
 
     private static StackPanel BuildMetricCard(string title, out TextBlock valueText, out ProgressBar progressBar, out TextBlock subText)

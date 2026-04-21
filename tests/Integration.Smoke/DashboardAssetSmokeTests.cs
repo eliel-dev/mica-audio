@@ -53,6 +53,7 @@ public sealed class DashboardAssetSmokeTests
         Assert.Contains("Sem release oficial", js, StringComparison.Ordinal);
         Assert.Contains("HOST_BRIDGE_AVAILABLE", js, StringComparison.Ordinal);
         Assert.Contains("applyStandaloneMode", js, StringComparison.Ordinal);
+        Assert.Contains("device.online === true", js, StringComparison.Ordinal);
         Assert.Contains("update-firmware", js, StringComparison.Ordinal);
         Assert.DoesNotContain("device.loopLoadPercent", js, StringComparison.Ordinal);
     }

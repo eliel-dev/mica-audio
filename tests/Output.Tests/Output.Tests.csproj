@@ -50,9 +50,7 @@
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialPortCatalogContracts.cs" Link="Shared\Serial\SerialPortCatalogContracts.cs" />
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialPortDescriptor.cs" Link="Shared\Serial\SerialPortDescriptor.cs" />
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\MicaSerialProtocol.cs" Link="Shared\Serial\MicaSerialProtocol.cs" />
-    <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialProvisioningClient.cs" Link="Shared\Serial\SerialProvisioningClient.cs" />
     <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\SerialMonitorService.cs" Link="Shared\Serial\SerialMonitorService.cs" />
-    <Compile Include="..\..\src\App.WinUI\Infrastructure\Serial\WizardSerialMonitorPolicy.cs" Link="Shared\Serial\WizardSerialMonitorPolicy.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\GifScaleMode.cs" Link="Shared\GifScaleMode.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75FrameFormatter.cs" Link="Shared\Hub75FrameFormatter.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Gif\Hub75GifDecoder.cs" Link="Shared\Hub75GifDecoder.cs" />
@@ -72,9 +70,6 @@
     <Compile Include="..\..\src\App.WinUI\Services\Apps\AppModifierStateStore.cs" Link="Shared\AppModifierStateStore.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Apps\IAppModifierStateStore.cs" Link="Shared\IAppModifierStateStore.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\SettingsRepository.cs" Link="Shared\SettingsRepository.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Devices\Onboarding\DeviceOnboardingModels.cs" Link="Shared\Onboarding\DeviceOnboardingModels.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Devices\Onboarding\DeviceUsbOnboardingService.cs" Link="Shared\Onboarding\DeviceUsbOnboardingService.cs" />
-    <Compile Include="..\..\src\App.WinUI\Services\Devices\Onboarding\IEspToolFlashService.cs" Link="Shared\Onboarding\IEspToolFlashService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Firmware\FirmwareArtifactManifest.cs" Link="Shared\Firmware\FirmwareArtifactManifest.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Firmware\OfficialFirmwareRefreshResult.cs" Link="Shared\Firmware\OfficialFirmwareRefreshResult.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Firmware\PrecompiledFirmwareOption.cs" Link="Shared\Firmware\PrecompiledFirmwareOption.cs" />

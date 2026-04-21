@@ -21,51 +21,21 @@
 5. processar `PcmFrame -> SpectrumFrame -> LedPayload` pelo runtime do pipeline
 6. renderizar `MainCanvas` e preview HUB75 com a mesma base `128x64`
 
-## Atualizacao 2026-04 - Rollback para AP-first estavel
+## Atualizacao 2026-04 - Remocao do flash USB interno
 
-- O wizard de `Dispositivos > Novo dispositivo` voltou ao baseline operacional estavel:
-  - `porta COM`;
-  - flash com `erase-all`;
-  - exibicao de `pair code`;
-  - provisioning final no AP `MicaAudio-Setup-xxxx`.
-- O fluxo oficial nao coleta mais `SSID`, `senha Wi-Fi` nem `nome do device` antes do flash.
-- O endereco do servidor continua resolvido automaticamente via `DeviceIntegrationService.GetServerBaseAddress()`:
-  - o valor aparece em modo leitura na UI;
-  - o usuario usa esse valor no campo `Servidor` do portal AP;
-  - se cair em loopback (`127.0.0.1` ou `localhost`), o onboarding falha antes do flash.
-- `DeviceUsbOnboardingService` voltou a considerar sucesso ao final do flash:
-  1. valida release oficial + `controlPlane = mqtt`;
-  2. grava o firmware;
-  3. gera e devolve o `pair code`.
-- `SerialProvisioningClient` e `mica.serial.v1` permanecem no codigo apenas como compatibilidade/diagnostico, fora do caminho oficial do wizard.
-- O AP do ESP32 voltou a ser o caminho feliz no desktop imediatamente apos o flash.
-
-## Atualizacao 2026-04 - Logs seriais sob demanda no wizard USB
-
-- O wizard USB passou a reutilizar o mesmo `ISerialMonitorService` da `SettingsPage`, sem criar uma segunda stack serial.
-- O fluxo ficou explicitamente sequencial:
-  - o flash ocupa a COM;
-  - a COM e liberada pelo `esptool`;
-  - o wizard reabre a serial a `115200` para acompanhar o boot.
-- A UX ganhou um bloco `Ver mais`, recolhido por padrao, com:
-  - status da reconexao serial;
-  - superficie monoespacada de logs;
-  - `Copiar logs` para exportar a sessao inteira do wizard;
-  - `Recapturar boot` para reset controlado com o monitor ja conectado;
-  - `Limpar` para zerar o buffer sem encerrar a sessao.
-- O painel abre sozinho quando o fluxo entra em diagnostico:
-  - falha de flash;
-  - porta nao reaparece;
-  - nenhum log chega apos a janela de reconexao.
-- O texto do wizard deixa explicito que:
-  - o flash usa a COM primeiro;
-  - os logs entram logo depois a `115200`;
-  - `Copiar logs` e o caminho oficial para exportar a sessao inteira quando o AP nao aparece.
-- O wizard parseia `mica.serial.v1` apenas para diagnostico:
-  - captura `hello.deviceId` quando presente;
-  - usa esse `deviceId` para encerrar automaticamente o monitor quando o device aparece `Online` na UI.
-- O caminho feliz nao mudou:
-  - `COM -> flash -> pair code -> AP MicaAudio-Setup-xxxx`.
+- `Dispositivos` nao executa mais flash USB, `esptool`, wizard de onboarding ou diagnostico serial de boot.
+- O fluxo oficial do desktop passou a ser:
+  - `Baixar firmware`;
+  - gravar com ferramenta externa;
+  - `Parear`;
+  - `Copiar host`;
+  - concluir no AP `MicaAudio-Setup-xxxx`.
+- O endereco do servidor continua resolvido automaticamente via `DeviceIntegrationService.GetServerBaseAddress()` e o usuario o reutiliza no campo `Servidor` do portal AP.
+- O banner inline de `Parear` virou a superficie oficial para emitir e copiar o `pair code`.
+- O dashboard continua mostrando `Firmware atual` e `Ultimo release` offline, mas `Atualizar firmware` ficou restrito a device online e elegivel para OTA.
+- `PrecompiledFirmwareService` continua sendo a fonte unica do "ultimo firmware":
+  - em workspace/dev valida frescor contra o workspace;
+  - fora disso usa o pacote oficial embarcado no app.
 
 ## Atualizacao 2026-03 - Refresh automatico do release oficial de firmware
 
@@ -73,13 +43,13 @@
 - Em workspace/dev, o app agora detecta se esse release oficial ficou stale em relacao aos fontes reais do firmware e tenta regenerar o pacote automaticamente.
 - O ciclo ficou dividido em dois pontos:
   - warm-up assincromo no startup, em background;
-  - preflight obrigatorio antes de OTA e antes do wizard USB.
+  - preflight obrigatorio antes de OTA e antes do download manual do BIN.
 - O backend nao usa `pio run` como sinal de release valido:
   - `pio run` recompila o firmware bruto;
-  - o release oficial consumido pelo dashboard, OTA e wizard continua nascendo do script `scripts/build-precompiled-firmware.ps1`.
+  - o release oficial consumido pelo dashboard, OTA e download manual continua nascendo do script `scripts/build-precompiled-firmware.ps1`.
 - Quando o pacote oficial local esta stale e a regeneracao ainda nao ocorreu com sucesso:
   - o dashboard deixa de anunciar `Ultimo release`;
-  - OTA e wizard USB bloqueiam a operacao em vez de reaproveitar silenciosamente um pacote velho.
+  - OTA e download manual bloqueiam a operacao em vez de reaproveitar silenciosamente um pacote velho.
 
 ## Atualizacao 2026-03 - Fase 6 core, pipeline e borda de integracao
 
@@ -333,11 +303,8 @@
   - `CityAutocompleteService`
   - `OpenMeteoForecastClient`
   - `WeatherPreviewDataService`
-  - `DeviceUsbOnboardingService`
-  - `EspToolFlashService`
   - `App.WriteCrashLog`
 - Metricas customizadas do app:
-  - `mica.onboarding.flash.duration`
   - `mica.ui.error.count`
 - `AppLogStore` e `crash.log` continuam sendo a superficie local para o usuario; a nova trilha estruturada serve diagnostico tecnico e correlacao.
 
@@ -403,8 +370,6 @@
 - [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L1)
 - [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
-- [DeviceUsbOnboardingService](../../../src/App.WinUI/Services/Devices/Onboarding/DeviceUsbOnboardingService.cs#L1)
-- [EspToolFlashService](../../../src/App.WinUI/Services/Devices/Onboarding/EspToolFlashService.cs#L1)
 - [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
 - [DevicesPage code-behind](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
 - [DeviceMetricsFormatter](../../../src/App.WinUI/Services/Devices/DeviceMetricsFormatter.cs#L1)
@@ -475,19 +440,11 @@
 - O botao `Testar LED` continua respeitando `testLedAvailable` (fallback para firmware legado):
   - quando indisponivel, fica desabilitado e mostra rotulo `LED indisponivel`.
 
-## Atualizacao 2026-03 - Rollback onboarding para COM+flash + AP
-
-- O wizard `Novo dispositivo` voltou para etapa funcional unica:
-  - selecao de porta COM + flash de firmware.
-- SSID/senha deixaram de ser coletados pela UI nesse fluxo.
-- Ao fim do flash, o app exibe `pair code` no proprio contexto da `DevicesPage`, com instrucoes de provisioning via AP.
-- O onboarding oficial nao depende mais de handshake serial para concluir.
-
 ## Atualizacao 2026-04 - Pair code inline na DevicesPage
 
-- O botao `Parear` voltou a emitir um `pair code` visivel inline logo abaixo da barra global de comandos.
-- O banner inline permite copiar o codigo sem abrir o wizard USB.
-- O mesmo surface inline passou a concentrar avisos e sucessos operacionais da `DevicesPage`.
+- O botao `Parear` emite um `pair code` visivel inline logo abaixo da barra global de comandos.
+- O banner inline permite copiar o codigo sem abrir fluxo USB.
+- O mesmo surface inline concentra avisos e sucessos operacionais da `DevicesPage`.
 - Esse fluxo permite usar ferramenta externa de flash/log e ainda assim gerar o `pair code` oficial no desktop.
 
 ## Atualizacao 2026-03 - Paridade visual com HTML canonico
@@ -500,7 +457,7 @@
   - cards auxiliares `FPS atual do HUB75` e `Sinal`;
   - charts HTML/Canvas para historico de `Loop load` e `Heap`.
 - A selecao do device passa por `postMessage` do host WinUI; o HTML abre `WS /ws/device/{deviceId}` para DTO dedicado do dashboard.
-- O wizard continua em overlay custom e o fluxo tecnico de onboarding USB nao mudou.
+- O dashboard HTML nao incorpora fluxo de flash USB; firmware manual e pairing continuam na barra superior da `DevicesPage`.
 
 ## Atualizacao 2026-03 - Hotfix de estabilidade ao selecionar device offline
 
@@ -511,17 +468,13 @@
 - O caminho de render de selecao/dashboard ganhou hardening e telemetria local de erro para evitar encerramento do app por excecao de XAML.
 - O modo online agora usa o mesmo contrato seguro como padrao: sem `Canvas`, `Polyline`, `Polygon`, `Path` ou `WrapGrid` no painel principal.
 
-## Atualizacao 2026-03 - Onboarding USB com perfil esptool fixo + progresso visual
+## Atualizacao 2026-04 - Download manual como caminho oficial
 
-- O onboarding USB passou a usar perfil canonico de flash:
-  - `--chip esp32s3`
-  - `--baud 115200`
-  - `--before default_reset`
-  - `--after hard_reset`
-  - `write_flash --no-compress 0x0 <firmware.bin>`
-- O wizard de `Novo dispositivo` mostra barra de progresso + percentual real na etapa `Flashing`.
-- O percentual e derivado diretamente das linhas de saida do `esptool` (`NN%` e `NN %`).
-- Em sucesso, o wizard mantem o `pair code` visivel na `DevicesPage` e orienta a configuracao no AP do ESP32.
+- `Baixar firmware` continua usando o pacote oficial validado pelo `PrecompiledFirmwareService`.
+- O app nao tenta mais gravar esse BIN por USB.
+- O suporte de firmware no desktop ficou dividido em dois caminhos:
+  - OTA quando o device esta online e elegivel;
+  - download manual do BIN quando o flash externo for necessario.
 
 ## Referencias de codigo
 

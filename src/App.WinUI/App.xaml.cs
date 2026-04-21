@@ -6,7 +6,6 @@ using App.WinUI.Infrastructure;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
-using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
 using App.WinUI.Services.Logging;
 using App.WinUI.Services.Monitoring;
@@ -30,6 +29,7 @@ using Output.Led;
 namespace App.WinUI;
 
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
+// DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
@@ -166,10 +166,7 @@ public partial class App : Application
         });
         services.AddSingleton<Hub75VisualizerSessionService>();
         services.AddSingleton<ISerialPortCatalogService, SerialPortCatalogService>();
-        services.AddSingleton<ISerialProvisioningClient, SerialProvisioningClient>();
         services.AddSingleton<ISerialMonitorService, SerialMonitorService>();
-        services.AddSingleton<IEspToolFlashService, EspToolFlashService>();
-        services.AddSingleton<IDeviceUsbOnboardingService, DeviceUsbOnboardingService>();
 
         services.AddSingleton<IAppCatalogService, AppCatalogService>();
         services.AddSingleton<IAppModifierStateStore, AppModifierStateStore>();
@@ -220,9 +217,6 @@ public partial class App : Application
             sp.GetRequiredService<DevicesPageViewModel>(),
             sp.GetRequiredService<DeviceOperationsCoordinator>(),
             sp.GetRequiredService<PrecompiledFirmwareService>(),
-            sp.GetRequiredService<ISerialPortCatalogService>(),
-            sp.GetRequiredService<ISerialMonitorService>(),
-            sp.GetRequiredService<IDeviceUsbOnboardingService>(),
             sp.GetRequiredService<IAppCatalogService>(),
             sp.GetRequiredService<IAppModifierStateStore>(),
             sp.GetRequiredService<SettingsRepository>(),

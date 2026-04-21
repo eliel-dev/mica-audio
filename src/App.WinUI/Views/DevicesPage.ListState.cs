@@ -9,7 +9,7 @@ namespace App.WinUI.Views;
 public sealed partial class DevicesPage
 {
     // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
-    // DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
+    // DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
     private void ApplyState(DeviceOperationsState state)
     {
         currentState = state;
@@ -18,7 +18,6 @@ public sealed partial class DevicesPage
         viewModel.CommandPercent = state.CommandPercent;
         viewModel.CommandStatus = state.CommandStatus;
 
-        EvaluateWizardSerialAutoStop();
         ApplySelectionDetails();
         ApplyButtonState();
     }

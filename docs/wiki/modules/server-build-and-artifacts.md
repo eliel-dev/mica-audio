@@ -8,13 +8,13 @@ O catalogo ativo nao expoe mais Matrix Portal S3, painel `64x32` nem o perfil `s
 
 ## Refresh oficial em workspace/dev
 
-- O release oficial consumido pelo dashboard, OTA e wizard USB continua sendo um pacote sidecar oficial do app, nao um `firmware.bin` arbitrario da pasta `.pio/build`.
+- O release oficial consumido pelo dashboard, OTA e download manual continua sendo um pacote sidecar oficial do app, nao um `firmware.bin` arbitrario da pasta `.pio/build`.
 - Rodar apenas `pio run` recompila o firmware bruto, mas nao atualiza sozinho o catalogo oficial local do app.
 - A fonte oficial continua sendo o script:
   - `scripts/build-precompiled-firmware.ps1`
 - Em workspace/dev, a `App.WinUI` agora faz duas coisas:
   - warm-up assincromo no startup para detectar se o release oficial local ficou stale em relacao aos fontes do firmware;
-  - preflight obrigatorio antes de OTA, antes do wizard USB e antes do download manual do BIN, regenerando o pacote oficial quando necessario.
+  - preflight obrigatorio antes de OTA e antes do download manual do BIN, regenerando o pacote oficial quando necessario.
 - O frescor do release oficial e comparado contra os insumos reais do firmware:
   - `scripts/build-precompiled-firmware.ps1`
   - `firmware/esp32s3-devkitc1/platformio.ini`

@@ -6,35 +6,35 @@ namespace Integration.Smoke;
 public sealed class DevicesPageSmokeTests
 {
     [Fact]
-    public void DevicesPageShouldDeclareEmbeddedDashboardAndWizardFields()
+    public void DevicesPageShouldDeclareEmbeddedDashboardAndPairingFields()
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
 
         Assert.NotNull(typeof(DevicesPage).GetField("DevicesList", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("NewDeviceButton", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DeviceDetailsGrid", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("DeviceDashboardWebView", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("CopyDashboardLinkButton", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardOverlay", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardPortPanel", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardPortComboBox", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardRefreshPortsButton", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardDetailsToggleButton", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardDiagnosticsPanel", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardSerialStatusText", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardRecaptureBootButton", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardCopySerialLogsButton", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardClearSerialLogsButton", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardSerialListView", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardSerialPlaceholderText", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardServerBaseAddressText", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardFinishButton", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardFlashProgressHost", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardFlashProgressBar", flags));
-        Assert.NotNull(typeof(DevicesPage).GetField("WizardFlashPercentText", flags));
-        Assert.Null(typeof(DevicesPage).GetField("WizardSsidTextBox", flags));
-        Assert.Null(typeof(DevicesPage).GetField("WizardPasswordBox", flags));
-        Assert.Null(typeof(DevicesPage).GetField("WizardDeviceNameTextBox", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("PairingCodeText", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("PairingCopyCodeButton", flags));
+
+        Assert.Null(typeof(DevicesPage).GetField("NewDeviceButton", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardOverlay", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardPortPanel", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardPortComboBox", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardRefreshPortsButton", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardDetailsToggleButton", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardDiagnosticsPanel", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardSerialStatusText", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardRecaptureBootButton", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardCopySerialLogsButton", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardClearSerialLogsButton", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardSerialListView", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardSerialPlaceholderText", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardServerBaseAddressText", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardFinishButton", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardFlashProgressHost", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardFlashProgressBar", flags));
+        Assert.Null(typeof(DevicesPage).GetField("WizardFlashPercentText", flags));
 
         Assert.Null(typeof(DevicesPage).GetField("DeviceDetailsTabView", flags));
         Assert.Null(typeof(DevicesPage).GetField("StatisticsContentPanel", flags));
@@ -132,20 +132,32 @@ public sealed class DevicesPageSmokeTests
     }
 
     [Fact]
-    public void DevicesPageShouldKeepOnboardingWorkflowMethods()
+    public void DevicesPageShouldNotExposeUsbOnboardingWorkflowMethods()
     {
         const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
 
-        Assert.NotNull(typeof(DevicesPage).GetMethod("ShowNewDeviceWizardAsync", flags));
-        Assert.NotNull(typeof(DevicesPage).GetMethod("ShowUsbFirmwareRefreshWizardAsync", flags));
-        Assert.NotNull(typeof(DevicesPage).GetMethod("PrepareWizardSerialMonitorAsync", flags));
-        Assert.NotNull(typeof(DevicesPage).GetMethod("BeginWizardSerialMonitoringAsync", flags));
-        Assert.NotNull(typeof(DevicesPage).GetMethod("RecaptureWizardBootAsync", flags));
-        Assert.NotNull(typeof(DevicesPage).GetMethod("CopyWizardSerialLogsToClipboard", flags));
-        Assert.NotNull(typeof(DevicesPage).GetMethod("EvaluateWizardSerialAutoStop", flags));
-        Assert.NotNull(typeof(DevicesPage).GetMethod("RefreshWizardPortsAsync", flags));
-        Assert.NotNull(typeof(DevicesPage).GetMethod("RunWizardOnboardingAsync", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("SaveFirmwareAsync", flags));
+        Assert.Null(typeof(DevicesPage).GetMethod("ShowNewDeviceWizardAsync", flags));
+        Assert.Null(typeof(DevicesPage).GetMethod("ShowUsbFirmwareRefreshWizardAsync", flags));
+        Assert.Null(typeof(DevicesPage).GetMethod("PrepareWizardSerialMonitorAsync", flags));
+        Assert.Null(typeof(DevicesPage).GetMethod("BeginWizardSerialMonitoringAsync", flags));
+        Assert.Null(typeof(DevicesPage).GetMethod("RecaptureWizardBootAsync", flags));
+        Assert.Null(typeof(DevicesPage).GetMethod("CopyWizardSerialLogsToClipboard", flags));
+        Assert.Null(typeof(DevicesPage).GetMethod("EvaluateWizardSerialAutoStop", flags));
+        Assert.Null(typeof(DevicesPage).GetMethod("RefreshWizardPortsAsync", flags));
+        Assert.Null(typeof(DevicesPage).GetMethod("RunWizardOnboardingAsync", flags));
+    }
+
+    [Fact]
+    public void DevicesPageConstructor_ShouldNotRequireUsbOnboardingServices()
+    {
+        var constructors = typeof(DevicesPage).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic);
+        var ctor = Assert.Single(constructors);
+        var parameterTypes = ctor.GetParameters().Select(parameter => parameter.ParameterType.FullName).ToArray();
+
+        Assert.DoesNotContain("App.WinUI.Infrastructure.Serial.ISerialPortCatalogService", parameterTypes);
+        Assert.DoesNotContain("App.WinUI.Infrastructure.Serial.ISerialMonitorService", parameterTypes);
+        Assert.DoesNotContain("App.WinUI.Services.Devices.Onboarding.IDeviceUsbOnboardingService", parameterTypes);
     }
 
     [Fact]
