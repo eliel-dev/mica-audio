@@ -3,6 +3,7 @@ using Device.Protocol.Models;
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 internal static class DeviceRecordMutations
 {
     public static DeviceRecord CreatePairedRecord(

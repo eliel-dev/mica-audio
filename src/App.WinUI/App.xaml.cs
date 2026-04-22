@@ -33,6 +33,7 @@ namespace App.WinUI;
 // DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
 // DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
 // DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
@@ -152,12 +153,14 @@ public partial class App : Application
         services.AddSingleton<IPanelsBatchStore, InMemoryPanelsBatchStore>();
         services.AddSingleton<IDevicePairingStore, InMemoryDevicePairingStore>();
         services.AddSingleton<ICommandStateStore, InMemoryCommandStateStore>();
+        services.AddSingleton<ISessionStateStore, InMemorySessionStateStore>();
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
             sp.GetService<IDeviceOfficialFirmwareCatalog>(),
             sp.GetRequiredService<IPanelsBatchStore>(),
             sp.GetRequiredService<IDevicePairingStore>(),
-            sp.GetRequiredService<ICommandStateStore>()));
+            sp.GetRequiredService<ICommandStateStore>(),
+            sp.GetRequiredService<ISessionStateStore>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
         services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<IDeviceServerHost>());
         services.AddSingleton(sp => new EmbeddedDeviceServerClient(

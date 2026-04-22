@@ -1,4 +1,6 @@
 using System.Xml.Linq;
+using System.Net.WebSockets;
+using System.Threading.Channels;
 using Device.Client;
 using Device.Client.Embedded;
 using Device.Server.Hosting;
@@ -19,6 +21,9 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.Equal("Device.Server.Abstractions", typeof(IDevicePairingStore).Assembly.GetName().Name);
         Assert.Equal("Device.Server.Abstractions", typeof(ICommandStateStore).Assembly.GetName().Name);
         Assert.Equal("Device.Server.Abstractions", typeof(TrackedCommandState).Assembly.GetName().Name);
+        Assert.Equal("Device.Server.Abstractions", typeof(ISessionStateStore).Assembly.GetName().Name);
+        Assert.Equal("Device.Server.Abstractions", typeof(DeviceSessionState).Assembly.GetName().Name);
+        Assert.DoesNotContain(typeof(DeviceSessionState).GetMembers(), member => ExposesTransportType(member));
     }
 
     [Fact]
@@ -30,6 +35,8 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.True(typeof(IDevicePairingStore).IsAssignableFrom(typeof(InMemoryDevicePairingStore)));
         Assert.Equal("Device.Server", typeof(InMemoryCommandStateStore).Assembly.GetName().Name);
         Assert.True(typeof(ICommandStateStore).IsAssignableFrom(typeof(InMemoryCommandStateStore)));
+        Assert.Equal("Device.Server", typeof(InMemorySessionStateStore).Assembly.GetName().Name);
+        Assert.True(typeof(ISessionStateStore).IsAssignableFrom(typeof(InMemorySessionStateStore)));
     }
 
     [Fact]
@@ -108,5 +115,22 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.Contains("../Device.Server.Abstractions/Device.Server.Abstractions.csproj", references);
         Assert.Contains("../Device.Protocol/Device.Protocol.csproj", references);
         Assert.DoesNotContain("../App.WinUI/App.WinUI.csproj", references);
+    }
+
+    private static bool ExposesTransportType(System.Reflection.MemberInfo member)
+    {
+        static bool IsTransportType(Type type)
+            => type == typeof(WebSocket)
+               || type.Namespace?.StartsWith("System.Net.WebSockets", StringComparison.Ordinal) == true
+               || type == typeof(Channel<byte[]>)
+               || type.Namespace?.StartsWith("System.Threading.Channels", StringComparison.Ordinal) == true;
+
+        return member switch
+        {
+            System.Reflection.PropertyInfo property => IsTransportType(property.PropertyType),
+            System.Reflection.MethodInfo method => IsTransportType(method.ReturnType)
+                || method.GetParameters().Any(parameter => IsTransportType(parameter.ParameterType)),
+            _ => false,
+        };
     }
 }

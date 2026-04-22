@@ -36,7 +36,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 3. `PairDeviceRequest` pode informar `BoardModel` e `PanelType`.
 4. Device autentica no broker MQTT com `clientId = username = deviceId` e `password = token`.
 5. `presence`, `status` e `stats` MQTT alimentam online/offline e o snapshot operacional do device.
-6. O snapshot tambem expoe `ControlPlaneState` para diferenciar `MqttOnline`, `LegacyOnly` e `Offline`.
+6. `ISessionStateStore` mantem o estado efemero de presenca e snapshot, sem expor WebSocket/frame stream.
 7. App envia comandos tracked (`SendCommandTrackedAsync`) via `mica/v1/devices/{deviceId}/commands`.
 8. `ICommandStateStore` e `TrackedCommandState` correlacionam `command-events` por `commandId`.
 9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
@@ -75,6 +75,15 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - O composition root da `App.WinUI` registra `ICommandStateStore -> InMemoryCommandStateStore` junto do `DeviceServerHost` embedded.
 - Nao houve alteracao de command ids, payloads, eventos de progresso, timeouts, MQTT, HTTP/WS, firmware, portas ou client remoto.
 
+## Atualizacao 2026-04 - Storage De Sessoes De Device
+
+- `ISessionStateStore` e `DeviceSessionState` vivem em `Device.Server.Abstractions` como fronteira publica para presenca efemera, snapshots e records de device.
+- `Device.Server` fornece `InMemorySessionStateStore`, mantendo a semantica atual de chave case-insensitive por `deviceId`, substituicao por mesmo id, `Remove`, `CreateSnapshots`, `CreateRecords` e `Drain`.
+- `DeviceFrameConnection` e `DeviceFrameConnectionRegistry` ficam internos ao `Device.Server` para preservar WebSocket, fila bounded de frames e `SendToken` fora do contrato publico.
+- `DeviceServerHost` usa o store para auth, MQTT presence/status/stats/logs, firmware heartbeat, pairing, seed e snapshots; frame stream continua process-local via `/ws/v1/stream`.
+- O composition root da `App.WinUI` registra `ISessionStateStore -> InMemorySessionStateStore` junto do `DeviceServerHost` embedded.
+- Nao houve alteracao de endpoints, payloads, topicos MQTT, auth, firmware, portas, client remoto ou semantica de online/legacy/offline.
+
 ## Politicas de seguranca
 
 1. Rate limiting:
@@ -109,7 +118,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Topicos e autenticacao do control plane MQTT.
 - Politicas de seguranca em `ServerConfig`.
 - Normalizacao de runtime em `DeviceServerRuntimeConfig`.
-- Transicoes de estado em `DeviceRecordMutations` e `DeviceSession`.
+- Transicoes de estado em `DeviceRecordMutations` e `DeviceSessionState`.
 
 ## Riscos e efeitos colaterais
 
@@ -239,6 +248,11 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [ICommandStateStore](../../../src/Device.Server.Abstractions/Hosting/ICommandStateStore.cs#L1) - assinatura: `public interface ICommandStateStore`
 - [TrackedCommandState](../../../src/Device.Server.Abstractions/Hosting/TrackedCommandState.cs#L1) - assinatura: `public sealed class TrackedCommandState`
 - [InMemoryCommandStateStore](../../../src/Device.Server/Hosting/InMemoryCommandStateStore.cs#L1) - assinatura: `public sealed class InMemoryCommandStateStore`
+- [ISessionStateStore](../../../src/Device.Server.Abstractions/Hosting/ISessionStateStore.cs#L1) - assinatura: `public interface ISessionStateStore`
+- [DeviceSessionState](../../../src/Device.Server.Abstractions/Hosting/DeviceSessionState.cs#L1) - assinatura: `public sealed class DeviceSessionState`
+- [InMemorySessionStateStore](../../../src/Device.Server/Hosting/InMemorySessionStateStore.cs#L1) - assinatura: `public sealed class InMemorySessionStateStore`
+- [DeviceFrameConnection](../../../src/Device.Server/Hosting/DeviceFrameConnection.cs#L1) - assinatura: `internal sealed class DeviceFrameConnection`
+- [DeviceFrameConnectionRegistry](../../../src/Device.Server/Hosting/DeviceFrameConnectionRegistry.cs#L1) - assinatura: `internal sealed class DeviceFrameConnectionRegistry`
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
 - [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1) - assinatura: `public interface IDeviceFrameTransport`
 - [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1) - assinatura: `public interface IDeviceServerClient`
@@ -249,7 +263,6 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [DeviceServerObservability](../../../src/Device.Server/Hosting/DeviceServerObservability.cs#L1) - assinatura: `internal static class DeviceServerObservability`
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1) - assinatura: `internal sealed class DeviceServerRuntimeConfig`
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1) - assinatura: `internal static class DeviceMqttTopics`
-- [DeviceSession](../../../src/Device.Server/Hosting/DeviceSession.cs#L1) - assinatura: `internal sealed class DeviceSession`
 - [PairDeviceRequest](../../../src/Device.Protocol/Models/PairDeviceRequest.cs#L1) - assinatura: `public sealed class PairDeviceRequest`
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1) - assinatura: `public sealed class PairDeviceResponse`
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
@@ -276,12 +289,17 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - `src/Device.Server/Hosting/InMemoryCommandStateStore.cs`
 - `src/Device.Server.Abstractions/Hosting/ICommandStateStore.cs`
 - `src/Device.Server.Abstractions/Hosting/TrackedCommandState.cs`
+- `src/Device.Server/Hosting/InMemorySessionStateStore.cs`
+- `src/Device.Server.Abstractions/Hosting/ISessionStateStore.cs`
+- `src/Device.Server.Abstractions/Hosting/DeviceSessionState.cs`
+- `src/Device.Server.Abstractions/Hosting/DeviceRecordMutations.cs`
+- `src/Device.Server/Hosting/DeviceFrameConnection.cs`
+- `src/Device.Server/Hosting/DeviceFrameConnectionRegistry.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Routes.cs`
 - `src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs`
 - `src/Device.Server/Hosting/DeviceMqttTopics.cs`
-- `src/Device.Server/Hosting/DeviceSession.cs`
 - `src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs`
 - `src/Device.Client.Embedded/NetworkInterfaceEmbeddedDevicePublicHostResolver.cs`
 - `src/Device.Protocol/Models/PairDeviceRequest.cs`
@@ -395,7 +413,8 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 
 - `DeviceServerHost` foi reduzido para orquestracao do host ASP.NET Core e passou a mapear endpoints em route groups via `DeviceServerHost.Routes`.
 - O estado interno foi separado em colaboradores dedicados:
-  - `DeviceSessionRegistry`
+  - `InMemorySessionStateStore`
+  - `DeviceFrameConnectionRegistry`
   - `InMemoryDevicePairingStore`
   - `InMemoryCommandStateStore`
   - `DeviceRecordMutations`

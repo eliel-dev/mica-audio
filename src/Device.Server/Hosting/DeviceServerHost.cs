@@ -22,6 +22,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
 // DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
 // DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -46,7 +47,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly IPanelsBatchStore panelsBatchStore;
     private readonly IDevicePairingStore pairingStore;
     private readonly ICommandStateStore commandStateStore;
-    private readonly DeviceSessionRegistry devices = new();
+    private readonly ISessionStateStore sessionStateStore;
+    private readonly DeviceFrameConnectionRegistry frameConnections = new();
 
     private DeviceServerRuntimeConfig runtimeConfig = DeviceServerRuntimeConfig.From(new ServerConfig());
     private WebApplication? app;
@@ -73,7 +75,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         IDeviceOfficialFirmwareCatalog? firmwareCatalog,
         IPanelsBatchStore? panelsBatchStore = null,
         IDevicePairingStore? pairingStore = null,
-        ICommandStateStore? commandStateStore = null)
+        ICommandStateStore? commandStateStore = null,
+        ISessionStateStore? sessionStateStore = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
@@ -81,6 +84,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         this.panelsBatchStore = panelsBatchStore ?? new InMemoryPanelsBatchStore();
         this.pairingStore = pairingStore ?? new InMemoryDevicePairingStore();
         this.commandStateStore = commandStateStore ?? new InMemoryCommandStateStore();
+        this.sessionStateStore = sessionStateStore ?? new InMemorySessionStateStore();
     }
 
     public event EventHandler? DevicesChanged;
@@ -244,7 +248,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         MqttServer? localMqttServer;
         CancellationTokenSource? localCts;
         TrackedCommandState[] pendingToCancel;
-        DeviceSession[] sessionsToDispose;
+        DeviceFrameConnection[] connectionsToDispose;
 
         lock (gate)
         {
@@ -260,6 +264,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             mqttServer = null;
             appCts = null;
             pendingToCancel = commandStateStore.Drain();
+            sessionStateStore.Drain();
+            connectionsToDispose = frameConnections.Drain();
         }
 
         foreach (var pending in pendingToCancel)
@@ -297,13 +303,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
             lock (gate)
             {
-                sessionsToDispose = devices.Drain();
                 pairingStore.Clear();
             }
 
-            foreach (var session in sessionsToDispose)
+            foreach (var connection in connectionsToDispose)
             {
-                session.Dispose();
+                connection.Dispose();
             }
 
             NotifyDevicesChanged();
@@ -330,7 +335,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return devices.CreateSnapshots(runtimeConfig.DeviceOfflineTimeout);
+            return sessionStateStore.CreateSnapshots(timeProvider.GetUtcNow(), runtimeConfig.DeviceOfflineTimeout);
         }
     }
 
@@ -338,7 +343,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return devices.CreateRecords();
+            return sessionStateStore.CreateRecords();
         }
     }
 
@@ -355,7 +360,6 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         ArgumentNullException.ThrowIfNull(devices);
 
-        var replacedSessions = new List<DeviceSession>();
         lock (gate)
         {
             foreach (var record in devices)
@@ -365,18 +369,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                     continue;
                 }
 
-                var session = new DeviceSession(record, timeProvider, SocketDetachGracePeriod);
-                var replaced = this.devices.Set(session);
+                var session = new DeviceSessionState(record, SocketDetachGracePeriod);
+                var replaced = sessionStateStore.Upsert(session);
                 if (replaced is not null)
                 {
-                    replacedSessions.Add(replaced);
+                    frameConnections.RemoveAndDispose(record.DeviceId);
                 }
             }
-        }
-
-        foreach (var session in replacedSessions)
-        {
-            session.Dispose();
         }
 
         NotifyDevicesChanged();
@@ -422,43 +421,36 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return false;
         }
 
-        DeviceSession? removedSession = null;
         MqttServer? localMqttServer;
-        try
+        lock (gate)
         {
-            lock (gate)
+            if (!sessionStateStore.Remove(deviceId, out _))
             {
-                if (!devices.Remove(deviceId, out removedSession))
-                {
-                    return false;
-                }
-
-                localMqttServer = mqttServer;
+                return false;
             }
 
-            if (localMqttServer is not null)
-            {
-                ScheduleRetainedDeviceStateCleanup(localMqttServer, deviceId);
-            }
+            frameConnections.RemoveAndDispose(deviceId);
+            localMqttServer = mqttServer;
+        }
 
-            NotifyDevicesChanged();
-            Log($"Device removido: {deviceId}");
-            return true;
-        }
-        finally
+        if (localMqttServer is not null)
         {
-            removedSession?.Dispose();
+            ScheduleRetainedDeviceStateCleanup(localMqttServer, deviceId);
         }
+
+        NotifyDevicesChanged();
+        Log($"Device removido: {deviceId}");
+        return true;
     }
 
     public void BroadcastFrame(byte[] framePayload)
     {
         ArgumentNullException.ThrowIfNull(framePayload);
 
-        DeviceSession[] targets;
+        DeviceFrameConnection[] targets;
         lock (gate)
         {
-            targets = devices.GetOpenSocketSessions();
+            targets = frameConnections.GetOpenConnections();
         }
 
         foreach (var target in targets)
@@ -472,10 +464,10 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
         ArgumentNullException.ThrowIfNull(framePayload);
 
-        DeviceSession? target;
+        DeviceFrameConnection? target;
         lock (gate)
         {
-            if (!devices.TryGetValue(deviceId.Trim(), out target)
+            if (!frameConnections.TryGetValue(deviceId.Trim(), out target)
                 || target?.Socket is not { State: WebSocketState.Open })
             {
                 return;
@@ -519,11 +511,10 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return Results.BadRequest(new { error = "invalid_or_expired_pairing_code" });
         }
 
-        DeviceSession state;
-        DeviceSession? replacedSession = null;
+        DeviceSessionState state;
         lock (gate)
         {
-            if (devices.Count >= runtimeConfig.MaxDevices)
+            if (sessionStateStore.Count >= runtimeConfig.MaxDevices)
             {
                 return Results.BadRequest(new { error = "max_devices_reached" });
             }
@@ -540,12 +531,15 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 panelType: NormalizeOptional(req.PanelType),
                 now: now);
 
-            state = new DeviceSession(record, timeProvider, SocketDetachGracePeriod);
-            replacedSession = devices.Set(state);
+            state = new DeviceSessionState(record, SocketDetachGracePeriod);
+            var replaced = sessionStateStore.Upsert(state);
+            if (replaced is not null)
+            {
+                frameConnections.RemoveAndDispose(record.DeviceId);
+            }
+
             pairingStore.ResetAttempts(remoteIpKey);
         }
-
-        replacedSession?.Dispose();
 
         NotifyDevicesChanged();
         Log($"Device pareado: {state.Record.DeviceId}");
@@ -602,8 +596,25 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         var ws = await ctx.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-        state.MarkAuthenticated();
-        state.AttachSocket(ws, ctx.Connection.RemoteIpAddress?.ToString());
+        DeviceFrameConnection connection;
+        lock (gate)
+        {
+            var now = timeProvider.GetUtcNow();
+            var remoteIp = ctx.Connection.RemoteIpAddress?.ToString();
+            state.MarkAuthenticated(now);
+            state.MarkSeen(
+                now,
+                remoteIp,
+                state.Record.LastKnownRssi,
+                state.Record.FirmwareVersion,
+                state.Record.ActiveAppId,
+                state.Record.ActiveAppName,
+                state.Record.BoardModel,
+                state.Record.PanelType);
+            connection = frameConnections.GetOrCreate(state.Record.DeviceId);
+            connection.AttachSocket(ws);
+        }
+
         if (!state.IsControlPlaneOnline)
         {
             Log($"Stream WS conectado sem control plane MQTT para {state.Record.DeviceId}; firmware legado nao suportado para comandos.");
@@ -611,14 +622,14 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         NotifyDevicesChanged();
 
-        var sendTask = Task.Run(() => SendLoopAsync(state, ws, state.SendToken));
+        var sendTask = Task.Run(() => SendLoopAsync(connection, ws, connection.SendToken));
         try
         {
             await ReceiveLoopAsync(state, ws, runtimeConfig.MaxWebSocketMessageBytes, ctx.RequestAborted).ConfigureAwait(false);
         }
         finally
         {
-            if (state.DetachSocket(ws))
+            if (connection.DetachSocket(ws))
             {
                 NotifyDevicesChanged();
             }
@@ -627,14 +638,14 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    private static async Task SendLoopAsync(DeviceSession state, WebSocket ws, CancellationToken sendToken)
+    private static async Task SendLoopAsync(DeviceFrameConnection connection, WebSocket ws, CancellationToken sendToken)
     {
         while (true)
         {
             byte[] payload;
             try
             {
-                payload = await state.Outgoing.Reader.ReadAsync(sendToken).ConfigureAwait(false);
+                payload = await connection.Outgoing.Reader.ReadAsync(sendToken).ConfigureAwait(false);
             }
             catch
             {
@@ -657,7 +668,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    private async Task ReceiveLoopAsync(DeviceSession state, WebSocket ws, int maxMessageSize, CancellationToken cancellationToken)
+    private async Task ReceiveLoopAsync(DeviceSessionState state, WebSocket ws, int maxMessageSize, CancellationToken cancellationToken)
     {
         var buffer = new byte[4096];
         while (!cancellationToken.IsCancellationRequested && ws.State == WebSocketState.Open)
@@ -725,7 +736,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    private bool TryAuthenticate(HttpContext ctx, AuthContext authContext, out DeviceSession state)
+    private bool TryAuthenticate(HttpContext ctx, AuthContext authContext, out DeviceSessionState state)
     {
         state = null!;
 
@@ -764,7 +775,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         lock (gate)
         {
-            if (!devices.TryGetValue(deviceId, out var foundState) || foundState is null)
+            if (!sessionStateStore.TryGetValue(deviceId, out var foundState) || foundState is null)
             {
                 return false;
             }

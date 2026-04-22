@@ -1,50 +1,35 @@
-using System.Net.WebSockets;
-using System.Threading.Channels;
 using Device.Protocol.Models;
 
 namespace Device.Server.Hosting;
 
+// DOCS: docs/wiki/modules/device-server-protocol.md#storage-de-sessoes-de-device
 // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
-internal sealed class DeviceSession : IDisposable
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+public sealed class DeviceSessionState
 {
-    private readonly TimeProvider timeProvider;
     private readonly TimeSpan detachGracePeriod;
-    private CancellationTokenSource senderCts = new();
-    private DateTimeOffset? socketDetachGraceUntilUtc;
     private DateTimeOffset? controlPlaneDetachGraceUntilUtc;
     private DateTimeOffset? lastLegacyControlPlaneActivityUtc;
 
-    public DeviceSession(DeviceRecord record, TimeProvider timeProvider, TimeSpan detachGracePeriod)
+    public DeviceSessionState(DeviceRecord record, TimeSpan detachGracePeriod)
     {
         ArgumentNullException.ThrowIfNull(record);
-        ArgumentNullException.ThrowIfNull(timeProvider);
 
-        this.timeProvider = timeProvider;
         this.detachGracePeriod = detachGracePeriod;
         Record = record;
         LastActivityUtc = record.LastSeenUtc != default && record.LastSeenUtc != DateTimeOffset.MinValue
             ? record.LastSeenUtc
             : record.CreatedAtUtc;
-        Outgoing = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(1)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-            SingleReader = true,
-        });
     }
 
     public DeviceRecord Record { get; private set; }
-
-    public WebSocket? Socket { get; private set; }
-
-    public Channel<byte[]> Outgoing { get; }
 
     public DateTimeOffset LastActivityUtc { get; private set; }
 
     public bool IsControlPlaneOnline { get; private set; }
 
-    public CancellationToken SendToken => senderCts.Token;
-
     public void MarkSeen(
+        DateTimeOffset now,
         string? ip,
         int? rssi,
         string? firmwareVersion,
@@ -53,7 +38,6 @@ internal sealed class DeviceSession : IDisposable
         string? boardModel = null,
         string? panelType = null)
     {
-        var now = timeProvider.GetUtcNow();
         LastActivityUtc = now;
         Record = DeviceRecordMutations.MarkSeen(
             Record,
@@ -67,12 +51,13 @@ internal sealed class DeviceSession : IDisposable
             panelType);
     }
 
-    public void MarkAuthenticated()
+    public void MarkAuthenticated(DateTimeOffset now)
     {
-        Record = DeviceRecordMutations.MarkAuthenticated(Record, timeProvider.GetUtcNow());
+        Record = DeviceRecordMutations.MarkAuthenticated(Record, now);
     }
 
     public void MarkTelemetry(
+        DateTimeOffset now,
         string? ip,
         int? rssi,
         string? firmwareVersion,
@@ -115,7 +100,6 @@ internal sealed class DeviceSession : IDisposable
         int? testLedDuty = null,
         bool? animatedWebpBatchSupported = null)
     {
-        var now = timeProvider.GetUtcNow();
         LastActivityUtc = now;
         Record = DeviceRecordMutations.MarkTelemetry(
             Record,
@@ -164,6 +148,7 @@ internal sealed class DeviceSession : IDisposable
     }
 
     public void MarkStats(
+        DateTimeOffset now,
         string? ip,
         string? chipModel = null,
         int? chipRevision = null,
@@ -176,7 +161,6 @@ internal sealed class DeviceSession : IDisposable
         long? sketchSizeBytes = null,
         long? freeSketchBytes = null)
     {
-        var now = timeProvider.GetUtcNow();
         LastActivityUtc = now;
         Record = DeviceRecordMutations.MarkStats(
             Record,
@@ -194,17 +178,18 @@ internal sealed class DeviceSession : IDisposable
             freeSketchBytes);
     }
 
-    public void Touch()
+    public void Touch(DateTimeOffset now)
     {
-        LastActivityUtc = timeProvider.GetUtcNow();
+        LastActivityUtc = now;
     }
 
-    public void MarkControlPlaneConnected(string? ip)
+    public void MarkControlPlaneConnected(DateTimeOffset now, string? ip)
     {
         IsControlPlaneOnline = true;
         controlPlaneDetachGraceUntilUtc = null;
         lastLegacyControlPlaneActivityUtc = null;
         MarkSeen(
+            now,
             ip,
             Record.LastKnownRssi,
             Record.FirmwareVersion,
@@ -214,13 +199,13 @@ internal sealed class DeviceSession : IDisposable
             Record.PanelType);
     }
 
-    public void MarkControlPlaneDisconnected()
+    public void MarkControlPlaneDisconnected(DateTimeOffset now)
     {
         IsControlPlaneOnline = false;
-        controlPlaneDetachGraceUntilUtc = timeProvider.GetUtcNow() + detachGracePeriod;
+        controlPlaneDetachGraceUntilUtc = now + detachGracePeriod;
     }
 
-    public bool MarkLegacyControlPlaneTraffic()
+    public bool MarkLegacyControlPlaneTraffic(DateTimeOffset now)
     {
         if (IsControlPlaneOnline)
         {
@@ -228,61 +213,13 @@ internal sealed class DeviceSession : IDisposable
         }
 
         var isFirstObservedLegacyTraffic = !lastLegacyControlPlaneActivityUtc.HasValue;
-        lastLegacyControlPlaneActivityUtc = timeProvider.GetUtcNow();
+        lastLegacyControlPlaneActivityUtc = now;
         return isFirstObservedLegacyTraffic;
     }
 
-    public void AttachSocket(WebSocket socket, string? ip)
+    public DeviceSnapshot ToSnapshot(DateTimeOffset now, TimeSpan offlineTimeout)
     {
-        ArgumentNullException.ThrowIfNull(socket);
-
-        senderCts.Cancel();
-        senderCts.Dispose();
-        senderCts = new CancellationTokenSource();
-        Socket = socket;
-        socketDetachGraceUntilUtc = null;
-        LastActivityUtc = timeProvider.GetUtcNow();
-        if (!string.IsNullOrWhiteSpace(ip))
-        {
-            Record = DeviceRecordMutations.MarkSeen(
-                Record,
-                LastActivityUtc,
-                ip,
-                Record.LastKnownRssi,
-                Record.FirmwareVersion,
-                Record.ActiveAppId,
-                Record.ActiveAppName,
-                Record.BoardModel,
-                Record.PanelType);
-        }
-    }
-
-    public bool DetachSocket(WebSocket socket)
-    {
-        ArgumentNullException.ThrowIfNull(socket);
-
-        if (!ReferenceEquals(Socket, socket))
-        {
-            return false;
-        }
-
-        senderCts.Cancel();
-        Socket = null;
-        socketDetachGraceUntilUtc = timeProvider.GetUtcNow() + detachGracePeriod;
-        return true;
-    }
-
-    public void QueueFrame(byte[] frame)
-    {
-        ArgumentNullException.ThrowIfNull(frame);
-        Outgoing.Writer.TryWrite(frame);
-    }
-
-    public DeviceSnapshot ToSnapshot(TimeSpan offlineTimeout)
-    {
-        var now = timeProvider.GetUtcNow();
         var withinControlPlaneGrace = IsWithinGraceWindow(now, ref controlPlaneDetachGraceUntilUtc);
-        _ = IsWithinGraceWindow(now, ref socketDetachGraceUntilUtc);
         var hasFreshLegacyTraffic = HasRecentActivity(now, offlineTimeout, ref lastLegacyControlPlaneActivityUtc);
         var controlPlaneState = IsControlPlaneOnline || withinControlPlaneGrace
             ? DeviceControlPlaneState.MqttOnline
@@ -326,28 +263,5 @@ internal sealed class DeviceSession : IDisposable
 
         lastActivityUtc = null;
         return false;
-    }
-
-    public void Dispose()
-    {
-        senderCts.Cancel();
-        senderCts.Dispose();
-
-        if (Socket is not null)
-        {
-            try
-            {
-                Socket.Abort();
-                Socket.Dispose();
-            }
-            catch
-            {
-                // ignore socket disposal errors
-            }
-
-            Socket = null;
-        }
-
-        Outgoing.Writer.TryComplete();
     }
 }

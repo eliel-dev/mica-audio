@@ -16,20 +16,20 @@ public sealed class DeviceServerHostTargetedFrameTests
             CreateRecord("device-2", "token-2"),
         ]);
 
-        var registry = GetRegistry(host);
-        var targetSession = GetSession(registry, "device-1");
-        var otherSession = GetSession(registry, "device-2");
+        var registry = GetFrameRegistry(host);
+        var targetConnection = registry.GetOrCreate("device-1");
+        var otherConnection = registry.GetOrCreate("device-2");
         using var targetSocket = new TestWebSocket();
         using var otherSocket = new TestWebSocket();
-        targetSession.AttachSocket(targetSocket, "192.168.0.10");
-        otherSession.AttachSocket(otherSocket, "192.168.0.11");
+        targetConnection.AttachSocket(targetSocket);
+        otherConnection.AttachSocket(otherSocket);
 
         var payload = new byte[] { 1, 2, 3, 4 };
         host.SendFrame("device-1", payload);
 
-        Assert.True(targetSession.Outgoing.Reader.TryRead(out var queuedForTarget));
+        Assert.True(targetConnection.Outgoing.Reader.TryRead(out var queuedForTarget));
         Assert.Equal(payload, queuedForTarget);
-        Assert.False(otherSession.Outgoing.Reader.TryRead(out _));
+        Assert.False(otherConnection.Outgoing.Reader.TryRead(out _));
     }
 
     private static DeviceRecord CreateRecord(string deviceId, string token)
@@ -45,17 +45,11 @@ public sealed class DeviceServerHostTargetedFrameTests
         };
     }
 
-    private static DeviceSessionRegistry GetRegistry(DeviceServerHost host)
+    private static DeviceFrameConnectionRegistry GetFrameRegistry(DeviceServerHost host)
     {
-        var field = typeof(DeviceServerHost).GetField("devices", BindingFlags.Instance | BindingFlags.NonPublic);
+        var field = typeof(DeviceServerHost).GetField("frameConnections", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
-        return Assert.IsType<DeviceSessionRegistry>(field!.GetValue(host));
-    }
-
-    private static DeviceSession GetSession(DeviceSessionRegistry registry, string deviceId)
-    {
-        Assert.True(registry.TryGetValue(deviceId, out var session));
-        return Assert.IsType<DeviceSession>(session);
+        return Assert.IsType<DeviceFrameConnectionRegistry>(field!.GetValue(host));
     }
 
     private sealed class TestWebSocket : WebSocket

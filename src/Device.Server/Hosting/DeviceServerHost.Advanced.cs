@@ -9,6 +9,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#pontos-de-alteracao-frequente
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(5);
@@ -40,10 +41,10 @@ public sealed partial class DeviceServerHost
             (DeviceServerObservability.CommandTypeKey, commandTypeName),
             (DeviceServerObservability.AppIdKey, appId));
 
-        DeviceSession? state;
+        DeviceSessionState? state;
         lock (gate)
         {
-            devices.TryGetValue(deviceId, out state);
+            sessionStateStore.TryGetValue(deviceId, out state);
         }
 
         if (state is null || !state.IsControlPlaneOnline)
@@ -255,7 +256,15 @@ public sealed partial class DeviceServerHost
         }
 
         MarkLegacyControlPlaneTraffic(state, "command-ack");
-        state.MarkSeen(ctx.Connection.RemoteIpAddress?.ToString(), state.Record.LastKnownRssi, state.Record.FirmwareVersion, state.Record.ActiveAppId, state.Record.ActiveAppName, state.Record.BoardModel, state.Record.PanelType);
+        state.MarkSeen(
+            timeProvider.GetUtcNow(),
+            ctx.Connection.RemoteIpAddress?.ToString(),
+            state.Record.LastKnownRssi,
+            state.Record.FirmwareVersion,
+            state.Record.ActiveAppId,
+            state.Record.ActiveAppName,
+            state.Record.BoardModel,
+            state.Record.PanelType);
         var progress = Math.Clamp(ack.ProgressPercent ?? (ack.Success ? 100 : 0), 0, 100);
         var stage = string.IsNullOrWhiteSpace(ack.Stage) ? (ack.Success ? "ack" : "ack-failed") : ack.Stage;
 
@@ -295,7 +304,7 @@ public sealed partial class DeviceServerHost
         return Results.Ok(new { ok = true });
     }
 
-    private async Task<bool> HandleIncomingWsTextAsync(DeviceSession state, string json)
+    private async Task<bool> HandleIncomingWsTextAsync(DeviceSessionState state, string json)
     {
         try
         {
@@ -332,7 +341,7 @@ public sealed partial class DeviceServerHost
         }
     }
 
-    private bool TryHandleCommandEventPayload(DeviceSession state, byte[] payload)
+    private bool TryHandleCommandEventPayload(DeviceSessionState state, byte[] payload)
     {
         try
         {
@@ -345,7 +354,7 @@ public sealed partial class DeviceServerHost
         }
     }
 
-    private static bool TryHandleTelemetryPayload(DeviceSession state, byte[] payload, string? remoteIp)
+    private bool TryHandleTelemetryPayload(DeviceSessionState state, byte[] payload, string? remoteIp)
     {
         try
         {
@@ -358,7 +367,7 @@ public sealed partial class DeviceServerHost
         }
     }
 
-    private static bool TryHandleStatsPayload(DeviceSession state, byte[] payload, string? remoteIp)
+    private bool TryHandleStatsPayload(DeviceSessionState state, byte[] payload, string? remoteIp)
     {
         try
         {
@@ -371,7 +380,7 @@ public sealed partial class DeviceServerHost
         }
     }
 
-    private static bool TryHandlePresencePayload(DeviceSession state, byte[] payload, string? remoteIp)
+    private bool TryHandlePresencePayload(DeviceSessionState state, byte[] payload, string? remoteIp)
     {
         try
         {
@@ -383,11 +392,11 @@ public sealed partial class DeviceServerHost
 
             if (string.Equals(presence.State, "online", StringComparison.OrdinalIgnoreCase))
             {
-                state.MarkControlPlaneConnected(remoteIp);
+                state.MarkControlPlaneConnected(timeProvider.GetUtcNow(), remoteIp);
             }
             else if (string.Equals(presence.State, "offline", StringComparison.OrdinalIgnoreCase))
             {
-                state.MarkControlPlaneDisconnected();
+                state.MarkControlPlaneDisconnected(timeProvider.GetUtcNow());
             }
             else
             {
@@ -402,7 +411,7 @@ public sealed partial class DeviceServerHost
         }
     }
 
-    private bool TryHandleLogPayload(DeviceSession state, byte[] payload)
+    private bool TryHandleLogPayload(DeviceSessionState state, byte[] payload)
     {
         try
         {
@@ -418,7 +427,7 @@ public sealed partial class DeviceServerHost
                 return false;
             }
 
-            state.Touch();
+            state.Touch(timeProvider.GetUtcNow());
             PublishDeviceLog(normalized);
             return true;
         }
@@ -428,7 +437,7 @@ public sealed partial class DeviceServerHost
         }
     }
 
-    private bool TryApplyCommandProgress(DeviceSession state, DeviceCommandProgressMessage message)
+    private bool TryApplyCommandProgress(DeviceSessionState state, DeviceCommandProgressMessage message)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(message);
@@ -438,7 +447,7 @@ public sealed partial class DeviceServerHost
             return false;
         }
 
-        state.Touch();
+        state.Touch(timeProvider.GetUtcNow());
         var normalized = new DeviceCommandProgressMessage
         {
             DeviceId = string.IsNullOrWhiteSpace(message.DeviceId) ? state.Record.DeviceId : message.DeviceId,
@@ -488,12 +497,13 @@ public sealed partial class DeviceServerHost
         return true;
     }
 
-    private static bool TryApplyTelemetry(DeviceSession state, DeviceTelemetryMessage telemetry, string? remoteIp)
+    private bool TryApplyTelemetry(DeviceSessionState state, DeviceTelemetryMessage telemetry, string? remoteIp)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(telemetry);
 
         state.MarkTelemetry(
+            timeProvider.GetUtcNow(),
             string.IsNullOrWhiteSpace(telemetry.IpAddress) ? remoteIp : telemetry.IpAddress,
             telemetry.Rssi,
             telemetry.FirmwareVersion,
@@ -538,12 +548,13 @@ public sealed partial class DeviceServerHost
         return true;
     }
 
-    private static bool TryApplyStats(DeviceSession state, DeviceStatsMessage stats, string? remoteIp)
+    private bool TryApplyStats(DeviceSessionState state, DeviceStatsMessage stats, string? remoteIp)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(stats);
 
         state.MarkStats(
+            timeProvider.GetUtcNow(),
             remoteIp,
             stats.ChipModel,
             stats.ChipRevision,
@@ -558,7 +569,7 @@ public sealed partial class DeviceServerHost
         return true;
     }
 
-    private static DeviceLogMessage? NormalizeDeviceLog(DeviceSession state, DeviceLogMessage message)
+    private static DeviceLogMessage? NormalizeDeviceLog(DeviceSessionState state, DeviceLogMessage message)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(message);
@@ -632,14 +643,14 @@ public sealed partial class DeviceServerHost
         }
     }
 
-    private void MarkLegacyControlPlaneTraffic(DeviceSession state, string transport)
+    private void MarkLegacyControlPlaneTraffic(DeviceSessionState state, string transport)
     {
         ArgumentNullException.ThrowIfNull(state);
 
         bool firstObservedLegacyTraffic;
         lock (gate)
         {
-            firstObservedLegacyTraffic = state.MarkLegacyControlPlaneTraffic();
+            firstObservedLegacyTraffic = state.MarkLegacyControlPlaneTraffic(timeProvider.GetUtcNow());
         }
 
         if (firstObservedLegacyTraffic)

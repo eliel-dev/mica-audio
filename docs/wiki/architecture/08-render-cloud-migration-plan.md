@@ -168,7 +168,7 @@ Objetivo:
 
 Passos:
 
-1. Criar fronteiras `IDeviceRegistryStore`, `IPairingStore`, `IFirmwareCatalog`, `IBlobStore` e store de comandos/sessoes.
+1. Criar fronteiras `IDeviceRegistryStore`, `IFirmwareCatalog`, `IBlobStore` e stores persistiveis para as fronteiras in-memory ja extraidas.
 2. Implementar Postgres para devices, pair codes, firmware releases, painel ativo e comandos rastreados.
 3. Implementar Key Value para TTL, locks leves, rate-limit e estado efemero de sessao.
 4. Implementar blob store em disco Render atras de `IBlobStore`.
@@ -356,8 +356,9 @@ Contratos que precisam existir antes de trocar infraestrutura:
 
 Estado atual do corte embedded-first:
 
-- `IPanelsBatchStore`, `IDevicePairingStore` e `ICommandStateStore` ja existem como fronteiras in-memory first no server embutido.
-- `IBlobStore`, `IDeviceRegistryStore`, `IFirmwareCatalog` remoto e `ISessionStateStore` continuam pendentes para fases posteriores.
+- `IPanelsBatchStore`, `IDevicePairingStore`, `ICommandStateStore` e `ISessionStateStore` ja existem como fronteiras in-memory first no server embutido.
+- `IBlobStore`, `IDeviceRegistryStore` e `IFirmwareCatalog` remoto continuam pendentes para fases posteriores.
+- WebSocket/frame stream permanece process-local no `Device.Server` via registry interno de conexoes; o desenho cloud ainda precisa definir WSS publico, reconnect e handoff de shutdown.
 
 Separacoes obrigatorias:
 

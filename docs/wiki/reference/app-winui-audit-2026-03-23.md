@@ -108,7 +108,7 @@ Definir estados `wide`, `medium` e `narrow` para as paginas principais e validar
 ## Pontos conformes
 
 - O modelo de deploy esta explicitado no projeto e segue guidance valido para app unpackaged em `Debug`: [App.WinUI.csproj](../../../src/App.WinUI/App.WinUI.csproj#L25). Isso esta alinhado com o guidance oficial para `WindowsPackageType=None` em apps unpackaged.
-- O caminho de release desktop esta coerente com instalador dedicado e bootstrap do runtime .NET Desktop: [Bundle WiX](../../../installer/MicaAudio.Bundle/Bundle.wxs#L1).
+- O caminho de release desktop foi avaliado com instalador dedicado e bootstrap do runtime .NET Desktop; referencia historica: `installer/MicaAudio.Bundle/Bundle.wxs`.
 - A shell usa `NavigationView` para navegacao de topo e `CommandBar` nas superficies de acao, evitando chrome bespoke desnecessario: [ShellPage.xaml](../../../src/App.WinUI/Views/ShellPage.xaml#L10), [DevicesPage CommandBar](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L141).
 - O startup foi desenhado com observabilidade e degradacao controlada: DI no `App`, resolucao lazy de paginas e fallback por aba em caso de falha: [App startup](../../../src/App.WinUI/App.xaml.cs#L73), [ShellPage fallback](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L79).
 

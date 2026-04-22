@@ -7,6 +7,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
 // DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 public sealed partial class DeviceServerHost
 {
     private IResult HandleDeviceFirmwareLatest(HttpContext ctx)
@@ -116,11 +117,12 @@ public sealed partial class DeviceServerHost
         };
     }
 
-    private void MarkDeviceHttpHeartbeat(DeviceSession state, string? remoteIp)
+    private void MarkDeviceHttpHeartbeat(DeviceSessionState state, string? remoteIp)
     {
         ArgumentNullException.ThrowIfNull(state);
 
         state.MarkSeen(
+            timeProvider.GetUtcNow(),
             remoteIp,
             state.Record.LastKnownRssi,
             state.Record.FirmwareVersion,

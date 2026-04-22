@@ -5,6 +5,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#transporte-de-lotes-webp-para-paineis
 // DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 public sealed partial class DeviceServerHost
 {
     public PanelsBatchRegistration RegisterPanelsBatch(
@@ -70,8 +71,10 @@ public sealed partial class DeviceServerHost
             return Results.NotFound(new { error = "batch_not_found" });
         }
 
-        state.Touch();
+        var now = timeProvider.GetUtcNow();
+        state.Touch(now);
         state.MarkSeen(
+            now,
             ctx.Connection.RemoteIpAddress?.ToString(),
             state.Record.LastKnownRssi,
             state.Record.FirmwareVersion,

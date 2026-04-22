@@ -32,10 +32,10 @@ Documentar o fluxo oficial para gerar e publicar o instalador `Setup EXE` assina
 ## Referencias de codigo
 
 - [Workflow de release](../../../.github/workflows/release.yml#L1) - assinatura: `name: release`
-- [Projeto MSI (WiX)](../../../installer/MicaAudio.Installer/MicaAudio.Installer.wixproj#L1) - assinatura: `<Project Sdk="WixToolset.Sdk/5.0.2">`
-- [Product.wxs](../../../installer/MicaAudio.Installer/Product.wxs#L1) - assinatura: `<Package Name="Mica Audio"`
-- [Projeto Bundle (WiX Burn)](../../../installer/MicaAudio.Bundle/MicaAudio.Bundle.wixproj#L1) - assinatura: `<OutputType>Bundle</OutputType>`
-- [Bundle.wxs](../../../installer/MicaAudio.Bundle/Bundle.wxs#L1) - assinatura: `<Bundle Name="Mica Audio"`
+- Projeto MSI historico: `installer/MicaAudio.Installer/MicaAudio.Installer.wixproj` - assinatura: `<Project Sdk="WixToolset.Sdk/5.0.2">`
+- Manifesto MSI historico: `installer/MicaAudio.Installer/Product.wxs` - assinatura: `<Package Name="Mica Audio"`
+- Projeto Bundle historico: `installer/MicaAudio.Bundle/MicaAudio.Bundle.wixproj` - assinatura: `<OutputType>Bundle</OutputType>`
+- Manifesto Bundle historico: `installer/MicaAudio.Bundle/Bundle.wxs` - assinatura: `<Bundle Name="Mica Audio"`
 - [Assinatura de release](../../../scripts/sign-release.ps1#L1) - assinatura: `param(`
 - [Publish profile x64](../../../src/App.WinUI/Properties/PublishProfiles/win-x64.pubxml#L1) - assinatura: `<PublishProtocol>FileSystem</PublishProtocol>`
 

@@ -10,6 +10,7 @@ using MQTTnet.Server;
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#contrato-mqtt-de-controle
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 public sealed partial class DeviceServerHost
 {
     private const string MqttSessionDeviceIdKey = "deviceId";
@@ -73,10 +74,10 @@ public sealed partial class DeviceServerHost
             return Task.CompletedTask;
         }
 
-        DeviceSession? state;
+        DeviceSessionState? state;
         lock (gate)
         {
-            devices.TryGetValue(deviceId, out state);
+            sessionStateStore.TryGetValue(deviceId, out state);
         }
 
         if (state is null || !TokensMatchConstantTime(state.Record.Token, NormalizeMqttPassword(args.Password) ?? string.Empty))
@@ -111,8 +112,9 @@ public sealed partial class DeviceServerHost
 
         lock (gate)
         {
-            state.MarkAuthenticated();
-            state.MarkControlPlaneConnected(remoteIp);
+            var now = timeProvider.GetUtcNow();
+            state.MarkAuthenticated(now);
+            state.MarkControlPlaneConnected(now, remoteIp);
         }
 
         NotifyDevicesChanged();
@@ -131,7 +133,7 @@ public sealed partial class DeviceServerHost
 
         lock (gate)
         {
-            state.MarkControlPlaneDisconnected();
+            state.MarkControlPlaneDisconnected(timeProvider.GetUtcNow());
         }
 
         NotifyDevicesChanged();
@@ -294,11 +296,11 @@ public sealed partial class DeviceServerHost
         await server.InjectApplicationMessage(injected, cancellationToken).ConfigureAwait(false);
     }
 
-    private bool TryResolveDeviceSession(string? deviceId, out DeviceSession state)
+    private bool TryResolveDeviceSession(string? deviceId, out DeviceSessionState state)
     {
         lock (gate)
         {
-            if (!devices.TryGetValue(deviceId ?? string.Empty, out var foundState) || foundState is null)
+            if (!sessionStateStore.TryGetValue(deviceId ?? string.Empty, out var foundState) || foundState is null)
             {
                 state = null!;
                 return false;

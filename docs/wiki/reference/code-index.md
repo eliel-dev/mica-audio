@@ -44,6 +44,12 @@ Pontos principais do cutover HUB75 128x64:
 - [ICommandStateStore](../../../src/Device.Server.Abstractions/Hosting/ICommandStateStore.cs#L1)
 - [TrackedCommandState](../../../src/Device.Server.Abstractions/Hosting/TrackedCommandState.cs#L1)
 - [InMemoryCommandStateStore](../../../src/Device.Server/Hosting/InMemoryCommandStateStore.cs#L1)
+- [ISessionStateStore](../../../src/Device.Server.Abstractions/Hosting/ISessionStateStore.cs#L1)
+- [DeviceSessionState](../../../src/Device.Server.Abstractions/Hosting/DeviceSessionState.cs#L1)
+- [InMemorySessionStateStore](../../../src/Device.Server/Hosting/InMemorySessionStateStore.cs#L1)
+- [DeviceFrameConnection](../../../src/Device.Server/Hosting/DeviceFrameConnection.cs#L1)
+- [DeviceFrameConnectionRegistry](../../../src/Device.Server/Hosting/DeviceFrameConnectionRegistry.cs#L1)
+- [DeviceRecordMutations](../../../src/Device.Server.Abstractions/Hosting/DeviceRecordMutations.cs#L1)
 - [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
 - [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
 - [IDeviceServerHost](../../../src/Device.Server.Abstractions/Hosting/IDeviceServerHost.cs#L1)
@@ -106,8 +112,13 @@ Pontos de estado e visibilidade de devices:
 - [ICommandStateStore](../../../src/Device.Server.Abstractions/Hosting/ICommandStateStore.cs#L1)
 - [TrackedCommandState](../../../src/Device.Server.Abstractions/Hosting/TrackedCommandState.cs#L1)
 - [InMemoryCommandStateStore](../../../src/Device.Server/Hosting/InMemoryCommandStateStore.cs#L1)
+- [ISessionStateStore](../../../src/Device.Server.Abstractions/Hosting/ISessionStateStore.cs#L1)
+- [DeviceSessionState](../../../src/Device.Server.Abstractions/Hosting/DeviceSessionState.cs#L1)
+- [InMemorySessionStateStore](../../../src/Device.Server/Hosting/InMemorySessionStateStore.cs#L1)
+- [DeviceFrameConnection](../../../src/Device.Server/Hosting/DeviceFrameConnection.cs#L1)
+- [DeviceFrameConnectionRegistry](../../../src/Device.Server/Hosting/DeviceFrameConnectionRegistry.cs#L1)
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1)
-- [DeviceSession](../../../src/Device.Server/Hosting/DeviceSession.cs#L1)
+- [DeviceRecordMutations](../../../src/Device.Server.Abstractions/Hosting/DeviceRecordMutations.cs#L1)
 
 Pontos de lifecycle leve de devices:
 
@@ -135,6 +146,7 @@ Observacoes ativas:
 - O storage efemero de batches `WebP` vive atras de `IPanelsBatchStore`; o runtime embedded registra `InMemoryPanelsBatchStore` como default, preservando payload em memoria e limite de `4` batches por device.
 - O estado efemero de pairing vive atras de `IDevicePairingStore`; o runtime embedded registra `InMemoryDevicePairingStore`, preservando pair codes de uso unico, TTL e tentativas por IP.
 - O estado efemero de comandos tracked vive atras de `ICommandStateStore`; o runtime embedded registra `InMemoryCommandStateStore`, preservando progresso, timeout e resultado final em memoria.
+- O estado efemero de sessoes vive atras de `ISessionStateStore`; `DeviceSessionState` guarda apenas presenca/snapshot/records, enquanto `DeviceFrameConnectionRegistry` mantem WebSocket e fila de frames como detalhe process-local do `Device.Server`.
 - O host local agora tambem expõe `GET /dashboard` e `WS /ws/device/{deviceId}` com DTO dedicado para o WebView.
 
 Pontos centrais do pipeline de analise e captura:
