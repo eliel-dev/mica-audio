@@ -120,7 +120,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [LedOutputConfig](../../../src/MicaAudio.Core/Led/LedOutputConfig.cs#L1)
 - [Esp32S3LedOutput](../../../src/Output/Led/Esp32S3LedOutput.cs#L1)
-- [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1)
+- [IDeviceServerHost](../../../src/Device.Server.Abstractions/Hosting/IDeviceServerHost.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1)
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)

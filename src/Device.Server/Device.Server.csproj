@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Device.Server.Abstractions\Device.Server.Abstractions.csproj" />
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
   </ItemGroup>
 

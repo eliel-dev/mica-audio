@@ -717,12 +717,19 @@
         "type": "Project",
         "dependencies": {
           "Device.Protocol": "[1.0.0, )",
+          "Device.Server.Abstractions": "[1.0.0, )",
           "MQTTnet.Server": "[5.1.0.1559, )",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.15.0, )",
           "OpenTelemetry.Extensions.Hosting": "[1.15.0, )",
           "OpenTelemetry.Instrumentation.AspNetCore": "[1.15.0, )",
           "Serilog": "[4.3.1, )",
           "Serilog.Extensions.Logging": "[10.0.0, )"
+        }
+      },
+      "device.server.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )"
         }
       },
       "micaaudio.core": {
@@ -732,7 +739,7 @@
         "type": "Project",
         "dependencies": {
           "Device.Protocol": "[1.0.0, )",
-          "Device.Server": "[1.0.0, )",
+          "Device.Server.Abstractions": "[1.0.0, )",
           "MicaAudio.Core": "[1.0.0, )"
         }
       },

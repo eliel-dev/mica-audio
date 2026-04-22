@@ -186,6 +186,28 @@ public sealed class DeviceIntegrationServiceLegacyWsSettingTests
         {
         }
 
+        public PanelsBatchRegistration RegisterPanelsBatch(
+            string deviceId,
+            string panelsSessionId,
+            ulong batchSequence,
+            byte[] payload,
+            int frameCount,
+            int durationMs,
+            string contentType = "image/webp")
+            => new(
+                panelsSessionId,
+                batchSequence,
+                payload.LongLength,
+                Sha256: string.Empty,
+                contentType,
+                frameCount,
+                durationMs,
+                DownloadUrl: string.Empty);
+
+        public void ClearPanelsBatches(string deviceId, string? panelsSessionId = null)
+        {
+        }
+
         public void Dispose()
         {
         }

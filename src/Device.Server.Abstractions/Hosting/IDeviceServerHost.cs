@@ -1,9 +1,10 @@
-﻿using Device.Protocol.Contracts;
+using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
+// DOCS: docs/handoffs/2026-04-21-server-embedded-decoupling.md
 public interface IDeviceServerHost : IAsyncDisposable
 {
     event EventHandler? DevicesChanged;
@@ -46,4 +47,15 @@ public interface IDeviceServerHost : IAsyncDisposable
     void SendFrame(string deviceId, byte[] framePayload);
 
     void BroadcastFrame(byte[] framePayload);
+
+    PanelsBatchRegistration RegisterPanelsBatch(
+        string deviceId,
+        string panelsSessionId,
+        ulong batchSequence,
+        byte[] payload,
+        int frameCount,
+        int durationMs,
+        string contentType = "image/webp");
+
+    void ClearPanelsBatches(string deviceId, string? panelsSessionId = null);
 }

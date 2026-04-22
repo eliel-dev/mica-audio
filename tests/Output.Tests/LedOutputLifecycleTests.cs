@@ -115,6 +115,9 @@ public class LedOutputLifecycleTests
         public bool RemoveDevice(string deviceId) => false;
         public void SendFrame(string deviceId, byte[] framePayload) => BroadcastFrames.Add(framePayload);
         public void BroadcastFrame(byte[] framePayload) => BroadcastFrames.Add(framePayload);
+        public PanelsBatchRegistration RegisterPanelsBatch(string deviceId, string panelsSessionId, ulong batchSequence, byte[] payload, int frameCount, int durationMs, string contentType = "image/webp")
+            => new(panelsSessionId, batchSequence, payload.LongLength, Sha256: string.Empty, contentType, frameCount, durationMs, DownloadUrl: string.Empty);
+        public void ClearPanelsBatches(string deviceId, string? panelsSessionId = null) { }
         public void Dispose() { }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

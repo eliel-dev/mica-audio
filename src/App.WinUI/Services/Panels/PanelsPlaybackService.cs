@@ -24,7 +24,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         .Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
         .ToArray();
 
-    private readonly DeviceServerHost host;
+    private readonly IDeviceServerHost host;
     private readonly PanelsFrameComposer composer;
     private readonly PanelsDeviceSessionService deviceSessionService;
     private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
@@ -44,7 +44,7 @@ internal sealed class PanelsPlaybackService : IDisposable
     private bool disposed;
 
     public PanelsPlaybackService(
-        DeviceServerHost host,
+        IDeviceServerHost host,
         PanelsFrameComposer composer,
         PanelsDeviceSessionService deviceSessionService,
         Hub75VisualizerSessionService hub75VisualizerSessionService,

@@ -6,9 +6,11 @@ using App.WinUI.Services.Devices;
 using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
+using Device.Server.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
+using Output.Led;
 
 namespace Integration.Smoke;
 
@@ -20,9 +22,11 @@ public sealed class WinUiBootstrapSmokeTests
         var provider = App.WinUI.App.BuildServiceProvider();
 
         Assert.NotNull(provider.GetService<DeviceIntegrationService>());
+        Assert.NotNull(provider.GetService<IDeviceServerHost>());
         Assert.NotNull(provider.GetService<DeviceOperationsCoordinator>());
         Assert.NotNull(provider.GetService<IAppCatalogService>());
         Assert.NotNull(provider.GetService<IAppModifierStateStore>());
+        Assert.NotNull(provider.GetService<Esp32S3LedOutput>());
         Assert.NotNull(provider.GetService<MainPageViewModel>());
         Assert.NotNull(provider.GetService<DevicesPageViewModel>());
         Assert.NotNull(provider.GetService<PanelsPageViewModel>());
@@ -46,6 +50,16 @@ public sealed class WinUiBootstrapSmokeTests
 
         Assert.NotNull(field);
         Assert.True(Assert.IsType<bool>(field!.GetValue(service)));
+    }
+
+    [Fact]
+    public void PanelsPlaybackService_ShouldDependOnDeviceServerAbstraction()
+    {
+        var constructor = typeof(PanelsPlaybackService)
+            .GetConstructors()
+            .Single(ctor => ctor.GetParameters().Length == 5);
+
+        Assert.Equal(typeof(IDeviceServerHost), constructor.GetParameters()[0].ParameterType);
     }
 
     [Fact]

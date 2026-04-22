@@ -155,16 +155,6 @@ public sealed partial class DeviceServerHost
         return Results.File(batch.Payload, batch.ContentType, enableRangeProcessing: false);
     }
 
-    public sealed record PanelsBatchRegistration(
-        string PanelsSessionId,
-        ulong BatchSequence,
-        long FileSizeBytes,
-        string Sha256,
-        string ContentType,
-        int FrameCount,
-        int DurationMs,
-        string DownloadUrl);
-
     private sealed record PanelsBatchEnvelope(
         string DeviceId,
         string PanelsSessionId,

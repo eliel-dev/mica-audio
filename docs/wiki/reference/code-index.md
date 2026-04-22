@@ -36,6 +36,8 @@ Pontos principais do cutover HUB75 128x64:
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
 - [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
+- [IDeviceServerHost](../../../src/Device.Server.Abstractions/Hosting/IDeviceServerHost.cs#L1)
+- [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1)
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1)
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1)
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1)
@@ -213,6 +215,7 @@ Pontos centrais da sessao de paineis HUB75:
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [PanelsDeviceSessionService](../../../src/App.WinUI/Services/Devices/PanelsDeviceSessionService.cs#L1)
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1)
+- [PanelsBatchRegistration](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchRegistration.cs#L1)
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
 
 Observacoes ativas dos paineis:

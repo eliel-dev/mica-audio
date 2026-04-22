@@ -2,7 +2,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 // DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
-// DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
+// DOCS: docs/handoffs/2026-04-21-server-embedded-decoupling.md
 public interface IDeviceOfficialFirmwareCatalog
 {
     bool TryResolveLatest(

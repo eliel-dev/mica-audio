@@ -22,6 +22,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - Quero navegar a wiki por capacidade e status no Atlas: [site/docs-atlas/README.md](../../site/docs-atlas/README.md)
 - Quero mexer em captura/analise/render: [architecture/01-system-overview.md](architecture/01-system-overview.md)
 - Quero entender a arquitetura futura cloud-first e multi-panel: [architecture/07-cloud-first-multi-panel-future-architecture.md](architecture/07-cloud-first-multi-panel-future-architecture.md)
+- Quero planejar o deploy cloud-first no Render: [architecture/08-render-cloud-migration-plan.md](architecture/08-render-cloud-migration-plan.md)
+- Quero ver o mapa de gaps do control plane cloud-first: [reference/cloud-first-control-plane-gap-map.md](reference/cloud-first-control-plane-gap-map.md)
 - Quero avaliar GPIOViewer como diagnostico futuro: [future-implementations/gpio-viewer-diagnostic-viability-checklist.md](future-implementations/gpio-viewer-diagnostic-viability-checklist.md)
 - Quero avaliar ESPConnect como ferramenta externa de flash/USB: [future-implementations/espconnect-usb-tool-viability-checklist.md](future-implementations/espconnect-usb-tool-viability-checklist.md)
 - Quero operar dispositivos e setup de firmware: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
@@ -53,10 +55,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [05 - Device session and reconnect](architecture/05-device-session-and-reconnect.md)
 - [06 - Errors, timeouts and recovery](architecture/06-errors-timeouts-and-recovery.md)
 - [07 - Cloud-first multi-panel future architecture](architecture/07-cloud-first-multi-panel-future-architecture.md)
+- [08 - Render cloud-first migration plan](architecture/08-render-cloud-migration-plan.md)
 
 ### Futuras implementacoes
 - [Index de futuras implementacoes](future-implementations/README.md)
 - [Arquitetura futura cloud-first e multi-panel](architecture/07-cloud-first-multi-panel-future-architecture.md)
+- [Plano de migracao Render cloud-first](architecture/08-render-cloud-migration-plan.md)
 - [GPIOViewer como diagnostico local opcional](future-implementations/gpio-viewer-diagnostic-viability-checklist.md)
 - [ESPConnect como ferramenta externa de flash e USB](future-implementations/espconnect-usb-tool-viability-checklist.md)
 
@@ -109,6 +113,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Convencoes de links wiki<->codigo](reference/linking-conventions.md)
 - [HTTP API v1](reference/http-api-v1.md)
 - [Device telemetry v2 fields](reference/device-telemetry-v2-fields.md)
+- [Cloud-first control plane gap map](reference/cloud-first-control-plane-gap-map.md)
 - [Dashboard nativo de observabilidade por device](reference/device-observability-dashboard.md)
 - [Troubleshooting matrix](reference/troubleshooting-matrix.md)
 - [Docs health](reference/docs-health.md)

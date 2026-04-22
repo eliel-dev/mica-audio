@@ -13,7 +13,7 @@ Descrever o estado futuro recomendado do Mica para:
 
 1. operar com `servidor + firmware + clientes` desacoplados;
 2. suportar `ESP32-S3 DevKitC-1` e `Matrix Portal S3`;
-3. suportar `128x64`, `64x64` e `64x32`;
+3. suportar somente as combinacoes oficiais `ESP32-S3 DevKitC-1 + 128x64` e `Matrix Portal S3 + 64x64`;
 4. mover widgets cloud-safe para a nuvem;
 5. manter audio e metricas locais como dados produzidos no cliente.
 
@@ -53,7 +53,7 @@ flowchart LR
     HA["Home Assistant\nintegration client"]
     DevKit["ESP32-S3 DevKitC-1\nfirmware runtime"]
     MatrixPortal["Matrix Portal S3\nfirmware runtime"]
-    Storage["Postgres + Redis + object storage"]
+    Storage["Postgres + Key Value + blob store"]
 
     Win --> Cloud
     Android --> Cloud
@@ -227,11 +227,10 @@ Backends alvo:
 
 ### panelProfileId
 
-Perfis de painel alvo:
+Perfis de painel oficiais:
 
 - `hub75_128x64`
 - `hub75_64x64`
-- `hub75_64x32`
 
 ### Dimensoes explicitas
 
@@ -239,10 +238,16 @@ Perfis de painel alvo:
 
 ## Matriz de suporte oficial futura
 
-| Board | Backend | 128x64 | 64x64 | 64x32 | Observacao |
-| --- | --- | --- | --- | --- | --- |
-| ESP32-S3 DevKitC-1 | `dma_hub75` | Sim | Sim | Sim | Linha principal de maior folga de memoria |
-| Matrix Portal S3 | `protomatter_hub75` | Nao | Sim | Sim | Limite oficial deste documento: no maximo `64x64` |
+| Board | Backend | Painel oficial | Observacao |
+| --- | --- | --- | --- |
+| ESP32-S3 DevKitC-1 | `dma_hub75` | `hub75_128x64` | Linha principal |
+| Matrix Portal S3 | `protomatter_hub75` | `hub75_64x64` | Segunda combinacao oficial |
+
+Regra fechada:
+
+1. `ESP32-S3 DevKitC-1` nao recebe artefato oficial `64x64` nem `64x32`.
+2. `Matrix Portal S3` nao recebe artefato oficial `128x64` nem `64x32`.
+3. Nenhuma combinacao fora da tabela acima deve ser anunciada por catalogo, UI ou API.
 
 ### Aviso especifico do Matrix Portal S3
 
@@ -259,12 +264,13 @@ Motivo arquitetural:
 Por isso, este documento fecha que:
 
 1. nao existe artefato oficial `matrixportal_s3 + 128x64`;
-2. a UI futura deve filtrar esse par como combinacao invalida;
-3. o catalogo futuro nao deve anunciar essa geometria para esse board.
+2. tambem nao existe artefato oficial `matrixportal_s3 + 64x32`;
+3. a UI futura deve filtrar esses pares como combinacoes invalidas;
+4. o catalogo futuro nao deve anunciar essas geometrias para esse board.
 
 ## Catalogo e distribuicao de firmware
 
-O catalogo oficial deixa de ser `um firmware unico` e passa a ser uma matriz `board + panel + profile`.
+O catalogo oficial deixa de ser `um firmware unico` e passa a ser uma matriz restrita `board + panel + profile`, com apenas duas combinacoes publicadas.
 
 Nome de artefato futuro:
 
@@ -272,13 +278,10 @@ Nome de artefato futuro:
 <boardModel>-<panelWidth>x<panelHeight>-<profile>_merged.bin
 ```
 
-Exemplos de familia:
+Artefatos oficiais alvo:
 
 - `esp32s3-devkitc1-128x64-dma_exp_merged.bin`
-- `esp32s3-devkitc1-64x64-dma_exp_merged.bin`
-- `esp32s3-devkitc1-64x32-dma_exp_merged.bin`
 - `matrixportal-s3-64x64-protomatter_exp_merged.bin`
-- `matrixportal-s3-64x32-protomatter_exp_merged.bin`
 
 O manifesto futuro deve documentar ao menos:
 
@@ -294,8 +297,9 @@ O manifesto futuro deve documentar ao menos:
 Regras fechadas:
 
 1. o catalogo oficial filtra combinacoes invalidas por board;
-2. `Matrix Portal S3` nao recebe artefato oficial `128x64`;
-3. a UI futura deve apresentar apenas variantes oficialmente suportadas.
+2. `Matrix Portal S3` nao recebe artefato oficial `128x64` nem `64x32`;
+3. `ESP32-S3 DevKitC-1` nao recebe artefato oficial `64x64` nem `64x32`;
+4. a UI futura deve apresentar apenas variantes oficialmente suportadas.
 
 ### Widgets, paineis e configuracao
 
@@ -361,7 +365,7 @@ Regra fechada:
 -layers Optimize
 ```
 
-### Preset oficial para 64x64 e 64x32
+### Preset oficial para 64x64
 
 ```text
 -coalesce
@@ -398,8 +402,8 @@ Primeira fase cloud:
 Responsabilidades de storage:
 
 - `Postgres` para estado duravel
-- `Redis` ou `Key Value` para estado efemero
-- `object storage` para firmware, midias redimensionadas e lotes `WebP`
+- `Key Value` para estado efemero
+- `blob store` para firmware, midias redimensionadas e lotes `WebP`, com disco persistente Render apenas na v1 single-instance antes de S3-compatible
 
 Regra fechada:
 
@@ -552,16 +556,18 @@ Regra fechada:
 
 ## Status atual vs alvo futuro
 
+O mapa operacional detalhado dos gaps entre o contrato atual e este alvo esta em [cloud-first-control-plane-gap-map](../reference/cloud-first-control-plane-gap-map.md#objetivo).
+
 | Tema | Estado atual | Alvo futuro |
 | --- | --- | --- |
 | Servidor | embutido no WinUI | servico cloud standalone |
 | Control plane publico | HTTP + WS + MQTT local | HTTPS + WSS |
-| Firmware oficial | DevKitC-1 `128x64` unico | matriz multi-board e multi-panel |
+| Firmware oficial | DevKitC-1 `128x64` unico | DevKitC-1 `128x64` + Matrix Portal S3 `64x64` |
 | Boards oficiais | `esp32s3_devkitc1` | `esp32s3_devkitc1` + `matrixportal_s3` |
-| Geometria oficial | `128x64` | `128x64`, `64x64`, `64x32` |
+| Geometria oficial | `128x64` | `128x64` e `64x64` |
 | Onboarding | wizard desktop com flash | flash externo + pair code + AP portal |
 | Pairing | desktop host local | cliente Windows/Android + cloud claim |
-| Batches de paineis | memoria do processo | object storage + cache |
+| Batches de paineis | memoria do processo | blob store + cache |
 | Visualizador de audio | pipeline local do Windows | publishers Windows/Android + roteamento cloud |
 
 ## Roadmap recomendado
@@ -586,7 +592,7 @@ Ganho esperado:
 
 Objetivo:
 
-1. trocar o catalogo de firmware unico por uma matriz `board + panel + profile`;
+1. trocar o catalogo de firmware unico por uma matriz restrita `board + panel + profile`;
 2. introduzir taxonomia explicita de `boardModel`, `displayBackend` e `panelProfileId`;
 3. filtrar combinacoes invalidas por capacidade oficial.
 
@@ -596,7 +602,7 @@ Dependencia principal:
 
 Ganho esperado:
 
-- baseline oficial para `128x64`, `64x64` e `64x32`.
+- baseline oficial para `ESP32-S3 DevKitC-1 + 128x64` e `Matrix Portal S3 + 64x64`.
 
 ### Fase 3 - Firmware direct-to-cloud
 
@@ -628,7 +634,7 @@ Dependencia principal:
 
 Ganho esperado:
 
-- qualidade mais consistente entre `128x64`, `64x64` e `64x32`.
+- qualidade mais consistente entre `128x64` e `64x64`.
 
 ### Fase 5 - Windows remote-first
 
@@ -692,6 +698,7 @@ Ganho esperado:
 
 - [01 - System overview](01-system-overview.md)
 - [Modulo Device.Server + Device.Protocol](../modules/device-server-protocol.md)
+- [Cloud-first control plane gap map](../reference/cloud-first-control-plane-gap-map.md)
 - [Modulo Paineis](../modules/paineis.md)
 - [Modulo Server Build And Artifacts](../modules/server-build-and-artifacts.md)
 - [Guia - Setup New Device](../guides/setup-new-device.md)

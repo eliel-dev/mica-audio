@@ -81,6 +81,12 @@
       },
       "device.protocol": {
         "type": "Project"
+      },
+      "device.server.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )"
+        }
       }
     }
   }

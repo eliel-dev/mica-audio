@@ -85,6 +85,13 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Mudanca de token/session pode invalidar devices em campo.
 - Filtro de rede/CIDR mal configurado pode bloquear dispositivos legitimos.
 
+## Atualizacao 2026-04 - Gap map cloud-first
+
+- O contrato atual permanece preservado: HTTP/WS/MQTT local continuam sendo o baseline operacional.
+- A preparacao para cloud-first foi documentada em [cloud-first-control-plane-gap-map](../reference/cloud-first-control-plane-gap-map.md#objetivo).
+- O mapa separa inventario atual, gaps para `HTTPS/WSS`, DTOs candidatos a evolucao e fases recomendadas.
+- Nenhuma mudanca de wire, firmware, endpoints ou topicos MQTT foi feita nesta entrega documental.
+
 ## Atualizacao 2026-04 - Transporte De Lotes WebP Para Paineis
 
 - `Paineis` ganhou um caminho `monitor-first` alternativo ao `Frame128x64` continuo:
@@ -182,7 +189,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 
 ## Referencias de codigo
 
-- [IDeviceServerHost](../../../src/Device.Server/Hosting/IDeviceServerHost.cs#L1) - assinatura: `public interface IDeviceServerHost`
+- [IDeviceServerHost](../../../src/Device.Server.Abstractions/Hosting/IDeviceServerHost.cs#L1) - assinatura: `public interface IDeviceServerHost`
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Advanced](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Firmware](../../../src/Device.Server/Hosting/DeviceServerHost.Firmware.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
@@ -190,7 +197,8 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
-- [DeviceOfficialFirmwareCatalog](../../../src/Device.Server/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
+- [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
+- [PanelsBatchRegistration](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchRegistration.cs#L1) - assinatura: `public sealed record PanelsBatchRegistration`
 - [DeviceServerObservability](../../../src/Device.Server/Hosting/DeviceServerObservability.cs#L1) - assinatura: `internal static class DeviceServerObservability`
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1) - assinatura: `internal sealed class DeviceServerRuntimeConfig`
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1) - assinatura: `internal static class DeviceMqttTopics`

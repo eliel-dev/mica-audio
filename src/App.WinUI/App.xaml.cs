@@ -180,10 +180,10 @@ public partial class App : Application
         services.AddSingleton<ILoopbackCapture, WasapiLoopbackCaptureService>();
         services.AddSingleton<SimulatorLedOutput>();
         services.AddSingleton<NullLedOutput>();
-        services.AddSingleton(sp => new Esp32S3LedOutput(sp.GetRequiredService<DeviceServerHost>()));
+        services.AddSingleton(sp => new Esp32S3LedOutput(sp.GetRequiredService<IDeviceServerHost>()));
         services.AddSingleton<PanelsDeviceSessionService>();
         services.AddSingleton(sp => new PanelsPlaybackService(
-            sp.GetRequiredService<DeviceServerHost>(),
+            sp.GetRequiredService<IDeviceServerHost>(),
             sp.GetRequiredService<PanelsFrameComposer>(),
             sp.GetRequiredService<PanelsDeviceSessionService>(),
             sp.GetRequiredService<Hub75VisualizerSessionService>(),

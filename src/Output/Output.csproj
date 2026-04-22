@@ -3,7 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MicaAudio.Core\MicaAudio.Core.csproj" />
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
-    <ProjectReference Include="..\Device.Server\Device.Server.csproj" />
+    <ProjectReference Include="..\Device.Server.Abstractions\Device.Server.Abstractions.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
