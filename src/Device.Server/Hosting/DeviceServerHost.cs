@@ -20,6 +20,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 // DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
+// DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -42,8 +43,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly TimeProvider timeProvider;
     private readonly IDeviceOfficialFirmwareCatalog? firmwareCatalog;
     private readonly IPanelsBatchStore panelsBatchStore;
+    private readonly IDevicePairingStore pairingStore;
     private readonly DeviceSessionRegistry devices = new();
-    private readonly DevicePairingState pairingState = new();
     private readonly PendingTrackedCommandStore pendingTrackedCommands = new();
 
     private DeviceServerRuntimeConfig runtimeConfig = DeviceServerRuntimeConfig.From(new ServerConfig());
@@ -66,12 +67,17 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
     }
 
-    public DeviceServerHost(TimeProvider timeProvider, IDeviceOfficialFirmwareCatalog? firmwareCatalog, IPanelsBatchStore? panelsBatchStore = null)
+    public DeviceServerHost(
+        TimeProvider timeProvider,
+        IDeviceOfficialFirmwareCatalog? firmwareCatalog,
+        IPanelsBatchStore? panelsBatchStore = null,
+        IDevicePairingStore? pairingStore = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
         this.firmwareCatalog = firmwareCatalog;
         this.panelsBatchStore = panelsBatchStore ?? new InMemoryPanelsBatchStore();
+        this.pairingStore = pairingStore ?? new InMemoryDevicePairingStore();
     }
 
     public event EventHandler? DevicesChanged;
@@ -289,7 +295,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             lock (gate)
             {
                 sessionsToDispose = devices.Drain();
-                pairingState.Clear();
+                pairingStore.Clear();
             }
 
             foreach (var session in sessionsToDispose)
@@ -310,7 +316,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         lock (gate)
         {
-            pairingCode = pairingState.CreateCode(code, ttl, timeProvider);
+            pairingCode = pairingStore.SaveCode(code, ttl, timeProvider.GetUtcNow());
         }
 
         Log($"Codigo de pareamento gerado (expira em {ttl.TotalSeconds:0}s).");
@@ -533,7 +539,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
             state = new DeviceSession(record, timeProvider, SocketDetachGracePeriod);
             replacedSession = devices.Set(state);
-            pairingState.ResetAttempts(remoteIpKey);
+            pairingStore.ResetAttempts(remoteIpKey);
         }
 
         replacedSession?.Dispose();
@@ -769,7 +775,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return pairingState.TryConsume(code, timeProvider);
+            return pairingStore.TryConsumeCode(code, timeProvider.GetUtcNow());
         }
     }
 
@@ -777,7 +783,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return pairingState.TryRegisterAttempt(remoteIpKey, runtimeConfig, timeProvider, out retryAfterSeconds);
+            return pairingStore.TryRegisterAttempt(
+                remoteIpKey,
+                runtimeConfig.PairingAttemptsPerWindow,
+                runtimeConfig.PairingAttemptWindow,
+                timeProvider.GetUtcNow(),
+                out retryAfterSeconds);
         }
     }
 

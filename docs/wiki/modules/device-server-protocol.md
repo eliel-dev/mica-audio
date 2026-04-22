@@ -59,6 +59,14 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - O composition root da `App.WinUI` registra `IPanelsBatchStore -> InMemoryPanelsBatchStore` junto do `DeviceServerHost` embedded.
 - Nao houve alteracao de URL, payload `queue_panels_batch`, autenticacao, firmware, portas, HTTP/WS/MQTT ou client remoto.
 
+## Atualizacao 2026-04 - Storage De Pairing
+
+- `IDevicePairingStore` vive em `Device.Server.Abstractions` como fronteira publica para pair codes e tentativas de pareamento.
+- `Device.Server` fornece `InMemoryDevicePairingStore`, mantendo a semantica atual: codigo case-insensitive, uso unico, TTL por `ExpiresAtUtc`, tentativas por `remoteIpKey`, janela de abuso e reset apos pareamento valido.
+- `DeviceServerHost` continua gerando o codigo aleatorio e usando `TimeProvider`, mas delega `SaveCode`, `TryConsumeCode`, `TryRegisterAttempt`, `ResetAttempts` e `Clear` ao store.
+- O composition root da `App.WinUI` registra `IDevicePairingStore -> InMemoryDevicePairingStore` junto do `DeviceServerHost` embedded.
+- Nao houve alteracao de `/api/v1/pair`, erros HTTP, rate limiter ASP.NET, autenticacao, firmware, portas, HTTP/WS/MQTT ou client remoto.
+
 ## Politicas de seguranca
 
 1. Rate limiting:
@@ -218,6 +226,8 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1) - assinatura: `public sealed record PanelsBatchWrite`
 - [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1) - assinatura: `public sealed record PanelsBatchEntry`
 - [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1) - assinatura: `public sealed class InMemoryPanelsBatchStore`
+- [IDevicePairingStore](../../../src/Device.Server.Abstractions/Hosting/IDevicePairingStore.cs#L1) - assinatura: `public interface IDevicePairingStore`
+- [InMemoryDevicePairingStore](../../../src/Device.Server/Hosting/InMemoryDevicePairingStore.cs#L1) - assinatura: `public sealed class InMemoryDevicePairingStore`
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
 - [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1) - assinatura: `public interface IDeviceFrameTransport`
 - [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1) - assinatura: `public interface IDeviceServerClient`
@@ -251,6 +261,8 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - `src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs`
 - `src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs`
 - `src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs`
+- `src/Device.Server/Hosting/InMemoryDevicePairingStore.cs`
+- `src/Device.Server.Abstractions/Hosting/IDevicePairingStore.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Routes.cs`
@@ -372,7 +384,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - `DeviceServerHost` foi reduzido para orquestracao do host ASP.NET Core e passou a mapear endpoints em route groups via `DeviceServerHost.Routes`.
 - O estado interno foi separado em colaboradores dedicados:
   - `DeviceSessionRegistry`
-  - `DevicePairingState`
+  - `InMemoryDevicePairingStore`
   - `PendingTrackedCommandStore`
   - `DeviceRecordMutations`
 - A logica temporal sensivel agora usa `TimeProvider` em:

@@ -350,7 +350,7 @@ Contratos que precisam existir antes de trocar infraestrutura:
 - `IBlobStore`: upload, open read, delete, URL publica/autenticada e metadata.
 - `IDeviceRegistryStore`: devices, tokens, capacidades, estado duravel e snapshots.
 - `IFirmwareCatalog`: releases por board/backend/panel/profile.
-- `IPairingStore`: pair codes de uso unico com TTL.
+- `IDevicePairingStore`: pair codes de uso unico com TTL.
 - `ICommandStateStore`: comandos tracked com progresso, timeout e resultado final.
 - `ISessionStateStore`: presenca efemera, reconnect e handoff de shutdown.
 

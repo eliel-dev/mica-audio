@@ -31,6 +31,7 @@ namespace App.WinUI;
 // DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 // DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
 // DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
+// DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
@@ -148,10 +149,12 @@ public partial class App : Application
         services.AddSingleton<IEmbeddedDeviceServerSettingsProvider, AppEmbeddedDeviceServerSettingsProvider>();
         services.AddSingleton<IEmbeddedDevicePublicHostResolver, NetworkInterfaceEmbeddedDevicePublicHostResolver>();
         services.AddSingleton<IPanelsBatchStore, InMemoryPanelsBatchStore>();
+        services.AddSingleton<IDevicePairingStore, InMemoryDevicePairingStore>();
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
             sp.GetService<IDeviceOfficialFirmwareCatalog>(),
-            sp.GetRequiredService<IPanelsBatchStore>()));
+            sp.GetRequiredService<IPanelsBatchStore>(),
+            sp.GetRequiredService<IDevicePairingStore>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
         services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<IDeviceServerHost>());
         services.AddSingleton(sp => new EmbeddedDeviceServerClient(

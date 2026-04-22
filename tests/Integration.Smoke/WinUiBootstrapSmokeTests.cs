@@ -29,6 +29,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<IEmbeddedDeviceServerClientRuntime>());
         Assert.NotNull(provider.GetService<IDeviceServerHost>());
         Assert.NotNull(provider.GetService<IPanelsBatchStore>());
+        Assert.NotNull(provider.GetService<IDevicePairingStore>());
         Assert.NotNull(provider.GetService<IDeviceFrameTransport>());
         Assert.NotNull(provider.GetService<DeviceOperationsCoordinator>());
         Assert.NotNull(provider.GetService<IAppCatalogService>());
