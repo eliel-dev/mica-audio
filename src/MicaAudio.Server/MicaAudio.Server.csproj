@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MicaAudio.Server</AssemblyName>
+    <RootNamespace>MicaAudio.Server</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Device.Server\Device.Server.csproj" />
+    <ProjectReference Include="..\Device.Server.Abstractions\Device.Server.Abstractions.csproj" />
+    <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\Device.Server\wwwroot\dashboard\**\*">
+      <Link>wwwroot\dashboard\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

@@ -653,6 +653,14 @@
       "micaaudio.core": {
         "type": "Project"
       },
+      "micaaudio.server": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )",
+          "Device.Server": "[1.0.0, )",
+          "Device.Server.Abstractions": "[1.0.0, )"
+        }
+      },
       "output": {
         "type": "Project",
         "dependencies": {

@@ -39,6 +39,7 @@
     <ProjectReference Include="..\..\src\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\Device.Client.Embedded\Device.Client.Embedded.csproj" />
     <ProjectReference Include="..\..\src\Device.Server\Device.Server.csproj" />
+    <ProjectReference Include="..\..\src\MicaAudio.Server\MicaAudio.Server.csproj" />
     <ProjectReference Include="..\..\src\MicaAudio.Core\MicaAudio.Core.csproj" />
     <ProjectReference Include="..\..\src\Analyzer.Dsp\Analyzer.Dsp.csproj" />
   </ItemGroup>

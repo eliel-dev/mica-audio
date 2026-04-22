@@ -86,13 +86,14 @@ Regra operacional:
 
 O estado atual relevante para a migracao e:
 
-1. `DeviceServerHost` nasce dentro do `App.WinUI`.
+1. `DeviceServerHost` nasce dentro do `App.WinUI` no fluxo desktop embedded e tambem pode ser iniciado pelo executavel standalone `MicaAudio.Server`.
 2. Persistencia de devices fica em JSON local protegido por DPAPI.
-3. Pair codes, sessoes, comandos pendentes e batches WebP vivem em memoria do processo.
+3. Pair codes, sessoes, comandos pendentes e batches WebP vivem em memoria do processo; o standalone persiste apenas o registry de devices em JSON local.
 4. O catalogo oficial de firmware fica embarcado no app desktop.
 5. O control plane operacional usa HTTP local, WS local e MQTT embutido.
 6. O hot path visual continua em `Esp32S3LedOutput -> DeviceServerHost.BroadcastFrame -> /ws/v1/stream`.
 7. `Paineis` ja tem batch WebP, mas o batch atual e in-memory.
+8. `render.yaml` e `src/MicaAudio.Server/Dockerfile` existem para smoke Docker/Render do server standalone.
 
 ## Fases de migracao
 
@@ -113,6 +114,7 @@ Passos:
 Saida esperada:
 
 - Wiki consistente sobre Render, cloud-first, hardware oficial e ordem de fases.
+- Status em 2026-04-22: concluida.
 
 ### Fase 1 - Server standalone cloud-ready sem mudar wire
 
@@ -137,6 +139,12 @@ Gates:
 - Pairing local ainda funcionando.
 - WS stream legado ainda funcionando.
 
+Status em 2026-04-22:
+
+- `src/MicaAudio.Server` foi criado como executavel standalone sem dependencia de `App.WinUI`.
+- `PORT` tem precedencia sobre a porta configurada e `MICA_SERVER__*` alimenta `ServerConfig`.
+- O startup gera pair code transitorio para smoke local quando `StartupPairCodeTtlSeconds > 0`.
+
 ### Fase 2 - Bootstrap Render
 
 Objetivo:
@@ -159,6 +167,11 @@ Gates:
 - Render deploy responde health check.
 - Logs nao expoem secrets.
 - WSS usa `wss://` publicamente.
+
+Status em 2026-04-22:
+
+- `.dockerignore`, `src/MicaAudio.Server/Dockerfile` e `render.yaml` foram adicionados.
+- O smoke local valida `/api/v1/health` e `/api/v1/server/info`; deploy Render real ainda depende de publicar o repo e aplicar o Blueprint no Dashboard.
 
 ### Fase 3 - Persistencia cloud
 
@@ -437,6 +450,11 @@ Fases firmware/protocolo:
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1) - assinatura esperada: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura esperada: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost panels batches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1) - assinatura esperada: `public sealed partial class DeviceServerHost`
+- [MicaAudio.Server](../../../src/MicaAudio.Server/MicaAudio.Server.csproj#L1) - assinatura esperada: `<Project Sdk="Microsoft.NET.Sdk.Web">`
+- [MicaAudioServerBootstrap](../../../src/MicaAudio.Server/MicaAudioServerBootstrap.cs#L1) - assinatura esperada: `public static class MicaAudioServerBootstrap`
+- [MicaAudioServerRuntime](../../../src/MicaAudio.Server/MicaAudioServerRuntime.cs#L1) - assinatura esperada: `public sealed partial class MicaAudioServerRuntime`
+- [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1) - assinatura esperada: `public sealed class StandaloneDeviceRegistryStore`
+- [Render Blueprint](../../../render.yaml#L1) - assinatura esperada: `services:`
 - [PairDeviceRequest](../../../src/Device.Protocol/Models/PairDeviceRequest.cs#L1) - assinatura esperada: `public sealed class PairDeviceRequest`
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1) - assinatura esperada: `public sealed class PairDeviceResponse`
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1) - assinatura esperada: `public sealed class PanelsBatchCommandPayload`

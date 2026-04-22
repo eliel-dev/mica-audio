@@ -33,6 +33,14 @@ Pontos principais do cutover HUB75 128x64:
 - [Board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)
 - [Particao local 3MB APP / 9.9MB FATFS](../../../firmware/esp32s3-devkitc1/partitions/mica_app3M_fat9M_16MB.csv#L1)
 - [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L1)
+- [MicaAudio.Server](../../../src/MicaAudio.Server/MicaAudio.Server.csproj#L1)
+- [MicaAudio.Server Program](../../../src/MicaAudio.Server/Program.cs#L1)
+- [MicaAudioServerBootstrap](../../../src/MicaAudio.Server/MicaAudioServerBootstrap.cs#L1)
+- [MicaAudioServerOptions](../../../src/MicaAudio.Server/MicaAudioServerOptions.cs#L1)
+- [MicaAudioServerRuntime](../../../src/MicaAudio.Server/MicaAudioServerRuntime.cs#L1)
+- [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1)
+- [MicaAudio.Server Dockerfile](../../../src/MicaAudio.Server/Dockerfile#L1)
+- [Render Blueprint](../../../render.yaml#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [DeviceServerHost panels batches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
 - [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1)
@@ -148,6 +156,8 @@ Observacoes ativas:
 - O estado efemero de comandos tracked vive atras de `ICommandStateStore`; o runtime embedded registra `InMemoryCommandStateStore`, preservando progresso, timeout e resultado final em memoria.
 - O estado efemero de sessoes vive atras de `ISessionStateStore`; `DeviceSessionState` guarda apenas presenca/snapshot/records, enquanto `DeviceFrameConnectionRegistry` mantem WebSocket e fila de frames como detalhe process-local do `Device.Server`.
 - O host local agora tambem expõe `GET /dashboard` e `WS /ws/device/{deviceId}` com DTO dedicado para o WebView.
+
+- `MicaAudio.Server` agora fornece o primeiro host standalone/Docker para smoke local e Render, reaproveitando `DeviceServerHost` sem transformar ainda o WinUI em client remoto.
 
 Pontos centrais do pipeline de analise e captura:
 

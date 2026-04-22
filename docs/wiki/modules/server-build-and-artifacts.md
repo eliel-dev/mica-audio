@@ -1,5 +1,16 @@
 # Modulo Server Build And Artifacts
 
+## Server standalone
+
+- `MicaAudio.Server` e o primeiro executavel standalone do control plane, mantendo `Device.Server` como biblioteca de hosting/transportes.
+- O projeto publica o dashboard estatico de `Device.Server/wwwroot/dashboard` para `wwwroot/dashboard` no output/publish do executavel.
+- Configuracao operacional:
+  - `PORT` sobrescreve a porta HTTP para Render;
+  - `MICA_SERVER__*` configura o runtime standalone;
+  - `MICA_SERVER__STORAGEROOT` define onde `StandaloneDeviceRegistryStore` grava `devices.json`.
+- `src/MicaAudio.Server/Dockerfile` usa build multi-stage com imagens oficiais .NET 10 e `render.yaml` define Web Service Docker com health check em `/api/v1/health`.
+- O smoke Render desta fase valida runtime HTTP/WS publico; operacao cloud completa de firmware e WinUI remoto ficam para fases posteriores.
+
 Artefato oficial de firmware embarcado:
 1. `esp32s3-devkitc1-128x64-dma_exp_merged.bin`
 2. `esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json`
@@ -49,5 +60,11 @@ O catalogo ativo nao expoe mais Matrix Portal S3, painel `64x32` nem o perfil `s
 
 ## Referencias de codigo
 
+- [MicaAudio.Server](../../../src/MicaAudio.Server/MicaAudio.Server.csproj#L1)
+- [MicaAudioServerBootstrap](../../../src/MicaAudio.Server/MicaAudioServerBootstrap.cs#L1)
+- [MicaAudioServerRuntime](../../../src/MicaAudio.Server/MicaAudioServerRuntime.cs#L1)
+- [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1)
+- [MicaAudio.Server Dockerfile](../../../src/MicaAudio.Server/Dockerfile#L1)
+- [Render Blueprint](../../../render.yaml#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
 - [AppData Firmware](../../../src/App.WinUI/AppData/Firmware)

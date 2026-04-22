@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: mica-audio-server
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./src/MicaAudio.Server/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - key: MICA_SERVER__STORAGEROOT
+        value: /data
+      - key: MICA_SERVER__RESTRICTTOPRIVATENETWORKS
+        value: "false"
+      - key: MICA_SERVER__STARTUPPAIRCODETTLSECONDS
+        value: "600"
+      - key: MICA_SERVER__ALLOWLEGACYWEBSOCKETQUERYTOKEN
+        value: "false"
+    disk:
+      name: mica-audio-server-data
+      mountPath: /data
+      sizeGB: 5

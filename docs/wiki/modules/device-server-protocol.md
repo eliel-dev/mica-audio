@@ -84,6 +84,14 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - O composition root da `App.WinUI` registra `ISessionStateStore -> InMemorySessionStateStore` junto do `DeviceServerHost` embedded.
 - Nao houve alteracao de endpoints, payloads, topicos MQTT, auth, firmware, portas, client remoto ou semantica de online/legacy/offline.
 
+## Atualizacao 2026-04 - Server Standalone + Docker/Render Smoke
+
+- `MicaAudio.Server` e o primeiro executavel standalone do server e reutiliza `DeviceServerHost` como implementacao real de HTTP/WS/MQTT.
+- O host standalone registra os stores in-memory atuais, persiste `DeviceRecord` em JSON simples via `StandaloneDeviceRegistryStore` e aceita configuracao por `MICA_SERVER__*`.
+- A porta HTTP continua `5272` por default, mas o env `PORT` tem precedencia para Render; `render.yaml` configura `StorageRoot=/data` e `RestrictToPrivateNetworks=false`.
+- O startup pode gerar um pair code transitorio em log/console (`StartupPairCodeTtlSeconds`, default `600`, `0` desliga) para smoke local sem admin API.
+- O fluxo WinUI embedded permanece o default do app desktop; este corte nao cria client remoto nem muda firmware, endpoints, payloads, MQTT topics ou auth.
+
 ## Politicas de seguranca
 
 1. Rate limiting:
@@ -239,6 +247,11 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [MicaAudio.Server](../../../src/MicaAudio.Server/MicaAudio.Server.csproj#L1) - assinatura: `<Project Sdk="Microsoft.NET.Sdk.Web">`
+- [MicaAudioServerBootstrap](../../../src/MicaAudio.Server/MicaAudioServerBootstrap.cs#L1) - assinatura: `public static class MicaAudioServerBootstrap`
+- [MicaAudioServerRuntime](../../../src/MicaAudio.Server/MicaAudioServerRuntime.cs#L1) - assinatura: `public sealed partial class MicaAudioServerRuntime`
+- [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1) - assinatura: `public sealed class StandaloneDeviceRegistryStore`
+- [Render Blueprint](../../../render.yaml#L1) - assinatura: `services:`
 - [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1) - assinatura: `public interface IPanelsBatchStore`
 - [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1) - assinatura: `public sealed record PanelsBatchWrite`
 - [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1) - assinatura: `public sealed record PanelsBatchEntry`
@@ -279,6 +292,10 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 ## Backlinks no codigo
 
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
+- `src/MicaAudio.Server/MicaAudioServerBootstrap.cs`
+- `src/MicaAudio.Server/MicaAudioServerOptions.cs`
+- `src/MicaAudio.Server/MicaAudioServerRuntime.cs`
+- `src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs`
 - `src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs`
 - `src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs`
