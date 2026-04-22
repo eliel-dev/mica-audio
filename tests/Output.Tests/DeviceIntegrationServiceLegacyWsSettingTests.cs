@@ -1,5 +1,6 @@
 using App.WinUI.Services;
 using App.WinUI.Services.Devices;
+using Device.Client;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;

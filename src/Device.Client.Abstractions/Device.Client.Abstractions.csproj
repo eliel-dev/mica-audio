@@ -7,7 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
   </ItemGroup>
 

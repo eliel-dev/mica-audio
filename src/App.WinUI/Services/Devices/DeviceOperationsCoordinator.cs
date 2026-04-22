@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Services.Logging;
+using Device.Client;
 using Device.Protocol.Models;
 using Microsoft.Extensions.Logging;
 
@@ -9,6 +10,7 @@ namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 internal sealed partial class DeviceOperationsCoordinator : IDisposable
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);

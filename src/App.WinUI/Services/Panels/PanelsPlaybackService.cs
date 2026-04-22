@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using App.WinUI.Models.Panels;
 using App.WinUI.Services.Devices;
+using Device.Client;
 using Device.Protocol.Models;
-using Device.Server.Hosting;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 using Output.Led;
@@ -13,6 +13,7 @@ namespace App.WinUI.Services.Panels;
 // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-prioridade-hub75-visualizador-sobre-paineis
 // DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 internal sealed class PanelsPlaybackService : IDisposable
 {
     private static readonly bool EnableBatchPerfLogging =

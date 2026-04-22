@@ -1,8 +1,8 @@
 using App.WinUI.Models.Panels;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Panels;
+using Device.Client;
 using Device.Protocol.Models;
-using Device.Server.Hosting;
 
 namespace Integration.Smoke;
 

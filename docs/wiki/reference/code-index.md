@@ -37,7 +37,7 @@ Pontos principais do cutover HUB75 128x64:
 - [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
 - [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
 - [IDeviceServerHost](../../../src/Device.Server.Abstractions/Hosting/IDeviceServerHost.cs#L1)
-- [IDeviceFrameTransport](../../../src/Device.Server.Abstractions/Hosting/IDeviceFrameTransport.cs#L1)
+- [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1)
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1)
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1)
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1)
@@ -72,7 +72,7 @@ Pontos de UI para operacao de devices:
 Pontos de estado e visibilidade de devices:
 
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
-- [IDeviceServerClient](../../../src/App.WinUI/Services/Devices/IDeviceServerClient.cs#L1)
+- [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1)
 - [DeviceRefreshCoordinator](../../../src/App.WinUI/Services/Devices/DeviceRefreshCoordinator.cs#L1)
 - [DeviceCommandDispatcher](../../../src/App.WinUI/Services/Devices/DeviceCommandDispatcher.cs#L1)
 - [DeviceCommandTracker](../../../src/App.WinUI/Services/Devices/DeviceCommandTracker.cs#L1)
@@ -112,6 +112,7 @@ Observacoes ativas:
 - O online/offline oficial da UI agora vem do control plane MQTT; WS isolado nao basta mais para marcar device online.
 - O snapshot tambem diferencia `LegacyOnly` para firmware que ainda usa WS-texto/HTTP no control plane.
 - O hot path visual continua em `Esp32S3LedOutput -> IDeviceFrameTransport -> DeviceServerHost.BroadcastFrame/SendFrame -> /ws/v1/stream`.
+- Os contratos consumidos por clients (`IDeviceServerClient`, `IDeviceFrameTransport`, `PanelsBatchRegistration`) vivem em `Device.Client.Abstractions`; `Device.Server.Abstractions` fica restrito ao host embedded/lifecycle.
 - O host local agora tambem expõe `GET /dashboard` e `WS /ws/device/{deviceId}` com DTO dedicado para o WebView.
 
 Pontos centrais do pipeline de analise e captura:
@@ -217,7 +218,7 @@ Pontos centrais da sessao de paineis HUB75:
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [PanelsDeviceSessionService](../../../src/App.WinUI/Services/Devices/PanelsDeviceSessionService.cs#L1)
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1)
-- [PanelsBatchRegistration](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchRegistration.cs#L1)
+- [PanelsBatchRegistration](../../../src/Device.Client.Abstractions/PanelsBatchRegistration.cs#L1)
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
 
 Observacoes ativas dos paineis:

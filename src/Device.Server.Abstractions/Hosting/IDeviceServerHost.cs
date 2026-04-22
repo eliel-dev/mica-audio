@@ -1,3 +1,4 @@
+using Device.Client;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 
@@ -5,6 +6,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 public interface IDeviceServerHost : IDeviceFrameTransport, IAsyncDisposable
 {
     event EventHandler? DevicesChanged;

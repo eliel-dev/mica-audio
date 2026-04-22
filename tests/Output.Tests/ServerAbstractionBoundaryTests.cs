@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Device.Client;
 using Device.Server.Hosting;
 using Output.Led;
 
@@ -14,9 +15,11 @@ public sealed class ServerAbstractionBoundaryTests
     }
 
     [Fact]
-    public void DeviceFrameTransportContract_ShouldLiveInAbstractionsAssembly()
+    public void DeviceClientContracts_ShouldLiveInClientAbstractionsAssembly()
     {
-        Assert.Equal("Device.Server.Abstractions", typeof(IDeviceFrameTransport).Assembly.GetName().Name);
+        Assert.Equal("Device.Client.Abstractions", typeof(IDeviceServerClient).Assembly.GetName().Name);
+        Assert.Equal("Device.Client.Abstractions", typeof(IDeviceFrameTransport).Assembly.GetName().Name);
+        Assert.Equal("Device.Client.Abstractions", typeof(PanelsBatchRegistration).Assembly.GetName().Name);
         Assert.True(typeof(IDeviceFrameTransport).IsAssignableFrom(typeof(IDeviceServerHost)));
     }
 
@@ -29,7 +32,7 @@ public sealed class ServerAbstractionBoundaryTests
     }
 
     [Fact]
-    public void OutputProject_ShouldReferenceServerAbstractionsWithoutConcreteServer()
+    public void OutputProject_ShouldReferenceClientAbstractionsWithoutServerContracts()
     {
         var projectPath = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory,
@@ -49,7 +52,8 @@ public sealed class ServerAbstractionBoundaryTests
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToArray();
 
-        Assert.Contains("../Device.Server.Abstractions/Device.Server.Abstractions.csproj", references);
+        Assert.Contains("../Device.Client.Abstractions/Device.Client.Abstractions.csproj", references);
+        Assert.DoesNotContain("../Device.Server.Abstractions/Device.Server.Abstractions.csproj", references);
         Assert.DoesNotContain("../Device.Server/Device.Server.csproj", references);
     }
 }

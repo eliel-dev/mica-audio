@@ -1,7 +1,7 @@
-namespace Device.Server.Hosting;
+namespace Device.Client;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#transporte-de-lotes-webp-para-paineis
-// DOCS: docs/handoffs/2026-04-21-server-embedded-decoupling.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 public sealed record PanelsBatchRegistration(
     string PanelsSessionId,
     ulong BatchSequence,

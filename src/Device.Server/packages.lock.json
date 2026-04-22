@@ -79,12 +79,19 @@
           "OpenTelemetry.Api": "1.15.0"
         }
       },
+      "device.client.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )"
+        }
+      },
       "device.protocol": {
         "type": "Project"
       },
       "device.server.abstractions": {
         "type": "Project",
         "dependencies": {
+          "Device.Client.Abstractions": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )"
         }
       }

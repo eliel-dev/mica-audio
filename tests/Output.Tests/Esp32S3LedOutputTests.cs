@@ -1,5 +1,5 @@
+using Device.Client;
 using Device.Protocol.Stream;
-using Device.Server.Hosting;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 using Output.Led;

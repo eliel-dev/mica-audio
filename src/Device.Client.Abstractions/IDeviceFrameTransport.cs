@@ -1,8 +1,8 @@
-namespace Device.Server.Hosting;
+namespace Device.Client;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 // DOCS: docs/wiki/reference/ws-protocol-v2.md#estrutura-streamframev2
-// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 public interface IDeviceFrameTransport
 {
     void SendFrame(string deviceId, byte[] framePayload);

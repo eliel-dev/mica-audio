@@ -807,6 +807,7 @@
           "Analyzer.Dsp": "[1.0.0, )",
           "Audio.Loopback": "[1.0.0, )",
           "CommunityToolkit.Mvvm": "[8.4.0, )",
+          "Device.Client.Abstractions": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )",
           "Device.Server": "[1.0.0, )",
           "Device.Server.Abstractions": "[1.0.0, )",
@@ -841,12 +842,19 @@
           "NAudio": "[2.2.1, )"
         }
       },
+      "device.client.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )"
+        }
+      },
       "device.protocol": {
         "type": "Project"
       },
       "device.server": {
         "type": "Project",
         "dependencies": {
+          "Device.Client.Abstractions": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )",
           "Device.Server.Abstractions": "[1.0.0, )",
           "MQTTnet.Server": "[5.1.0.1559, )",
@@ -860,6 +868,7 @@
       "device.server.abstractions": {
         "type": "Project",
         "dependencies": {
+          "Device.Client.Abstractions": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )"
         }
       },
@@ -869,8 +878,8 @@
       "output": {
         "type": "Project",
         "dependencies": {
+          "Device.Client.Abstractions": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )",
-          "Device.Server.Abstractions": "[1.0.0, )",
           "MicaAudio.Core": "[1.0.0, )"
         }
       },

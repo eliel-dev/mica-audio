@@ -1,6 +1,6 @@
 using System.Diagnostics;
+using Device.Client;
 using Device.Protocol.Stream;
-using Device.Server.Hosting;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 
@@ -9,6 +9,7 @@ namespace Output.Led;
 // DOCS: docs/wiki/modules/output-led.md#modulo-output-led
 // DOCS: docs/wiki/reference/ws-protocol-v2.md#estrutura-streamframev2
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 public sealed class Esp32S3LedOutput : ILedOutput
 {
     private readonly IDeviceFrameTransport frameTransport;

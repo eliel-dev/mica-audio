@@ -87,7 +87,8 @@
 
 ## Atualizacao 2026-04 - Transporte De Frames Desacoplado
 
-- `Esp32S3LedOutput` passou a depender de `IDeviceFrameTransport`, nao do host completo do server.
+- `Esp32S3LedOutput` depende de `Device.Client.IDeviceFrameTransport`, nao do host completo do server.
+- `Output` referencia `Device.Client.Abstractions` e nao referencia `Device.Server` nem `Device.Server.Abstractions`.
 - O output continua emitindo os mesmos payloads `StreamFrameV2`; a mudanca e apenas de fronteira interna para preparar um futuro client remoto.
 
 ## Referencias de codigo
@@ -97,7 +98,7 @@
 - [AudioPipelineFrameProcessor](../../../src/App.WinUI/Services/AudioPipelineFrameProcessor.cs#L1)
 - [AudioPipelineOutputRouter](../../../src/App.WinUI/Services/AudioPipelineOutputRouter.cs#L1)
 - [Esp32S3LedOutput](../../../src/Output/Led/Esp32S3LedOutput.cs#L1)
-- [IDeviceFrameTransport](../../../src/Device.Server.Abstractions/Hosting/IDeviceFrameTransport.cs#L1)
+- [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1)
 - [LedFrameDeduplicator](../../../src/Output/Led/LedFrameDeduplicator.cs#L1)
 - [Bins128PreviewRenderer](../../../src/Output/Led/Bins128PreviewRenderer.cs#L1)
 - [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)

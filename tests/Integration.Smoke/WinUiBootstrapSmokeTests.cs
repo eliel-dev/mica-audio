@@ -6,6 +6,7 @@ using App.WinUI.Services.Devices;
 using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
+using Device.Client;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
 using Microsoft.Extensions.DependencyInjection;

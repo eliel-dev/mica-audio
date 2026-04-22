@@ -10,6 +10,7 @@ using App.WinUI.Services.Monitoring;
 using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using Audio.Loopback.Capture;
+using Device.Client;
 using Device.Server.Hosting;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
@@ -26,6 +27,7 @@ namespace App.WinUI;
 // DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
 // DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }

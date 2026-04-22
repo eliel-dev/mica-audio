@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Device.Client;
 using Device.Protocol.Models;
 using Microsoft.AspNetCore.Http;
 

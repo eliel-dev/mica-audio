@@ -75,7 +75,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
   - o host guarda apenas `ativo + proximo` em memoria por sessao/device;
   - o envio ao device acontece por `queue_panels_batch` + download HTTP autenticado no `Device.Server`;
   - o fallback para `Frame128x64` continua automatico se o device nao suportar batches ou se a fila de lotes falhar.
-- `PanelsPlaybackService` consome `IDeviceServerClient` para snapshots/comandos/batches e `IDeviceFrameTransport` apenas para frames, preservando o server embutido mas removendo dependencia direta do host completo.
+- `PanelsPlaybackService` consome `Device.Client.IDeviceServerClient` para snapshots/comandos/batches e `Device.Client.IDeviceFrameTransport` apenas para frames, preservando o server embutido mas removendo dependencia direta do host completo.
 - O caminho oficial de batch deixou de materializar `30` arrays RGBA por segundo antes do encode:
   - `PanelCompositionSession` agora aceita render em buffer fornecido pelo chamador (`RenderFrameInto(...)`);
   - o encode WebP consome um unico framebuffer RGBA reutilizavel no hot path;
@@ -121,9 +121,10 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [LedOutputConfig](../../../src/MicaAudio.Core/Led/LedOutputConfig.cs#L1)
 - [Esp32S3LedOutput](../../../src/Output/Led/Esp32S3LedOutput.cs#L1)
-- [IDeviceFrameTransport](../../../src/Device.Server.Abstractions/Hosting/IDeviceFrameTransport.cs#L1)
+- [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1)
 - [IDeviceServerHost](../../../src/Device.Server.Abstractions/Hosting/IDeviceServerHost.cs#L1)
-- [IDeviceServerClient](../../../src/App.WinUI/Services/Devices/IDeviceServerClient.cs#L1)
+- [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1)
+- [PanelsBatchRegistration](../../../src/Device.Client.Abstractions/PanelsBatchRegistration.cs#L1)
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)

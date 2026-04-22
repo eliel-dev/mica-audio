@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using Device.Client;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
@@ -10,6 +11,7 @@ namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 internal sealed partial class DeviceIntegrationService : IDeviceServerClient, IAsyncDisposable
 {
     private readonly IDeviceServerHost serverHost;

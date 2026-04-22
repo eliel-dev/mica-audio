@@ -1,12 +1,11 @@
 using Device.Protocol.Models;
-using Device.Server.Hosting;
 
-namespace App.WinUI.Services.Devices;
+namespace Device.Client;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 // DOCS: docs/wiki/modules/paineis.md#runtime-em-background
-// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
-internal interface IDeviceServerClient
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
+public interface IDeviceServerClient
 {
     event EventHandler? DevicesChanged;
 

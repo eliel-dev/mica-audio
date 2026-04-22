@@ -45,8 +45,9 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 ## Atualizacao 2026-04 - Fronteira De Client Embutido
 
 - `IDeviceServerHost` permanece como contrato de lifecycle do server embutido e continua implementado por `DeviceServerHost`.
-- `IDeviceFrameTransport` isolou o hot path visual (`BroadcastFrame`/`SendFrame`) para consumidores como `Esp32S3LedOutput`.
-- O WinUI passa a consumir uma fronteira app-level (`IDeviceServerClient`) para operacoes de devices e batches de `Paineis`, mantendo o server concreto apenas no composition root.
+- `IDeviceFrameTransport`, `IDeviceServerClient` e `PanelsBatchRegistration` vivem em `Device.Client.Abstractions`, que e a dependencia permitida para clients/output.
+- `Device.Server.Abstractions` referencia `Device.Client.Abstractions`; `IDeviceServerHost` continua herdando `IDeviceFrameTransport`, mas permanece limitado ao host embedded/lifecycle.
+- O WinUI consome a fronteira app-level (`IDeviceServerClient`) para operacoes de devices e batches de `Paineis`, mantendo o server concreto apenas no composition root.
 - Nao houve alteracao de endpoints, portas, topicos MQTT, autenticacao, DTOs wire ou firmware.
 
 ## Politicas de seguranca
@@ -205,7 +206,9 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [DeviceServerHost.Routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
-- [PanelsBatchRegistration](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchRegistration.cs#L1) - assinatura: `public sealed record PanelsBatchRegistration`
+- [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1) - assinatura: `public interface IDeviceFrameTransport`
+- [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1) - assinatura: `public interface IDeviceServerClient`
+- [PanelsBatchRegistration](../../../src/Device.Client.Abstractions/PanelsBatchRegistration.cs#L1) - assinatura: `public sealed record PanelsBatchRegistration`
 - [DeviceServerObservability](../../../src/Device.Server/Hosting/DeviceServerObservability.cs#L1) - assinatura: `internal static class DeviceServerObservability`
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1) - assinatura: `internal sealed class DeviceServerRuntimeConfig`
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1) - assinatura: `internal static class DeviceMqttTopics`
