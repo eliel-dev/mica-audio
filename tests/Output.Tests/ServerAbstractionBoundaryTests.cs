@@ -17,6 +17,8 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.Equal("Device.Server.Abstractions", typeof(PanelsBatchWrite).Assembly.GetName().Name);
         Assert.Equal("Device.Server.Abstractions", typeof(PanelsBatchEntry).Assembly.GetName().Name);
         Assert.Equal("Device.Server.Abstractions", typeof(IDevicePairingStore).Assembly.GetName().Name);
+        Assert.Equal("Device.Server.Abstractions", typeof(ICommandStateStore).Assembly.GetName().Name);
+        Assert.Equal("Device.Server.Abstractions", typeof(TrackedCommandState).Assembly.GetName().Name);
     }
 
     [Fact]
@@ -26,6 +28,8 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.True(typeof(IPanelsBatchStore).IsAssignableFrom(typeof(InMemoryPanelsBatchStore)));
         Assert.Equal("Device.Server", typeof(InMemoryDevicePairingStore).Assembly.GetName().Name);
         Assert.True(typeof(IDevicePairingStore).IsAssignableFrom(typeof(InMemoryDevicePairingStore)));
+        Assert.Equal("Device.Server", typeof(InMemoryCommandStateStore).Assembly.GetName().Name);
+        Assert.True(typeof(ICommandStateStore).IsAssignableFrom(typeof(InMemoryCommandStateStore)));
     }
 
     [Fact]

@@ -688,7 +688,7 @@ public sealed class DeviceServerHostSecurityTests
     }
 
     [Fact]
-    public async Task StopAsync_ShouldCompletePendingTrackedCommandsWithoutRace()
+    public async Task StopAsync_ShouldCompleteTrackedCommandsWithoutRace()
     {
         var port = GetFreeTcpPort();
         var mqttPort = GetFreeTcpPort();

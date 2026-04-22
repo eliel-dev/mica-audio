@@ -354,6 +354,11 @@ Contratos que precisam existir antes de trocar infraestrutura:
 - `ICommandStateStore`: comandos tracked com progresso, timeout e resultado final.
 - `ISessionStateStore`: presenca efemera, reconnect e handoff de shutdown.
 
+Estado atual do corte embedded-first:
+
+- `IPanelsBatchStore`, `IDevicePairingStore` e `ICommandStateStore` ja existem como fronteiras in-memory first no server embutido.
+- `IBlobStore`, `IDeviceRegistryStore`, `IFirmwareCatalog` remoto e `ISessionStateStore` continuam pendentes para fases posteriores.
+
 Separacoes obrigatorias:
 
 1. `device session`: firmware autenticado.

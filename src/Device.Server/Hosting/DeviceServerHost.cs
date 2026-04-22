@@ -21,6 +21,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 // DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
 // DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
+// DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -44,8 +45,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly IDeviceOfficialFirmwareCatalog? firmwareCatalog;
     private readonly IPanelsBatchStore panelsBatchStore;
     private readonly IDevicePairingStore pairingStore;
+    private readonly ICommandStateStore commandStateStore;
     private readonly DeviceSessionRegistry devices = new();
-    private readonly PendingTrackedCommandStore pendingTrackedCommands = new();
 
     private DeviceServerRuntimeConfig runtimeConfig = DeviceServerRuntimeConfig.From(new ServerConfig());
     private WebApplication? app;
@@ -71,13 +72,15 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         TimeProvider timeProvider,
         IDeviceOfficialFirmwareCatalog? firmwareCatalog,
         IPanelsBatchStore? panelsBatchStore = null,
-        IDevicePairingStore? pairingStore = null)
+        IDevicePairingStore? pairingStore = null,
+        ICommandStateStore? commandStateStore = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
         this.firmwareCatalog = firmwareCatalog;
         this.panelsBatchStore = panelsBatchStore ?? new InMemoryPanelsBatchStore();
         this.pairingStore = pairingStore ?? new InMemoryDevicePairingStore();
+        this.commandStateStore = commandStateStore ?? new InMemoryCommandStateStore();
     }
 
     public event EventHandler? DevicesChanged;
@@ -240,7 +243,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         WebApplication? localApp;
         MqttServer? localMqttServer;
         CancellationTokenSource? localCts;
-        PendingTrackedCommand[] pendingToCancel;
+        TrackedCommandState[] pendingToCancel;
         DeviceSession[] sessionsToDispose;
 
         lock (gate)
@@ -256,7 +259,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             localMqttServer = mqttServer;
             mqttServer = null;
             appCts = null;
-            pendingToCancel = pendingTrackedCommands.Drain();
+            pendingToCancel = commandStateStore.Drain();
         }
 
         foreach (var pending in pendingToCancel)

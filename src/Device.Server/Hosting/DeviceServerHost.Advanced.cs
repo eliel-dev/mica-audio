@@ -8,6 +8,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#pontos-de-alteracao-frequente
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
+// DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(5);
@@ -65,11 +66,11 @@ public sealed partial class DeviceServerHost
             };
         }
 
-        var pending = new PendingTrackedCommand(commandId, deviceId, commandType, activity);
+        var pending = new TrackedCommandState(commandId, deviceId, commandType, activity);
 
         lock (gate)
         {
-            pendingTrackedCommands.Add(pending);
+            commandStateStore.Add(pending);
         }
 
         PublishCommandProgress(new DeviceCommandProgressMessage
@@ -104,7 +105,7 @@ public sealed partial class DeviceServerHost
         {
             lock (gate)
             {
-                pendingTrackedCommands.Remove(commandId, out _);
+                commandStateStore.Remove(commandId, out _);
             }
 
             DeviceServerObservability.SetException(activity, ex);
@@ -182,7 +183,7 @@ public sealed partial class DeviceServerHost
                 Message = "Operacao cancelada.",
                 ErrorCode = "cancelled",
             };
-            pending.RecordCompletion(result);
+            RecordPendingCompletion(pending, result);
             activity?.SetStatus(ActivityStatusCode.Error, result.ErrorCode);
             DeviceServerObservability.RecordCommandFailure(deviceId, commandTypeName, result.Stage);
             DeviceServerObservability.RecordCommandDuration(stopwatch.Elapsed, deviceId, commandTypeName, success: false, stage: result.Stage);
@@ -213,7 +214,7 @@ public sealed partial class DeviceServerHost
                 Message = "Sem resposta do dispositivo dentro do timeout.",
                 ErrorCode = "timeout",
             };
-            pending.RecordCompletion(result);
+            RecordPendingCompletion(pending, result);
             activity?.SetStatus(ActivityStatusCode.Error, result.ErrorCode);
             DeviceServerObservability.RecordCommandTimeout(deviceId, commandTypeName);
             DeviceServerObservability.RecordCommandFailure(deviceId, commandTypeName, result.Stage);
@@ -225,7 +226,7 @@ public sealed partial class DeviceServerHost
         {
             lock (gate)
             {
-                pendingTrackedCommands.Remove(commandId, out _);
+                commandStateStore.Remove(commandId, out _);
             }
         }
     }
@@ -619,15 +620,15 @@ public sealed partial class DeviceServerHost
 
     private void TryCompletePending(string commandId, CommandDispatchResult result)
     {
-        PendingTrackedCommand? pending;
+        TrackedCommandState? pending;
         lock (gate)
         {
-            pendingTrackedCommands.TryGetValue(commandId, out pending);
+            commandStateStore.TryGetValue(commandId, out pending);
         }
 
         if (pending?.TrySetResult(result) == true)
         {
-            pending.RecordCompletion(result);
+            RecordPendingCompletion(pending, result);
         }
     }
 
@@ -657,9 +658,9 @@ public sealed partial class DeviceServerHost
 
         lock (gate)
         {
-            if (pendingTrackedCommands.TryGetValue(progress.CommandId, out var pending) && pending is not null)
+            if (commandStateStore.TryGetValue(progress.CommandId, out var pending) && pending is not null)
             {
-                pending.RecordProgress(progress);
+                RecordPendingProgress(pending, progress);
             }
         }
 
@@ -669,6 +670,69 @@ public sealed partial class DeviceServerHost
     private void PublishDeviceLog(DeviceLogMessage log)
     {
         DeviceLogReceived?.Invoke(this, log);
+    }
+
+    private static void RecordPendingProgress(TrackedCommandState pending, DeviceCommandProgressMessage progress)
+    {
+        pending.RecordProgress(progress);
+        if (pending.Activity is not { } activity)
+        {
+            return;
+        }
+
+        activity.SetTag("command.progress", pending.LastPercent);
+        if (!string.IsNullOrWhiteSpace(progress.Stage))
+        {
+            activity.SetTag("command.stage", progress.Stage);
+        }
+
+        if (progress.Success.HasValue)
+        {
+            activity.SetTag("command.success.reported", progress.Success.Value);
+        }
+
+        var tags = new ActivityTagsCollection
+        {
+            { DeviceServerObservability.CommandIdKey, pending.CommandId },
+            { DeviceServerObservability.DeviceIdKey, pending.DeviceId },
+            { "command.progress", pending.LastPercent },
+            { "command.stage", progress.Stage },
+            { "command.message", progress.Message },
+        };
+
+        if (progress.Success.HasValue)
+        {
+            tags.Add("command.success.reported", progress.Success.Value);
+        }
+
+        activity.AddEvent(new ActivityEvent("command.progress", tags: tags));
+    }
+
+    private static void RecordPendingCompletion(TrackedCommandState pending, CommandDispatchResult result)
+    {
+        pending.RecordCompletion(result);
+        if (pending.Activity is not { } activity)
+        {
+            return;
+        }
+
+        activity.SetTag("command.progress", pending.LastPercent);
+        activity.SetTag("command.stage", result.Stage);
+        activity.SetTag("command.success", result.Success);
+        activity.SetTag(DeviceServerObservability.CommandIdKey, result.CommandId);
+
+        var tags = new ActivityTagsCollection
+        {
+            { DeviceServerObservability.CommandIdKey, result.CommandId },
+            { DeviceServerObservability.DeviceIdKey, result.DeviceId },
+            { "command.progress", pending.LastPercent },
+            { "command.stage", result.Stage },
+            { "command.success", result.Success },
+            { "command.error_code", result.ErrorCode },
+            { "command.message", result.Message },
+        };
+
+        activity.AddEvent(new ActivityEvent("command.completed", tags: tags));
     }
 
     private static bool TryGetAppId(IReadOnlyDictionary<string, string>? parameters, out string? appId)

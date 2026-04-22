@@ -38,7 +38,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 5. `presence`, `status` e `stats` MQTT alimentam online/offline e o snapshot operacional do device.
 6. O snapshot tambem expoe `ControlPlaneState` para diferenciar `MqttOnline`, `LegacyOnly` e `Offline`.
 7. App envia comandos tracked (`SendCommandTrackedAsync`) via `mica/v1/devices/{deviceId}/commands`.
-8. `PendingTrackedCommandStore` e `PendingTrackedCommand` correlacionam `command-events` por `commandId`.
+8. `ICommandStateStore` e `TrackedCommandState` correlacionam `command-events` por `commandId`.
 9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
 10. `IDeviceFrameTransport.BroadcastFrame/SendFrame` distribui stream para sockets WS conectados.
 
@@ -66,6 +66,14 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - `DeviceServerHost` continua gerando o codigo aleatorio e usando `TimeProvider`, mas delega `SaveCode`, `TryConsumeCode`, `TryRegisterAttempt`, `ResetAttempts` e `Clear` ao store.
 - O composition root da `App.WinUI` registra `IDevicePairingStore -> InMemoryDevicePairingStore` junto do `DeviceServerHost` embedded.
 - Nao houve alteracao de `/api/v1/pair`, erros HTTP, rate limiter ASP.NET, autenticacao, firmware, portas, HTTP/WS/MQTT ou client remoto.
+
+## Atualizacao 2026-04 - Storage De Comandos Tracked
+
+- `ICommandStateStore` e `TrackedCommandState` vivem em `Device.Server.Abstractions` como fronteira publica para comandos tracked pendentes.
+- `Device.Server` fornece `InMemoryCommandStateStore`, mantendo a semantica atual: chave case-insensitive por `commandId`, substituicao por mesmo id, `Remove` com retorno e `Drain` para shutdown.
+- `DeviceServerHost.Advanced` continua emitindo observabilidade especifica do host, mas delega armazenamento, lookup e drain dos comandos ao store.
+- O composition root da `App.WinUI` registra `ICommandStateStore -> InMemoryCommandStateStore` junto do `DeviceServerHost` embedded.
+- Nao houve alteracao de command ids, payloads, eventos de progresso, timeouts, MQTT, HTTP/WS, firmware, portas ou client remoto.
 
 ## Politicas de seguranca
 
@@ -156,7 +164,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
   - host escuta `AspNetCore` + `DeviceServerObservability.ActivitySourceName/MeterName`;
   - app escuta `HttpClient` + fontes/meters do `AppObservability`.
 - `SendTrackedCommandCoreAsync` agora abre span manual para o comando tracked e o mantem vivo ate `ACK`, timeout, cancelamento ou falha de envio.
-- `PendingTrackedCommand` passou a anexar `ActivityEvent`s de progresso/conclusao no mesmo span para manter a correlacao `deviceId + commandId`.
+- `DeviceServerHost.Advanced` anexa `ActivityEvent`s de progresso/conclusao no mesmo span do `TrackedCommandState` para manter a correlacao `deviceId + commandId`.
 - Metricas customizadas adicionadas ao host:
   - `mica.device.command.duration`
   - `mica.device.command.timeout.count`
@@ -228,6 +236,9 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1) - assinatura: `public sealed class InMemoryPanelsBatchStore`
 - [IDevicePairingStore](../../../src/Device.Server.Abstractions/Hosting/IDevicePairingStore.cs#L1) - assinatura: `public interface IDevicePairingStore`
 - [InMemoryDevicePairingStore](../../../src/Device.Server/Hosting/InMemoryDevicePairingStore.cs#L1) - assinatura: `public sealed class InMemoryDevicePairingStore`
+- [ICommandStateStore](../../../src/Device.Server.Abstractions/Hosting/ICommandStateStore.cs#L1) - assinatura: `public interface ICommandStateStore`
+- [TrackedCommandState](../../../src/Device.Server.Abstractions/Hosting/TrackedCommandState.cs#L1) - assinatura: `public sealed class TrackedCommandState`
+- [InMemoryCommandStateStore](../../../src/Device.Server/Hosting/InMemoryCommandStateStore.cs#L1) - assinatura: `public sealed class InMemoryCommandStateStore`
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
 - [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1) - assinatura: `public interface IDeviceFrameTransport`
 - [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1) - assinatura: `public interface IDeviceServerClient`
@@ -239,7 +250,6 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1) - assinatura: `internal sealed class DeviceServerRuntimeConfig`
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1) - assinatura: `internal static class DeviceMqttTopics`
 - [DeviceSession](../../../src/Device.Server/Hosting/DeviceSession.cs#L1) - assinatura: `internal sealed class DeviceSession`
-- [PendingTrackedCommand](../../../src/Device.Server/Hosting/PendingTrackedCommand.cs#L1) - assinatura: `internal sealed class PendingTrackedCommand`
 - [PairDeviceRequest](../../../src/Device.Protocol/Models/PairDeviceRequest.cs#L1) - assinatura: `public sealed class PairDeviceRequest`
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1) - assinatura: `public sealed class PairDeviceResponse`
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
@@ -263,13 +273,15 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - `src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs`
 - `src/Device.Server/Hosting/InMemoryDevicePairingStore.cs`
 - `src/Device.Server.Abstractions/Hosting/IDevicePairingStore.cs`
+- `src/Device.Server/Hosting/InMemoryCommandStateStore.cs`
+- `src/Device.Server.Abstractions/Hosting/ICommandStateStore.cs`
+- `src/Device.Server.Abstractions/Hosting/TrackedCommandState.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Routes.cs`
 - `src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs`
 - `src/Device.Server/Hosting/DeviceMqttTopics.cs`
 - `src/Device.Server/Hosting/DeviceSession.cs`
-- `src/Device.Server/Hosting/PendingTrackedCommand.cs`
 - `src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs`
 - `src/Device.Client.Embedded/NetworkInterfaceEmbeddedDevicePublicHostResolver.cs`
 - `src/Device.Protocol/Models/PairDeviceRequest.cs`
@@ -385,7 +397,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - O estado interno foi separado em colaboradores dedicados:
   - `DeviceSessionRegistry`
   - `InMemoryDevicePairingStore`
-  - `PendingTrackedCommandStore`
+  - `InMemoryCommandStateStore`
   - `DeviceRecordMutations`
 - A logica temporal sensivel agora usa `TimeProvider` em:
   - expiracao de pairing code;

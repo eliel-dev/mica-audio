@@ -3,14 +3,14 @@ using Device.Server.Hosting;
 
 namespace Output.Tests;
 
-public class PendingTrackedCommandTests
+public sealed class CommandStateStoreTests
 {
     [Fact]
     public void Store_ShouldAddGetRemoveAndDrain()
     {
-        var store = new PendingTrackedCommandStore();
-        var first = new PendingTrackedCommand("cmd-1", "device-1", DeviceCommandType.TestLed);
-        var second = new PendingTrackedCommand("cmd-2", "device-1", DeviceCommandType.SetBrightness);
+        var store = new InMemoryCommandStateStore();
+        var first = new TrackedCommandState("cmd-1", "device-1", DeviceCommandType.TestLed);
+        var second = new TrackedCommandState("cmd-2", "device-1", DeviceCommandType.SetBrightness);
 
         store.Add(first);
         store.Add(second);
@@ -29,10 +29,25 @@ public class PendingTrackedCommandTests
     }
 
     [Fact]
+    public void Add_ShouldReplaceExistingCommandIdCaseInsensitive()
+    {
+        var store = new InMemoryCommandStateStore();
+        var first = new TrackedCommandState("cmd-1", "device-1", DeviceCommandType.TestLed);
+        var replacement = new TrackedCommandState("CMD-1", "device-1", DeviceCommandType.SetBrightness);
+
+        store.Add(first);
+        store.Add(replacement);
+
+        Assert.Equal(1, store.Count);
+        Assert.True(store.TryGetValue("cmd-1", out var found));
+        Assert.Same(replacement, found);
+    }
+
+    [Fact]
     public async Task WaitForResultAsync_ShouldTimeoutAgainstManualTime()
     {
         var timeProvider = new ManualTimeProvider();
-        var pending = new PendingTrackedCommand("cmd-1", "device-1", DeviceCommandType.TestLed);
+        var pending = new TrackedCommandState("cmd-1", "device-1", DeviceCommandType.TestLed);
 
         var waitTask = pending.WaitForResultAsync(TimeSpan.FromSeconds(5), timeProvider, CancellationToken.None);
         await Task.Yield();
@@ -45,7 +60,7 @@ public class PendingTrackedCommandTests
     public async Task WaitForResultAsync_ShouldCompleteWhenResultArrives()
     {
         var timeProvider = new ManualTimeProvider();
-        var pending = new PendingTrackedCommand("cmd-1", "device-1", DeviceCommandType.TestLed);
+        var pending = new TrackedCommandState("cmd-1", "device-1", DeviceCommandType.TestLed);
         var waitTask = pending.WaitForResultAsync(TimeSpan.FromSeconds(5), timeProvider, CancellationToken.None);
 
         await Task.Yield();
@@ -69,7 +84,7 @@ public class PendingTrackedCommandTests
     public async Task WaitForResultAsync_ShouldHonorCancellation()
     {
         var timeProvider = new ManualTimeProvider();
-        var pending = new PendingTrackedCommand("cmd-1", "device-1", DeviceCommandType.TestLed);
+        var pending = new TrackedCommandState("cmd-1", "device-1", DeviceCommandType.TestLed);
         using var cts = new CancellationTokenSource();
 
         var waitTask = pending.WaitForResultAsync(TimeSpan.FromSeconds(5), timeProvider, cts.Token);
@@ -77,5 +92,32 @@ public class PendingTrackedCommandTests
         cts.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await waitTask);
+    }
+
+    [Fact]
+    public void RecordProgressAndCompletion_ShouldKeepHighestClampedPercent()
+    {
+        var pending = new TrackedCommandState("cmd-1", "device-1", DeviceCommandType.TestLed);
+
+        pending.RecordProgress(new DeviceCommandProgressMessage
+        {
+            DeviceId = "device-1",
+            CommandId = "cmd-1",
+            ProgressPercent = 40,
+        });
+        pending.RecordProgress(new DeviceCommandProgressMessage
+        {
+            DeviceId = "device-1",
+            CommandId = "cmd-1",
+            ProgressPercent = 30,
+        });
+        pending.RecordCompletion(new CommandDispatchResult
+        {
+            DeviceId = "device-1",
+            CommandId = "cmd-1",
+            ProgressPercent = 120,
+        });
+
+        Assert.Equal(100, pending.LastPercent);
     }
 }

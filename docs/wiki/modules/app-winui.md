@@ -40,8 +40,8 @@
 ## Atualizacao 2026-04 - Composition Root Do Server Embutido
 
 - `App.BuildServiceProvider()` continua sendo o unico ponto que conhece a implementacao concreta do server local.
-- `DeviceServerHost` permanece embutido no processo WinUI e agora recebe `IPanelsBatchStore` e `IDevicePairingStore` pelo composition root.
-- Os registros default sao `IPanelsBatchStore -> InMemoryPanelsBatchStore` e `IDevicePairingStore -> InMemoryDevicePairingStore`, preservando batches `WebP` e pairing apenas em memoria sem alterar URLs, autenticacao ou payloads.
+- `DeviceServerHost` permanece embutido no processo WinUI e agora recebe `IPanelsBatchStore`, `IDevicePairingStore` e `ICommandStateStore` pelo composition root.
+- Os registros default sao `IPanelsBatchStore -> InMemoryPanelsBatchStore`, `IDevicePairingStore -> InMemoryDevicePairingStore` e `ICommandStateStore -> InMemoryCommandStateStore`, preservando batches `WebP`, pairing e comandos tracked apenas em memoria sem alterar URLs, autenticacao ou payloads.
 - `IDeviceServerClient`, `IEmbeddedDeviceServerClientRuntime` e `IDeviceFrameTransport` continuam resolvidos pelas fronteiras de client/embedded ja existentes.
 
 ## Atualizacao 2026-03 - Refresh automatico do release oficial de firmware
@@ -363,6 +363,8 @@
 - [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
 - [IDevicePairingStore](../../../src/Device.Server.Abstractions/Hosting/IDevicePairingStore.cs#L1)
 - [InMemoryDevicePairingStore](../../../src/Device.Server/Hosting/InMemoryDevicePairingStore.cs#L1)
+- [ICommandStateStore](../../../src/Device.Server.Abstractions/Hosting/ICommandStateStore.cs#L1)
+- [InMemoryCommandStateStore](../../../src/Device.Server/Hosting/InMemoryCommandStateStore.cs#L1)
 - [AppEmbeddedDeviceServerSettingsProvider](../../../src/App.WinUI/Services/Devices/AppEmbeddedDeviceServerSettingsProvider.cs#L1)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
