@@ -1,48 +1,43 @@
-using System.Net;
-using System.Net.NetworkInformation;
-using System.Net.Sockets;
-using Device.Client;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace App.WinUI.Services.Devices;
+namespace Device.Client.Embedded;
 
-// DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
-// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
-// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
-internal sealed partial class DeviceIntegrationService : IDeviceServerClient, IAsyncDisposable
+// DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
+// DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
+// DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
+public sealed partial class EmbeddedDeviceServerClient : IDeviceServerClient, IEmbeddedDeviceServerClientRuntime
 {
-    private readonly IDeviceServerHost serverHost;
-    private readonly IDeviceRegistryStore registryStore;
-    private readonly SettingsRepository settingsRepository;
-    private readonly AppSettingsDomainService settingsDomainService;
-    private readonly ILogger<DeviceIntegrationService> logger;
-
-    private const int ServerPort = 5272;
-    private const int ServerMqttPort = 5273;
-    private const string ServerMqttRootTopic = "mica/v1/devices";
     private static readonly TimeSpan RegistrySaveMinInterval = TimeSpan.FromSeconds(10);
 
+    private readonly IDeviceServerHost serverHost;
+    private readonly IEmbeddedDeviceRegistryStore registryStore;
+    private readonly IEmbeddedDeviceServerSettingsProvider settingsProvider;
+    private readonly IEmbeddedDevicePublicHostResolver publicHostResolver;
+    private readonly ILogger<EmbeddedDeviceServerClient> logger;
+    private readonly EmbeddedDeviceServerClientOptions options;
     private readonly object registrySaveGate = new();
 
     private bool started;
     private string publicHost = "127.0.0.1";
     private DateTimeOffset lastRegistrySaveUtc = DateTimeOffset.MinValue;
 
-    public DeviceIntegrationService(
+    public EmbeddedDeviceServerClient(
         IDeviceServerHost serverHost,
-        IDeviceRegistryStore registryStore,
-        SettingsRepository settingsRepository,
-        AppSettingsDomainService settingsDomainService,
-        ILogger<DeviceIntegrationService> logger)
+        IEmbeddedDeviceRegistryStore registryStore,
+        IEmbeddedDeviceServerSettingsProvider settingsProvider,
+        IEmbeddedDevicePublicHostResolver publicHostResolver,
+        ILogger<EmbeddedDeviceServerClient> logger,
+        EmbeddedDeviceServerClientOptions? options = null)
     {
         this.serverHost = serverHost;
         this.registryStore = registryStore;
-        this.settingsRepository = settingsRepository;
-        this.settingsDomainService = settingsDomainService;
+        this.settingsProvider = settingsProvider;
+        this.publicHostResolver = publicHostResolver;
         this.logger = logger;
+        this.options = options ?? new EmbeddedDeviceServerClientOptions();
 
         serverHost.DevicesChanged += OnDevicesChanged;
         serverHost.LogMessage += OnServerHostLogMessage;
@@ -61,7 +56,7 @@ internal sealed partial class DeviceIntegrationService : IDeviceServerClient, IA
         remove => serverHost.CommandProgressChanged -= value;
     }
 
-    public string GetServerBaseAddress() => $"http://{publicHost}:{ServerPort}";
+    public string GetServerBaseAddress() => $"http://{publicHost}:{options.HttpPort}";
 
     // DOCS: docs/wiki/architecture/05-device-session-and-reconnect.md#ciclo-de-sessao
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -74,9 +69,9 @@ internal sealed partial class DeviceIntegrationService : IDeviceServerClient, IA
         var existing = await registryStore.LoadAsync(cancellationToken).ConfigureAwait(false);
         serverHost.SeedDevices(existing);
 
-        publicHost = ResolvePublicHost();
+        publicHost = publicHostResolver.ResolvePublicHost();
 
-        var settings = settingsDomainService.Migrate(await settingsRepository.LoadAsync(cancellationToken).ConfigureAwait(false));
+        var settings = await settingsProvider.LoadAsync(cancellationToken).ConfigureAwait(false);
         if (settings.AllowLegacyWebSocketQueryToken)
         {
             LogLegacyWebSocketQueryTokenEnabled(logger);
@@ -84,13 +79,13 @@ internal sealed partial class DeviceIntegrationService : IDeviceServerClient, IA
 
         await serverHost.StartAsync(new ServerConfig
         {
-            ListenHost = "0.0.0.0",
-            Port = ServerPort,
-            MqttPort = ServerMqttPort,
-            MaxDevices = 5,
-            MdnsServiceName = "_micaaudio._tcp",
+            ListenHost = options.ListenHost,
+            Port = options.HttpPort,
+            MqttPort = options.MqttPort,
+            MaxDevices = options.MaxDevices,
+            MdnsServiceName = options.MdnsServiceName,
             PublicHost = publicHost,
-            MqttRootTopic = ServerMqttRootTopic,
+            MqttRootTopic = options.MqttRootTopic,
             DeviceFreshThresholdSeconds = settings.DeviceFreshThresholdSeconds,
             AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
         }, cancellationToken).ConfigureAwait(false);
@@ -98,7 +93,7 @@ internal sealed partial class DeviceIntegrationService : IDeviceServerClient, IA
         var baseAddress = GetServerBaseAddress();
         LogPublicServerBaseAddress(logger, baseAddress);
         LogMessage?.Invoke(this, $"Servidor HTTP publico: {baseAddress}");
-        LogMessage?.Invoke(this, $"Broker MQTT publico: mqtt://{publicHost}:{ServerMqttPort} ({ServerMqttRootTopic}/{{deviceId}})");
+        LogMessage?.Invoke(this, $"Broker MQTT publico: mqtt://{publicHost}:{options.MqttPort} ({options.MqttRootTopic}/{{deviceId}})");
         started = true;
     }
 
@@ -200,97 +195,6 @@ internal sealed partial class DeviceIntegrationService : IDeviceServerClient, IA
             LogRegistrySaveFailed(logger, ex);
             LogMessage?.Invoke(this, $"Falha ao salvar devices.json: {ex.Message}");
         }
-    }
-
-    private static readonly string[] VirtualAdapterKeywords =
-    {
-        "virtual",
-        "vethernet",
-        "hyper-v",
-        "docker",
-        "wsl",
-        "vmware",
-        "virtualbox",
-        "loopback",
-        "tunnel",
-        "tap"
-    };
-
-    private static string ResolvePublicHost()
-    {
-        try
-        {
-            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
-
-            var candidates = GetIpv4Candidates(interfaces.Where(IsPreferredPhysicalAdapter));
-            if (candidates.Length == 0)
-            {
-                candidates = GetIpv4Candidates(interfaces.Where(IsUsableAdapter).Where(nic => !IsLikelyVirtualAdapter(nic)));
-            }
-
-            if (candidates.Length == 0)
-            {
-                return "127.0.0.1";
-            }
-
-            var privateIp = candidates.FirstOrDefault(IsPrivateIpv4);
-            return privateIp ?? candidates[0];
-        }
-        catch
-        {
-            return "127.0.0.1";
-        }
-    }
-
-    private static string[] GetIpv4Candidates(IEnumerable<NetworkInterface> interfaces)
-    {
-        return interfaces
-            .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
-            .Where(info => info.Address.AddressFamily == AddressFamily.InterNetwork
-                && !IPAddress.IsLoopback(info.Address))
-            .Select(info => info.Address.ToString())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
-    private static bool IsPreferredPhysicalAdapter(NetworkInterface nic)
-    {
-        if (!IsUsableAdapter(nic) || IsLikelyVirtualAdapter(nic))
-        {
-            return false;
-        }
-
-        return nic.NetworkInterfaceType is NetworkInterfaceType.Wireless80211
-            or NetworkInterfaceType.Ethernet
-            or NetworkInterfaceType.GigabitEthernet
-            or NetworkInterfaceType.FastEthernetFx
-            or NetworkInterfaceType.FastEthernetT;
-    }
-
-    private static bool IsUsableAdapter(NetworkInterface nic)
-    {
-        return nic.OperationalStatus == OperationalStatus.Up
-            && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback
-            && nic.NetworkInterfaceType != NetworkInterfaceType.Tunnel;
-    }
-
-    private static bool IsLikelyVirtualAdapter(NetworkInterface nic)
-    {
-        var descriptor = $"{nic.Name} {nic.Description}";
-        return VirtualAdapterKeywords.Any(keyword => descriptor.Contains(keyword, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static bool IsPrivateIpv4(string candidate)
-    {
-        if (!IPAddress.TryParse(candidate, out var address))
-        {
-            return false;
-        }
-
-        var bytes = address.GetAddressBytes();
-        return bytes[0] == 10
-            || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
-            || (bytes[0] == 192 && bytes[1] == 168);
     }
 
     [LoggerMessage(EventId = 1200, Level = LogLevel.Information, Message = "Device server log: {Message}")]

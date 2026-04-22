@@ -7,6 +7,7 @@ using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Device.Client;
+using Device.Client.Embedded;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,8 +24,9 @@ public sealed class WinUiBootstrapSmokeTests
     {
         var provider = App.WinUI.App.BuildServiceProvider();
 
-        Assert.NotNull(provider.GetService<DeviceIntegrationService>());
+        Assert.NotNull(provider.GetService<EmbeddedDeviceServerClient>());
         Assert.NotNull(provider.GetService<IDeviceServerClient>());
+        Assert.NotNull(provider.GetService<IEmbeddedDeviceServerClientRuntime>());
         Assert.NotNull(provider.GetService<IDeviceServerHost>());
         Assert.NotNull(provider.GetService<IDeviceFrameTransport>());
         Assert.NotNull(provider.GetService<DeviceOperationsCoordinator>());

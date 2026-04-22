@@ -11,6 +11,7 @@ using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using Audio.Loopback.Capture;
 using Device.Client;
+using Device.Client.Embedded;
 using Device.Server.Hosting;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
@@ -28,6 +29,7 @@ namespace App.WinUI;
 // DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
 // DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
+// DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
@@ -141,19 +143,22 @@ public partial class App : Application
 
         services.AddSingleton<PrecompiledFirmwareService>();
         services.AddSingleton<IDeviceOfficialFirmwareCatalog, PrecompiledFirmwareCatalogAdapter>();
-        services.AddSingleton<IDeviceRegistryStore, JsonDeviceRegistryStore>();
+        services.AddSingleton<IEmbeddedDeviceRegistryStore, JsonDeviceRegistryStore>();
+        services.AddSingleton<IEmbeddedDeviceServerSettingsProvider, AppEmbeddedDeviceServerSettingsProvider>();
+        services.AddSingleton<IEmbeddedDevicePublicHostResolver, NetworkInterfaceEmbeddedDevicePublicHostResolver>();
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
             sp.GetService<IDeviceOfficialFirmwareCatalog>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
         services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<IDeviceServerHost>());
-        services.AddSingleton(sp => new DeviceIntegrationService(
+        services.AddSingleton(sp => new EmbeddedDeviceServerClient(
             sp.GetRequiredService<IDeviceServerHost>(),
-            sp.GetRequiredService<IDeviceRegistryStore>(),
-            sp.GetRequiredService<SettingsRepository>(),
-            sp.GetRequiredService<AppSettingsDomainService>(),
-            sp.GetRequiredService<ILogger<DeviceIntegrationService>>()));
-        services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<DeviceIntegrationService>());
+            sp.GetRequiredService<IEmbeddedDeviceRegistryStore>(),
+            sp.GetRequiredService<IEmbeddedDeviceServerSettingsProvider>(),
+            sp.GetRequiredService<IEmbeddedDevicePublicHostResolver>(),
+            sp.GetRequiredService<ILogger<EmbeddedDeviceServerClient>>()));
+        services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
+        services.AddSingleton<IEmbeddedDeviceServerClientRuntime>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
         services.AddSingleton<DeviceOperationsCoordinator>(sp =>
         {
             var coordinator = new DeviceOperationsCoordinator(
@@ -267,15 +272,15 @@ public partial class App : Application
 
     private static async Task StartDeviceIntegrationAsync(IServiceProvider services)
     {
-        var deviceIntegration = services.GetService<DeviceIntegrationService>();
-        if (deviceIntegration is null)
+        var deviceRuntime = services.GetService<IEmbeddedDeviceServerClientRuntime>();
+        if (deviceRuntime is null)
         {
             return;
         }
 
         try
         {
-            await deviceIntegration.StartAsync().ConfigureAwait(false);
+            await deviceRuntime.StartAsync().ConfigureAwait(false);
 
             _ = WarmUpOfficialFirmwareAsync(services);
 
@@ -309,10 +314,10 @@ public partial class App : Application
                 var deviceOps = Services.GetService<DeviceOperationsCoordinator>();
                 deviceOps?.Dispose();
 
-                var deviceIntegration = Services.GetService<DeviceIntegrationService>();
-                if (deviceIntegration is not null)
+                var deviceRuntime = Services.GetService<IEmbeddedDeviceServerClientRuntime>();
+                if (deviceRuntime is not null)
                 {
-                    await deviceIntegration.DisposeAsync().ConfigureAwait(false);
+                    await deviceRuntime.DisposeAsync().ConfigureAwait(false);
                 }
             }
 

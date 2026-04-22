@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Device.Client.Embedded;
 using Device.Protocol.Models;
 using MicaAudio.Core.Config;
 using Microsoft.Extensions.Options;
@@ -8,7 +9,8 @@ using Microsoft.Extensions.Options;
 namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#tokens-de-dispositivo-em-repouso
-internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
+// DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
+internal sealed class JsonDeviceRegistryStore : IEmbeddedDeviceRegistryStore
 {
     private const string TokenCipherPrefix = "dpapi:v1:";
 

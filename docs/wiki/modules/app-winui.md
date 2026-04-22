@@ -30,7 +30,7 @@
   - `Parear`;
   - `Copiar host`;
   - concluir no AP `MicaAudio-Setup-xxxx`.
-- O endereco do servidor continua resolvido automaticamente via `DeviceIntegrationService.GetServerBaseAddress()` e o usuario o reutiliza no campo `Servidor` do portal AP.
+- O endereco do servidor continua resolvido automaticamente via `IDeviceServerClient.GetServerBaseAddress()` e o usuario o reutiliza no campo `Servidor` do portal AP.
 - O banner inline de `Parear` virou a superficie oficial para emitir e copiar o `pair code`.
 - O dashboard continua mostrando `Firmware atual` e `Ultimo release` offline, mas `Atualizar firmware` ficou restrito a device online e elegivel para OTA.
 - `PrecompiledFirmwareService` continua sendo a fonte unica do "ultimo firmware":
@@ -323,7 +323,7 @@
 ## Atualizacao 2026-03 - Link do dashboard do device para celular
 
 - A `DevicesPage` agora oferece `Copiar link do dashboard` na barra superior.
-- O link compartilhavel usa o host LAN resolvido por `DeviceIntegrationService`, preserva a porta local do host e fixa o device selecionado em `/dashboard?deviceId=<id>`.
+- O link compartilhavel usa o host LAN resolvido pelo `IDeviceServerClient` implementado por `EmbeddedDeviceServerClient`, preserva a porta local do host e fixa o device selecionado em `/dashboard?deviceId=<id>`.
 - O dashboard embutido continua em `127.0.0.1 + embedded=1`; apenas o link externo usa o host de rede local.
 - No navegador externo, o dashboard entra em modo leitura para nao expor controles que dependem da bridge do `WebView2`.
 
@@ -351,6 +351,9 @@
 - [ObservabilityOptions](../../../src/App.WinUI/Infrastructure/Observability/ObservabilityOptions.cs#L1)
 - [ExternalHttpClients](../../../src/App.WinUI/Infrastructure/Http/ExternalHttpClients.cs#L1)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
+- [EmbeddedDeviceServerClient](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L1)
+- [AppEmbeddedDeviceServerSettingsProvider](../../../src/App.WinUI/Services/Devices/AppEmbeddedDeviceServerSettingsProvider.cs#L1)
+- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
 - [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)

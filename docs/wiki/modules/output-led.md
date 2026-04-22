@@ -89,6 +89,7 @@
 
 - `Esp32S3LedOutput` depende de `Device.Client.IDeviceFrameTransport`, nao do host completo do server.
 - `Output` referencia `Device.Client.Abstractions` e nao referencia `Device.Server` nem `Device.Server.Abstractions`.
+- A implementacao embedded do transporte fica fora de `Output`, em `Device.Client.Embedded` + composition root WinUI.
 - O output continua emitindo os mesmos payloads `StreamFrameV2`; a mudanca e apenas de fronteira interna para preparar um futuro client remoto.
 
 ## Referencias de codigo

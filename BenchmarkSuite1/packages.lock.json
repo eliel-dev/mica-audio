@@ -808,6 +808,7 @@
           "Audio.Loopback": "[1.0.0, )",
           "CommunityToolkit.Mvvm": "[8.4.0, )",
           "Device.Client.Abstractions": "[1.0.0, )",
+          "Device.Client.Embedded": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )",
           "Device.Server": "[1.0.0, )",
           "Device.Server.Abstractions": "[1.0.0, )",
@@ -846,6 +847,15 @@
         "type": "Project",
         "dependencies": {
           "Device.Protocol": "[1.0.0, )"
+        }
+      },
+      "device.client.embedded": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Client.Abstractions": "[1.0.0, )",
+          "Device.Protocol": "[1.0.0, )",
+          "Device.Server.Abstractions": "[1.0.0, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.3, )"
         }
       },
       "device.protocol": {

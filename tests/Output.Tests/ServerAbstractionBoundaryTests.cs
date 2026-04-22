@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Device.Client;
+using Device.Client.Embedded;
 using Device.Server.Hosting;
 using Output.Led;
 
@@ -21,6 +22,14 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.Equal("Device.Client.Abstractions", typeof(IDeviceFrameTransport).Assembly.GetName().Name);
         Assert.Equal("Device.Client.Abstractions", typeof(PanelsBatchRegistration).Assembly.GetName().Name);
         Assert.True(typeof(IDeviceFrameTransport).IsAssignableFrom(typeof(IDeviceServerHost)));
+    }
+
+    [Fact]
+    public void DeviceEmbeddedClient_ShouldLiveInEmbeddedAssembly()
+    {
+        Assert.Equal("Device.Client.Embedded", typeof(EmbeddedDeviceServerClient).Assembly.GetName().Name);
+        Assert.True(typeof(IDeviceServerClient).IsAssignableFrom(typeof(EmbeddedDeviceServerClient)));
+        Assert.True(typeof(IEmbeddedDeviceServerClientRuntime).IsAssignableFrom(typeof(EmbeddedDeviceServerClient)));
     }
 
     [Fact]
@@ -55,5 +64,32 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.Contains("../Device.Client.Abstractions/Device.Client.Abstractions.csproj", references);
         Assert.DoesNotContain("../Device.Server.Abstractions/Device.Server.Abstractions.csproj", references);
         Assert.DoesNotContain("../Device.Server/Device.Server.csproj", references);
+    }
+
+    [Fact]
+    public void EmbeddedClientProject_ShouldNotReferenceAppWinUI()
+    {
+        var projectPath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "src",
+            "Device.Client.Embedded",
+            "Device.Client.Embedded.csproj"));
+
+        var project = XDocument.Load(projectPath);
+        var references = project
+            .Descendants("ProjectReference")
+            .Select(element => element.Attribute("Include")?.Value.Replace('\\', '/'))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+
+        Assert.Contains("../Device.Client.Abstractions/Device.Client.Abstractions.csproj", references);
+        Assert.Contains("../Device.Server.Abstractions/Device.Server.Abstractions.csproj", references);
+        Assert.Contains("../Device.Protocol/Device.Protocol.csproj", references);
+        Assert.DoesNotContain("../App.WinUI/App.WinUI.csproj", references);
     }
 }

@@ -1,4 +1,4 @@
-# 05 - Device Session and Reconnect
+ï»¿# 05 - Device Session and Reconnect
 
 ## Objetivo
 
@@ -25,12 +25,12 @@ Explicar ciclo de sessao dos dispositivos (pareamento, online, heartbeat, reconn
 - [DeviceServerHost.StartAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L37) - assinatura: `Task StartAsync(ServerConfig, CancellationToken)`
 - [DeviceServerHost.GetDevicesSnapshot](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L156) - assinatura: `IReadOnlyList<DeviceSnapshot> GetDevicesSnapshot()`
 - [DeviceServerHost.Advanced handlers](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L63) - assinatura: `Task HandleIncomingWsTextAsync(...)`
-- [DeviceIntegrationService.StartAsync](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L45) - assinatura: `Task StartAsync(CancellationToken)`
+- [EmbeddedDeviceServerClient.StartAsync](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L62) - assinatura: `Task StartAsync(CancellationToken)`
 - [DeviceOperationsCoordinator.ApplyDevices path](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L160) - assinatura: `private void ApplyDevices(IReadOnlyList<DeviceSnapshot> devices)`
 
 ## Backlinks no codigo
 
-- `src/App.WinUI/Services/Devices/DeviceIntegrationService.cs`
+- `src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
 
 ## Atualizacao 2026-03 - Lifecycle de Device Leve
@@ -41,7 +41,6 @@ Explicar ciclo de sessao dos dispositivos (pareamento, online, heartbeat, reconn
   - `DeviceFreshThresholdSeconds`
   - `DeviceStaleThresholdMinutes`
   - `DeviceDormantThresholdHours`
-- A coerção de config garante `Fresh < Stale < Dormant`.
+- A coercao de config garante `Fresh < Stale < Dormant`.
 - O limiar de `Fresh` continua sendo a base do timeout operacional `Online -> Offline` no servidor.
 - `Dormant` nao afirma perda de configuracao; ele apenas eleva o estado para `Configuracao incerta`.
-
