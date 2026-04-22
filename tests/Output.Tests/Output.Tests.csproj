@@ -72,6 +72,7 @@
     <Compile Include="..\..\src\App.WinUI\Services\Firmware\ResolvedFirmwareArtifact.cs" Link="Shared\Firmware\ResolvedFirmwareArtifact.cs" />
     <Compile Include="..\..\src\App.WinUI\Models\Apps\AppCatalogItem.cs" Link="Shared\Models\AppCatalogItem.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\IDeviceRegistryStore.cs" Link="Shared\Devices\IDeviceRegistryStore.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\IDeviceServerClient.cs" Link="Shared\Devices\IDeviceServerClient.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceIntegrationService.cs" Link="Shared\Devices\DeviceIntegrationService.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceCommandExecutionState.cs" Link="Shared\Devices\DeviceCommandExecutionState.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceCommandExecutionContext.cs" Link="Shared\Devices\DeviceCommandExecutionContext.cs" />

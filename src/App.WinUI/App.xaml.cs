@@ -25,6 +25,7 @@ namespace App.WinUI;
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
 // DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
 // DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
+// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
@@ -143,16 +144,18 @@ public partial class App : Application
             TimeProvider.System,
             sp.GetService<IDeviceOfficialFirmwareCatalog>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
+        services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<IDeviceServerHost>());
         services.AddSingleton(sp => new DeviceIntegrationService(
             sp.GetRequiredService<IDeviceServerHost>(),
             sp.GetRequiredService<IDeviceRegistryStore>(),
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<ILogger<DeviceIntegrationService>>()));
+        services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<DeviceIntegrationService>());
         services.AddSingleton<DeviceOperationsCoordinator>(sp =>
         {
             var coordinator = new DeviceOperationsCoordinator(
-                sp.GetRequiredService<DeviceIntegrationService>(),
+                sp.GetRequiredService<IDeviceServerClient>(),
                 sp.GetRequiredService<SettingsRepository>(),
                 sp.GetRequiredService<AppSettingsDomainService>(),
                 sp.GetRequiredService<ILogger<DeviceOperationsCoordinator>>());
@@ -180,10 +183,11 @@ public partial class App : Application
         services.AddSingleton<ILoopbackCapture, WasapiLoopbackCaptureService>();
         services.AddSingleton<SimulatorLedOutput>();
         services.AddSingleton<NullLedOutput>();
-        services.AddSingleton(sp => new Esp32S3LedOutput(sp.GetRequiredService<IDeviceServerHost>()));
+        services.AddSingleton(sp => new Esp32S3LedOutput(sp.GetRequiredService<IDeviceFrameTransport>()));
         services.AddSingleton<PanelsDeviceSessionService>();
         services.AddSingleton(sp => new PanelsPlaybackService(
-            sp.GetRequiredService<IDeviceServerHost>(),
+            sp.GetRequiredService<IDeviceServerClient>(),
+            sp.GetRequiredService<IDeviceFrameTransport>(),
             sp.GetRequiredService<PanelsFrameComposer>(),
             sp.GetRequiredService<PanelsDeviceSessionService>(),
             sp.GetRequiredService<Hub75VisualizerSessionService>(),

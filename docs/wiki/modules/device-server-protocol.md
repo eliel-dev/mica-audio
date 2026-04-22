@@ -40,7 +40,14 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 7. App envia comandos tracked (`SendCommandTrackedAsync`) via `mica/v1/devices/{deviceId}/commands`.
 8. `PendingTrackedCommandStore` e `PendingTrackedCommand` correlacionam `command-events` por `commandId`.
 9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
-10. `BroadcastFrame` distribui stream para sockets WS conectados.
+10. `IDeviceFrameTransport.BroadcastFrame/SendFrame` distribui stream para sockets WS conectados.
+
+## Atualizacao 2026-04 - Fronteira De Client Embutido
+
+- `IDeviceServerHost` permanece como contrato de lifecycle do server embutido e continua implementado por `DeviceServerHost`.
+- `IDeviceFrameTransport` isolou o hot path visual (`BroadcastFrame`/`SendFrame`) para consumidores como `Esp32S3LedOutput`.
+- O WinUI passa a consumir uma fronteira app-level (`IDeviceServerClient`) para operacoes de devices e batches de `Paineis`, mantendo o server concreto apenas no composition root.
+- Nao houve alteracao de endpoints, portas, topicos MQTT, autenticacao, DTOs wire ou firmware.
 
 ## Politicas de seguranca
 

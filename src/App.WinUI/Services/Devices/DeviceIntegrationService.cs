@@ -9,7 +9,8 @@ using Microsoft.Extensions.Logging;
 namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
-internal sealed partial class DeviceIntegrationService : IAsyncDisposable
+// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+internal sealed partial class DeviceIntegrationService : IDeviceServerClient, IAsyncDisposable
 {
     private readonly IDeviceServerHost serverHost;
     private readonly IDeviceRegistryStore registryStore;
@@ -46,13 +47,17 @@ internal sealed partial class DeviceIntegrationService : IAsyncDisposable
         serverHost.DeviceLogReceived += OnDeviceLogReceived;
     }
 
-    public IDeviceServerHost Host => serverHost;
-
     public event EventHandler? DevicesChanged;
 
     public event EventHandler<string>? LogMessage;
 
     public event EventHandler<DeviceLogMessage>? DeviceLogReceived;
+
+    public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+    {
+        add => serverHost.CommandProgressChanged += value;
+        remove => serverHost.CommandProgressChanged -= value;
+    }
 
     public string GetServerBaseAddress() => $"http://{publicHost}:{ServerPort}";
 
@@ -114,7 +119,28 @@ internal sealed partial class DeviceIntegrationService : IAsyncDisposable
     public async Task<bool> SendCommandAsync(string deviceId, DeviceCommandType commandType, CancellationToken cancellationToken = default)
         => await serverHost.SendCommandAsync(deviceId, commandType, cancellationToken).ConfigureAwait(false);
 
+    public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+        => serverHost.SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
+
     public bool RemoveDevice(string deviceId) => serverHost.RemoveDevice(deviceId);
+
+    public PanelsBatchRegistration RegisterPanelsBatch(
+        string deviceId,
+        string panelsSessionId,
+        ulong batchSequence,
+        byte[] payload,
+        int frameCount,
+        int durationMs,
+        string contentType = "image/webp")
+        => serverHost.RegisterPanelsBatch(deviceId, panelsSessionId, batchSequence, payload, frameCount, durationMs, contentType);
+
+    public void ClearPanelsBatches(string deviceId, string? panelsSessionId = null)
+        => serverHost.ClearPanelsBatches(deviceId, panelsSessionId);
 
     public async ValueTask DisposeAsync()
     {

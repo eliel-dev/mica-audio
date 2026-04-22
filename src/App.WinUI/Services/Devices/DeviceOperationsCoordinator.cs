@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
+// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
 internal sealed partial class DeviceOperationsCoordinator : IDisposable
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
@@ -30,10 +31,10 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
     private bool disposed;
 
     public DeviceOperationsCoordinator(
-        DeviceIntegrationService integration,
-        SettingsRepository settingsRepository,
-        AppSettingsDomainService settingsDomainService,
-        ILogger<DeviceOperationsCoordinator> logger)
+        IDeviceServerClient integration,
+        SettingsRepository? settingsRepository,
+        AppSettingsDomainService? settingsDomainService,
+        ILogger<DeviceOperationsCoordinator>? logger = null)
         : this(new DeviceOperationsRuntime(integration), settingsRepository, settingsDomainService, logger)
     {
     }
@@ -513,9 +514,9 @@ internal interface IDeviceOperationsRuntime
 
 internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
 {
-    private readonly DeviceIntegrationService integration;
+    private readonly IDeviceServerClient integration;
 
-    public DeviceOperationsRuntime(DeviceIntegrationService integration)
+    public DeviceOperationsRuntime(IDeviceServerClient integration)
     {
         this.integration = integration;
     }
@@ -540,8 +541,8 @@ internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
 
     public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
     {
-        add => integration.Host.CommandProgressChanged += value;
-        remove => integration.Host.CommandProgressChanged -= value;
+        add => integration.CommandProgressChanged += value;
+        remove => integration.CommandProgressChanged -= value;
     }
 
     public string GetServerBaseAddress() => integration.GetServerBaseAddress();
@@ -559,6 +560,6 @@ internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        return integration.Host.SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
+        return integration.SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
     }
 }

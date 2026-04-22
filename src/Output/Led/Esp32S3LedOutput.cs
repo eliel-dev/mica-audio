@@ -8,9 +8,10 @@ namespace Output.Led;
 
 // DOCS: docs/wiki/modules/output-led.md#modulo-output-led
 // DOCS: docs/wiki/reference/ws-protocol-v2.md#estrutura-streamframev2
+// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
 public sealed class Esp32S3LedOutput : ILedOutput
 {
-    private readonly IDeviceServerHost deviceServerHost;
+    private readonly IDeviceFrameTransport frameTransport;
     private readonly object gate = new();
 
     private float brightness = LedDefaults.Brightness;
@@ -22,9 +23,9 @@ public sealed class Esp32S3LedOutput : ILedOutput
     private byte lastFrameBrightness;
     private bool hasLastFrame;
 
-    public Esp32S3LedOutput(IDeviceServerHost deviceServerHost)
+    public Esp32S3LedOutput(IDeviceFrameTransport frameTransport)
     {
-        this.deviceServerHost = deviceServerHost;
+        this.frameTransport = frameTransport;
     }
 
     public bool IsAvailable => true;
@@ -167,11 +168,11 @@ public sealed class Esp32S3LedOutput : ILedOutput
     {
         if (string.IsNullOrWhiteSpace(localTargetDeviceId))
         {
-            deviceServerHost.BroadcastFrame(payload);
+            frameTransport.BroadcastFrame(payload);
             return;
         }
 
-        deviceServerHost.SendFrame(localTargetDeviceId, payload);
+        frameTransport.SendFrame(localTargetDeviceId, payload);
     }
 }
 

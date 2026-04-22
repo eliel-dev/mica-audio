@@ -63,8 +63,7 @@ public sealed class Hub75PriorityArbitrationTests
         using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
         using var visualizerSessionService = new Hub75VisualizerSessionService(coordinator);
         using var panelsDeviceSessionService = new PanelsDeviceSessionService(coordinator);
-        await using var host = new DeviceServerHost();
-        using var playbackService = CreatePlaybackService(host, panelsDeviceSessionService, visualizerSessionService);
+        using var playbackService = CreatePlaybackService(panelsDeviceSessionService, visualizerSessionService);
 
         runtime.SetDevices([
             CreateSnapshot("device-1", DeviceStatus.Online, "analogclock", "Relogio"),
@@ -92,8 +91,7 @@ public sealed class Hub75PriorityArbitrationTests
         using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
         using var visualizerSessionService = new Hub75VisualizerSessionService(coordinator);
         using var panelsDeviceSessionService = new PanelsDeviceSessionService(coordinator);
-        await using var host = new DeviceServerHost();
-        using var playbackService = CreatePlaybackService(host, panelsDeviceSessionService, visualizerSessionService);
+        using var playbackService = CreatePlaybackService(panelsDeviceSessionService, visualizerSessionService);
         var panel = CreatePanel("panel-1");
 
         runtime.SetDevices([
@@ -155,8 +153,7 @@ public sealed class Hub75PriorityArbitrationTests
         using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
         using var visualizerSessionService = new Hub75VisualizerSessionService(coordinator);
         using var panelsDeviceSessionService = new PanelsDeviceSessionService(coordinator);
-        await using var host = new DeviceServerHost();
-        using var playbackService = CreatePlaybackService(host, panelsDeviceSessionService, visualizerSessionService);
+        using var playbackService = CreatePlaybackService(panelsDeviceSessionService, visualizerSessionService);
 
         runtime.SetDevices([
             CreateSnapshot("device-1", DeviceStatus.Online, "analogclock", "Relogio"),
@@ -203,8 +200,7 @@ public sealed class Hub75PriorityArbitrationTests
         using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
         using var visualizerSessionService = new Hub75VisualizerSessionService(coordinator);
         using var panelsDeviceSessionService = new PanelsDeviceSessionService(coordinator);
-        await using var host = new DeviceServerHost();
-        using var playbackService = CreatePlaybackService(host, panelsDeviceSessionService, visualizerSessionService, enableMatrixTransport: false);
+        using var playbackService = CreatePlaybackService(panelsDeviceSessionService, visualizerSessionService, enableMatrixTransport: false);
         var panel = CreatePanel("panel-local");
 
         runtime.SetDevices([
@@ -224,13 +220,13 @@ public sealed class Hub75PriorityArbitrationTests
     }
 
     private static PanelsPlaybackService CreatePlaybackService(
-        DeviceServerHost host,
         PanelsDeviceSessionService panelsDeviceSessionService,
         Hub75VisualizerSessionService visualizerSessionService,
         bool enableMatrixTransport = true)
     {
         return new PanelsPlaybackService(
-            host,
+            new FakeDeviceServerClient(),
+            new FakeDeviceFrameTransport(),
             new PanelsFrameComposer(),
             panelsDeviceSessionService,
             visualizerSessionService,
@@ -286,6 +282,85 @@ public sealed class Hub75PriorityArbitrationTests
         }
 
         Assert.True(predicate(), "Condition was not satisfied within timeout.");
+    }
+
+    private sealed class FakeDeviceServerClient : IDeviceServerClient
+    {
+        public event EventHandler? DevicesChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<string>? LogMessage
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public string GetServerBaseAddress() => "http://127.0.0.1:5272";
+
+        public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
+            => new() { Code = "123456", ExpiresAtUtc = DateTimeOffset.UtcNow.Add(ttl) };
+
+        public IReadOnlyList<DeviceSnapshot> GetDevices() => Array.Empty<DeviceSnapshot>();
+
+        public bool RemoveDevice(string deviceId) => false;
+
+        public Task<CommandDispatchResult> SendCommandTrackedAsync(
+            string deviceId,
+            DeviceCommandType commandType,
+            IReadOnlyDictionary<string, string>? parameters,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new CommandDispatchResult
+            {
+                DeviceId = deviceId,
+                CommandId = "cmd-fake",
+                Accepted = true,
+                Completed = true,
+                Success = true,
+                ProgressPercent = 100,
+                Stage = "done",
+                Message = "ok",
+            });
+
+        public PanelsBatchRegistration RegisterPanelsBatch(
+            string deviceId,
+            string panelsSessionId,
+            ulong batchSequence,
+            byte[] payload,
+            int frameCount,
+            int durationMs,
+            string contentType = "image/webp")
+            => new(panelsSessionId, batchSequence, payload.LongLength, string.Empty, contentType, frameCount, durationMs, string.Empty);
+
+        public void ClearPanelsBatches(string deviceId, string? panelsSessionId = null)
+        {
+        }
+    }
+
+    private sealed class FakeDeviceFrameTransport : IDeviceFrameTransport
+    {
+        public void SendFrame(string deviceId, byte[] framePayload)
+        {
+        }
+
+        public void BroadcastFrame(byte[] framePayload)
+        {
+        }
     }
 
     private sealed class FakeDeviceOperationsRuntime : IDeviceOperationsRuntime

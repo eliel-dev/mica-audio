@@ -6,6 +6,7 @@ using App.WinUI.Services.Devices;
 using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
+using Device.Protocol.Models;
 using Device.Server.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -22,7 +23,9 @@ public sealed class WinUiBootstrapSmokeTests
         var provider = App.WinUI.App.BuildServiceProvider();
 
         Assert.NotNull(provider.GetService<DeviceIntegrationService>());
+        Assert.NotNull(provider.GetService<IDeviceServerClient>());
         Assert.NotNull(provider.GetService<IDeviceServerHost>());
+        Assert.NotNull(provider.GetService<IDeviceFrameTransport>());
         Assert.NotNull(provider.GetService<DeviceOperationsCoordinator>());
         Assert.NotNull(provider.GetService<IAppCatalogService>());
         Assert.NotNull(provider.GetService<IAppModifierStateStore>());
@@ -53,13 +56,36 @@ public sealed class WinUiBootstrapSmokeTests
     }
 
     [Fact]
-    public void PanelsPlaybackService_ShouldDependOnDeviceServerAbstraction()
+    public void PanelsPlaybackService_ShouldDependOnDeviceServerClientAndFrameTransport()
     {
         var constructor = typeof(PanelsPlaybackService)
-            .GetConstructors()
-            .Single(ctor => ctor.GetParameters().Length == 5);
+            .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            .Single(ctor => ctor.GetParameters().Length == 6);
 
-        Assert.Equal(typeof(IDeviceServerHost), constructor.GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IDeviceServerClient), constructor.GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IDeviceFrameTransport), constructor.GetParameters()[1].ParameterType);
+    }
+
+    [Fact]
+    public void PanelsPlaybackService_ShouldBeConstructibleWithFakedDeviceServerClientAndFrameTransport()
+    {
+        var client = new FakeDeviceServerClient();
+        var frameTransport = new FakeDeviceFrameTransport();
+        using var coordinator = new DeviceOperationsCoordinator(
+            client,
+            settingsRepository: null,
+            settingsDomainService: null);
+        using var panelsDeviceSessionService = new PanelsDeviceSessionService(coordinator);
+        using var visualizerSessionService = new Hub75VisualizerSessionService(coordinator);
+        using var service = new PanelsPlaybackService(
+            client,
+            frameTransport,
+            new PanelsFrameComposer(),
+            panelsDeviceSessionService,
+            visualizerSessionService,
+            enableMatrixTransport: false);
+
+        Assert.False(service.IsRunning);
     }
 
     [Fact]
@@ -136,5 +162,84 @@ public sealed class WinUiBootstrapSmokeTests
         });
 
         Assert.False(hasServiceProviderCtor, $"Service locator constructor not allowed: {pageType.FullName}");
+    }
+
+    private sealed class FakeDeviceServerClient : IDeviceServerClient
+    {
+        public event EventHandler? DevicesChanged;
+
+        public event EventHandler<string>? LogMessage
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public string GetServerBaseAddress() => "http://127.0.0.1:5272";
+
+        public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
+            => new() { Code = "123456", ExpiresAtUtc = DateTimeOffset.UtcNow.Add(ttl) };
+
+        public IReadOnlyList<DeviceSnapshot> GetDevices() => Array.Empty<DeviceSnapshot>();
+
+        public bool RemoveDevice(string deviceId)
+        {
+            DevicesChanged?.Invoke(this, EventArgs.Empty);
+            return true;
+        }
+
+        public Task<CommandDispatchResult> SendCommandTrackedAsync(
+            string deviceId,
+            DeviceCommandType commandType,
+            IReadOnlyDictionary<string, string>? parameters,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new CommandDispatchResult
+            {
+                DeviceId = deviceId,
+                CommandId = "cmd-fake",
+                Accepted = true,
+                Completed = true,
+                Success = true,
+                ProgressPercent = 100,
+                Stage = "done",
+                Message = "ok",
+            });
+
+        public PanelsBatchRegistration RegisterPanelsBatch(
+            string deviceId,
+            string panelsSessionId,
+            ulong batchSequence,
+            byte[] payload,
+            int frameCount,
+            int durationMs,
+            string contentType = "image/webp")
+            => new(panelsSessionId, batchSequence, payload.LongLength, string.Empty, contentType, frameCount, durationMs, string.Empty);
+
+        public void ClearPanelsBatches(string deviceId, string? panelsSessionId = null)
+        {
+        }
+    }
+
+    private sealed class FakeDeviceFrameTransport : IDeviceFrameTransport
+    {
+        public void SendFrame(string deviceId, byte[] framePayload)
+        {
+        }
+
+        public void BroadcastFrame(byte[] framePayload)
+        {
+        }
     }
 }

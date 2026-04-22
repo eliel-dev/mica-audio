@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Device.Server.Hosting;
+using Output.Led;
 
 namespace Output.Tests;
 
@@ -10,6 +11,21 @@ public sealed class ServerAbstractionBoundaryTests
     {
         Assert.Equal("Device.Server.Abstractions", typeof(IDeviceServerHost).Assembly.GetName().Name);
         Assert.Equal("Device.Server.Abstractions", typeof(IDeviceOfficialFirmwareCatalog).Assembly.GetName().Name);
+    }
+
+    [Fact]
+    public void DeviceFrameTransportContract_ShouldLiveInAbstractionsAssembly()
+    {
+        Assert.Equal("Device.Server.Abstractions", typeof(IDeviceFrameTransport).Assembly.GetName().Name);
+        Assert.True(typeof(IDeviceFrameTransport).IsAssignableFrom(typeof(IDeviceServerHost)));
+    }
+
+    [Fact]
+    public void Esp32Output_ShouldDependOnFrameTransportOnly()
+    {
+        var constructor = Assert.Single(typeof(Esp32S3LedOutput).GetConstructors());
+
+        Assert.Equal(typeof(IDeviceFrameTransport), constructor.GetParameters()[0].ParameterType);
     }
 
     [Fact]

@@ -4,8 +4,8 @@ using Device.Protocol.Models;
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
-// DOCS: docs/handoffs/2026-04-21-server-embedded-decoupling.md
-public interface IDeviceServerHost : IAsyncDisposable
+// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+public interface IDeviceServerHost : IDeviceFrameTransport, IAsyncDisposable
 {
     event EventHandler? DevicesChanged;
 
@@ -43,10 +43,6 @@ public interface IDeviceServerHost : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     bool RemoveDevice(string deviceId);
-
-    void SendFrame(string deviceId, byte[] framePayload);
-
-    void BroadcastFrame(byte[] framePayload);
 
     PanelsBatchRegistration RegisterPanelsBatch(
         string deviceId,

@@ -7,6 +7,7 @@ using App.WinUI.Services.Logging;
 using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
+using Device.Server.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using MicaAudio.Core.Led;
@@ -56,7 +57,7 @@ public sealed partial class AppsPage : Page, IDisposable
         SaveAppConfigUseCase saveAppConfigUseCase,
         DeployAppUseCase deployAppUseCase,
         AppConfigValidationUseCase appConfigValidationUseCase,
-        DeviceIntegrationService deviceIntegration,
+        IDeviceFrameTransport frameTransport,
         AppLogStore appLogStore)
     {
         this.viewModel = viewModel;
@@ -72,9 +73,8 @@ public sealed partial class AppsPage : Page, IDisposable
             cityService,
             message => RecordCityAutocompleteEvent(message, LogSeverity.Warning));
 
-        var host = deviceIntegration.Host;
         gifRuntimeService = new GifCatalogAppRuntimeService(
-            matrixOutput: new Esp32S3LedOutput(host),
+            matrixOutput: new Esp32S3LedOutput(frameTransport),
             simulatorOutput: new SimulatorLedOutput(),
             decoder: new Hub75GifDecoder(Hub75GifDecoder.DefaultMaxGifFrames),
             formatter: new Hub75FrameFormatter(),

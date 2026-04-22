@@ -1,4 +1,3 @@
-using Device.Protocol.Models;
 using Device.Protocol.Stream;
 using Device.Server.Hosting;
 using MicaAudio.Core.Led;
@@ -12,7 +11,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Send_ShouldBroadcastEncodedBins128Frame()
     {
-        using var host = new FakeDeviceServerHost();
+        var host = new FakeDeviceFrameTransport();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
@@ -47,7 +46,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void SetBrightness_ShouldAffectBrightnessByteInPayload()
     {
-        using var host = new FakeDeviceServerHost();
+        var host = new FakeDeviceFrameTransport();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig { Width = 128, Height = 64, Brightness = 1f });
@@ -66,7 +65,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Stop_ShouldPreventFurtherBroadcasts()
     {
-        using var host = new FakeDeviceServerHost();
+        var host = new FakeDeviceFrameTransport();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig { Width = 128, Height = 64, Brightness = 1f });
@@ -84,7 +83,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Send_WithFrame128x64_ShouldBroadcastRgb565FramePayload()
     {
-        using var host = new FakeDeviceServerHost();
+        var host = new FakeDeviceFrameTransport();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
@@ -124,7 +123,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Send_WithUnchangedFrame_ShouldSkipConsecutiveBroadcast()
     {
-        using var host = new FakeDeviceServerHost();
+        var host = new FakeDeviceFrameTransport();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
@@ -146,7 +145,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Send_WithUnchangedPixelsAndDifferentBrightness_ShouldBroadcastAgain()
     {
-        using var host = new FakeDeviceServerHost();
+        var host = new FakeDeviceFrameTransport();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
@@ -169,7 +168,7 @@ public class Esp32S3LedOutputTests
     [Fact]
     public void Send_WithTargetDeviceId_ShouldUseDirectedFrameDispatch()
     {
-        using var host = new FakeDeviceServerHost();
+        var host = new FakeDeviceFrameTransport();
         var output = new Esp32S3LedOutput(host);
 
         output.Start(new LedOutputConfig
@@ -195,54 +194,13 @@ public class Esp32S3LedOutputTests
         Assert.Equal(StreamFrameV2.MessageTypeFrame128x64Rgb565, directed.Payload[1]);
     }
 
-    private sealed class FakeDeviceServerHost : IDeviceServerHost, IDisposable
+    private sealed class FakeDeviceFrameTransport : IDeviceFrameTransport
     {
         public List<byte[]> BroadcastFrames { get; } = new();
 
         public List<(string DeviceId, byte[] Payload)> TargetedFrames { get; } = new();
 
-        public event EventHandler? DevicesChanged
-        {
-            add { }
-            remove { }
-        }
-
-        public event EventHandler<string>? LogMessage
-        {
-            add { }
-            remove { }
-        }
-
-        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
-        {
-            add { }
-            remove { }
-        }
-
-        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
-        {
-            add { }
-            remove { }
-        }
-
-        public Task StartAsync(Device.Protocol.Contracts.ServerConfig config, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task StopAsync() => Task.CompletedTask;
-        public PairingCodeInfo CreatePairingCode(TimeSpan ttl) => new() { Code = "000000", ExpiresAtUtc = DateTimeOffset.UtcNow.Add(ttl) };
-        public IReadOnlyList<DeviceSnapshot> GetDevicesSnapshot() => Array.Empty<DeviceSnapshot>();
-        public IReadOnlyList<DeviceRecord> GetDeviceRecords() => Array.Empty<DeviceRecord>();
-        public void SeedDevices(IEnumerable<DeviceRecord> devices) { }
-        public Task<bool> SendCommandAsync(string deviceId, DeviceCommandType commandType, CancellationToken cancellationToken = default) => Task.FromResult(false);
-        public Task<CommandDispatchResult> SendCommandTrackedAsync(string deviceId, DeviceCommandType commandType, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new CommandDispatchResult { DeviceId = deviceId, Accepted = false, Completed = true, Success = false, ProgressPercent = 0, Stage = "offline", ErrorCode = "not_implemented", });
-        public Task<CommandDispatchResult> SendCommandTrackedAsync(string deviceId, DeviceCommandType commandType, IReadOnlyDictionary<string, string>? parameters, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
-            => SendCommandTrackedAsync(deviceId, commandType, timeout, cancellationToken);
-        public bool RemoveDevice(string deviceId) => false;
         public void SendFrame(string deviceId, byte[] framePayload) => TargetedFrames.Add((deviceId, framePayload));
         public void BroadcastFrame(byte[] framePayload) => BroadcastFrames.Add(framePayload);
-        public PanelsBatchRegistration RegisterPanelsBatch(string deviceId, string panelsSessionId, ulong batchSequence, byte[] payload, int frameCount, int durationMs, string contentType = "image/webp")
-            => new(panelsSessionId, batchSequence, payload.LongLength, Sha256: string.Empty, contentType, frameCount, durationMs, DownloadUrl: string.Empty);
-        public void ClearPanelsBatches(string deviceId, string? panelsSessionId = null) { }
-        public void Dispose() { }
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

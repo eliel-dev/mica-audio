@@ -12,6 +12,7 @@ namespace App.WinUI.Services.Panels;
 // DOCS: docs/wiki/modules/paineis.md#runtime-em-background
 // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-prioridade-hub75-visualizador-sobre-paineis
 // DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
+// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
 internal sealed class PanelsPlaybackService : IDisposable
 {
     private static readonly bool EnableBatchPerfLogging =
@@ -24,7 +25,8 @@ internal sealed class PanelsPlaybackService : IDisposable
         .Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
         .ToArray();
 
-    private readonly IDeviceServerHost host;
+    private readonly IDeviceServerClient serverClient;
+    private readonly IDeviceFrameTransport frameTransport;
     private readonly PanelsFrameComposer composer;
     private readonly PanelsDeviceSessionService deviceSessionService;
     private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
@@ -44,13 +46,15 @@ internal sealed class PanelsPlaybackService : IDisposable
     private bool disposed;
 
     public PanelsPlaybackService(
-        IDeviceServerHost host,
+        IDeviceServerClient serverClient,
+        IDeviceFrameTransport frameTransport,
         PanelsFrameComposer composer,
         PanelsDeviceSessionService deviceSessionService,
         Hub75VisualizerSessionService hub75VisualizerSessionService,
         bool enableMatrixTransport = true)
     {
-        this.host = host;
+        this.serverClient = serverClient;
+        this.frameTransport = frameTransport;
         this.composer = composer;
         this.deviceSessionService = deviceSessionService;
         this.hub75VisualizerSessionService = hub75VisualizerSessionService;
@@ -295,7 +299,7 @@ internal sealed class PanelsPlaybackService : IDisposable
 
             if (enableMatrixTransport)
             {
-                output = new Esp32S3LedOutput(host);
+                output = new Esp32S3LedOutput(frameTransport);
                 output.Start(new LedOutputConfig
                 {
                     Width = LedDefaults.MatrixWidth,
@@ -377,7 +381,7 @@ internal sealed class PanelsPlaybackService : IDisposable
                 {
                     if (!await QueueNextBatchAsync(session, deviceId, batchState, cancellationToken).ConfigureAwait(false))
                     {
-                        host.ClearPanelsBatches(deviceId, batchState.PanelsSessionId);
+                        serverClient.ClearPanelsBatches(deviceId, batchState.PanelsSessionId);
                         batchState = null;
                         lock (stateGate)
                         {
@@ -450,7 +454,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         {
             if (localBatchState is not null)
             {
-                host.ClearPanelsBatches(localTargetDeviceId, localBatchState.PanelsSessionId);
+                serverClient.ClearPanelsBatches(localTargetDeviceId, localBatchState.PanelsSessionId);
             }
 
             localOutput.Send(LedPayloadFactory.CreateFramePayload(BlackFrame, PanelsDeviceSessionService.PanelsAppId));
@@ -491,8 +495,8 @@ internal sealed class PanelsPlaybackService : IDisposable
 
     private bool SupportsAnimatedWebpBatch(string deviceId)
     {
-        return host
-            .GetDevicesSnapshot()
+        return serverClient
+            .GetDevices()
             .Any(snapshot =>
                 string.Equals(snapshot.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase)
                 && snapshot.AnimatedWebpBatchSupported == true);
@@ -509,7 +513,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         {
             if (!await QueueNextBatchAsync(session, deviceId, state, cancellationToken).ConfigureAwait(false))
             {
-                host.ClearPanelsBatches(deviceId, state.PanelsSessionId);
+                serverClient.ClearPanelsBatches(deviceId, state.PanelsSessionId);
                 return null;
             }
         }
@@ -524,7 +528,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         CancellationToken cancellationToken)
     {
         var encodedBatch = RenderEncodedBatch(session, state.NextBatchStartUtc);
-        var registration = host.RegisterPanelsBatch(
+        var registration = serverClient.RegisterPanelsBatch(
             deviceId,
             state.PanelsSessionId,
             state.NextBatchSequence,
@@ -544,7 +548,7 @@ internal sealed class PanelsPlaybackService : IDisposable
             DurationMs = registration.DurationMs,
         };
 
-        var result = await host
+        var result = await serverClient
             .SendCommandTrackedAsync(
                 deviceId,
                 DeviceCommandType.QueuePanelsBatch,
