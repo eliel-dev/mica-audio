@@ -37,6 +37,13 @@
   - em workspace/dev valida frescor contra o workspace;
   - fora disso usa o pacote oficial embarcado no app.
 
+## Atualizacao 2026-04 - Composition Root Do Server Embutido
+
+- `App.BuildServiceProvider()` continua sendo o unico ponto que conhece a implementacao concreta do server local.
+- `DeviceServerHost` permanece embutido no processo WinUI e agora recebe `IPanelsBatchStore` pelo composition root.
+- O registro default e `IPanelsBatchStore -> InMemoryPanelsBatchStore`, preservando batches `WebP` apenas em memoria e sem alterar URL, autenticacao ou payload de `queue_panels_batch`.
+- `IDeviceServerClient`, `IEmbeddedDeviceServerClientRuntime` e `IDeviceFrameTransport` continuam resolvidos pelas fronteiras de client/embedded ja existentes.
+
 ## Atualizacao 2026-03 - Refresh automatico do release oficial de firmware
 
 - A `App.WinUI` continua trabalhando apenas com o conceito de release oficial local do firmware, validado por manifesto.
@@ -352,6 +359,8 @@
 - [ExternalHttpClients](../../../src/App.WinUI/Infrastructure/Http/ExternalHttpClients.cs#L1)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [EmbeddedDeviceServerClient](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L1)
+- [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1)
+- [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
 - [AppEmbeddedDeviceServerSettingsProvider](../../../src/App.WinUI/Services/Devices/AppEmbeddedDeviceServerSettingsProvider.cs#L1)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)

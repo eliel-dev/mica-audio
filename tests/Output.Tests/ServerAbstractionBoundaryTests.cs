@@ -13,6 +13,16 @@ public sealed class ServerAbstractionBoundaryTests
     {
         Assert.Equal("Device.Server.Abstractions", typeof(IDeviceServerHost).Assembly.GetName().Name);
         Assert.Equal("Device.Server.Abstractions", typeof(IDeviceOfficialFirmwareCatalog).Assembly.GetName().Name);
+        Assert.Equal("Device.Server.Abstractions", typeof(IPanelsBatchStore).Assembly.GetName().Name);
+        Assert.Equal("Device.Server.Abstractions", typeof(PanelsBatchWrite).Assembly.GetName().Name);
+        Assert.Equal("Device.Server.Abstractions", typeof(PanelsBatchEntry).Assembly.GetName().Name);
+    }
+
+    [Fact]
+    public void DeviceServerInMemoryStores_ShouldLiveInServerAssembly()
+    {
+        Assert.Equal("Device.Server", typeof(InMemoryPanelsBatchStore).Assembly.GetName().Name);
+        Assert.True(typeof(IPanelsBatchStore).IsAssignableFrom(typeof(InMemoryPanelsBatchStore)));
     }
 
     [Fact]

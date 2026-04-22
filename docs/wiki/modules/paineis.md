@@ -72,10 +72,11 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - Mesmo com o visualizador principal operando em `Bins128`, `Paineis` continuam usando transporte dedicado `Frame128x64` para o HUB75 fisico.
 - Quando o device anuncia `animatedWebpBatchSupported = true`, o host troca o stream frame-a-frame por lotes animados `WebP` de `1 s / 30 frames`:
   - o compositor continua autoritativo e resolve todos os widgets/sobreposicoes no host;
-  - o host guarda apenas `ativo + proximo` em memoria por sessao/device;
+  - o storage default `InMemoryPanelsBatchStore` guarda os batches em memoria por device/sessao e retem os `4` mais recentes por device;
   - o envio ao device acontece por `queue_panels_batch` + download HTTP autenticado no `Device.Server`;
   - o fallback para `Frame128x64` continua automatico se o device nao suportar batches ou se a fila de lotes falhar.
 - `PanelsPlaybackService` consome `Device.Client.IDeviceServerClient` para snapshots/comandos/batches e `Device.Client.IDeviceFrameTransport` apenas para frames; no runtime WinUI esses contratos sao atendidos por `Device.Client.Embedded` + `DeviceServerHost`, preservando o server embutido mas removendo dependencia direta do host completo.
+- O storage dos batches `WebP` foi isolado em `Device.Server.Hosting.IPanelsBatchStore`, preparando troca futura de backend sem alterar o contrato de `PanelsPlaybackService`, comandos ou endpoint de download.
 - O caminho oficial de batch deixou de materializar `30` arrays RGBA por segundo antes do encode:
   - `PanelCompositionSession` agora aceita render em buffer fornecido pelo chamador (`RenderFrameInto(...)`);
   - o encode WebP consome um unico framebuffer RGBA reutilizavel no hot path;
@@ -128,4 +129,8 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1)
 - [PanelsBatchRegistration](../../../src/Device.Client.Abstractions/PanelsBatchRegistration.cs#L1)
+- [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1)
+- [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1)
+- [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1)
+- [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)

@@ -34,6 +34,11 @@ Pontos principais do cutover HUB75 128x64:
 - [Particao local 3MB APP / 9.9MB FATFS](../../../firmware/esp32s3-devkitc1/partitions/mica_app3M_fat9M_16MB.csv#L1)
 - [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [DeviceServerHost panels batches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
+- [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1)
+- [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1)
+- [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1)
+- [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
 - [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
 - [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
 - [IDeviceServerHost](../../../src/Device.Server.Abstractions/Hosting/IDeviceServerHost.cs#L1)
@@ -118,6 +123,7 @@ Observacoes ativas:
 - O hot path visual continua em `Esp32S3LedOutput -> IDeviceFrameTransport -> DeviceServerHost.BroadcastFrame/SendFrame -> /ws/v1/stream`.
 - Os contratos consumidos por clients (`IDeviceServerClient`, `IDeviceFrameTransport`, `PanelsBatchRegistration`) vivem em `Device.Client.Abstractions`; `Device.Server.Abstractions` fica restrito ao host embedded/lifecycle.
 - A implementacao local desses contratos vive em `Device.Client.Embedded`; o WinUI registra `EmbeddedDeviceServerClient` como `IDeviceServerClient` e `IEmbeddedDeviceServerClientRuntime`, mantendo `DeviceServerHost` apenas no composition root.
+- O storage efemero de batches `WebP` vive atras de `IPanelsBatchStore`; o runtime embedded registra `InMemoryPanelsBatchStore` como default, preservando payload em memoria e limite de `4` batches por device.
 - O host local agora tambem expõe `GET /dashboard` e `WS /ws/device/{deviceId}` com DTO dedicado para o WebView.
 
 Pontos centrais do pipeline de analise e captura:
@@ -224,6 +230,10 @@ Pontos centrais da sessao de paineis HUB75:
 - [PanelsDeviceSessionService](../../../src/App.WinUI/Services/Devices/PanelsDeviceSessionService.cs#L1)
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1)
 - [PanelsBatchRegistration](../../../src/Device.Client.Abstractions/PanelsBatchRegistration.cs#L1)
+- [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1)
+- [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1)
+- [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1)
+- [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
 
 Observacoes ativas dos paineis:
@@ -241,4 +251,5 @@ Observacoes ativas dos paineis:
 - `gifhub75` agora resolve animacao por delays reais do arquivo e o cache animado guarda sequencia temporal (`frames + durationMs + totalDurationMs`).
 - O transporte HUB75 agora suporta `SendFrame(deviceId, payload)` em paralelo ao broadcast, e `Esp32S3LedOutput` escolhe o destino a partir de `LedOutputConfig.TargetDeviceId`.
 - Se o device anunciar `animatedWebpBatchSupported`, `PanelsPlaybackService` passa a gerar lotes `WebP` animados de `1 s / 30 frames`, publicados via `queue_panels_batch` e baixados do `Device.Server` por HTTP autenticado.
+- `DeviceServerHost.PanelsBatches` agora delega persistencia efemera a `IPanelsBatchStore`; a implementacao default `InMemoryPanelsBatchStore` mantem um `panelsSessionId` ativo por device, calcula `SHA-256` no registro e retem os `4` batches mais recentes por device.
 - O fallback para `Frame128x64` continuo continua automatico quando o device nao suporta batches ou quando o enfileiramento/download falha.

@@ -19,6 +19,7 @@ using MQTTnet.Server;
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
+// DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -40,6 +41,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly object gate = new();
     private readonly TimeProvider timeProvider;
     private readonly IDeviceOfficialFirmwareCatalog? firmwareCatalog;
+    private readonly IPanelsBatchStore panelsBatchStore;
     private readonly DeviceSessionRegistry devices = new();
     private readonly DevicePairingState pairingState = new();
     private readonly PendingTrackedCommandStore pendingTrackedCommands = new();
@@ -64,11 +66,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
     }
 
-    public DeviceServerHost(TimeProvider timeProvider, IDeviceOfficialFirmwareCatalog? firmwareCatalog)
+    public DeviceServerHost(TimeProvider timeProvider, IDeviceOfficialFirmwareCatalog? firmwareCatalog, IPanelsBatchStore? panelsBatchStore = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
         this.firmwareCatalog = firmwareCatalog;
+        this.panelsBatchStore = panelsBatchStore ?? new InMemoryPanelsBatchStore();
     }
 
     public event EventHandler? DevicesChanged;

@@ -51,6 +51,14 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - O WinUI consome a fronteira app-level (`IDeviceServerClient`) para operacoes de devices e batches de `Paineis`, mantendo o server concreto apenas no composition root.
 - Nao houve alteracao de endpoints, portas, topicos MQTT, autenticacao, DTOs wire ou firmware.
 
+## Atualizacao 2026-04 - Storage De Batches WebP
+
+- `IPanelsBatchStore`, `PanelsBatchWrite` e `PanelsBatchEntry` vivem em `Device.Server.Abstractions` como fronteira publica de storage efemero de batches.
+- `Device.Server` fornece `InMemoryPanelsBatchStore`, mantendo a semantica atual: chave por `deviceId`, um `panelsSessionId` ativo por device, `SHA-256` calculado no registro e limite de `4` batches recentes por device.
+- `DeviceServerHost.PanelsBatches` delega `Save`, `TryGet` e `Clear` ao store, mas preserva as assinaturas de `RegisterPanelsBatch`, `ClearPanelsBatches` e o endpoint de download autenticado.
+- O composition root da `App.WinUI` registra `IPanelsBatchStore -> InMemoryPanelsBatchStore` junto do `DeviceServerHost` embedded.
+- Nao houve alteracao de URL, payload `queue_panels_batch`, autenticacao, firmware, portas, HTTP/WS/MQTT ou client remoto.
+
 ## Politicas de seguranca
 
 1. Rate limiting:
@@ -106,7 +114,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - `Paineis` ganhou um caminho `monitor-first` alternativo ao `Frame128x64` continuo:
   - o host continua compositor autoritativo do canvas `128x64`;
   - o batch scheduler renderiza `30` frames futuros (`1 s`) e os codifica em `WebP` animado lossless;
-  - o host mantem os batches apenas em memoria por `deviceId + panelsSessionId + batchSequence`;
+  - o host usa `IPanelsBatchStore` para manter os batches apenas em memoria por `deviceId + panelsSessionId + batchSequence`;
   - o device baixa o batch por HTTP autenticado e toca localmente uma unica vez.
 - O comando tracked novo e `queue_panels_batch` e usa `PanelsBatchCommandPayload` com:
   - `panelsSessionId`
@@ -118,7 +126,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
   - `frameCount`
   - `durationMs`
 - `batchSequence` e monotono por sessao e define a ordenacao `ativo -> proximo`.
-- `DeviceServerHost.RegisterPanelsBatch(...)` calcula `sha256`, expira batches antigos e monta a URL autenticada do download.
+- `DeviceServerHost.RegisterPanelsBatch(...)` salva o payload no store, recebe metadata calculada (`sha256`, tamanho e duracao) e monta a URL autenticada do download.
 - `ClearPanelsBatches(...)` e chamado no teardown/fallback para evitar reter batches alem do necessario.
 - Compatibilidade:
   - o fluxo WS binario `Frame128x64` continua intocado;
@@ -206,6 +214,10 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Routes](../../../src/Device.Server/Hosting/DeviceServerHost.Routes.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.Dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1) - assinatura: `public sealed partial class DeviceServerHost`
+- [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1) - assinatura: `public interface IPanelsBatchStore`
+- [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1) - assinatura: `public sealed record PanelsBatchWrite`
+- [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1) - assinatura: `public sealed record PanelsBatchEntry`
+- [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1) - assinatura: `public sealed class InMemoryPanelsBatchStore`
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
 - [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1) - assinatura: `public interface IDeviceFrameTransport`
 - [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1) - assinatura: `public interface IDeviceServerClient`
@@ -234,6 +246,11 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 ## Backlinks no codigo
 
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
+- `src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs`
+- `src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs`
+- `src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs`
+- `src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs`
+- `src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Routes.cs`
