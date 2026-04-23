@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -8,6 +9,7 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
+using Device.Protocol.Stream;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -25,6 +27,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -50,6 +53,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly IDevicePairingStore pairingStore;
     private readonly ICommandStateStore commandStateStore;
     private readonly ISessionStateStore sessionStateStore;
+    private readonly IVisualUdpSender visualUdpSender;
     private readonly DeviceFrameConnectionRegistry frameConnections = new();
     private readonly object adminEventConnectionsGate = new();
     private readonly List<AdminEventConnection> adminEventConnections = new();
@@ -81,6 +85,25 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         IDevicePairingStore? pairingStore = null,
         ICommandStateStore? commandStateStore = null,
         ISessionStateStore? sessionStateStore = null)
+        : this(
+            timeProvider,
+            firmwareCatalog,
+            panelsBatchStore,
+            pairingStore,
+            commandStateStore,
+            sessionStateStore,
+            visualUdpSender: null)
+    {
+    }
+
+    internal DeviceServerHost(
+        TimeProvider timeProvider,
+        IDeviceOfficialFirmwareCatalog? firmwareCatalog,
+        IPanelsBatchStore? panelsBatchStore,
+        IDevicePairingStore? pairingStore,
+        ICommandStateStore? commandStateStore,
+        ISessionStateStore? sessionStateStore,
+        IVisualUdpSender? visualUdpSender)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
@@ -89,6 +112,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         this.pairingStore = pairingStore ?? new InMemoryDevicePairingStore();
         this.commandStateStore = commandStateStore ?? new InMemoryCommandStateStore();
         this.sessionStateStore = sessionStateStore ?? new InMemorySessionStateStore();
+        this.visualUdpSender = visualUdpSender ?? new SocketVisualUdpSender();
     }
 
     public event EventHandler? DevicesChanged;
@@ -245,6 +269,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         Log($"HTTP bind interno: http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
         Log($"HTTP anunciado: {ResolveAdvertisedHttpBaseAddress(localRuntimeConfig)}");
         Log($"MQTT anunciado: mqtt://{ResolveAdvertisedMqttHost(localRuntimeConfig)}:{localRuntimeConfig.MqttPort} ({localRuntimeConfig.MqttRootTopic}/{{deviceId}})");
+        Log(localRuntimeConfig.PreferLanUdpVisualTransport
+            ? $"UDP visual LAN habilitado: udp://{ResolveAdvertisedMqttHost(localRuntimeConfig)}:{localRuntimeConfig.VisualUdpPort} (bins128)"
+            : "UDP visual LAN desabilitado (PreferLanUdpVisualTransport=false).");
     }
 
     public async Task StopAsync()
@@ -460,15 +487,39 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         ArgumentNullException.ThrowIfNull(framePayload);
 
-        DeviceFrameConnection[] targets;
+        (string DeviceId, DeviceFrameConnection Connection)[] targets;
+        Dictionary<string, DeviceRecord> recordsByDeviceId;
+        IReadOnlyList<DeviceSnapshot> snapshots;
         lock (gate)
         {
-            targets = frameConnections.GetOpenConnections();
+            targets = frameConnections.GetOpenConnectionEntries();
+            recordsByDeviceId = sessionStateStore
+                .CreateRecords()
+                .ToDictionary(record => record.DeviceId, StringComparer.OrdinalIgnoreCase);
+            snapshots = sessionStateStore.CreateSnapshots(timeProvider.GetUtcNow(), runtimeConfig.DeviceOfflineTimeout);
         }
 
-        foreach (var target in targets)
+        HashSet<string>? udpSentDeviceIds = null;
+        foreach (var snapshot in snapshots)
         {
-            target.QueueFrame(framePayload);
+            if (!recordsByDeviceId.TryGetValue(snapshot.DeviceId, out var record)
+                || !TrySendVisualFrameOverUdp(record, snapshot.ControlPlaneState == DeviceControlPlaneState.MqttOnline, framePayload))
+            {
+                continue;
+            }
+
+            udpSentDeviceIds ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            udpSentDeviceIds.Add(record.DeviceId);
+        }
+
+        foreach (var (deviceId, connection) in targets)
+        {
+            if (udpSentDeviceIds?.Contains(deviceId) == true)
+            {
+                continue;
+            }
+
+            connection.QueueFrame(framePayload);
         }
     }
 
@@ -478,21 +529,103 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         ArgumentNullException.ThrowIfNull(framePayload);
 
         DeviceFrameConnection? target;
+        DeviceSessionState? state;
         lock (gate)
         {
-            if (!frameConnections.TryGetValue(deviceId.Trim(), out target)
-                || target?.Socket is not { State: WebSocketState.Open })
-            {
-                return;
-            }
+            sessionStateStore.TryGetValue(deviceId.Trim(), out state);
+            frameConnections.TryGetValue(deviceId.Trim(), out target);
+        }
+
+        if (state is not null && TrySendVisualFrameOverUdp(state.Record, state.IsControlPlaneOnline, framePayload))
+        {
+            return;
+        }
+
+        if (target?.Socket is not { State: WebSocketState.Open })
+        {
+            return;
         }
 
         target.QueueFrame(framePayload);
     }
 
+    private bool TrySendVisualFrameOverUdp(DeviceRecord record, bool isOnline, byte[] framePayload)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentNullException.ThrowIfNull(framePayload);
+
+        if (!runtimeConfig.PreferLanUdpVisualTransport
+            || !isOnline
+            || record.VisualUdpSupported != true
+            || !string.Equals(record.VisualUdpMode, "bins128", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(record.Token)
+            || !TryResolveVisualUdpEndpoint(record, runtimeConfig, out var endpointAddress, out var endpointPort)
+            || !VisualUdpFrameV1.IsSupportedPayload(framePayload))
+        {
+            return false;
+        }
+
+        var datagramLength = VisualUdpFrameV1.GetDatagramSize(framePayload.Length);
+        var rented = ArrayPool<byte>.Shared.Rent(datagramLength);
+        try
+        {
+            if (!VisualUdpFrameV1.TryWriteDatagram(rented.AsSpan(0, datagramLength), framePayload, record.Token, out var written))
+            {
+                return false;
+            }
+
+            return visualUdpSender.TrySend(endpointAddress, endpointPort, rented.AsSpan(0, written));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
+    private static bool TryResolveVisualUdpEndpoint(
+        DeviceRecord record,
+        DeviceServerRuntimeConfig config,
+        out IPAddress address,
+        out int port)
+    {
+        address = IPAddress.None;
+        port = 0;
+
+        if (string.IsNullOrWhiteSpace(record.LastKnownIp) || !IPAddress.TryParse(record.LastKnownIp, out var parsedAddress))
+        {
+            return false;
+        }
+
+        if (parsedAddress.IsIPv4MappedToIPv6)
+        {
+            parsedAddress = parsedAddress.MapToIPv4();
+        }
+
+        if (!IPAddress.IsLoopback(parsedAddress) && !IsPrivateNetworkAddress(parsedAddress))
+        {
+            return false;
+        }
+
+        var resolvedPort = record.VisualUdpPort is >= 1 and <= 65535
+            ? record.VisualUdpPort.Value
+            : config.VisualUdpPort;
+        if (resolvedPort is < 1 or > 65535)
+        {
+            return false;
+        }
+
+        address = parsedAddress;
+        port = resolvedPort;
+        return true;
+    }
+
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
+        if (visualUdpSender is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
     }
 
     private async Task<IResult> HandlePairAsync(HttpContext ctx)

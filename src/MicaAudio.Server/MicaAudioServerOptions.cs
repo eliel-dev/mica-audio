@@ -4,6 +4,7 @@ namespace MicaAudio.Server;
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-standalone.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed class MicaAudioServerOptions
 {
     public const string EnvironmentVariablePrefix = "MICA_SERVER__";
@@ -27,6 +28,10 @@ public sealed class MicaAudioServerOptions
     public string AdminToken { get; set; } = string.Empty;
 
     public bool RestrictToPrivateNetworks { get; set; } = true;
+
+    public int VisualUdpPort { get; set; } = 5274;
+
+    public bool PreferLanUdpVisualTransport { get; set; }
 
     public string[] AllowedCidrs { get; set; } = Array.Empty<string>();
 

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Channels;
@@ -7,6 +8,7 @@ namespace Device.Client.Remote;
 // DOCS: docs/wiki/modules/output-led.md#modulo-output-led
 // DOCS: docs/wiki/modules/device-server-protocol.md#admin-websocket-frames
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceServerClientRuntime
 {
     private readonly RemoteDeviceServerClientOptions options;
@@ -133,8 +135,20 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
         while (!cancellationToken.IsCancellationRequested && ws.State == WebSocketState.Open)
         {
             var frame = await queue.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-            var envelope = BuildFrameEnvelope(frame);
-            await ws.SendAsync(envelope, WebSocketMessageType.Binary, true, cancellationToken).ConfigureAwait(false);
+            var envelope = BuildFrameEnvelope(frame, out var envelopeLength);
+            try
+            {
+                await ws.SendAsync(
+                        new ReadOnlyMemory<byte>(envelope, 0, envelopeLength),
+                        WebSocketMessageType.Binary,
+                        true,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(envelope);
+            }
         }
     }
 
@@ -164,16 +178,22 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
         return builder.Uri;
     }
 
-    private static ReadOnlyMemory<byte> BuildFrameEnvelope(FrameEnvelope frame)
+    private static byte[] BuildFrameEnvelope(FrameEnvelope frame, out int envelopeLength)
     {
-        var deviceIdBytes = Encoding.UTF8.GetBytes(frame.DeviceId);
+        var deviceIdByteCount = Encoding.UTF8.GetByteCount(frame.DeviceId);
+        if (deviceIdByteCount > ushort.MaxValue)
+        {
+            throw new InvalidOperationException("Device id is too large for the admin frame envelope.");
+        }
+
         var payload = frame.Payload;
-        var envelope = new byte[1 + sizeof(ushort) + deviceIdBytes.Length + payload.Length];
+        envelopeLength = 1 + sizeof(ushort) + deviceIdByteCount + payload.Length;
+        var envelope = ArrayPool<byte>.Shared.Rent(envelopeLength);
         envelope[0] = frame.Targeted ? (byte)1 : (byte)0;
-        envelope[1] = (byte)(deviceIdBytes.Length & 0xFF);
-        envelope[2] = (byte)(deviceIdBytes.Length >> 8);
-        deviceIdBytes.CopyTo(envelope.AsSpan(3));
-        payload.CopyTo(envelope.AsSpan(3 + deviceIdBytes.Length));
+        envelope[1] = (byte)(deviceIdByteCount & 0xFF);
+        envelope[2] = (byte)(deviceIdByteCount >> 8);
+        Encoding.UTF8.GetBytes(frame.DeviceId.AsSpan(), envelope.AsSpan(3, deviceIdByteCount));
+        payload.CopyTo(envelope.AsSpan(3 + deviceIdByteCount, payload.Length));
         return envelope;
     }
 

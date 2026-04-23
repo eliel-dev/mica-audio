@@ -1,6 +1,7 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 
 #include "mica_panels.h"
 
@@ -433,8 +434,12 @@ bool tryPresentWebpRgbaFrame(const uint8_t* rgbaPixels, size_t rgbaLength) {
   return true;
 }
 
-bool waitForPanelsBatchTimestampUs(int64_t batchStartedUs, int timestampMs) {
-  const int64_t targetUs = batchStartedUs + (static_cast<int64_t>(timestampMs) * 1000LL);
+bool waitForPanelsBatchDelayMs(int delayMs) {
+  if (delayMs <= 0) {
+    return !gPanelsBatchCancelRequested;
+  }
+
+  const int64_t targetUs = esp_timer_get_time() + (static_cast<int64_t>(delayMs) * 1000LL);
   while (true) {
     resetTaskWatchdog();
     if (gPanelsBatchCancelRequested) {
@@ -514,9 +519,9 @@ void panelsBatchPlaybackTask(void* parameter) {
       continue;
     }
 
-    const int64_t batchStartedUs = esp_timer_get_time();
     bool cancelled = false;
     bool decodeFailed = false;
+    int previousTimestampMs = 0;
 
     while (WebPAnimDecoderHasMoreFrames(decoder)) {
       resetTaskWatchdog();
@@ -543,7 +548,13 @@ void panelsBatchPlaybackTask(void* parameter) {
         gPerfPanelsPresentMaxUs = presentDurationUs;
       }
 
-      if (!waitForPanelsBatchTimestampUs(batchStartedUs, timestampMs)) {
+      int frameDelayMs = timestampMs - previousTimestampMs;
+      if (frameDelayMs < 0) {
+        frameDelayMs = 0;
+      }
+
+      previousTimestampMs = timestampMs;
+      if (!waitForPanelsBatchDelayMs(frameDelayMs)) {
         cancelled = true;
         break;
       }

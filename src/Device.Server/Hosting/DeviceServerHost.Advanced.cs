@@ -11,6 +11,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(5);
@@ -545,7 +546,10 @@ public sealed partial class DeviceServerHost
             telemetry.BrightnessApplied,
             telemetry.TestLedEnabled,
             telemetry.TestLedDuty,
-            telemetry.AnimatedWebpBatchSupported);
+            telemetry.AnimatedWebpBatchSupported,
+            telemetry.VisualUdpSupported,
+            telemetry.VisualUdpPort,
+            telemetry.VisualUdpMode);
         return true;
     }
 

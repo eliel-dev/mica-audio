@@ -3,6 +3,7 @@ namespace Device.Protocol.Contracts;
 // DOCS: docs/wiki/modules/device-server-protocol.md#politicas-de-seguranca
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed class ServerConfig
 {
     public string ListenHost { get; init; } = "0.0.0.0";
@@ -25,6 +26,10 @@ public sealed class ServerConfig
 
     // Security-first defaults for local network usage.
     public bool RestrictToPrivateNetworks { get; init; } = true;
+
+    public int VisualUdpPort { get; init; } = 5274;
+
+    public bool PreferLanUdpVisualTransport { get; init; }
 
     public string[] AllowedCidrs { get; init; } = Array.Empty<string>();
 

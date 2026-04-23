@@ -1,6 +1,7 @@
 namespace Device.Protocol.Models;
 
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#persistencia-local
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed class DeviceRecord
 {
     public string DeviceId { get; init; } = string.Empty;
@@ -106,6 +107,12 @@ public sealed class DeviceRecord
     public string? PanelType { get; init; }
 
     public bool? AnimatedWebpBatchSupported { get; init; }
+
+    public bool? VisualUdpSupported { get; init; }
+
+    public int? VisualUdpPort { get; init; }
+
+    public string? VisualUdpMode { get; init; }
 
     public string? ChipModel { get; init; }
 

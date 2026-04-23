@@ -2,6 +2,7 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---rollback-para-ap-first-estavel
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 
 #include "mica_network.h"
 
@@ -12,6 +13,7 @@
 #include "mica_globals.h"
 #include "mica_ota.h"
 #include "mica_panels.h"
+#include "mica_visual_udp.h"
 
 #include "mica_commands.h"
 #include "mica_provisioning.h"
@@ -752,6 +754,9 @@ void sendTelemetry(bool force) {
     telemetry["activeAppName"] = gActiveAppName;
   }
   telemetry["animatedWebpBatchSupported"] = gAnimatedWebpBatchSupported;
+  telemetry["visualUdpSupported"] = true;
+  telemetry["visualUdpPort"] = kVisualUdpPort;
+  telemetry["visualUdpMode"] = "bins128";
   telemetry["resetReason"] = resetReasonCodeToString(gResetReasonCode);
   telemetry["controlQueueDepth"] = currentControlQueueDepth();
   telemetry["controlWorkerState"] = controlWorkerStateToTelemetry(gControlWorkerState);
@@ -779,6 +784,103 @@ void registerInvalidStreamFrame(const char* reason) {
         reason,
         String("Frame de stream invalido detectado. total=") + gStreamInvalidFrameCount);
   }
+}
+
+bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanelsPlaybackForStream) {
+  if (payload == nullptr || len < 2) {
+    registerInvalidStreamFrame("payload_short");
+    return false;
+  }
+
+  if (payload[0] != kStreamVersion) {
+    registerInvalidStreamFrame("version_invalid");
+    return false;
+  }
+
+  uint32_t frameSequence = 0;
+  const bool hasSequence = len >= 6;
+  if (hasSequence) {
+    frameSequence = static_cast<uint32_t>(payload[2]) |
+                    (static_cast<uint32_t>(payload[3]) << 8) |
+                    (static_cast<uint32_t>(payload[4]) << 16) |
+                    (static_cast<uint32_t>(payload[5]) << 24);
+  }
+
+  const uint8_t messageType = payload[1];
+  if (messageType == kStreamBinsMessageType) {
+    if (len < kStreamFrameSize) {
+      registerInvalidStreamFrame("bins_short");
+      return false;
+    }
+
+    if (cancelPanelsPlaybackForStream) {
+      cancelPanelsBatchPlayback();
+    }
+
+    gStreamFramesReceived++;
+    if (hasSequence) {
+      if (gHasStreamLastSequence && frameSequence > gStreamLastSequence + 1u) {
+        gStreamSequenceGapCount += frameSequence - (gStreamLastSequence + 1u);
+      }
+
+      gStreamLastSequence = frameSequence;
+      gHasStreamLastSequence = true;
+    }
+
+    const uint8_t nextBinsIndex = static_cast<uint8_t>(gBinsActiveIndex ^ 1u);
+    portENTER_CRITICAL(&gStreamBufferMux);
+    gLevel = payload[14];
+    memcpy(gBinsBuffers[nextBinsIndex], payload + 15, kBinsCount);
+    gBinsActiveIndex = nextBinsIndex;
+    gStreamBrightness = payload[143];
+    gBinsFlags = payload[144];
+    portEXIT_CRITICAL(&gStreamBufferMux);
+    gFrameModeActive = false;
+    gLastFrameMs = millis();
+    gMatrixSignalTimedOut = false;
+    markMatrixFrameDirty(true);
+    return true;
+  }
+
+  if (messageType == kStreamFrame128x64Rgb565MessageType) {
+    if (len < kStreamFrame128x64Rgb565Size) {
+      registerInvalidStreamFrame("frame_short");
+      return false;
+    }
+
+    if (cancelPanelsPlaybackForStream) {
+      cancelPanelsBatchPlayback();
+    }
+
+    gStreamFramesReceived++;
+    if (hasSequence) {
+      if (gHasStreamLastSequence && frameSequence > gStreamLastSequence + 1u) {
+        gStreamSequenceGapCount += frameSequence - (gStreamLastSequence + 1u);
+      }
+
+      gStreamLastSequence = frameSequence;
+      gHasStreamLastSequence = true;
+    }
+
+    const uint8_t nextFrameIndex = static_cast<uint8_t>(gFrameRgb565ActiveIndex ^ 1u);
+    uint16_t* frameBackBuffer = gFrameRgb565Buffers[nextFrameIndex];
+    gStreamBrightness = payload[14];
+    // Payload is already little-endian and ESP32 is little-endian, so we can bulk copy.
+    memcpy(frameBackBuffer, payload + 15, static_cast<size_t>(kMatrixPixelCount) * sizeof(uint16_t));
+
+    portENTER_CRITICAL(&gStreamBufferMux);
+    gFrameRgb565ActiveIndex = nextFrameIndex;
+    portEXIT_CRITICAL(&gStreamBufferMux);
+
+    gFrameModeActive = true;
+    gLastFrameMs = millis();
+    gMatrixSignalTimedOut = false;
+    markMatrixFrameDirty(true);
+    return true;
+  }
+
+  registerInvalidStreamFrame("message_type_unknown");
+  return false;
 }
 
 // ===========================================================================
@@ -818,96 +920,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
   }
 
   if (type == WStype_BIN) {
-    if (payload == nullptr || len < 2) {
-      registerInvalidStreamFrame("payload_short");
-      return;
-    }
-
-    if (payload[0] != kStreamVersion) {
-      registerInvalidStreamFrame("version_invalid");
-      return;
-    }
-
-    uint32_t frameSequence = 0;
-    const bool hasSequence = len >= 6;
-    if (hasSequence) {
-      frameSequence = static_cast<uint32_t>(payload[2]) |
-                      (static_cast<uint32_t>(payload[3]) << 8) |
-                      (static_cast<uint32_t>(payload[4]) << 16) |
-                      (static_cast<uint32_t>(payload[5]) << 24);
-    }
-
-    const uint8_t messageType = payload[1];
-    if (messageType == kStreamBinsMessageType) {
-      if (len < kStreamFrameSize) {
-        registerInvalidStreamFrame("bins_short");
-        return;
-      }
-
-      cancelPanelsBatchPlayback();
-
-      gStreamFramesReceived++;
-      if (hasSequence) {
-        if (gHasStreamLastSequence && frameSequence > gStreamLastSequence + 1u) {
-          gStreamSequenceGapCount += frameSequence - (gStreamLastSequence + 1u);
-        }
-
-        gStreamLastSequence = frameSequence;
-        gHasStreamLastSequence = true;
-      }
-
-      const uint8_t nextBinsIndex = static_cast<uint8_t>(gBinsActiveIndex ^ 1u);
-      portENTER_CRITICAL(&gStreamBufferMux);
-      gLevel = payload[14];
-      memcpy(gBinsBuffers[nextBinsIndex], payload + 15, kBinsCount);
-      gBinsActiveIndex = nextBinsIndex;
-      gStreamBrightness = payload[143];
-      gBinsFlags = payload[144];
-      portEXIT_CRITICAL(&gStreamBufferMux);
-      gFrameModeActive = false;
-      gLastFrameMs = millis();
-      gMatrixSignalTimedOut = false;
-      markMatrixFrameDirty(true);
-      return;
-    }
-
-    if (messageType == kStreamFrame128x64Rgb565MessageType) {
-      if (len < kStreamFrame128x64Rgb565Size) {
-        registerInvalidStreamFrame("frame_short");
-        return;
-      }
-
-      cancelPanelsBatchPlayback();
-
-      gStreamFramesReceived++;
-      if (hasSequence) {
-        if (gHasStreamLastSequence && frameSequence > gStreamLastSequence + 1u) {
-          gStreamSequenceGapCount += frameSequence - (gStreamLastSequence + 1u);
-        }
-
-        gStreamLastSequence = frameSequence;
-        gHasStreamLastSequence = true;
-      }
-
-      const uint8_t nextFrameIndex = static_cast<uint8_t>(gFrameRgb565ActiveIndex ^ 1u);
-      uint16_t* frameBackBuffer = gFrameRgb565Buffers[nextFrameIndex];
-      gStreamBrightness = payload[14];
-      // Payload is already little-endian and ESP32 is little-endian, so we can bulk copy.
-      memcpy(frameBackBuffer, payload + 15, static_cast<size_t>(kMatrixPixelCount) * sizeof(uint16_t));
-
-      portENTER_CRITICAL(&gStreamBufferMux);
-      gFrameRgb565ActiveIndex = nextFrameIndex;
-      portEXIT_CRITICAL(&gStreamBufferMux);
-
-      gFrameModeActive = true;
-      gLastFrameMs = millis();
-      gMatrixSignalTimedOut = false;
-      markMatrixFrameDirty(true);
-      return;
-    }
-
-    registerInvalidStreamFrame("message_type_unknown");
-
+    (void)applyStreamBinaryFrame(payload, len, true);
     return;
   }
 
@@ -1008,6 +1021,7 @@ void processNetworkPoll() {
 
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
   if (!wifiConnected) {
+    stopVisualUdpReceiver();
     const bool provisioningIncomplete = isProvisioningIncomplete();
     if (shouldRunNetworkStep(gWifiDisconnectedSinceMs == 0)) {
       gWifiDisconnectedSinceMs = millis();
@@ -1083,6 +1097,10 @@ void processNetworkPoll() {
     }
     if (shouldRunNetworkStep(true)) {
       gWs.loop();
+      finishNetworkStep();
+    }
+    if (shouldRunNetworkStep(true)) {
+      processVisualUdpReceiver();
       finishNetworkStep();
     }
     if (shouldRunNetworkStep(true)) {

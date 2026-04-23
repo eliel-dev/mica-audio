@@ -39,17 +39,25 @@ public sealed class DeviceFrameConnectionTests
     }
 
     [Fact]
-    public void QueueFrame_ShouldKeepLatestPayloadInBoundedQueue()
+    public void QueueFrame_ShouldKeepThreeLatestPayloadsInBoundedQueue()
     {
         using var connection = new DeviceFrameConnection();
         var first = new byte[] { 1 };
         var second = new byte[] { 2 };
+        var third = new byte[] { 3 };
+        var fourth = new byte[] { 4 };
 
         connection.QueueFrame(first);
         connection.QueueFrame(second);
+        connection.QueueFrame(third);
+        connection.QueueFrame(fourth);
 
         Assert.True(connection.Outgoing.Reader.TryRead(out var queued));
         Assert.Equal(second, queued);
+        Assert.True(connection.Outgoing.Reader.TryRead(out queued));
+        Assert.Equal(third, queued);
+        Assert.True(connection.Outgoing.Reader.TryRead(out queued));
+        Assert.Equal(fourth, queued);
         Assert.False(connection.Outgoing.Reader.TryRead(out _));
     }
 

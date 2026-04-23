@@ -9,6 +9,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
 - Broker MQTT embutido para `commands`, `command-events`, `status`, `presence`, `stats` e `logs`.
 - WebSocket `/ws/v1/stream` exclusivamente para stream visual binario.
+- UDP LAN opt-in para stream visual descartavel `Bins128`, com WS como fallback.
 - Admin API opt-in por token para clients remotos WinUI (`/api/v1/admin/*`).
 - WebSockets admin para eventos (`/ws/v1/admin/events`) e frames remotos (`/ws/v1/admin/frames`).
 - Dashboard local para `WebView2` via `GET /dashboard` + `WS /ws/device/{deviceId}` com DTO dedicado.
@@ -42,7 +43,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 7. App envia comandos tracked (`SendCommandTrackedAsync`) via `mica/v1/devices/{deviceId}/commands`.
 8. `ICommandStateStore` e `TrackedCommandState` correlacionam `command-events` por `commandId`.
 9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
-10. `IDeviceFrameTransport.BroadcastFrame/SendFrame` distribui stream para sockets WS conectados.
+10. `IDeviceFrameTransport.BroadcastFrame/SendFrame` distribui stream para UDP LAN opt-in quando elegivel ou para sockets WS conectados como fallback.
 
 ## Atualizacao 2026-04 - Fronteira De Client Embutido
 
@@ -109,6 +110,18 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - `WS /ws/v1/admin/frames` recebe envelope binario admin -> server e chama `BroadcastFrame` ou `SendFrame` sem mudar `StreamFrameV2`.
 - `Device.Client.Remote` implementa `IDeviceServerClient` via HTTP Admin API e `IDeviceFrameTransport` via WebSocket admin, enquanto o firmware e os endpoints de device atuais continuam inalterados.
 
+## Atualizacao 2026-04 - Visual UDP LAN Opt-In
+
+- `ServerConfig.VisualUdpPort` usa default `5274` e `ServerConfig.PreferLanUdpVisualTransport` liga a preferencia UDP de forma explicita.
+- O firmware anuncia `visualUdpSupported`, `visualUdpPort` e `visualUdpMode` pela telemetria; campos ausentes continuam sendo firmware legado.
+- `DeviceServerHost` tenta UDP apenas quando o device esta online no control plane, possui `LastKnownIp` LAN, tem token valido e anunciou `visualUdpMode = bins128`.
+- O envelope `VisualUdpFrameV1` usa `magic/version/sequence/payloadLength/payload/tag`, com `tag = HMAC-SHA256` truncado pelo token do device.
+- UDP v1 aceita apenas `StreamFrameV2.Bins128`; `Frame128x64 RGB565` permanece em WS/WebP batch para evitar fragmentacao IP.
+- `DeviceFrameConnection` manteve `DropOldest`, mas a fila visual passou a default `3` para absorver jitter curto sem acumular latencia longa.
+- O WebSocket admin de frames deixou de montar `MemoryStream`/slices intermediarios e passa a parsear envelopes com buffers alugados e `ReadOnlySpan<byte>`.
+- `Device.Client.Remote` aluga o buffer do envelope admin para reduzir alocacoes no hot path remoto.
+- Render/cloud continuam em HTTPS/WSS; UDP e apenas otimizacao local para PC/ESP na mesma LAN.
+
 ## Politicas de seguranca
 
 1. Rate limiting:
@@ -134,6 +147,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - body JSON limitado por `MaxJsonBodyBytes` (default 64KB).
 - mensagem WS limitada por `MaxWebSocketMessageBytes` (default 64KB).
 - mensagens WS fragmentadas sao reagrupadas ate `EndOfMessage`.
+- UDP visual v1 e LAN-only, autenticado por HMAC truncado com token do device e restrito a `Bins128`.
 
 ## Pontos de alteracao frequente
 
@@ -146,6 +160,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Superficie admin remota em `DeviceServerHost.Admin`.
 - Normalizacao de runtime em `DeviceServerRuntimeConfig`.
 - Transicoes de estado em `DeviceRecordMutations` e `DeviceSessionState`.
+- Envelope visual UDP em `VisualUdpFrameV1` e receiver firmware `mica_visual_udp.cpp`.
 
 ## Riscos e efeitos colaterais
 
@@ -285,6 +300,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [InMemorySessionStateStore](../../../src/Device.Server/Hosting/InMemorySessionStateStore.cs#L1) - assinatura: `public sealed class InMemorySessionStateStore`
 - [DeviceFrameConnection](../../../src/Device.Server/Hosting/DeviceFrameConnection.cs#L1) - assinatura: `internal sealed class DeviceFrameConnection`
 - [DeviceFrameConnectionRegistry](../../../src/Device.Server/Hosting/DeviceFrameConnectionRegistry.cs#L1) - assinatura: `internal sealed class DeviceFrameConnectionRegistry`
+- [VisualUdpSender](../../../src/Device.Server/Hosting/VisualUdpSender.cs#L1) - assinatura: `internal sealed class SocketVisualUdpSender`
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1) - assinatura: `public interface IDeviceOfficialFirmwareCatalog`
 - [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1) - assinatura: `public interface IDeviceFrameTransport`
 - [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1) - assinatura: `public interface IDeviceServerClient`
@@ -300,6 +316,8 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1) - assinatura: `public sealed class DevicePresenceMessage`
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1) - assinatura: `public sealed class DeviceTelemetryMessage`
+- [VisualUdpFrameV1](../../../src/Device.Protocol/Stream/VisualUdpFrameV1.cs#L1) - assinatura: `public static class VisualUdpFrameV1`
+- [Firmware UDP visual receiver](../../../firmware/esp32s3-devkitc1/src/mica_visual_udp.cpp#L1) - assinatura: `void processVisualUdpReceiver()`
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1) - assinatura: `public sealed class PanelsBatchCommandPayload`
 - [DeviceFirmwareReleaseInfo](../../../src/Device.Protocol/Models/DeviceFirmwareReleaseInfo.cs#L1) - assinatura: `public sealed class DeviceFirmwareReleaseInfo`
 - [DeviceStatsMessage](../../../src/Device.Protocol/Models/DeviceStatsMessage.cs#L1) - assinatura: `public sealed class DeviceStatsMessage`
@@ -331,6 +349,9 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - `src/Device.Server.Abstractions/Hosting/DeviceRecordMutations.cs`
 - `src/Device.Server/Hosting/DeviceFrameConnection.cs`
 - `src/Device.Server/Hosting/DeviceFrameConnectionRegistry.cs`
+- `src/Device.Server/Hosting/VisualUdpSender.cs`
+- `src/Device.Protocol/Stream/VisualUdpFrameV1.cs`
+- `firmware/esp32s3-devkitc1/src/mica_visual_udp.cpp`
 - `src/Device.Server/Hosting/DeviceServerHost.Advanced.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Routes.cs`
@@ -368,6 +389,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - O `MqttHost` anunciado usa `PublicHost`; se vazio, usa o host de `PublicHttpBaseAddress`; se vazio, usa o host da request.
 - Em Docker local com `-p 5272:8080`, configurar `MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272` evita que o firmware grave a porta interna `8080`.
 - MQTT continua legado/local nesta fase e precisa de publicacao explicita `-p 5273:5273` para o ESP conectar fora do container.
+- UDP visual LAN, quando habilitado, tambem precisa de publicacao explicita `-p 5274:5274/udp` no Docker local; nao e caminho Render/cloud.
 
 ## Atualizacao 2026-03 - Presenca Leve e Carimbos de Sessao
 

@@ -1,5 +1,6 @@
 #pragma once
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 
 #include "mica_types.h"
 #include <Preferences.h>
@@ -121,6 +122,12 @@ extern uint32_t gStreamSequenceGapCount;
 extern uint32_t gStreamInvalidFrameCount;
 extern uint32_t gNetworkPollDeferCount;
 extern uint8_t gResetReasonCode;
+extern int gVisualUdpSocket;
+extern bool gVisualUdpHasLastSequence;
+extern uint32_t gVisualUdpLastSequence;
+extern uint32_t gVisualUdpFramesReceived;
+extern uint32_t gVisualUdpFramesApplied;
+extern unsigned long gVisualUdpLastPacketMs;
 
 // ---------------------------------------------------------------------------
 // Connectivity / fallback state

@@ -43,6 +43,9 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | `panelsWorkerState` | `string?` | estado resumido do runtime de playback `Paineis` (`idle`, `pending_batch`, `decoding`, `presenting`, `cancelled`, `failed`) |
 | `lastSlowCommand` | `string?` | ultimo comando lento observado pelo runtime (`enter_provisioning`, `update_firmware`, `queue_panels_batch`) |
 | `lastSlowCommandDurationMs` | `long?` | duracao, em milissegundos, do ultimo comando lento concluido no boot atual |
+| `visualUdpSupported` | `bool?` | capability opt-in para receber frames visuais descartaveis por UDP LAN |
+| `visualUdpPort` | `int?` | porta UDP LAN em que o firmware escuta `VisualUdpFrameV1`, default `5274` |
+| `visualUdpMode` | `string?` | modo visual UDP aceito pelo firmware; nesta entrega somente `bins128` |
 
 ## Regras de sanitizacao e pass-through
 
@@ -59,6 +62,8 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 11. `resetReason` usa a causa do CPU0 para simplificar o diagnostico pos-boot no host; o campo nao tenta expor toda a matriz de causas por core.
 12. `controlQueueDepth` inclui o comando diferido em memoria quando `queue_panels_batch` aguardou o fim do job lento anterior para preservar ordem.
 13. `lastSlowCommandDurationMs` cobre apenas comandos lentos concluidos no boot atual; duracao de OTA bem-sucedida nao e persistida apos reboot.
+14. `visualUdpSupported`, `visualUdpPort` e `visualUdpMode` sao capability bits LAN-only; `null` continua significando firmware legado sem suporte declarado.
+15. O host so deve preferir UDP quando `visualUdpMode = bins128`; `Frame128x64 RGB565` permanece em WS/WebP batch.
 
 ## Persistencia local
 
@@ -107,6 +112,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 - [DeviceSnapshot](../../../src/Device.Protocol/Models/DeviceSnapshot.cs#L1)
 - [DeviceRecord](../../../src/Device.Protocol/Models/DeviceRecord.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [VisualUdpFrameV1](../../../src/Device.Protocol/Stream/VisualUdpFrameV1.cs#L1)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [DeviceMetricsFormatter](../../../src/App.WinUI/Services/Devices/DeviceMetricsFormatter.cs#L1)
 - [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)

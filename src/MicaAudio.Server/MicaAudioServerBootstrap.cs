@@ -9,6 +9,7 @@ namespace MicaAudio.Server;
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-standalone.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public static class MicaAudioServerBootstrap
 {
     public static MicaAudioServerOptions LoadOptions(IConfiguration configuration, string? renderPort = null)
@@ -43,6 +44,8 @@ public static class MicaAudioServerBootstrap
             MqttRootTopic = options.MqttRootTopic,
             AdminToken = options.AdminToken,
             RestrictToPrivateNetworks = options.RestrictToPrivateNetworks,
+            VisualUdpPort = options.VisualUdpPort,
+            PreferLanUdpVisualTransport = options.PreferLanUdpVisualTransport,
             PublicHttpBaseAddress = options.PublicHttpBaseAddress,
             AllowedCidrs = options.AllowedCidrs,
             PairRequestsPerMinute = options.PairRequestsPerMinute,
@@ -90,6 +93,7 @@ public static class MicaAudioServerBootstrap
         options.PublicHttpBaseAddress = NormalizePublicHttpBaseAddress(options.PublicHttpBaseAddress);
         options.MqttRootTopic = NormalizeString(options.MqttRootTopic, "mica/v1/devices").Trim('/');
         options.AdminToken = options.AdminToken?.Trim() ?? string.Empty;
+        options.VisualUdpPort = NormalizePort(options.VisualUdpPort, 5274);
         options.StorageRoot = NormalizeString(options.StorageRoot, Path.Combine(AppContext.BaseDirectory, "data"));
         options.StartupPairCodeTtlSeconds = Math.Max(0, options.StartupPairCodeTtlSeconds);
         options.PairRequestsPerMinute = Math.Max(1, options.PairRequestsPerMinute);

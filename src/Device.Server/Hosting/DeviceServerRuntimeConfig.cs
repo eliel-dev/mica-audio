@@ -6,6 +6,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 internal sealed class DeviceServerRuntimeConfig
 {
     private DeviceServerRuntimeConfig(
@@ -19,6 +20,8 @@ internal sealed class DeviceServerRuntimeConfig
         string mqttRootTopic,
         string adminToken,
         bool restrictToPrivateNetworks,
+        int visualUdpPort,
+        bool preferLanUdpVisualTransport,
         IReadOnlyList<CidrRange> allowedCidrs,
         int configuredAllowedCidrsCount,
         int pairRequestsPerMinute,
@@ -41,6 +44,8 @@ internal sealed class DeviceServerRuntimeConfig
         MqttRootTopic = mqttRootTopic;
         AdminToken = adminToken;
         RestrictToPrivateNetworks = restrictToPrivateNetworks;
+        VisualUdpPort = visualUdpPort;
+        PreferLanUdpVisualTransport = preferLanUdpVisualTransport;
         AllowedCidrs = allowedCidrs;
         ConfiguredAllowedCidrsCount = configuredAllowedCidrsCount;
         PairRequestsPerMinute = pairRequestsPerMinute;
@@ -75,6 +80,10 @@ internal sealed class DeviceServerRuntimeConfig
     public bool IsAdminApiEnabled => !string.IsNullOrWhiteSpace(AdminToken);
 
     public bool RestrictToPrivateNetworks { get; }
+
+    public int VisualUdpPort { get; }
+
+    public bool PreferLanUdpVisualTransport { get; }
 
     public IReadOnlyList<CidrRange> AllowedCidrs { get; }
 
@@ -118,6 +127,8 @@ internal sealed class DeviceServerRuntimeConfig
             mqttRootTopic: NormalizeRootTopic(config.MqttRootTopic),
             adminToken: config.AdminToken?.Trim() ?? string.Empty,
             restrictToPrivateNetworks: config.RestrictToPrivateNetworks,
+            visualUdpPort: NormalizePort(config.VisualUdpPort, 5274),
+            preferLanUdpVisualTransport: config.PreferLanUdpVisualTransport,
             allowedCidrs: allowedCidrs,
             configuredAllowedCidrsCount: configuredAllowedCidrsCount,
             pairRequestsPerMinute: Math.Max(1, config.PairRequestsPerMinute),
@@ -143,6 +154,9 @@ internal sealed class DeviceServerRuntimeConfig
             ? "mica/v1/devices"
             : normalized;
     }
+
+    private static int NormalizePort(int port, int fallback)
+        => port is >= 1 and <= 65535 ? port : fallback;
 
     private static string NormalizePublicHttpBaseAddress(string? rawValue)
     {

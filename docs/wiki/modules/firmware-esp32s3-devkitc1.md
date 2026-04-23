@@ -10,7 +10,7 @@
 ## Fluxo de execucao
 
 1. conecta ao servidor local
-2. recebe `StreamFrameV2` tipo `1` (`bins128`) ou tipo `2` (`frame 128x64 RGB565`)
+2. recebe `StreamFrameV2` tipo `1` (`bins128`) por WS ou UDP LAN opt-in, ou tipo `2` (`frame 128x64 RGB565`) por WS
 3. renderiza `drawBars`, `drawFrame128x64` ou o fallback local de conectividade
 4. conecta o control plane MQTT para `presence`, `status`, `stats`, `logs` e `commands`
 5. reporta `boardModel = esp32s3_devkitc1` e `panelType = hub75_p2_5_128x64_smd2121_scan32`
@@ -59,13 +59,14 @@
 7. `mica_display.h/.cpp` para HUB75, LEDs, fallback e pacing
 8. `mica_visuals.h/.cpp` para estilos visuais nativos de `Bins128`
 9. `mica_network.h/.cpp` para MQTT, WebSocket, HTTP e telemetria
-10. `mica_ota.h/.cpp` para OTA context, download e progress bridge
-11. `mica_panels.h/.cpp` para panels batch: download, validacao e playback
-12. `mica_commands.h/.cpp` para parser de comandos tracked
-13. `mica_provisioning.h/.cpp` para serial provisioning, WiFiManager e pairing
-14. `firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py` para preservar o override de payload WS no build oficial
-15. `firmware/esp32s3-devkitc1/scripts/patch_hub75_bulk_rgb565.py` para expor o writer bulk RGB565 na dependencia HUB75 pinada
-16. `scripts/build-precompiled-firmware.ps1` para gerar `BIN + manifesto` embarcados no app
+10. `mica_visual_udp.h/.cpp` para receiver UDP LAN opcional de `Bins128`
+11. `mica_ota.h/.cpp` para OTA context, download e progress bridge
+12. `mica_panels.h/.cpp` para panels batch: download, validacao e playback
+13. `mica_commands.h/.cpp` para parser de comandos tracked
+14. `mica_provisioning.h/.cpp` para serial provisioning, WiFiManager e pairing
+15. `firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py` para preservar o override de payload WS no build oficial
+16. `firmware/esp32s3-devkitc1/scripts/patch_hub75_bulk_rgb565.py` para expor o writer bulk RGB565 na dependencia HUB75 pinada
+17. `scripts/build-precompiled-firmware.ps1` para gerar `BIN + manifesto` embarcados no app
 
 ## Atualizacao 2026-04 - Rollback para AP-first estavel
 
@@ -426,6 +427,16 @@
   - sem mudanca em `queue_panels_batch`, `frameCount`, `durationMs` ou no fallback para stream WS bruto;
   - sem mover stacks ou buffers quentes para `PSRAM` como estrategia principal de performance.
 
+## Atualizacao 2026-04 - Visual UDP LAN Opt-In
+
+- O firmware passou a declarar `visualUdpSupported = true`, `visualUdpPort = 5274` e `visualUdpMode = bins128` na telemetria.
+- `mica_visual_udp.cpp` abre um socket UDP nao bloqueante via BSD/lwIP somente quando o Wi-Fi esta conectado; ao cair Wi-Fi, o socket e fechado.
+- O receiver valida envelope `VisualUdpFrameV1` (`MICA`, versao `1`, tamanho, sequencia e HMAC-SHA256 truncado pelo token do device).
+- Somente `StreamFrameV2` tipo `1` (`Bins128`) e aceito por UDP; `Frame128x64 RGB565` continua no WebSocket para evitar fragmentacao.
+- Pacotes invalidos incrementam o contador existente de frames invalidos e nao alteram o frame atual.
+- O WebSocket segue como fallback e tambem cancela playback WebP quando um stream binario valido chega.
+- O pacing do playback WebP agora usa deltas entre timestamps depois de apresentar o frame, evitando acelerar frames seguintes quando o primeiro decode for lento.
+
 ## Atualizacao 2026-03 - OTA autenticado por HTTP
 
 - O firmware oficial voltou a aceitar o comando wire `update_firmware`.
@@ -569,6 +580,7 @@
 | `mica_display.h/.cpp` | HUB75 init, primitivas, shadow buffer, LEDs, fallback, pacing | ~108/~907 |
 | `mica_visuals.h/.cpp` | 10 estilos visuais nativos + dispatcher | ~42/~590 |
 | `mica_network.h/.cpp` | MQTT, WebSocket, HTTP, connectivity, telemetria | ~95/~970 |
+| `mica_visual_udp.h/.cpp` | Receiver UDP LAN para `Bins128` autenticado por HMAC | ~12/~190 |
 | `mica_ota.h/.cpp` | OTA context, boot state, download task, progress bridge | ~39/~580 |
 | `mica_panels.h/.cpp` | Panels batch: buffer, download, validate, queue, playback | ~46/~480 |
 | `mica_commands.h/.cpp` | handleControlCommandMessage + parameter parsing | ~6/~373 |
@@ -608,6 +620,8 @@
 - [mica_visuals.cpp](../../../firmware/esp32s3-devkitc1/src/mica_visuals.cpp#L1)
 - [mica_network.h](../../../firmware/esp32s3-devkitc1/src/mica_network.h#L1)
 - [mica_network.cpp](../../../firmware/esp32s3-devkitc1/src/mica_network.cpp#L1)
+- [mica_visual_udp.h](../../../firmware/esp32s3-devkitc1/src/mica_visual_udp.h#L1)
+- [mica_visual_udp.cpp](../../../firmware/esp32s3-devkitc1/src/mica_visual_udp.cpp#L1)
 - [mica_ota.h](../../../firmware/esp32s3-devkitc1/src/mica_ota.h#L1)
 - [mica_ota.cpp](../../../firmware/esp32s3-devkitc1/src/mica_ota.cpp#L1)
 - [mica_panels.h](../../../firmware/esp32s3-devkitc1/src/mica_panels.h#L1)

@@ -5,13 +5,16 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#storage-de-sessoes-de-device
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 internal sealed class DeviceFrameConnection : IDisposable
 {
+    public const int DefaultOutgoingFrameCapacity = 3;
+
     private CancellationTokenSource senderCts = new();
 
-    public DeviceFrameConnection()
+    public DeviceFrameConnection(int outgoingFrameCapacity = DefaultOutgoingFrameCapacity)
     {
-        Outgoing = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(1)
+        Outgoing = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(Math.Max(1, outgoingFrameCapacity))
         {
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,

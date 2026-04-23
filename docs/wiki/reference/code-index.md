@@ -5,6 +5,7 @@ Pontos principais do cutover HUB75 128x64:
 - [LedDefaults](../../../src/MicaAudio.Core/Led/LedDefaults.cs#L1)
 - [LedPayload](../../../src/MicaAudio.Core/Led/LedPayload.cs#L1)
 - [StreamFrameV2](../../../src/Device.Protocol/Stream/StreamFrameV2.cs#L1)
+- [VisualUdpFrameV1](../../../src/Device.Protocol/Stream/VisualUdpFrameV1.cs#L1)
 - [Esp32S3LedOutput](../../../src/Output/Led/Esp32S3LedOutput.cs#L1)
 - [LedFrameDeduplicator](../../../src/Output/Led/LedFrameDeduplicator.cs#L1)
 - [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)
@@ -30,6 +31,7 @@ Pontos principais do cutover HUB75 128x64:
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
+- [Firmware visual UDP](../../../firmware/esp32s3-devkitc1/src/mica_visual_udp.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
 - [Board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)
 - [Particao local 3MB APP / 9.9MB FATFS](../../../firmware/esp32s3-devkitc1/partitions/mica_app3M_fat9M_16MB.csv#L1)
@@ -44,6 +46,7 @@ Pontos principais do cutover HUB75 128x64:
 - [Render Blueprint](../../../render.yaml#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [DeviceServerHost Admin](../../../src/Device.Server/Hosting/DeviceServerHost.Admin.cs#L1)
+- [VisualUdpSender](../../../src/Device.Server/Hosting/VisualUdpSender.cs#L1)
 - [DeviceServerHost panels batches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
 - [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1)
 - [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1)
@@ -157,7 +160,7 @@ Observacoes ativas:
 - O DeviceServerHost aplica grace curto de detach WS (500ms) e detach por identidade de socket para reduzir flapping em reconexao rapida.
 - O online/offline oficial da UI agora vem do control plane MQTT; WS isolado nao basta mais para marcar device online.
 - O snapshot tambem diferencia `LegacyOnly` para firmware que ainda usa WS-texto/HTTP no control plane.
-- O hot path visual continua em `Esp32S3LedOutput -> IDeviceFrameTransport -> DeviceServerHost.BroadcastFrame/SendFrame -> /ws/v1/stream`.
+- O hot path visual continua em `Esp32S3LedOutput -> IDeviceFrameTransport -> DeviceServerHost.BroadcastFrame/SendFrame`; por default sai por `/ws/v1/stream`, com UDP LAN opt-in para `Bins128` quando o device anuncia capability e `PreferLanUdpVisualTransport=true`.
 - Os contratos consumidos por clients (`IDeviceServerClient`, `IDeviceFrameTransport`, `PanelsBatchRegistration`) vivem em `Device.Client.Abstractions`; `Device.Server.Abstractions` fica restrito ao host embedded/lifecycle.
 - A implementacao local desses contratos vive em `Device.Client.Embedded`; o WinUI registra `EmbeddedDeviceServerClient` como `IDeviceServerClient` e `IEmbeddedDeviceServerClientRuntime`, mantendo `DeviceServerHost` apenas no composition root.
 - O storage efemero de batches `WebP` vive atras de `IPanelsBatchStore`; o runtime embedded registra `InMemoryPanelsBatchStore` como default, preservando payload em memoria e limite de `4` batches por device.
@@ -168,6 +171,7 @@ Observacoes ativas:
 
 - `MicaAudio.Server` agora fornece o primeiro host standalone/Docker para smoke local e Render, reaproveitando `DeviceServerHost` sem transformar ainda o WinUI em client remoto.
 - O standalone/Docker agora separa bind interno de endereco anunciado: `MICA_SERVER__PUBLICHTTPBASEADDRESS` preserva a porta publica HTTP e `MICA_SERVER__PUBLICHOST` anuncia o host MQTT local/legado.
+- Docker local pode publicar `5274/udp` para o visual LAN opt-in; Render/cloud permanecem em HTTP/WSS.
 - O WinUI agora tambem possui modo `Remote`, opt-in em `Configuracoes`, que usa `Device.Client.Remote` contra `MicaAudio.Server` com token admin DPAPI; `Embedded` permanece default.
 
 Pontos centrais do pipeline de analise e captura:

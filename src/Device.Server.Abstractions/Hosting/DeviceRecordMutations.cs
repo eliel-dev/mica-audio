@@ -4,6 +4,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 internal static class DeviceRecordMutations
 {
     public static DeviceRecord CreatePairedRecord(
@@ -100,6 +101,9 @@ internal static class DeviceRecordMutations
             BoardModel = string.IsNullOrWhiteSpace(boardModel) ? source.BoardModel : boardModel,
             PanelType = string.IsNullOrWhiteSpace(panelType) ? source.PanelType : panelType,
             AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
+            VisualUdpSupported = source.VisualUdpSupported,
+            VisualUdpPort = source.VisualUdpPort,
+            VisualUdpMode = source.VisualUdpMode,
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,
@@ -171,6 +175,9 @@ internal static class DeviceRecordMutations
             BoardModel = source.BoardModel,
             PanelType = source.PanelType,
             AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
+            VisualUdpSupported = source.VisualUdpSupported,
+            VisualUdpPort = source.VisualUdpPort,
+            VisualUdpMode = source.VisualUdpMode,
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,
@@ -227,7 +234,10 @@ internal static class DeviceRecordMutations
         int? brightnessApplied = null,
         bool? testLedEnabled = null,
         int? testLedDuty = null,
-        bool? animatedWebpBatchSupported = null)
+        bool? animatedWebpBatchSupported = null,
+        bool? visualUdpSupported = null,
+        int? visualUdpPort = null,
+        string? visualUdpMode = null)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -285,6 +295,9 @@ internal static class DeviceRecordMutations
             BoardModel = string.IsNullOrWhiteSpace(boardModel) ? source.BoardModel : boardModel,
             PanelType = string.IsNullOrWhiteSpace(panelType) ? source.PanelType : panelType,
             AnimatedWebpBatchSupported = animatedWebpBatchSupported ?? source.AnimatedWebpBatchSupported,
+            VisualUdpSupported = visualUdpSupported ?? source.VisualUdpSupported,
+            VisualUdpPort = visualUdpPort.HasValue ? NormalizeUdpPort(visualUdpPort) : source.VisualUdpPort,
+            VisualUdpMode = string.IsNullOrWhiteSpace(visualUdpMode) ? source.VisualUdpMode : visualUdpMode.Trim(),
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,
@@ -369,6 +382,9 @@ internal static class DeviceRecordMutations
             BoardModel = source.BoardModel,
             PanelType = source.PanelType,
             AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
+            VisualUdpSupported = source.VisualUdpSupported,
+            VisualUdpPort = source.VisualUdpPort,
+            VisualUdpMode = source.VisualUdpMode,
             ChipModel = string.IsNullOrWhiteSpace(chipModel) ? source.ChipModel : chipModel,
             ChipRevision = chipRevision ?? source.ChipRevision,
             ChipCores = chipCores ?? source.ChipCores,
@@ -440,6 +456,9 @@ internal static class DeviceRecordMutations
             BoardModel = source.BoardModel,
             PanelType = source.PanelType,
             AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
+            VisualUdpSupported = source.VisualUdpSupported,
+            VisualUdpPort = source.VisualUdpPort,
+            VisualUdpMode = source.VisualUdpMode,
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,
@@ -452,4 +471,7 @@ internal static class DeviceRecordMutations
             FreeSketchBytes = source.FreeSketchBytes,
         };
     }
+
+    private static int? NormalizeUdpPort(int? port)
+        => port is >= 1 and <= 65535 ? port : null;
 }

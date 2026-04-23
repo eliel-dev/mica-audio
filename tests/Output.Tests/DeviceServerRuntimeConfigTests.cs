@@ -18,6 +18,7 @@ public class DeviceServerRuntimeConfigTests
             PairingAttemptsPerWindow = 0,
             PairingAttemptWindowSeconds = 3,
             DeviceFreshThresholdSeconds = 999,
+            VisualUdpPort = 70000,
             MaxJsonBodyBytes = 32,
             MaxWebSocketMessageBytes = 16,
         });
@@ -28,6 +29,8 @@ public class DeviceServerRuntimeConfigTests
         Assert.Equal(1, config.PairingAttemptsPerWindow);
         Assert.Equal(TimeSpan.FromSeconds(10), config.PairingAttemptWindow);
         Assert.Equal(TimeSpan.FromSeconds(120), config.DeviceOfflineTimeout);
+        Assert.Equal(5274, config.VisualUdpPort);
+        Assert.False(config.PreferLanUdpVisualTransport);
         Assert.Equal(1024L, config.MaxJsonBodyBytes);
         Assert.Equal(1024, config.MaxWebSocketMessageBytes);
         Assert.True(config.HasConfiguredAllowedCidrs);

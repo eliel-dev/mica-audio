@@ -2,6 +2,7 @@ namespace Device.Protocol.Models;
 
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#campos-do-payload-de-telemetria-ws
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed class DeviceTelemetryMessage
 {
     public string DeviceId { get; init; } = string.Empty;
@@ -87,4 +88,10 @@ public sealed class DeviceTelemetryMessage
     public string? PanelType { get; init; }
 
     public bool? AnimatedWebpBatchSupported { get; init; }
+
+    public bool? VisualUdpSupported { get; init; }
+
+    public int? VisualUdpPort { get; init; }
+
+    public string? VisualUdpMode { get; init; }
 }

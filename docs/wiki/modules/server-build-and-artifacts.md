@@ -9,6 +9,8 @@
   - `MICA_SERVER__*` configura o runtime standalone;
   - `MICA_SERVER__PUBLICHTTPBASEADDRESS` define a base HTTP anunciada para firmware/clients quando o bind interno difere da porta publica;
   - `MICA_SERVER__PUBLICHOST` define o host MQTT anunciado para uso local/legado;
+  - `MICA_SERVER__VISUALUDPPORT` define a porta UDP LAN anunciada para visual opt-in (`5274` por default);
+  - `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` permite o host preferir UDP LAN para `Bins128` quando o device anunciar suporte;
   - `MICA_SERVER__STORAGEROOT` define onde `StandaloneDeviceRegistryStore` grava `devices.json`.
 - `src/MicaAudio.Server/Dockerfile` usa build multi-stage com imagens oficiais .NET 10 e `render.yaml` define Web Service Docker com health check em `/api/v1/health`.
 - Docker local com porta externa diferente do bind interno deve publicar HTTP e MQTT e anunciar o IP LAN do PC:
@@ -18,14 +20,17 @@ docker run --rm --name mica-audio-server-dev `
   -e PORT=8080 `
   -e MICA_SERVER__ADMINTOKEN=dev-token `
   -e MICA_SERVER__RESTRICTTOPRIVATENETWORKS=false `
+  -e MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true `
   -e MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272 `
   -e MICA_SERVER__PUBLICHOST=<IP_DO_PC> `
   -p 5272:8080 `
   -p 5273:5273 `
+  -p 5274:5274/udp `
   mica-audio-server:remote-dev
 ```
 
 - O firmware deve ser provisionado com `http://<IP_DO_PC>:5272`; nao use `localhost` nem `127.0.0.1` para um ESP fisico.
+- UDP visual e opcional/LAN-only; sem `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` ou sem `-p 5274:5274/udp`, o caminho WS segue como fallback.
 - O smoke Render desta fase valida runtime HTTP/WS publico; operacao cloud completa de firmware e WinUI remoto ficam para fases posteriores.
 
 Artefato oficial de firmware embarcado:

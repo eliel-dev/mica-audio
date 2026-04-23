@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,6 +10,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#admin-api-remota
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan AdminPairingCodeDefaultTtl = TimeSpan.FromMinutes(10);
@@ -215,38 +217,48 @@ public sealed partial class DeviceServerHost
         }
 
         using var ws = await ctx.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-        var buffer = new byte[8192];
-        while (!ctx.RequestAborted.IsCancellationRequested && ws.State == WebSocketState.Open)
+        var receiveBuffer = ArrayPool<byte>.Shared.Rent(8192);
+        var messageBuffer = ArrayPool<byte>.Shared.Rent(runtimeConfig.MaxWebSocketMessageBytes);
+        try
         {
-            using var ms = new MemoryStream();
-            WebSocketReceiveResult result;
-            do
+            while (!ctx.RequestAborted.IsCancellationRequested && ws.State == WebSocketState.Open)
             {
-                result = await ws.ReceiveAsync(buffer, ctx.RequestAborted).ConfigureAwait(false);
-                if (result.MessageType == WebSocketMessageType.Close)
+                var messageLength = 0;
+                WebSocketReceiveResult result;
+                do
                 {
-                    return;
+                    result = await ws.ReceiveAsync(new ArraySegment<byte>(receiveBuffer, 0, receiveBuffer.Length), ctx.RequestAborted).ConfigureAwait(false);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        return;
+                    }
+
+                    if (messageLength + result.Count > runtimeConfig.MaxWebSocketMessageBytes)
+                    {
+                        await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "message_too_big", CancellationToken.None).ConfigureAwait(false);
+                        return;
+                    }
+
+                    if (result.Count > 0)
+                    {
+                        receiveBuffer.AsSpan(0, result.Count).CopyTo(messageBuffer.AsSpan(messageLength));
+                        messageLength += result.Count;
+                    }
+                }
+                while (!result.EndOfMessage);
+
+                if (result.MessageType != WebSocketMessageType.Binary)
+                {
+                    continue;
                 }
 
-                if (result.Count > 0)
-                {
-                    ms.Write(buffer, 0, result.Count);
-                }
-
-                if (ms.Length > runtimeConfig.MaxWebSocketMessageBytes)
-                {
-                    await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "message_too_big", CancellationToken.None).ConfigureAwait(false);
-                    return;
-                }
+                TryDispatchAdminFrameEnvelope(messageBuffer.AsSpan(0, messageLength));
             }
-            while (!result.EndOfMessage);
-
-            if (result.MessageType != WebSocketMessageType.Binary)
-            {
-                continue;
-            }
-
-            TryDispatchAdminFrameEnvelope(ms.ToArray());
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(receiveBuffer);
+            ArrayPool<byte>.Shared.Return(messageBuffer);
         }
     }
 
@@ -344,7 +356,7 @@ public sealed partial class DeviceServerHost
         return TokensMatchConstantTime(runtimeConfig.AdminToken, token);
     }
 
-    private bool TryDispatchAdminFrameEnvelope(byte[] envelope)
+    private bool TryDispatchAdminFrameEnvelope(ReadOnlySpan<byte> envelope)
     {
         if (envelope.Length < 3)
         {
@@ -360,14 +372,15 @@ public sealed partial class DeviceServerHost
 
         var deviceId = deviceIdLength == 0
             ? string.Empty
-            : Encoding.UTF8.GetString(envelope, 3, deviceIdLength);
+            : Encoding.UTF8.GetString(envelope.Slice(3, deviceIdLength));
         var payloadOffset = 3 + deviceIdLength;
-        var payload = envelope[payloadOffset..];
-        if (payload.Length == 0)
+        var payloadSpan = envelope[payloadOffset..];
+        if (payloadSpan.Length == 0)
         {
             return false;
         }
 
+        var payload = payloadSpan.ToArray();
         switch (mode)
         {
             case 0:

@@ -1,4 +1,5 @@
 #include "mica_globals.h"
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 
 // ---------------------------------------------------------------------------
 // Library object globals
@@ -107,6 +108,12 @@ uint32_t gStreamSequenceGapCount = 0;
 uint32_t gStreamInvalidFrameCount = 0;
 uint32_t gNetworkPollDeferCount = 0;
 uint8_t gResetReasonCode = 0;
+int gVisualUdpSocket = -1;
+bool gVisualUdpHasLastSequence = false;
+uint32_t gVisualUdpLastSequence = 0;
+uint32_t gVisualUdpFramesReceived = 0;
+uint32_t gVisualUdpFramesApplied = 0;
+unsigned long gVisualUdpLastPacketMs = 0;
 
 // ---------------------------------------------------------------------------
 // Connectivity / fallback state

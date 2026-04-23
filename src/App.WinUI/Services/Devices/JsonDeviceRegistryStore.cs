@@ -10,6 +10,7 @@ namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#tokens-de-dispositivo-em-repouso
 // DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 internal sealed class JsonDeviceRegistryStore : IEmbeddedDeviceRegistryStore
 {
     private const string TokenCipherPrefix = "dpapi:v1:";
@@ -130,6 +131,10 @@ internal sealed class JsonDeviceRegistryStore : IEmbeddedDeviceRegistryStore
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
             PanelType = record.PanelType,
+            AnimatedWebpBatchSupported = record.AnimatedWebpBatchSupported,
+            VisualUdpSupported = record.VisualUdpSupported,
+            VisualUdpPort = record.VisualUdpPort,
+            VisualUdpMode = record.VisualUdpMode,
             ChipModel = record.ChipModel,
             ChipRevision = record.ChipRevision,
             ChipCores = record.ChipCores,
@@ -193,6 +198,10 @@ internal sealed class JsonDeviceRegistryStore : IEmbeddedDeviceRegistryStore
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
             PanelType = record.PanelType,
+            AnimatedWebpBatchSupported = record.AnimatedWebpBatchSupported,
+            VisualUdpSupported = record.VisualUdpSupported,
+            VisualUdpPort = record.VisualUdpPort,
+            VisualUdpMode = record.VisualUdpMode,
             ChipModel = record.ChipModel,
             ChipRevision = record.ChipRevision,
             ChipCores = record.ChipCores,
@@ -359,6 +368,14 @@ internal sealed class JsonDeviceRegistryStore : IEmbeddedDeviceRegistryStore
         public string? BoardModel { get; init; }
 
         public string? PanelType { get; init; }
+
+        public bool? AnimatedWebpBatchSupported { get; init; }
+
+        public bool? VisualUdpSupported { get; init; }
+
+        public int? VisualUdpPort { get; init; }
+
+        public string? VisualUdpMode { get; init; }
 
         public string? ChipModel { get; init; }
 

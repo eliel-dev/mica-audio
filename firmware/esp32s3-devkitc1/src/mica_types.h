@@ -4,6 +4,7 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---buffer-ws-para-frame-128x64
 // DOCS: docs/handoffs/2026-04-17-control-worker-watchdog-and-wifi-heap-regression-fix.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 
 #include <Arduino.h>
 #include "firmware_version.h"
@@ -51,6 +52,10 @@ constexpr uint32_t kHealthyLoopThresholdUs = 25000;
 constexpr uint32_t kNetworkPollBudgetUs = 8000;
 constexpr unsigned long kOtaSelfTestWindowMs = 10000;
 constexpr uint16_t kDefaultMqttPort = 5273;
+constexpr uint16_t kVisualUdpPort = 5274;
+constexpr size_t kVisualUdpFrameHeaderSize = 12;
+constexpr size_t kVisualUdpFrameTagSize = 16;
+constexpr size_t kVisualUdpFrameMaxDatagramSize = kVisualUdpFrameHeaderSize + kStreamFrameSize + kVisualUdpFrameTagSize;
 constexpr const char* kDefaultMqttRootTopic = "mica/v1/devices";
 constexpr uint16_t kMqttPacketBufferBytes = 32768;
 constexpr uint8_t kControlCommandQueueDepth = 8;

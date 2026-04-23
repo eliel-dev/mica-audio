@@ -61,6 +61,14 @@ internal sealed class DeviceFrameConnectionRegistry
             .ToArray();
     }
 
+    public (string DeviceId, DeviceFrameConnection Connection)[] GetOpenConnectionEntries()
+    {
+        return connections
+            .Where(pair => pair.Value.Socket is { State: System.Net.WebSockets.WebSocketState.Open })
+            .Select(pair => (pair.Key, pair.Value))
+            .ToArray();
+    }
+
     public DeviceFrameConnection[] Drain()
     {
         var drained = connections.Values.ToArray();

@@ -5,6 +5,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#storage-de-sessoes-de-device
 // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed class DeviceSessionState
 {
     private readonly TimeSpan detachGracePeriod;
@@ -98,7 +99,10 @@ public sealed class DeviceSessionState
         int? brightnessApplied = null,
         bool? testLedEnabled = null,
         int? testLedDuty = null,
-        bool? animatedWebpBatchSupported = null)
+        bool? animatedWebpBatchSupported = null,
+        bool? visualUdpSupported = null,
+        int? visualUdpPort = null,
+        string? visualUdpMode = null)
     {
         LastActivityUtc = now;
         Record = DeviceRecordMutations.MarkTelemetry(
@@ -144,7 +148,10 @@ public sealed class DeviceSessionState
             brightnessApplied,
             testLedEnabled,
             testLedDuty,
-            animatedWebpBatchSupported);
+            animatedWebpBatchSupported,
+            visualUdpSupported,
+            visualUdpPort,
+            visualUdpMode);
     }
 
     public void MarkStats(

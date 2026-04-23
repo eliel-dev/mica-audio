@@ -3,6 +3,7 @@ using Device.Protocol.Models;
 namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#render-estavel-na-devicespage
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 internal readonly record struct DeviceRefreshStateSnapshot(
     IReadOnlyList<DeviceSnapshot> Devices,
     DateTimeOffset LastRefreshUtc);
@@ -154,6 +155,10 @@ internal sealed class DeviceRefreshCoordinator
             ActiveAppName = source.ActiveAppName,
             BoardModel = source.BoardModel,
             PanelType = source.PanelType,
+            AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
+            VisualUdpSupported = source.VisualUdpSupported,
+            VisualUdpPort = source.VisualUdpPort,
+            VisualUdpMode = source.VisualUdpMode,
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,
@@ -216,6 +221,10 @@ internal sealed class DeviceRefreshCoordinator
                 || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal)
                 || !string.Equals(a.BoardModel, b.BoardModel, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.PanelType, b.PanelType, StringComparison.OrdinalIgnoreCase)
+                || a.AnimatedWebpBatchSupported != b.AnimatedWebpBatchSupported
+                || a.VisualUdpSupported != b.VisualUdpSupported
+                || a.VisualUdpPort != b.VisualUdpPort
+                || !string.Equals(a.VisualUdpMode, b.VisualUdpMode, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.ChipModel, b.ChipModel, StringComparison.OrdinalIgnoreCase)
                 || a.ChipRevision != b.ChipRevision
                 || a.ChipCores != b.ChipCores

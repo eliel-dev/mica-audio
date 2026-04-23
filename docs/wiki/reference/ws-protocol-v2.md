@@ -78,8 +78,31 @@ Layout:
 
 Tamanho total: `16400` bytes.
 
+## UDP Visual v1
+
+`VisualUdpFrameV1` e um envelope LAN-only opcional para transportar `StreamFrameV2` tipo `1` (`Bins128`) sem passar pelo WebSocket do device. O caminho WS continua sendo o fallback oficial e o unico caminho para `Frame128x64 RGB565` nesta entrega.
+
+Layout do datagrama:
+
+1. `magic` (4 bytes ASCII) = `MICA`
+2. `version` (1 byte) = `1`
+3. `reserved` (1 byte) = `0`
+4. `sequence` (4 bytes, little-endian)
+5. `payloadLength` (2 bytes, little-endian)
+6. `payload` = `StreamFrameV2` tipo `1`, tamanho `145`
+7. `tag` = primeiros `16` bytes de `HMAC-SHA256(token, header + payload)`
+
+Politicas travadas:
+
+- UDP so e usado quando o server esta com `PreferLanUdpVisualTransport=true`, o device esta online no control plane, possui `LastKnownIp` LAN e anunciou `visualUdpSupported=true`.
+- O firmware aceita apenas `visualUdpMode = bins128` e descarta payload desconhecido, HMAC invalido ou sequencia antiga.
+- `Frame128x64 RGB565` permanece em WS/WebP batch; nao deve ser enviado como datagrama UDP bruto por risco de fragmentacao IP.
+- Render/cloud continua HTTPS/WSS; UDP e apenas otimizacao local descartavel para audio visual.
+
 ## Referencias
 
 - [StreamFrameV2](../../../src/Device.Protocol/Stream/StreamFrameV2.cs#L1)
+- [VisualUdpFrameV1](../../../src/Device.Protocol/Stream/VisualUdpFrameV1.cs#L1)
 - [Bins128VisualFlags](../../../src/Device.Protocol/Stream/Bins128VisualFlags.cs#L1)
-- [Firmware onWsEvent](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
+- [Firmware stream network](../../../firmware/esp32s3-devkitc1/src/mica_network.cpp#L1)
+- [Firmware UDP receiver](../../../firmware/esp32s3-devkitc1/src/mica_visual_udp.cpp#L1)

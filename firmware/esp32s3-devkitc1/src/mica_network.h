@@ -1,5 +1,6 @@
 #pragma once
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -76,6 +77,7 @@ uint32_t elapsedMicrosSince(uint32_t startUs);
 void updateLoopHealthyPercent(uint32_t loopDurationUs);
 void reportPerfMetrics();
 void sendTelemetry(bool force);
+bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanelsPlaybackForStream);
 
 // ---------------------------------------------------------------------------
 // WebSocket handler & connection

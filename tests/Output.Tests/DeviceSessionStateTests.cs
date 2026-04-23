@@ -55,7 +55,10 @@ public sealed class DeviceSessionStateTests
             controlWorkerState: "idle",
             panelsWorkerState: "pending_batch",
             lastSlowCommand: "queue_panels_batch",
-            lastSlowCommandDurationMs: 640);
+            lastSlowCommandDurationMs: 640,
+            visualUdpSupported: true,
+            visualUdpPort: 5274,
+            visualUdpMode: "bins128");
 
         Assert.Equal(telemetryUtc, state.Record.LastTelemetryUtc);
         Assert.Equal(authUtc, state.Record.LastAuthUtc);
@@ -69,6 +72,14 @@ public sealed class DeviceSessionStateTests
         Assert.Equal(1u, state.Record.ControlQueueDepth);
         Assert.Equal("pending_batch", state.Record.PanelsWorkerState);
         Assert.Equal(640L, state.Record.LastSlowCommandDurationMs);
+        Assert.True(state.Record.VisualUdpSupported);
+        Assert.Equal(5274, state.Record.VisualUdpPort);
+        Assert.Equal("bins128", state.Record.VisualUdpMode);
+
+        var snapshot = state.ToSnapshot(telemetryUtc, TimeSpan.FromSeconds(15));
+        Assert.True(snapshot.VisualUdpSupported);
+        Assert.Equal(5274, snapshot.VisualUdpPort);
+        Assert.Equal("bins128", snapshot.VisualUdpMode);
     }
 
     [Fact]

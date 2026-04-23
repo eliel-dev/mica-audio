@@ -175,7 +175,7 @@ Status em 2026-04-22:
 
 - `.dockerignore`, `src/MicaAudio.Server/Dockerfile` e `render.yaml` foram adicionados.
 - `render.yaml` declara `MICA_SERVER__ADMINTOKEN` como secret `sync: false`.
-- Docker local agora deve anunciar `MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272` quando `PORT=8080` estiver mapeado para `5272`, e deve publicar `5273` se o firmware atual usar MQTT local.
+- Docker local agora deve anunciar `MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272` quando `PORT=8080` estiver mapeado para `5272`, deve publicar `5273` se o firmware atual usar MQTT local e pode publicar `5274/udp` quando `PreferLanUdpVisualTransport` estiver ativo para visual LAN.
 - O smoke local valida `/api/v1/health` e `/api/v1/server/info`; deploy Render real ainda depende de publicar o repo e aplicar o Blueprint no Dashboard.
 
 ### Fase 3 - Persistencia cloud

@@ -78,6 +78,8 @@ public sealed class MicaAudioServerStandaloneTests
                 ["MdnsServiceName"] = "_mica-test._tcp",
                 ["PublicHttpBaseAddress"] = "http://192.168.15.10:5272/",
                 ["RestrictToPrivateNetworks"] = "false",
+                ["VisualUdpPort"] = "5274",
+                ["PreferLanUdpVisualTransport"] = "true",
                 ["DeviceFreshThresholdSeconds"] = "21",
                 ["AllowLegacyWebSocketQueryToken"] = "true",
                 ["StartupPairCodeTtlSeconds"] = "0",
@@ -97,6 +99,8 @@ public sealed class MicaAudioServerStandaloneTests
         Assert.Equal("_mica-test._tcp", config.MdnsServiceName);
         Assert.Equal("http://192.168.15.10:5272", config.PublicHttpBaseAddress);
         Assert.False(config.RestrictToPrivateNetworks);
+        Assert.Equal(5274, config.VisualUdpPort);
+        Assert.True(config.PreferLanUdpVisualTransport);
         Assert.Equal(21, config.DeviceFreshThresholdSeconds);
         Assert.True(config.AllowLegacyWebSocketQueryToken);
         Assert.Equal(0, options.StartupPairCodeTtlSeconds);
@@ -157,11 +161,11 @@ public sealed class MicaAudioServerStandaloneTests
     }
 
     [Fact]
-    public void Dockerfile_ShouldExposeHttpAndLegacyMqttPorts()
+    public void Dockerfile_ShouldExposeHttpLegacyMqttAndVisualUdpPorts()
     {
         var dockerfile = File.ReadAllText(GetRepoPath("src", "MicaAudio.Server", "Dockerfile"));
 
-        Assert.Contains("EXPOSE 8080 5273", dockerfile);
+        Assert.Contains("EXPOSE 8080 5273 5274/udp", dockerfile);
     }
 
     [Theory]
