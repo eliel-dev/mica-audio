@@ -8,6 +8,7 @@ namespace Device.Client.Embedded;
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
 // DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
 // DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 public sealed partial class EmbeddedDeviceServerClient : IDeviceServerClient, IEmbeddedDeviceServerClientRuntime
 {
     private static readonly TimeSpan RegistrySaveMinInterval = TimeSpan.FromSeconds(10);
@@ -111,7 +112,13 @@ public sealed partial class EmbeddedDeviceServerClient : IDeviceServerClient, IE
 
     public PairingCodeInfo CreatePairingCode(TimeSpan ttl) => serverHost.CreatePairingCode(ttl);
 
+    public Task<PairingCodeInfo> CreatePairingCodeAsync(TimeSpan ttl, CancellationToken cancellationToken = default)
+        => Task.FromResult(CreatePairingCode(ttl));
+
     public IReadOnlyList<DeviceSnapshot> GetDevices() => serverHost.GetDevicesSnapshot();
+
+    public Task<IReadOnlyList<DeviceSnapshot>> GetDevicesAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(GetDevices());
 
     public async Task<bool> SendCommandAsync(string deviceId, DeviceCommandType commandType, CancellationToken cancellationToken = default)
         => await serverHost.SendCommandAsync(deviceId, commandType, cancellationToken).ConfigureAwait(false);
@@ -126,6 +133,9 @@ public sealed partial class EmbeddedDeviceServerClient : IDeviceServerClient, IE
 
     public bool RemoveDevice(string deviceId) => serverHost.RemoveDevice(deviceId);
 
+    public Task<bool> RemoveDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
+        => Task.FromResult(RemoveDevice(deviceId));
+
     public PanelsBatchRegistration RegisterPanelsBatch(
         string deviceId,
         string panelsSessionId,
@@ -136,8 +146,25 @@ public sealed partial class EmbeddedDeviceServerClient : IDeviceServerClient, IE
         string contentType = "image/webp")
         => serverHost.RegisterPanelsBatch(deviceId, panelsSessionId, batchSequence, payload, frameCount, durationMs, contentType);
 
+    public Task<PanelsBatchRegistration> RegisterPanelsBatchAsync(
+        string deviceId,
+        string panelsSessionId,
+        ulong batchSequence,
+        byte[] payload,
+        int frameCount,
+        int durationMs,
+        string contentType = "image/webp",
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(RegisterPanelsBatch(deviceId, panelsSessionId, batchSequence, payload, frameCount, durationMs, contentType));
+
     public void ClearPanelsBatches(string deviceId, string? panelsSessionId = null)
         => serverHost.ClearPanelsBatches(deviceId, panelsSessionId);
+
+    public Task ClearPanelsBatchesAsync(string deviceId, string? panelsSessionId = null, CancellationToken cancellationToken = default)
+    {
+        ClearPanelsBatches(deviceId, panelsSessionId);
+        return Task.CompletedTask;
+    }
 
     public async ValueTask DisposeAsync()
     {

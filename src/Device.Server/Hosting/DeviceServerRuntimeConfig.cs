@@ -4,6 +4,8 @@ using Device.Protocol.Contracts;
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 internal sealed class DeviceServerRuntimeConfig
 {
     private DeviceServerRuntimeConfig(
@@ -13,7 +15,9 @@ internal sealed class DeviceServerRuntimeConfig
         int maxDevices,
         string mdnsServiceName,
         string publicHost,
+        string publicHttpBaseAddress,
         string mqttRootTopic,
+        string adminToken,
         bool restrictToPrivateNetworks,
         IReadOnlyList<CidrRange> allowedCidrs,
         int configuredAllowedCidrsCount,
@@ -33,7 +37,9 @@ internal sealed class DeviceServerRuntimeConfig
         MaxDevices = maxDevices;
         MdnsServiceName = mdnsServiceName;
         PublicHost = publicHost;
+        PublicHttpBaseAddress = publicHttpBaseAddress;
         MqttRootTopic = mqttRootTopic;
+        AdminToken = adminToken;
         RestrictToPrivateNetworks = restrictToPrivateNetworks;
         AllowedCidrs = allowedCidrs;
         ConfiguredAllowedCidrsCount = configuredAllowedCidrsCount;
@@ -60,7 +66,13 @@ internal sealed class DeviceServerRuntimeConfig
 
     public string PublicHost { get; }
 
+    public string PublicHttpBaseAddress { get; }
+
     public string MqttRootTopic { get; }
+
+    public string AdminToken { get; }
+
+    public bool IsAdminApiEnabled => !string.IsNullOrWhiteSpace(AdminToken);
 
     public bool RestrictToPrivateNetworks { get; }
 
@@ -101,8 +113,10 @@ internal sealed class DeviceServerRuntimeConfig
             mqttPort: Math.Clamp(config.MqttPort, 1, 65535),
             maxDevices: config.MaxDevices,
             mdnsServiceName: config.MdnsServiceName,
-            publicHost: config.PublicHost,
+            publicHost: config.PublicHost?.Trim() ?? string.Empty,
+            publicHttpBaseAddress: NormalizePublicHttpBaseAddress(config.PublicHttpBaseAddress),
             mqttRootTopic: NormalizeRootTopic(config.MqttRootTopic),
+            adminToken: config.AdminToken?.Trim() ?? string.Empty,
             restrictToPrivateNetworks: config.RestrictToPrivateNetworks,
             allowedCidrs: allowedCidrs,
             configuredAllowedCidrsCount: configuredAllowedCidrsCount,
@@ -128,6 +142,21 @@ internal sealed class DeviceServerRuntimeConfig
         return string.IsNullOrWhiteSpace(normalized)
             ? "mica/v1/devices"
             : normalized;
+    }
+
+    private static string NormalizePublicHttpBaseAddress(string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue)
+            || !Uri.TryCreate(rawValue.Trim(), UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            || (!string.IsNullOrEmpty(uri.AbsolutePath) && uri.AbsolutePath != "/")
+            || !string.IsNullOrEmpty(uri.Query)
+            || !string.IsNullOrEmpty(uri.Fragment))
+        {
+            return string.Empty;
+        }
+
+        return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
     }
 
     private static IReadOnlyList<CidrRange> ParseAllowedCidrs(IEnumerable<string>? cidrValues)

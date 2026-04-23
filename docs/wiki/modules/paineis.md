@@ -76,6 +76,8 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
   - o envio ao device acontece por `queue_panels_batch` + download HTTP autenticado no `Device.Server`;
   - o fallback para `Frame128x64` continua automatico se o device nao suportar batches ou se a fila de lotes falhar.
 - `PanelsPlaybackService` consome `Device.Client.IDeviceServerClient` para snapshots/comandos/batches e `Device.Client.IDeviceFrameTransport` apenas para frames; no runtime WinUI esses contratos sao atendidos por `Device.Client.Embedded` + `DeviceServerHost`, preservando o server embutido mas removendo dependencia direta do host completo.
+- No modo WinUI Remote, o mesmo `PanelsPlaybackService` usa `RemoteDeviceServerClient` para snapshots, comandos tracked e registro/clear de batches WebP via Admin API; frames HUB75 seguem por `RemoteDeviceFrameTransport`.
+- As operacoes sensiveis de client (`CreatePairingCode`, `GetDevices`, `RemoveDevice`, batches) possuem caminho async em `IDeviceServerClient`, permitindo remote HTTP sem bloquear o loop do app.
 - O storage dos batches `WebP` foi isolado em `Device.Server.Hosting.IPanelsBatchStore`, preparando troca futura de backend sem alterar o contrato de `PanelsPlaybackService`, comandos ou endpoint de download.
 - O caminho oficial de batch deixou de materializar `30` arrays RGBA por segundo antes do encode:
   - `PanelCompositionSession` agora aceita render em buffer fornecido pelo chamador (`RenderFrameInto(...)`);

@@ -10,6 +10,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(5);
@@ -676,11 +677,23 @@ public sealed partial class DeviceServerHost
         }
 
         CommandProgressChanged?.Invoke(this, progress);
+        _ = BroadcastAdminEventAsync(new AdminEventMessage
+        {
+            Type = "command_progress",
+            CommandProgress = progress,
+            Utc = timeProvider.GetUtcNow(),
+        });
     }
 
     private void PublishDeviceLog(DeviceLogMessage log)
     {
         DeviceLogReceived?.Invoke(this, log);
+        _ = BroadcastAdminEventAsync(new AdminEventMessage
+        {
+            Type = "device_log",
+            DeviceLog = log,
+            Utc = timeProvider.GetUtcNow(),
+        });
     }
 
     private static void RecordPendingProgress(TrackedCommandState pending, DeviceCommandProgressMessage progress)

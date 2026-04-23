@@ -7,6 +7,8 @@ namespace MicaAudio.Server;
 
 // DOCS: docs/wiki/architecture/08-render-cloud-migration-plan.md#fase-1---server-standalone-cloud-ready-sem-mudar-wire
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-standalone.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 public static class MicaAudioServerBootstrap
 {
     public static MicaAudioServerOptions LoadOptions(IConfiguration configuration, string? renderPort = null)
@@ -39,7 +41,9 @@ public static class MicaAudioServerBootstrap
             MdnsServiceName = options.MdnsServiceName,
             PublicHost = options.PublicHost,
             MqttRootTopic = options.MqttRootTopic,
+            AdminToken = options.AdminToken,
             RestrictToPrivateNetworks = options.RestrictToPrivateNetworks,
+            PublicHttpBaseAddress = options.PublicHttpBaseAddress,
             AllowedCidrs = options.AllowedCidrs,
             PairRequestsPerMinute = options.PairRequestsPerMinute,
             CommandAckRequestsPerSecond = options.CommandAckRequestsPerSecond,
@@ -82,7 +86,10 @@ public static class MicaAudioServerBootstrap
         options.MqttPort = NormalizePort(options.MqttPort, 5273);
         options.MaxDevices = Math.Max(1, options.MaxDevices);
         options.MdnsServiceName = NormalizeString(options.MdnsServiceName, "_micaaudio._tcp");
+        options.PublicHost = options.PublicHost?.Trim() ?? string.Empty;
+        options.PublicHttpBaseAddress = NormalizePublicHttpBaseAddress(options.PublicHttpBaseAddress);
         options.MqttRootTopic = NormalizeString(options.MqttRootTopic, "mica/v1/devices").Trim('/');
+        options.AdminToken = options.AdminToken?.Trim() ?? string.Empty;
         options.StorageRoot = NormalizeString(options.StorageRoot, Path.Combine(AppContext.BaseDirectory, "data"));
         options.StartupPairCodeTtlSeconds = Math.Max(0, options.StartupPairCodeTtlSeconds);
         options.PairRequestsPerMinute = Math.Max(1, options.PairRequestsPerMinute);
@@ -101,6 +108,21 @@ public static class MicaAudioServerBootstrap
 
     private static int NormalizePort(int port, int fallback)
         => port is >= 1 and <= 65535 ? port : fallback;
+
+    private static string NormalizePublicHttpBaseAddress(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || !Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            || (!string.IsNullOrEmpty(uri.AbsolutePath) && uri.AbsolutePath != "/")
+            || !string.IsNullOrEmpty(uri.Query)
+            || !string.IsNullOrEmpty(uri.Fragment))
+        {
+            return string.Empty;
+        }
+
+        return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+    }
 
     private static bool TryParsePort(string? value, out int port)
     {

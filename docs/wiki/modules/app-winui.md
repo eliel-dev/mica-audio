@@ -44,6 +44,16 @@
 - Os registros default sao `IPanelsBatchStore -> InMemoryPanelsBatchStore`, `IDevicePairingStore -> InMemoryDevicePairingStore`, `ICommandStateStore -> InMemoryCommandStateStore` e `ISessionStateStore -> InMemorySessionStateStore`, preservando batches `WebP`, pairing, comandos tracked e sessoes efemeras apenas em memoria sem alterar URLs, autenticacao ou payloads.
 - `IDeviceServerClient`, `IEmbeddedDeviceServerClientRuntime` e `IDeviceFrameTransport` continuam resolvidos pelas fronteiras de client/embedded ja existentes.
 
+## Atualizacao 2026-04 - WinUI Remote Full Visual Client
+
+- O modo default continua `Embedded`, mas `AppSettings.DeviceServerMode` permite alternar para `Remote` em `Configuracoes`.
+- `AppSettings.RemoteServerBaseAddress` guarda a URL do `MicaAudio.Server`; o admin token fica fora do `settings.json`, protegido por DPAPI em `remote-server-secrets.json`.
+- `App.BuildServiceProvider()` escolhe no startup entre:
+  - `EmbeddedDeviceServerClient + DeviceServerHost` para o modo local;
+  - `RemoteDeviceServerClient + RemoteDeviceFrameTransport + RemoteDeviceServerRuntime` para o modo remoto.
+- `App.StartDeviceIntegrationAsync` agora usa `IDeviceServerClientRuntime`, preservando o lifecycle comum entre embedded e remote.
+- Trocar modo/URL/token exige restart nesta entrega.
+
 ## Atualizacao 2026-03 - Refresh automatico do release oficial de firmware
 
 - A `App.WinUI` continua trabalhando apenas com o conceito de release oficial local do firmware, validado por manifesto.

@@ -809,6 +809,7 @@
           "CommunityToolkit.Mvvm": "[8.4.0, )",
           "Device.Client.Abstractions": "[1.0.0, )",
           "Device.Client.Embedded": "[1.0.0, )",
+          "Device.Client.Remote": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )",
           "Device.Server": "[1.0.0, )",
           "Device.Server.Abstractions": "[1.0.0, )",
@@ -856,6 +857,14 @@
           "Device.Protocol": "[1.0.0, )",
           "Device.Server.Abstractions": "[1.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.3, )"
+        }
+      },
+      "device.client.remote": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Client.Abstractions": "[1.0.0, )",
+          "Device.Protocol": "[1.0.0, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
       },
       "device.protocol": {

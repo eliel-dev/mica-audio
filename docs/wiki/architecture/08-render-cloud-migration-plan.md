@@ -94,6 +94,7 @@ O estado atual relevante para a migracao e:
 6. O hot path visual continua em `Esp32S3LedOutput -> DeviceServerHost.BroadcastFrame -> /ws/v1/stream`.
 7. `Paineis` ja tem batch WebP, mas o batch atual e in-memory.
 8. `render.yaml` e `src/MicaAudio.Server/Dockerfile` existem para smoke Docker/Render do server standalone.
+9. O WinUI possui modo remoto opt-in contra `MicaAudio.Server` via Admin API/WSS, com `Embedded` ainda como default seguro.
 
 ## Fases de migracao
 
@@ -144,6 +145,8 @@ Status em 2026-04-22:
 - `src/MicaAudio.Server` foi criado como executavel standalone sem dependencia de `App.WinUI`.
 - `PORT` tem precedencia sobre a porta configurada e `MICA_SERVER__*` alimenta `ServerConfig`.
 - O startup gera pair code transitorio para smoke local quando `StartupPairCodeTtlSeconds > 0`.
+- A Admin API tokenizada e os WebSockets admin foram adicionados para o primeiro WinUI remoto (`MICA_SERVER__ADMINTOKEN`).
+- `Device.Client.Remote` permite listar devices, gerar pair code, remover device, enviar comandos tracked, registrar batches WebP e enviar frames HUB75 via server standalone.
 
 ### Fase 2 - Bootstrap Render
 
@@ -171,6 +174,8 @@ Gates:
 Status em 2026-04-22:
 
 - `.dockerignore`, `src/MicaAudio.Server/Dockerfile` e `render.yaml` foram adicionados.
+- `render.yaml` declara `MICA_SERVER__ADMINTOKEN` como secret `sync: false`.
+- Docker local agora deve anunciar `MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272` quando `PORT=8080` estiver mapeado para `5272`, e deve publicar `5273` se o firmware atual usar MQTT local.
 - O smoke local valida `/api/v1/health` e `/api/v1/server/info`; deploy Render real ainda depende de publicar o repo e aplicar o Blueprint no Dashboard.
 
 ### Fase 3 - Persistencia cloud

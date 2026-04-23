@@ -2,6 +2,8 @@ namespace MicaAudio.Server;
 
 // DOCS: docs/wiki/architecture/08-render-cloud-migration-plan.md#fase-1---server-standalone-cloud-ready-sem-mudar-wire
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-standalone.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 public sealed class MicaAudioServerOptions
 {
     public const string EnvironmentVariablePrefix = "MICA_SERVER__";
@@ -18,7 +20,11 @@ public sealed class MicaAudioServerOptions
 
     public string PublicHost { get; set; } = string.Empty;
 
+    public string PublicHttpBaseAddress { get; set; } = string.Empty;
+
     public string MqttRootTopic { get; set; } = "mica/v1/devices";
+
+    public string AdminToken { get; set; } = string.Empty;
 
     public bool RestrictToPrivateNetworks { get; set; } = true;
 

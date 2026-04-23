@@ -14,6 +14,8 @@ services:
         value: "false"
       - key: MICA_SERVER__STARTUPPAIRCODETTLSECONDS
         value: "600"
+      - key: MICA_SERVER__ADMINTOKEN
+        sync: false
       - key: MICA_SERVER__ALLOWLEGACYWEBSOCKETQUERYTOKEN
         value: "false"
     disk:

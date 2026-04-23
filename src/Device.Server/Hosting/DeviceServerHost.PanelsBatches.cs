@@ -6,6 +6,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#transporte-de-lotes-webp-para-paineis
 // DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+// DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 public sealed partial class DeviceServerHost
 {
     public PanelsBatchRegistration RegisterPanelsBatch(

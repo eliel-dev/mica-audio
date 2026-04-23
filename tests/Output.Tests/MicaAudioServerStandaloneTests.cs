@@ -74,7 +74,9 @@ public sealed class MicaAudioServerStandaloneTests
                 ["MqttPort"] = "8182",
                 ["MaxDevices"] = "7",
                 ["MqttRootTopic"] = "mica/test/devices",
+                ["AdminToken"] = "standalone-admin-token",
                 ["MdnsServiceName"] = "_mica-test._tcp",
+                ["PublicHttpBaseAddress"] = "http://192.168.15.10:5272/",
                 ["RestrictToPrivateNetworks"] = "false",
                 ["DeviceFreshThresholdSeconds"] = "21",
                 ["AllowLegacyWebSocketQueryToken"] = "true",
@@ -91,7 +93,9 @@ public sealed class MicaAudioServerStandaloneTests
         Assert.Equal(8182, config.MqttPort);
         Assert.Equal(7, config.MaxDevices);
         Assert.Equal("mica/test/devices", config.MqttRootTopic);
+        Assert.Equal("standalone-admin-token", config.AdminToken);
         Assert.Equal("_mica-test._tcp", config.MdnsServiceName);
+        Assert.Equal("http://192.168.15.10:5272", config.PublicHttpBaseAddress);
         Assert.False(config.RestrictToPrivateNetworks);
         Assert.Equal(21, config.DeviceFreshThresholdSeconds);
         Assert.True(config.AllowLegacyWebSocketQueryToken);
@@ -138,6 +142,8 @@ public sealed class MicaAudioServerStandaloneTests
         Assert.Contains("mountPath: /data", renderYaml);
         Assert.Contains("MICA_SERVER__STORAGEROOT", renderYaml);
         Assert.Contains("MICA_SERVER__RESTRICTTOPRIVATENETWORKS", renderYaml);
+        Assert.Contains("MICA_SERVER__ADMINTOKEN", renderYaml);
+        Assert.Contains("sync: false", renderYaml);
     }
 
     [Fact]
@@ -148,6 +154,14 @@ public sealed class MicaAudioServerStandaloneTests
         Assert.Contains("**/bin/", dockerignore);
         Assert.Contains("**/obj/", dockerignore);
         Assert.Contains("!**/packages.lock.json", dockerignore);
+    }
+
+    [Fact]
+    public void Dockerfile_ShouldExposeHttpAndLegacyMqttPorts()
+    {
+        var dockerfile = File.ReadAllText(GetRepoPath("src", "MicaAudio.Server", "Dockerfile"));
+
+        Assert.Contains("EXPOSE 8080 5273", dockerfile);
     }
 
     [Theory]

@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Threading.Channels;
 using Device.Client;
 using Device.Client.Embedded;
+using Device.Client.Remote;
 using Device.Server.Hosting;
 using Output.Led;
 
@@ -43,6 +44,7 @@ public sealed class ServerAbstractionBoundaryTests
     public void DeviceClientContracts_ShouldLiveInClientAbstractionsAssembly()
     {
         Assert.Equal("Device.Client.Abstractions", typeof(IDeviceServerClient).Assembly.GetName().Name);
+        Assert.Equal("Device.Client.Abstractions", typeof(IDeviceServerClientRuntime).Assembly.GetName().Name);
         Assert.Equal("Device.Client.Abstractions", typeof(IDeviceFrameTransport).Assembly.GetName().Name);
         Assert.Equal("Device.Client.Abstractions", typeof(PanelsBatchRegistration).Assembly.GetName().Name);
         Assert.True(typeof(IDeviceFrameTransport).IsAssignableFrom(typeof(IDeviceServerHost)));
@@ -54,6 +56,17 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.Equal("Device.Client.Embedded", typeof(EmbeddedDeviceServerClient).Assembly.GetName().Name);
         Assert.True(typeof(IDeviceServerClient).IsAssignableFrom(typeof(EmbeddedDeviceServerClient)));
         Assert.True(typeof(IEmbeddedDeviceServerClientRuntime).IsAssignableFrom(typeof(EmbeddedDeviceServerClient)));
+        Assert.True(typeof(IDeviceServerClientRuntime).IsAssignableFrom(typeof(EmbeddedDeviceServerClient)));
+    }
+
+    [Fact]
+    public void DeviceRemoteClient_ShouldLiveInRemoteAssembly()
+    {
+        Assert.Equal("Device.Client.Remote", typeof(RemoteDeviceServerClient).Assembly.GetName().Name);
+        Assert.True(typeof(IDeviceServerClient).IsAssignableFrom(typeof(RemoteDeviceServerClient)));
+        Assert.True(typeof(IDeviceServerClientRuntime).IsAssignableFrom(typeof(RemoteDeviceServerClient)));
+        Assert.True(typeof(IDeviceFrameTransport).IsAssignableFrom(typeof(RemoteDeviceFrameTransport)));
+        Assert.True(typeof(IDeviceServerClientRuntime).IsAssignableFrom(typeof(RemoteDeviceServerRuntime)));
     }
 
     [Fact]
@@ -115,6 +128,34 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.Contains("../Device.Server.Abstractions/Device.Server.Abstractions.csproj", references);
         Assert.Contains("../Device.Protocol/Device.Protocol.csproj", references);
         Assert.DoesNotContain("../App.WinUI/App.WinUI.csproj", references);
+    }
+
+    [Fact]
+    public void RemoteClientProject_ShouldNotReferenceAppWinUiOrDeviceServer()
+    {
+        var projectPath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "src",
+            "Device.Client.Remote",
+            "Device.Client.Remote.csproj"));
+
+        var project = XDocument.Load(projectPath);
+        var references = project
+            .Descendants("ProjectReference")
+            .Select(element => element.Attribute("Include")?.Value.Replace('\\', '/'))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+
+        Assert.Contains("../Device.Client.Abstractions/Device.Client.Abstractions.csproj", references);
+        Assert.Contains("../Device.Protocol/Device.Protocol.csproj", references);
+        Assert.DoesNotContain("../App.WinUI/App.WinUI.csproj", references);
+        Assert.DoesNotContain("../Device.Server/Device.Server.csproj", references);
+        Assert.DoesNotContain("../Device.Client.Embedded/Device.Client.Embedded.csproj", references);
     }
 
     private static bool ExposesTransportType(System.Reflection.MemberInfo member)

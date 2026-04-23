@@ -35,16 +35,27 @@ internal static class DeviceServerTestHarness
         HttpClient client,
         string deviceName,
         string? boardModel = null,
-        string? panelType = null)
+        string? panelType = null,
+        string? hostHeader = null)
     {
         var pairing = host.CreatePairingCode(TimeSpan.FromMinutes(5));
-        var pairedResponse = await client.PostAsJsonAsync("/api/v1/pair", new PairDeviceRequest
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/pair")
         {
-            PairingCode = pairing.Code,
-            DeviceName = deviceName,
-            BoardModel = boardModel,
-            PanelType = panelType,
-        });
+            Content = JsonContent.Create(new PairDeviceRequest
+            {
+                PairingCode = pairing.Code,
+                DeviceName = deviceName,
+                BoardModel = boardModel,
+                PanelType = panelType,
+            }),
+        };
+
+        if (!string.IsNullOrWhiteSpace(hostHeader))
+        {
+            request.Headers.Host = hostHeader;
+        }
+
+        var pairedResponse = await client.SendAsync(request);
 
         pairedResponse.EnsureSuccessStatusCode();
         var paired = await pairedResponse.Content.ReadFromJsonAsync<PairDeviceResponse>();

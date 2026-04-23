@@ -7,6 +7,34 @@ namespace Output.Tests;
 public sealed class DeviceServerHostPanelsBatchTests
 {
     [Fact]
+    public async Task RegisterPanelsBatch_ShouldUseConfiguredPublicHttpBaseAddressInDownloadUrl()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = string.Empty,
+            PublicHttpBaseAddress = "http://192.168.15.40:5272",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "panels-batch-public-base");
+        var registration = host.RegisterPanelsBatch(
+            paired.DeviceId,
+            panelsSessionId: "session-public-base",
+            batchSequence: 1,
+            "RIFFdemoWEBP"u8.ToArray(),
+            frameCount: 30,
+            durationMs: 1000);
+
+        Assert.StartsWith("http://192.168.15.40:5272/api/v1/device/panels/batches/1.webp", registration.DownloadUrl, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RegisterPanelsBatch_ShouldServePayloadOnlyToAuthenticatedTargetDevice()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();

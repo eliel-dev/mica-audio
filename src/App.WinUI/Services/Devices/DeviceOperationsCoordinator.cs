@@ -11,6 +11,7 @@ namespace App.WinUI.Services.Devices;
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
 // DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 internal sealed partial class DeviceOperationsCoordinator : IDisposable
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
@@ -112,18 +113,25 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
     public string GetServerBaseAddress() => integration.GetServerBaseAddress();
 
     public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
+        => CreatePairingCodeAsync(ttl).GetAwaiter().GetResult();
+
+    public async Task<PairingCodeInfo> CreatePairingCodeAsync(TimeSpan ttl, CancellationToken cancellationToken = default)
     {
-        var pairing = integration.CreatePairingCode(ttl);
+        var pairing = await integration.CreatePairingCodeAsync(ttl, cancellationToken).ConfigureAwait(false);
         AppendLog($"Codigo de pareamento: {pairing.Code} (expira {pairing.ExpiresAtUtc:HH:mm:ss} UTC)");
         return pairing;
     }
 
     internal PairingCodeInfo CreateHiddenPairingCode(TimeSpan ttl)
-    {
-        return integration.CreatePairingCode(ttl);
-    }
+        => CreateHiddenPairingCodeAsync(ttl).GetAwaiter().GetResult();
+
+    internal Task<PairingCodeInfo> CreateHiddenPairingCodeAsync(TimeSpan ttl, CancellationToken cancellationToken = default)
+        => integration.CreatePairingCodeAsync(ttl, cancellationToken);
 
     public bool RemoveDevice(string deviceId)
+        => RemoveDeviceAsync(deviceId).GetAwaiter().GetResult();
+
+    public async Task<bool> RemoveDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
         {
@@ -131,7 +139,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         }
 
         var normalizedDeviceId = deviceId.Trim();
-        var removed = integration.RemoveDevice(normalizedDeviceId);
+        var removed = await integration.RemoveDeviceAsync(normalizedDeviceId, cancellationToken).ConfigureAwait(false);
         if (!removed)
         {
             return false;
@@ -406,8 +414,9 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         try
         {
             var lifecycleThresholds = await lifecycleThresholdProvider.EnsureLoadedAsync().ConfigureAwait(false);
+            var devices = await integration.GetDevicesAsync().ConfigureAwait(false);
             var nextSnapshot = DeviceListVisibilityPolicy.BuildVisibleList(
-                integration.GetDevices(),
+                devices,
                 lifecycleThresholds,
                 DateTimeOffset.UtcNow);
 
@@ -500,11 +509,23 @@ internal interface IDeviceOperationsRuntime
 
     string GetServerBaseAddress();
 
-    PairingCodeInfo CreatePairingCode(TimeSpan ttl);
+    PairingCodeInfo CreatePairingCode(TimeSpan ttl)
+        => CreatePairingCodeAsync(ttl, CancellationToken.None).GetAwaiter().GetResult();
 
-    bool RemoveDevice(string deviceId);
+    Task<PairingCodeInfo> CreatePairingCodeAsync(TimeSpan ttl, CancellationToken cancellationToken = default)
+        => Task.FromResult(CreatePairingCode(ttl));
 
-    IReadOnlyList<DeviceSnapshot> GetDevices();
+    bool RemoveDevice(string deviceId)
+        => RemoveDeviceAsync(deviceId, CancellationToken.None).GetAwaiter().GetResult();
+
+    Task<bool> RemoveDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
+        => Task.FromResult(RemoveDevice(deviceId));
+
+    IReadOnlyList<DeviceSnapshot> GetDevices()
+        => GetDevicesAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+    Task<IReadOnlyList<DeviceSnapshot>> GetDevicesAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(GetDevices());
 
     Task<CommandDispatchResult> SendCommandTrackedAsync(
         string deviceId,
@@ -551,9 +572,18 @@ internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
 
     public PairingCodeInfo CreatePairingCode(TimeSpan ttl) => integration.CreatePairingCode(ttl);
 
+    public Task<PairingCodeInfo> CreatePairingCodeAsync(TimeSpan ttl, CancellationToken cancellationToken = default)
+        => integration.CreatePairingCodeAsync(ttl, cancellationToken);
+
     public bool RemoveDevice(string deviceId) => integration.RemoveDevice(deviceId);
 
+    public Task<bool> RemoveDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
+        => integration.RemoveDeviceAsync(deviceId, cancellationToken);
+
     public IReadOnlyList<DeviceSnapshot> GetDevices() => integration.GetDevices();
+
+    public Task<IReadOnlyList<DeviceSnapshot>> GetDevicesAsync(CancellationToken cancellationToken = default)
+        => integration.GetDevicesAsync(cancellationToken);
 
     public Task<CommandDispatchResult> SendCommandTrackedAsync(
         string deviceId,

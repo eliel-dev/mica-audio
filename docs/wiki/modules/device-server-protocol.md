@@ -9,6 +9,8 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
 - Broker MQTT embutido para `commands`, `command-events`, `status`, `presence`, `stats` e `logs`.
 - WebSocket `/ws/v1/stream` exclusivamente para stream visual binario.
+- Admin API opt-in por token para clients remotos WinUI (`/api/v1/admin/*`).
+- WebSockets admin para eventos (`/ws/v1/admin/events`) e frames remotos (`/ws/v1/admin/frames`).
 - Dashboard local para `WebView2` via `GET /dashboard` + `WS /ws/device/{deviceId}` com DTO dedicado.
 - Sessao de comandos rastreados com timeout.
 - Transporte HTTP autenticado para lotes animados `WebP` da sessao `Paineis`.
@@ -92,6 +94,21 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - O startup pode gerar um pair code transitorio em log/console (`StartupPairCodeTtlSeconds`, default `600`, `0` desliga) para smoke local sem admin API.
 - O fluxo WinUI embedded permanece o default do app desktop; este corte nao cria client remoto nem muda firmware, endpoints, payloads, MQTT topics ou auth.
 
+## Atualizacao 2026-04 - Admin API E WinUI Remote
+
+- `ServerConfig.AdminToken` habilita a Admin API; quando vazio, `/api/v1/admin/*` e `/ws/v1/admin/*` retornam `admin_api_disabled`.
+- A autenticacao admin aceita `Authorization: Bearer <token>` ou `X-Mica-Admin-Token`, separada da autenticacao de device.
+- Endpoints remotos adicionados:
+  - `GET /api/v1/admin/devices`
+  - `POST /api/v1/admin/pairing-codes`
+  - `DELETE /api/v1/admin/devices/{deviceId}`
+  - `POST /api/v1/admin/devices/{deviceId}/commands/tracked`
+  - `POST /api/v1/admin/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence}`
+  - `DELETE /api/v1/admin/panels/batches/{deviceId}`
+- `WS /ws/v1/admin/events` publica JSON de `devices_changed`, `device_log`, `command_progress` e `heartbeat`.
+- `WS /ws/v1/admin/frames` recebe envelope binario admin -> server e chama `BroadcastFrame` ou `SendFrame` sem mudar `StreamFrameV2`.
+- `Device.Client.Remote` implementa `IDeviceServerClient` via HTTP Admin API e `IDeviceFrameTransport` via WebSocket admin, enquanto o firmware e os endpoints de device atuais continuam inalterados.
+
 ## Politicas de seguranca
 
 1. Rate limiting:
@@ -109,6 +126,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - `latest/download` de firmware reaproveitam a mesma autenticacao de device (`X-Device-Id` + `X-Device-Token` ou bearer).
 - WebSocket (`/ws/v1/stream`): aceita `X-Device-Id` + `X-Device-Token` (ou `Authorization: Bearer`).
 - MQTT: exige `clientId = username = deviceId` e `password = token`.
+- Admin remoto: exige `AdminToken` configurado e token via bearer ou `X-Mica-Admin-Token`; nao aceita token admin por query string.
 - Query token legado em WS permanece disponivel apenas por compatibilidade quando `AllowLegacyWebSocketQueryToken=true`.
 - Default de seguranca: `AllowLegacyWebSocketQueryToken=false`.
 
@@ -125,6 +143,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Estrutura de DTOs em `Device.Protocol/Models`.
 - Topicos e autenticacao do control plane MQTT.
 - Politicas de seguranca em `ServerConfig`.
+- Superficie admin remota em `DeviceServerHost.Admin`.
 - Normalizacao de runtime em `DeviceServerRuntimeConfig`.
 - Transicoes de estado em `DeviceRecordMutations` e `DeviceSessionState`.
 
@@ -338,6 +357,17 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Sessao WS sem MQTT passa a ser tratada como firmware legado fora do control plane.
 - Telemetria WS-texto ou `command-ack` HTTP sem MQTT ativo passam a marcar o snapshot como `LegacyOnly`.
 - `LegacyOnly` nao promove o device a `Online`; ele continua elegivel apenas ao caminho visual/rollback.
+
+## Atualizacao 2026-04 - Endereco anunciado no Docker local
+
+- `ServerConfig.PublicHttpBaseAddress` permite que `MicaAudio.Server` anuncie uma base HTTP publica diferente do bind interno do container.
+- `/api/v1/server/info`, `/api/v1/pair` e URLs autenticadas de batch WebP usam a mesma regra de base HTTP:
+  - `PublicHttpBaseAddress`, quando configurado;
+  - senao `scheme + Request.Host`, preservando a porta externa recebida;
+  - senao `PublicHost/ListenHost + Port` como fallback sem contexto HTTP.
+- O `MqttHost` anunciado usa `PublicHost`; se vazio, usa o host de `PublicHttpBaseAddress`; se vazio, usa o host da request.
+- Em Docker local com `-p 5272:8080`, configurar `MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272` evita que o firmware grave a porta interna `8080`.
+- MQTT continua legado/local nesta fase e precisa de publicacao explicita `-p 5273:5273` para o ESP conectar fora do container.
 
 ## Atualizacao 2026-03 - Presenca Leve e Carimbos de Sessao
 

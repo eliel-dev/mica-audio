@@ -3,6 +3,7 @@ using MicaAudio.Core.Audio;
 namespace MicaAudio.Core.Presets;
 
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#modulo-settings-presets-e-persistencia
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 public sealed class AppSettings
 {
     public string ActivePresetId { get; init; } = "audiomotion-clone";
@@ -44,6 +45,10 @@ public sealed class AppSettings
     public int DeviceDormantThresholdHours { get; init; } = 24;
 
     public bool AllowLegacyWebSocketQueryToken { get; init; }
+
+    public DeviceServerMode DeviceServerMode { get; init; } = DeviceServerMode.Embedded;
+
+    public string RemoteServerBaseAddress { get; init; } = "http://127.0.0.1:5272";
 
     public int WindowWidth { get; init; }
 

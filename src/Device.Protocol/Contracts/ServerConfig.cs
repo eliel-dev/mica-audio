@@ -1,6 +1,8 @@
 namespace Device.Protocol.Contracts;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#politicas-de-seguranca
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 public sealed class ServerConfig
 {
     public string ListenHost { get; init; } = "0.0.0.0";
@@ -15,7 +17,11 @@ public sealed class ServerConfig
 
     public string PublicHost { get; init; } = "micaaudio.local";
 
+    public string PublicHttpBaseAddress { get; init; } = string.Empty;
+
     public string MqttRootTopic { get; init; } = "mica/v1/devices";
+
+    public string AdminToken { get; init; } = string.Empty;
 
     // Security-first defaults for local network usage.
     public bool RestrictToPrivateNetworks { get; init; } = true;

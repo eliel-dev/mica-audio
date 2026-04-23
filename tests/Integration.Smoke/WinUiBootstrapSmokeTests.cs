@@ -8,12 +8,15 @@ using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Device.Client;
 using Device.Client.Embedded;
+using Device.Client.Remote;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
+using MicaAudio.Core.Presets;
 using Output.Led;
+using System.Text.Json;
 
 namespace Integration.Smoke;
 
@@ -27,6 +30,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<EmbeddedDeviceServerClient>());
         Assert.NotNull(provider.GetService<IDeviceServerClient>());
         Assert.NotNull(provider.GetService<IEmbeddedDeviceServerClientRuntime>());
+        Assert.NotNull(provider.GetService<IDeviceServerClientRuntime>());
         Assert.NotNull(provider.GetService<IDeviceServerHost>());
         Assert.NotNull(provider.GetService<IPanelsBatchStore>());
         Assert.NotNull(provider.GetService<IDevicePairingStore>());
@@ -46,6 +50,31 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<PanelsFrameComposer>());
         Assert.NotNull(provider.GetService<PanelsPlaybackService>());
         Assert.NotNull(provider.GetService<PanelsDeviceSessionService>());
+    }
+
+    [Fact]
+    public async Task BuildServiceProvider_WithRemoteSettings_ShouldResolveRemoteClientAndTransport()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mica-audio-winui-bootstrap", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var options = CreateTestOptions(root);
+        Directory.CreateDirectory(Path.GetDirectoryName(options.SettingsFilePath)!);
+        await File.WriteAllTextAsync(
+            options.SettingsFilePath,
+            JsonSerializer.Serialize(new AppSettings
+            {
+                DeviceServerMode = DeviceServerMode.Remote,
+                RemoteServerBaseAddress = "http://127.0.0.1:5272",
+            }));
+        var secretStore = new RemoteDeviceServerSecretStore(Options.Create(options));
+        await secretStore.SaveAdminTokenAsync("dev-token");
+
+        var provider = App.WinUI.App.BuildServiceProvider(options);
+
+        Assert.IsType<RemoteDeviceServerClient>(provider.GetRequiredService<IDeviceServerClient>());
+        Assert.IsType<RemoteDeviceFrameTransport>(provider.GetRequiredService<IDeviceFrameTransport>());
+        Assert.IsType<RemoteDeviceServerRuntime>(provider.GetRequiredService<IDeviceServerClientRuntime>());
+        Assert.NotNull(provider.GetRequiredService<DeviceServerHost>());
     }
 
     [Fact]
@@ -169,6 +198,26 @@ public sealed class WinUiBootstrapSmokeTests
         });
 
         Assert.False(hasServiceProviderCtor, $"Service locator constructor not allowed: {pageType.FullName}");
+    }
+
+    private static MicaAudioOptions CreateTestOptions(string root)
+    {
+        var local = Path.Combine(root, "local");
+        var roaming = Path.Combine(root, "roaming");
+        return new MicaAudioOptions
+        {
+            AppDataRoot = roaming,
+            DevicesFilePath = Path.Combine(roaming, "devices.json"),
+            SettingsFilePath = Path.Combine(roaming, "settings.json"),
+            PresetsDirectory = Path.Combine(roaming, "presets"),
+            AppsCatalogPath = Path.Combine(roaming, "apps", "catalog.json"),
+            AppsModifierStatePath = Path.Combine(roaming, "apps", "modifiers.json"),
+            PanelsFilePath = Path.Combine(roaming, "panels", "panels.json"),
+            RemoteDeviceServerSecretsFilePath = Path.Combine(roaming, "remote-server-secrets.json"),
+            CrashLogPath = Path.Combine(local, "crash.log"),
+            PrecompiledFirmwareDirectory = Path.Combine(AppContext.BaseDirectory, "AppData", "Firmware"),
+            WorkspaceRoot = string.Empty,
+        };
     }
 
     private sealed class FakeDeviceServerClient : IDeviceServerClient

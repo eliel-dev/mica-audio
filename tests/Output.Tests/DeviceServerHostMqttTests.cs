@@ -15,6 +15,73 @@ namespace Output.Tests;
 public sealed class DeviceServerHostMqttTests
 {
     [Fact]
+    public async Task PairingAndServerInfo_ShouldPreserveExternalRequestHostPort()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+        const string externalHostHeader = "192.168.15.20:5272";
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = string.Empty,
+            Port = port,
+            MqttPort = mqttPort,
+            MqttRootTopic = DeviceServerTestHarness.DefaultMqttRootTopic,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(
+            host,
+            client,
+            "mqtt-external-port",
+            hostHeader: externalHostHeader);
+
+        using var infoRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/server/info");
+        infoRequest.Headers.Host = externalHostHeader;
+        using var infoResponse = await client.SendAsync(infoRequest);
+        infoResponse.EnsureSuccessStatusCode();
+        var serverInfo = await infoResponse.Content.ReadFromJsonAsync<ServerInfoResponse>();
+
+        Assert.Equal("http://192.168.15.20:5272", paired.HttpBase);
+        Assert.Equal("192.168.15.20", paired.MqttHost);
+        Assert.NotNull(serverInfo);
+        Assert.Equal("http://192.168.15.20:5272", serverInfo!.HttpBase);
+        Assert.Equal("192.168.15.20", serverInfo.MqttHost);
+    }
+
+    [Fact]
+    public async Task PairingAndServerInfo_ShouldUseConfiguredPublicHttpBaseAddress()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = string.Empty,
+            PublicHttpBaseAddress = "http://192.168.15.30:5272",
+            Port = port,
+            MqttPort = mqttPort,
+            MqttRootTopic = DeviceServerTestHarness.DefaultMqttRootTopic,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-public-base");
+        var serverInfo = await client.GetFromJsonAsync<ServerInfoResponse>("/api/v1/server/info");
+
+        Assert.Equal("http://192.168.15.30:5272", paired.HttpBase);
+        Assert.Equal("192.168.15.30", paired.MqttHost);
+        Assert.NotNull(serverInfo);
+        Assert.Equal("http://192.168.15.30:5272", serverInfo!.HttpBase);
+        Assert.Equal("192.168.15.30", serverInfo.MqttHost);
+    }
+
+    [Fact]
     public async Task PairingAndServerInfo_ShouldExposeMqttControlPlaneSettings()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();

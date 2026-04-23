@@ -88,6 +88,7 @@
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
     <ProjectReference Include="..\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
     <ProjectReference Include="..\Device.Client.Embedded\Device.Client.Embedded.csproj" />
+    <ProjectReference Include="..\Device.Client.Remote\Device.Client.Remote.csproj" />
     <ProjectReference Include="..\Device.Server.Abstractions\Device.Server.Abstractions.csproj" />
     <ProjectReference Include="..\Device.Server\Device.Server.csproj" />
   </ItemGroup>

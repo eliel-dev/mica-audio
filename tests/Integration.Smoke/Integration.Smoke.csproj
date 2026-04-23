@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\MicaAudio.Core\MicaAudio.Core.csproj" />
     <ProjectReference Include="..\..\src\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\Device.Client.Embedded\Device.Client.Embedded.csproj" />
+    <ProjectReference Include="..\..\src\Device.Client.Remote\Device.Client.Remote.csproj" />
     <ProjectReference Include="..\..\src\App.WinUI\App.WinUI.csproj" />
   </ItemGroup>
 </Project>

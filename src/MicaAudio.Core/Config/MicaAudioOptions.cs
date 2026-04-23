@@ -1,6 +1,7 @@
 namespace MicaAudio.Core.Config;
 
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#pontos-de-alteracao-frequente
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 public class MicaAudioOptions
 {
     public const string Position = "MicaAudio";
@@ -18,6 +19,8 @@ public class MicaAudioOptions
     public string AppsModifierStatePath { get; set; } = string.Empty;
 
     public string PanelsFilePath { get; set; } = string.Empty;
+
+    public string RemoteDeviceServerSecretsFilePath { get; set; } = string.Empty;
 
     public string CrashLogPath { get; set; } = string.Empty;
 

@@ -91,6 +91,7 @@
 - `Output` referencia `Device.Client.Abstractions` e nao referencia `Device.Server` nem `Device.Server.Abstractions`.
 - A implementacao embedded do transporte fica fora de `Output`, em `Device.Client.Embedded` + composition root WinUI.
 - O output continua emitindo os mesmos payloads `StreamFrameV2`; a mudanca e apenas de fronteira interna para preparar um futuro client remoto.
+- No modo WinUI Remote, `RemoteDeviceFrameTransport` atende `IDeviceFrameTransport` com fila bounded e envio por `WS /ws/v1/admin/frames`; `Esp32S3LedOutput` permanece sem dependencia de HTTP, server concreto ou WinUI.
 
 ## Referencias de codigo
 
@@ -100,6 +101,7 @@
 - [AudioPipelineOutputRouter](../../../src/App.WinUI/Services/AudioPipelineOutputRouter.cs#L1)
 - [Esp32S3LedOutput](../../../src/Output/Led/Esp32S3LedOutput.cs#L1)
 - [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1)
+- [RemoteDeviceFrameTransport](../../../src/Device.Client.Remote/RemoteDeviceFrameTransport.cs#L1)
 - [LedFrameDeduplicator](../../../src/Output/Led/LedFrameDeduplicator.cs#L1)
 - [Bins128PreviewRenderer](../../../src/Output/Led/Bins128PreviewRenderer.cs#L1)
 - [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)

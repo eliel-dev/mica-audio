@@ -35,4 +35,21 @@ public class DeviceServerRuntimeConfigTests
         Assert.True(config.AllowedCidrs[0].Contains(IPAddress.Parse("192.168.10.42")));
         Assert.False(config.AllowedCidrs[0].Contains(IPAddress.Parse("10.0.0.42")));
     }
+
+    [Theory]
+    [InlineData("http://192.168.15.10:5272/", "http://192.168.15.10:5272")]
+    [InlineData("https://mica-audio.example.test/", "https://mica-audio.example.test")]
+    [InlineData("", "")]
+    [InlineData("   ", "")]
+    [InlineData("ftp://192.168.15.10:5272", "")]
+    [InlineData("http://192.168.15.10:5272/api/v1", "")]
+    public void From_ShouldNormalizePublicHttpBaseAddress(string rawValue, string expected)
+    {
+        var config = DeviceServerRuntimeConfig.From(new ServerConfig
+        {
+            PublicHttpBaseAddress = rawValue,
+        });
+
+        Assert.Equal(expected, config.PublicHttpBaseAddress);
+    }
 }

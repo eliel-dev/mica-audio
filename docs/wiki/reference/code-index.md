@@ -26,6 +26,7 @@ Pontos principais do cutover HUB75 128x64:
 - [MonitoringPage UI](../../../src/App.WinUI/Views/MonitoringPage.Ui.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
+- [RemoteDeviceServerSecretStore](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerSecretStore.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
@@ -42,6 +43,7 @@ Pontos principais do cutover HUB75 128x64:
 - [MicaAudio.Server Dockerfile](../../../src/MicaAudio.Server/Dockerfile#L1)
 - [Render Blueprint](../../../render.yaml#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [DeviceServerHost Admin](../../../src/Device.Server/Hosting/DeviceServerHost.Admin.cs#L1)
 - [DeviceServerHost panels batches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
 - [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1)
 - [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1)
@@ -61,8 +63,13 @@ Pontos principais do cutover HUB75 128x64:
 - [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
 - [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
 - [IDeviceServerHost](../../../src/Device.Server.Abstractions/Hosting/IDeviceServerHost.cs#L1)
+- [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1)
+- [IDeviceServerClientRuntime](../../../src/Device.Client.Abstractions/IDeviceServerClientRuntime.cs#L1)
 - [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1)
 - [EmbeddedDeviceServerClient](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L1)
+- [RemoteDeviceServerClient](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1)
+- [RemoteDeviceFrameTransport](../../../src/Device.Client.Remote/RemoteDeviceFrameTransport.cs#L1)
+- [RemoteDeviceServerRuntime](../../../src/Device.Client.Remote/RemoteDeviceServerRuntime.cs#L1)
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1)
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1)
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1)
@@ -71,6 +78,8 @@ Pontos principais do cutover HUB75 128x64:
 - [DeviceControlPlaneState](../../../src/Device.Protocol/Models/DeviceControlPlaneState.cs#L1)
 - [DeviceStatsMessage](../../../src/Device.Protocol/Models/DeviceStatsMessage.cs#L1)
 - [DeviceLogMessage](../../../src/Device.Protocol/Models/DeviceLogMessage.cs#L1)
+- [AdminDevicesResponse](../../../src/Device.Protocol/Models/AdminDevicesResponse.cs#L1)
+- [AdminEventMessage](../../../src/Device.Protocol/Models/AdminEventMessage.cs#L1)
 
 Notas ativas:
 
@@ -158,6 +167,8 @@ Observacoes ativas:
 - O host local agora tambem expõe `GET /dashboard` e `WS /ws/device/{deviceId}` com DTO dedicado para o WebView.
 
 - `MicaAudio.Server` agora fornece o primeiro host standalone/Docker para smoke local e Render, reaproveitando `DeviceServerHost` sem transformar ainda o WinUI em client remoto.
+- O standalone/Docker agora separa bind interno de endereco anunciado: `MICA_SERVER__PUBLICHTTPBASEADDRESS` preserva a porta publica HTTP e `MICA_SERVER__PUBLICHOST` anuncia o host MQTT local/legado.
+- O WinUI agora tambem possui modo `Remote`, opt-in em `Configuracoes`, que usa `Device.Client.Remote` contra `MicaAudio.Server` com token admin DPAPI; `Embedded` permanece default.
 
 Pontos centrais do pipeline de analise e captura:
 

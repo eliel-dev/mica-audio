@@ -20,7 +20,7 @@ RUN dotnet publish src/MicaAudio.Server/MicaAudio.Server.csproj -c Release -o /a
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
-EXPOSE 8080
+EXPOSE 8080 5273
 ENV MICA_SERVER__LISTENHOST=0.0.0.0
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "MicaAudio.Server.dll"]

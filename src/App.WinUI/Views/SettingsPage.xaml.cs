@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using App.WinUI.Services;
+using App.WinUI.Services.Devices;
 using MicaAudio.Core.Presets;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -8,23 +9,31 @@ namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
 // DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
+    private readonly RemoteDeviceServerSecretStore remoteSecretStore;
     private AppSettings currentSettings = new();
     private bool suppressMicaBackdropChanged;
     private ToggleSwitch micaBackdropToggle = null!;
+    private ComboBox deviceServerModeCombo = null!;
+    private TextBox remoteServerBaseAddressBox = null!;
+    private PasswordBox remoteAdminTokenBox = null!;
     private TextBlock micaBackdropStatusText = null!;
+    private TextBlock deviceServerStatusText = null!;
     private TextBlock errorLogsPathText = null!;
     private TextBlock errorLogsStatusText = null!;
 
     internal SettingsPage(
         SettingsRepository settingsRepository,
-        AppSettingsDomainService settingsDomainService)
+        AppSettingsDomainService settingsDomainService,
+        RemoteDeviceServerSecretStore remoteSecretStore)
     {
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
+        this.remoteSecretStore = remoteSecretStore;
 
         InitializeComponent();
         Content = BuildLayout();
@@ -42,19 +51,28 @@ public sealed partial class SettingsPage : Page
         try
         {
             currentSettings = settingsDomainService.Migrate(await settingsRepository.LoadAsync());
+            var adminToken = await remoteSecretStore.LoadAdminTokenAsync();
             suppressMicaBackdropChanged = true;
             micaBackdropToggle.IsOn = currentSettings.UseMicaBackdrop;
+            deviceServerModeCombo.SelectedIndex = currentSettings.DeviceServerMode == DeviceServerMode.Remote ? 1 : 0;
+            remoteServerBaseAddressBox.Text = currentSettings.RemoteServerBaseAddress;
+            remoteAdminTokenBox.Password = adminToken;
             suppressMicaBackdropChanged = false;
             micaBackdropStatusText.Text = BuildMicaBackdropStatusText(
                 currentSettings.UseMicaBackdrop,
                 App.MainWindow?.SystemBackdrop is MicaBackdrop);
+            deviceServerStatusText.Text = BuildDeviceServerStatusText(currentSettings.DeviceServerMode, currentSettings.RemoteServerBaseAddress);
         }
         catch (Exception ex)
         {
             suppressMicaBackdropChanged = true;
             micaBackdropToggle.IsOn = true;
+            deviceServerModeCombo.SelectedIndex = 0;
+            remoteServerBaseAddressBox.Text = "http://127.0.0.1:5272";
+            remoteAdminTokenBox.Password = string.Empty;
             suppressMicaBackdropChanged = false;
             micaBackdropStatusText.Text = "Nao foi possivel carregar esta preferencia. O app manteve a aparencia atual.";
+            deviceServerStatusText.Text = "Nao foi possivel carregar as preferencias do servidor.";
             App.ReportError("SettingsPage.LoadGeneralSettingsAsync failed", ex);
         }
     }
@@ -104,6 +122,34 @@ public sealed partial class SettingsPage : Page
         {
             errorLogsStatusText.Text = "Nao foi possivel abrir a pasta dos logs.";
             App.ReportError("SettingsPage.OpenLogsDirectory failed", ex);
+        }
+    }
+
+    private async void OnSaveDeviceServerSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        var previousSettings = currentSettings;
+        var selectedMode = deviceServerModeCombo.SelectedIndex == 1 ? DeviceServerMode.Remote : DeviceServerMode.Embedded;
+        var updatedSettings = settingsDomainService.Copy(currentSettings, builder =>
+        {
+            builder.SetDeviceServerMode(selectedMode);
+            builder.SetRemoteServerBaseAddress(remoteServerBaseAddressBox.Text);
+        });
+
+        try
+        {
+            await settingsRepository.SaveAsync(updatedSettings);
+            await remoteSecretStore.SaveAdminTokenAsync(remoteAdminTokenBox.Password);
+            currentSettings = updatedSettings;
+            remoteServerBaseAddressBox.Text = updatedSettings.RemoteServerBaseAddress;
+            deviceServerStatusText.Text = BuildDeviceServerStatusText(updatedSettings.DeviceServerMode, updatedSettings.RemoteServerBaseAddress);
+        }
+        catch (Exception ex)
+        {
+            currentSettings = previousSettings;
+            deviceServerModeCombo.SelectedIndex = previousSettings.DeviceServerMode == DeviceServerMode.Remote ? 1 : 0;
+            remoteServerBaseAddressBox.Text = previousSettings.RemoteServerBaseAddress;
+            deviceServerStatusText.Text = "Nao foi possivel salvar as preferencias do servidor.";
+            App.ReportError("SettingsPage.SaveDeviceServerSettings failed", ex);
         }
     }
 
@@ -174,6 +220,7 @@ public sealed partial class SettingsPage : Page
             Text = "Preferencias globais da janela e acesso rapido ao arquivo de erros do app.",
         });
         contentStack.Children.Add(BuildWindowAppearanceCard());
+        contentStack.Children.Add(BuildDeviceServerCard());
         contentStack.Children.Add(BuildErrorLogsCard());
 
         scrollViewer.Content = contentStack;
@@ -241,6 +288,55 @@ public sealed partial class SettingsPage : Page
             openButton);
     }
 
+    private Border BuildDeviceServerCard()
+    {
+        deviceServerModeCombo = new ComboBox
+        {
+            Header = "Modo do servidor",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            MinWidth = 180,
+        };
+        deviceServerModeCombo.Items.Add("Embedded");
+        deviceServerModeCombo.Items.Add("Remote");
+
+        remoteServerBaseAddressBox = new TextBox
+        {
+            Header = "Servidor remoto",
+            PlaceholderText = "http://127.0.0.1:5272",
+            MinWidth = 320,
+        };
+
+        remoteAdminTokenBox = new PasswordBox
+        {
+            Header = "Admin token",
+            MinWidth = 320,
+        };
+
+        var saveButton = new Button
+        {
+            Content = "Salvar servidor",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Style = Application.Current.Resources["AppChromeButtonStyle"] as Style,
+        };
+        saveButton.Click += OnSaveDeviceServerSettingsClicked;
+
+        deviceServerStatusText = new TextBlock
+        {
+            Opacity = 0.72,
+            TextWrapping = TextWrapping.Wrap,
+            Text = "Carregando preferencias do servidor...",
+        };
+
+        return CreateCard(
+            "Servidor de dispositivos",
+            "O modo remoto usa o MicaAudio.Server externo no proximo restart.",
+            deviceServerModeCombo,
+            remoteServerBaseAddressBox,
+            remoteAdminTokenBox,
+            saveButton,
+            deviceServerStatusText);
+    }
+
     private static Border CreateCard(string title, string description, params UIElement[] content)
     {
         var stack = new StackPanel
@@ -286,6 +382,13 @@ public sealed partial class SettingsPage : Page
         return micaApplied
             ? "Mica ativo na janela principal."
             : "Mica configurado, mas este ambiente esta usando o fallback de superficie solida.";
+    }
+
+    internal static string BuildDeviceServerStatusText(DeviceServerMode mode, string remoteBaseAddress)
+    {
+        return mode == DeviceServerMode.Remote
+            ? $"Remote salvo para o proximo restart: {remoteBaseAddress}"
+            : "Embedded salvo para o proximo restart.";
     }
 
     internal static string ResolveLogsDirectoryPath(string crashLogPath)

@@ -230,16 +230,24 @@ public sealed partial class DevicesPage : Page
         viewModel.GeneratePairingCommand.Execute(null);
     }
 
-    private void GeneratePairingCodeCore()
+    private async void GeneratePairingCodeCore()
     {
         if (DeviceOps is null)
         {
             return;
         }
 
-        var code = DeviceOps.CreatePairingCode(TimeSpan.FromMinutes(10));
-        ShowPairingCodeNotice(code.Code, code.ExpiresAtUtc);
-        AddLocalLog($"Codigo de pareamento gerado: {code.Code}.");
+        try
+        {
+            var code = await DeviceOps.CreatePairingCodeAsync(TimeSpan.FromMinutes(10)).ConfigureAwait(true);
+            ShowPairingCodeNotice(code.Code, code.ExpiresAtUtc);
+            AddLocalLog($"Codigo de pareamento gerado: {code.Code}.");
+        }
+        catch (Exception ex)
+        {
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Falha ao gerar codigo de pareamento.");
+            AddLocalLog($"Falha ao gerar codigo de pareamento: {ex.Message}");
+        }
     }
 
     private async void OnTestLedClicked(object sender, RoutedEventArgs e)
@@ -431,7 +439,7 @@ public sealed partial class DevicesPage : Page
             }
         }
 
-        if (!ops.RemoveDevice(selected.DeviceId))
+        if (!await ops.RemoveDeviceAsync(selected.DeviceId).ConfigureAwait(true))
         {
             ShowInlineStatusMessage(InfoBarSeverity.Error, "Falha ao remover dispositivo.");
             AddLocalLog($"Falha ao remover dispositivo: {selected.DeviceId}");

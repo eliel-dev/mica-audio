@@ -12,6 +12,7 @@ using App.WinUI.ViewModels;
 using Audio.Loopback.Capture;
 using Device.Client;
 using Device.Client.Embedded;
+using Device.Client.Remote;
 using Device.Server.Hosting;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
@@ -21,6 +22,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Output.Led;
+using System.Text.Json;
 
 namespace App.WinUI;
 
@@ -34,8 +36,14 @@ namespace App.WinUI;
 // DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
 // DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 public partial class App : Application
 {
+    private static readonly JsonSerializerOptions StartupJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public static Window? MainWindow { get; private set; }
 
     internal static IServiceProvider? Services { get; private set; }
@@ -115,13 +123,22 @@ public partial class App : Application
             AppsCatalogPath = Path.Combine(appDataRoot, "apps", "catalog.json"),
             AppsModifierStatePath = Path.Combine(appDataRoot, "apps", "modifiers.json"),
             PanelsFilePath = Path.Combine(appDataRoot, "panels", "panels.json"),
+            RemoteDeviceServerSecretsFilePath = Path.Combine(appDataRoot, "remote-server-secrets.json"),
             CrashLogPath = Path.Combine(localAppDataRoot, "crash.log"),
             PrecompiledFirmwareDirectory = Path.Combine(AppContext.BaseDirectory, "AppData", "Firmware"),
             WorkspaceRoot = workspaceRoot,
         };
 
+        return BuildServiceProvider(options);
+    }
+
+    internal static IServiceProvider BuildServiceProvider(MicaAudioOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
         var observability = AppObservability.ConfigureGlobalLogger(options);
         var services = new ServiceCollection();
+        var startupDeviceServerSettings = LoadStartupDeviceServerSettings(options);
 
         services.AddLogging(AppObservability.ConfigureLogging);
         // DOCS: docs/wiki/modules/app-winui.md#observabilidade-tecnica
@@ -140,6 +157,7 @@ public partial class App : Application
             configured.AppsCatalogPath = options.AppsCatalogPath;
             configured.AppsModifierStatePath = options.AppsModifierStatePath;
             configured.PanelsFilePath = options.PanelsFilePath;
+            configured.RemoteDeviceServerSecretsFilePath = options.RemoteDeviceServerSecretsFilePath;
             configured.CrashLogPath = options.CrashLogPath;
             configured.PrecompiledFirmwareDirectory = options.PrecompiledFirmwareDirectory;
             configured.WorkspaceRoot = options.WorkspaceRoot;
@@ -154,6 +172,7 @@ public partial class App : Application
         services.AddSingleton<IDevicePairingStore, InMemoryDevicePairingStore>();
         services.AddSingleton<ICommandStateStore, InMemoryCommandStateStore>();
         services.AddSingleton<ISessionStateStore, InMemorySessionStateStore>();
+        services.AddSingleton<RemoteDeviceServerSecretStore>();
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
             sp.GetService<IDeviceOfficialFirmwareCatalog>(),
@@ -162,15 +181,34 @@ public partial class App : Application
             sp.GetRequiredService<ICommandStateStore>(),
             sp.GetRequiredService<ISessionStateStore>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
-        services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<IDeviceServerHost>());
         services.AddSingleton(sp => new EmbeddedDeviceServerClient(
             sp.GetRequiredService<IDeviceServerHost>(),
             sp.GetRequiredService<IEmbeddedDeviceRegistryStore>(),
             sp.GetRequiredService<IEmbeddedDeviceServerSettingsProvider>(),
             sp.GetRequiredService<IEmbeddedDevicePublicHostResolver>(),
             sp.GetRequiredService<ILogger<EmbeddedDeviceServerClient>>()));
-        services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
         services.AddSingleton<IEmbeddedDeviceServerClientRuntime>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
+        services.AddSingleton(sp => CreateRemoteDeviceServerClientOptions(options, startupDeviceServerSettings));
+        services.AddSingleton(sp => new RemoteDeviceServerClient(
+            new HttpClient(),
+            sp.GetRequiredService<RemoteDeviceServerClientOptions>(),
+            sp.GetRequiredService<ILogger<RemoteDeviceServerClient>>(),
+            ownsHttpClient: true));
+        services.AddSingleton<RemoteDeviceFrameTransport>();
+        if (startupDeviceServerSettings.Mode == DeviceServerMode.Remote)
+        {
+            services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<RemoteDeviceServerClient>());
+            services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<RemoteDeviceFrameTransport>());
+            services.AddSingleton<IDeviceServerClientRuntime>(sp => new RemoteDeviceServerRuntime(
+                sp.GetRequiredService<RemoteDeviceServerClient>(),
+                sp.GetRequiredService<RemoteDeviceFrameTransport>()));
+        }
+        else
+        {
+            services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
+            services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<IDeviceServerHost>());
+            services.AddSingleton<IDeviceServerClientRuntime>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
+        }
         services.AddSingleton<DeviceOperationsCoordinator>(sp =>
         {
             var coordinator = new DeviceOperationsCoordinator(
@@ -256,7 +294,8 @@ public partial class App : Application
 
         services.AddTransient<SettingsPage>(sp => new SettingsPage(
             sp.GetRequiredService<SettingsRepository>(),
-            sp.GetRequiredService<AppSettingsDomainService>()));
+            sp.GetRequiredService<AppSettingsDomainService>(),
+            sp.GetRequiredService<RemoteDeviceServerSecretStore>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>
@@ -284,7 +323,7 @@ public partial class App : Application
 
     private static async Task StartDeviceIntegrationAsync(IServiceProvider services)
     {
-        var deviceRuntime = services.GetService<IEmbeddedDeviceServerClientRuntime>();
+        var deviceRuntime = services.GetService<IDeviceServerClientRuntime>();
         if (deviceRuntime is null)
         {
             return;
@@ -326,7 +365,7 @@ public partial class App : Application
                 var deviceOps = Services.GetService<DeviceOperationsCoordinator>();
                 deviceOps?.Dispose();
 
-                var deviceRuntime = Services.GetService<IEmbeddedDeviceServerClientRuntime>();
+                var deviceRuntime = Services.GetService<IDeviceServerClientRuntime>();
                 if (deviceRuntime is not null)
                 {
                     await deviceRuntime.DisposeAsync().ConfigureAwait(false);
@@ -462,6 +501,44 @@ public partial class App : Application
             WriteCrashLog("Load startup settings failed. Using defaults.", ex);
             return new AppSettings();
         }
+    }
+
+    private static StartupDeviceServerSettings LoadStartupDeviceServerSettings(MicaAudioOptions options)
+    {
+        try
+        {
+            if (!File.Exists(options.SettingsFilePath))
+            {
+                return StartupDeviceServerSettings.Default;
+            }
+
+            using var stream = File.OpenRead(options.SettingsFilePath);
+            var settings = JsonSerializer.Deserialize<AppSettings>(stream, StartupJsonOptions) ?? new AppSettings();
+            var migrated = new AppSettingsDomainService().Migrate(settings);
+            return new StartupDeviceServerSettings(migrated.DeviceServerMode, migrated.RemoteServerBaseAddress);
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog("Load startup device server mode failed. Using embedded mode.", ex);
+            return StartupDeviceServerSettings.Default;
+        }
+    }
+
+    private static RemoteDeviceServerClientOptions CreateRemoteDeviceServerClientOptions(
+        MicaAudioOptions options,
+        StartupDeviceServerSettings startupSettings)
+    {
+        var secretPath = RemoteDeviceServerSecretStore.ResolvePath(options);
+        return new RemoteDeviceServerClientOptions
+        {
+            BaseAddress = startupSettings.RemoteServerBaseAddress,
+            AdminToken = RemoteDeviceServerSecretStore.LoadAdminToken(secretPath),
+        };
+    }
+
+    private readonly record struct StartupDeviceServerSettings(DeviceServerMode Mode, string RemoteServerBaseAddress)
+    {
+        public static StartupDeviceServerSettings Default { get; } = new(DeviceServerMode.Embedded, "http://127.0.0.1:5272");
     }
 
     private static string ResolveWorkspaceRoot()

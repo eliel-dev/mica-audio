@@ -23,6 +23,8 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
 // DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -49,6 +51,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly ICommandStateStore commandStateStore;
     private readonly ISessionStateStore sessionStateStore;
     private readonly DeviceFrameConnectionRegistry frameConnections = new();
+    private readonly object adminEventConnectionsGate = new();
+    private readonly List<AdminEventConnection> adminEventConnections = new();
 
     private DeviceServerRuntimeConfig runtimeConfig = DeviceServerRuntimeConfig.From(new ServerConfig());
     private WebApplication? app;
@@ -238,8 +242,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             Log("Servidor iniciado sem CIDR valido em AllowedCidrs; aplicando regra padrao de rede privada.");
         }
 
-        Log($"Servidor de dispositivos ativo em http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
-        Log($"Broker MQTT ativo em mqtt://{ResolveAdvertisedMqttHost(localRuntimeConfig)}:{localRuntimeConfig.MqttPort} ({localRuntimeConfig.MqttRootTopic}/{{deviceId}})");
+        Log($"HTTP bind interno: http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
+        Log($"HTTP anunciado: {ResolveAdvertisedHttpBaseAddress(localRuntimeConfig)}");
+        Log($"MQTT anunciado: mqtt://{ResolveAdvertisedMqttHost(localRuntimeConfig)}:{localRuntimeConfig.MqttPort} ({localRuntimeConfig.MqttRootTopic}/{{deviceId}})");
     }
 
     public async Task StopAsync()
@@ -249,6 +254,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         CancellationTokenSource? localCts;
         TrackedCommandState[] pendingToCancel;
         DeviceFrameConnection[] connectionsToDispose;
+        AdminEventConnection[] adminConnectionsToDispose;
 
         lock (gate)
         {
@@ -266,6 +272,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             pendingToCancel = commandStateStore.Drain();
             sessionStateStore.Drain();
             connectionsToDispose = frameConnections.Drain();
+        }
+
+        lock (adminEventConnectionsGate)
+        {
+            adminConnectionsToDispose = adminEventConnections.ToArray();
+            adminEventConnections.Clear();
         }
 
         foreach (var pending in pendingToCancel)
@@ -311,6 +323,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 connection.Dispose();
             }
 
+            foreach (var connection in adminConnectionsToDispose)
+            {
+                connection.Dispose();
+            }
+
             NotifyDevicesChanged();
         }
 
@@ -349,11 +366,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     public string GetPublicHttpBaseAddress()
     {
-        var host = string.IsNullOrWhiteSpace(runtimeConfig.PublicHost)
-            ? runtimeConfig.ListenHost
-            : runtimeConfig.PublicHost;
-
-        return $"http://{host}:{runtimeConfig.Port}";
+        return ResolveAdvertisedHttpBaseAddress(runtimeConfig);
     }
 
     public void SeedDevices(IEnumerable<DeviceRecord> devices)
@@ -544,14 +557,15 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         NotifyDevicesChanged();
         Log($"Device pareado: {state.Record.DeviceId}");
 
-        var host = ResolveHost(ctx);
+        var httpBase = ResolveAdvertisedHttpBaseAddress(ctx);
+        var mqttHost = ResolveAdvertisedMqttHost(ctx);
         return Results.Ok(new PairDeviceResponse
         {
             DeviceId = state.Record.DeviceId,
             Token = state.Record.Token,
             WsPath = "/ws/v1/stream",
-            HttpBase = $"http://{host}:{runtimeConfig.Port}",
-            MqttHost = host,
+            HttpBase = httpBase,
+            MqttHost = mqttHost,
             MqttPort = runtimeConfig.MqttPort,
             MqttRootTopic = runtimeConfig.MqttRootTopic,
             MdnsService = runtimeConfig.MdnsServiceName,
@@ -926,35 +940,100 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         return false;
     }
 
-    private string ResolveHost(HttpContext ctx)
+    private string ResolveAdvertisedHttpBaseAddress(HttpContext ctx)
+        => ResolveAdvertisedHttpBaseAddress(runtimeConfig, ctx);
+
+    private static string ResolveAdvertisedHttpBaseAddress(DeviceServerRuntimeConfig config, HttpContext? ctx = null)
     {
-        var requestHost = ctx.Request.Host.Host;
-        if (!string.IsNullOrWhiteSpace(requestHost)
-            && !string.Equals(requestHost, "0.0.0.0", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(requestHost, "localhost", StringComparison.OrdinalIgnoreCase))
+        ArgumentNullException.ThrowIfNull(config);
+
+        if (!string.IsNullOrWhiteSpace(config.PublicHttpBaseAddress))
+        {
+            return config.PublicHttpBaseAddress;
+        }
+
+        if (ctx is not null && TryGetRequestHost(ctx, out var requestHostValue, out _))
+        {
+            return $"{ResolveRequestScheme(ctx)}://{requestHostValue}";
+        }
+
+        var fallbackHost = string.IsNullOrWhiteSpace(config.PublicHost)
+            ? config.ListenHost
+            : config.PublicHost;
+        return $"http://{fallbackHost}:{config.Port}";
+    }
+
+    private string ResolveAdvertisedMqttHost(HttpContext ctx)
+        => ResolveAdvertisedMqttHost(runtimeConfig, ctx);
+
+    private static string ResolveAdvertisedMqttHost(DeviceServerRuntimeConfig config, HttpContext? ctx = null)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        if (!string.IsNullOrWhiteSpace(config.PublicHost))
+        {
+            return config.PublicHost;
+        }
+
+        if (!string.IsNullOrWhiteSpace(config.PublicHttpBaseAddress)
+            && Uri.TryCreate(config.PublicHttpBaseAddress, UriKind.Absolute, out var publicBase))
+        {
+            return publicBase.Host;
+        }
+
+        if (ctx is not null && TryGetRequestHost(ctx, out _, out var requestHost))
         {
             return requestHost;
         }
 
-        if (!string.IsNullOrWhiteSpace(runtimeConfig.PublicHost))
-        {
-            return runtimeConfig.PublicHost;
-        }
-
-        return ctx.Connection.LocalIpAddress?.ToString() ?? "127.0.0.1";
+        return config.ListenHost;
     }
 
-    private static string ResolveAdvertisedMqttHost(DeviceServerRuntimeConfig config)
+    private static string ResolveRequestScheme(HttpContext ctx)
     {
-        ArgumentNullException.ThrowIfNull(config);
-        return string.IsNullOrWhiteSpace(config.PublicHost)
-            ? config.ListenHost
-            : config.PublicHost;
+        var forwardedProto = ctx.Request.Headers["X-Forwarded-Proto"].ToString()
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        var scheme = string.IsNullOrWhiteSpace(forwardedProto) ? ctx.Request.Scheme : forwardedProto;
+
+        return string.Equals(scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            ? Uri.UriSchemeHttps
+            : Uri.UriSchemeHttp;
+    }
+
+    private static bool TryGetRequestHost(HttpContext ctx, out string hostValue, out string host)
+    {
+        var forwardedHost = ctx.Request.Headers["X-Forwarded-Host"].ToString()
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        var requestHost = string.IsNullOrWhiteSpace(forwardedHost)
+            ? ctx.Request.Host
+            : HostString.FromUriComponent(forwardedHost);
+
+        hostValue = requestHost.Value ?? string.Empty;
+        host = requestHost.Host;
+
+        if (string.IsNullOrWhiteSpace(hostValue) || string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        return !string.Equals(host, "0.0.0.0", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(host, "::", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(host, "[::]", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(host, "*", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(host, "+", StringComparison.OrdinalIgnoreCase);
     }
 
     private void NotifyDevicesChanged()
     {
         DevicesChanged?.Invoke(this, EventArgs.Empty);
+        _ = BroadcastAdminEventAsync(new AdminEventMessage
+        {
+            Type = "devices_changed",
+            Devices = GetDevicesSnapshot(),
+            Utc = timeProvider.GetUtcNow(),
+        });
     }
 
     private void Log(string message)

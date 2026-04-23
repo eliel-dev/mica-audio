@@ -14,6 +14,7 @@ namespace App.WinUI.Services.Panels;
 // DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
 // DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 internal sealed class PanelsPlaybackService : IDisposable
 {
     private static readonly bool EnableBatchPerfLogging =
@@ -311,7 +312,7 @@ internal sealed class PanelsPlaybackService : IDisposable
                 output.SetBrightness(LedDefaults.Brightness);
             }
 
-            if (enableMatrixTransport && SupportsAnimatedWebpBatch(normalizedDeviceId))
+            if (enableMatrixTransport && await SupportsAnimatedWebpBatchAsync(normalizedDeviceId, cancellationToken).ConfigureAwait(false))
             {
                 batchState = await TryPrimeBatchTransportAsync(session, normalizedDeviceId, cancellationToken).ConfigureAwait(false);
             }
@@ -382,7 +383,7 @@ internal sealed class PanelsPlaybackService : IDisposable
                 {
                     if (!await QueueNextBatchAsync(session, deviceId, batchState, cancellationToken).ConfigureAwait(false))
                     {
-                        serverClient.ClearPanelsBatches(deviceId, batchState.PanelsSessionId);
+                        await serverClient.ClearPanelsBatchesAsync(deviceId, batchState.PanelsSessionId, cancellationToken).ConfigureAwait(false);
                         batchState = null;
                         lock (stateGate)
                         {
@@ -455,7 +456,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         {
             if (localBatchState is not null)
             {
-                serverClient.ClearPanelsBatches(localTargetDeviceId, localBatchState.PanelsSessionId);
+                await serverClient.ClearPanelsBatchesAsync(localTargetDeviceId, localBatchState.PanelsSessionId, cancellationToken).ConfigureAwait(false);
             }
 
             localOutput.Send(LedPayloadFactory.CreateFramePayload(BlackFrame, PanelsDeviceSessionService.PanelsAppId));
@@ -494,10 +495,10 @@ internal sealed class PanelsPlaybackService : IDisposable
         return Task.CompletedTask;
     }
 
-    private bool SupportsAnimatedWebpBatch(string deviceId)
+    private async Task<bool> SupportsAnimatedWebpBatchAsync(string deviceId, CancellationToken cancellationToken)
     {
-        return serverClient
-            .GetDevices()
+        var devices = await serverClient.GetDevicesAsync(cancellationToken).ConfigureAwait(false);
+        return devices
             .Any(snapshot =>
                 string.Equals(snapshot.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase)
                 && snapshot.AnimatedWebpBatchSupported == true);
@@ -514,7 +515,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         {
             if (!await QueueNextBatchAsync(session, deviceId, state, cancellationToken).ConfigureAwait(false))
             {
-                serverClient.ClearPanelsBatches(deviceId, state.PanelsSessionId);
+                await serverClient.ClearPanelsBatchesAsync(deviceId, state.PanelsSessionId, cancellationToken).ConfigureAwait(false);
                 return null;
             }
         }
@@ -529,13 +530,16 @@ internal sealed class PanelsPlaybackService : IDisposable
         CancellationToken cancellationToken)
     {
         var encodedBatch = RenderEncodedBatch(session, state.NextBatchStartUtc);
-        var registration = serverClient.RegisterPanelsBatch(
-            deviceId,
-            state.PanelsSessionId,
-            state.NextBatchSequence,
-            encodedBatch.Payload,
-            encodedBatch.FrameCount,
-            encodedBatch.DurationMs);
+        var registration = await serverClient
+            .RegisterPanelsBatchAsync(
+                deviceId,
+                state.PanelsSessionId,
+                state.NextBatchSequence,
+                encodedBatch.Payload,
+                encodedBatch.FrameCount,
+                encodedBatch.DurationMs,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
 
         var payload = new PanelsBatchCommandPayload
         {
