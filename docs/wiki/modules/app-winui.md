@@ -8,6 +8,19 @@
 4. renderizar preview HUB75 local unico e nativo `128x64`
 5. integrar setup e catalogo com firmware oficial DevKitC-1
 
+## Direcao oficial
+
+- O app WinUI passa a ser o primeiro cliente oficial do control plane do Mica.
+- Para `visualizador` e `Paineis`, a direcao oficial e atuar como edge client local e dono do data plane LAN.
+- O app consulta o server para pairing, estado, catalogo, configs e assets, mas o hot path visual oficial deixa de depender do server.
+
+## Baseline atual / transicao
+
+- `Embedded` continua como default seguro e preserva o server no mesmo processo.
+- O composition root ainda conhece `DeviceServerHost`, `EmbeddedDeviceServerClient` e o modo remoto atual para compatibilidade.
+- O roteamento de frames ainda convive com caminhos mediatedos por `IDeviceFrameTransport` enquanto o client-owned direct path converge.
+- `WinUI Remote` deve ser lido como cliente do control plane, nao como obrigacao de rotear todo frame visual pelo server.
+
 ## Referencias relacionadas
 
 - [Auditoria desktop WinUI (2026-03-23)](../reference/app-winui-audit-2026-03-23.md)

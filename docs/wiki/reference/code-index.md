@@ -5,6 +5,7 @@ Pontos principais do cutover HUB75 128x64:
 - [LedDefaults](../../../src/MicaAudio.Core/Led/LedDefaults.cs#L1)
 - [LedPayload](../../../src/MicaAudio.Core/Led/LedPayload.cs#L1)
 - [StreamFrameV2](../../../src/Device.Protocol/Stream/StreamFrameV2.cs#L1)
+- [StreamFrameV3](../../../src/Device.Protocol/Stream/StreamFrameV3.cs#L1)
 - [VisualUdpFrameV1](../../../src/Device.Protocol/Stream/VisualUdpFrameV1.cs#L1)
 - [Esp32S3LedOutput](../../../src/Output/Led/Esp32S3LedOutput.cs#L1)
 - [LedFrameDeduplicator](../../../src/Output/Led/LedFrameDeduplicator.cs#L1)
@@ -31,6 +32,7 @@ Pontos principais do cutover HUB75 128x64:
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
+- [Firmware session runtime](../../../firmware/esp32s3-devkitc1/src/mica_session.cpp#L1)
 - [Firmware visual UDP](../../../firmware/esp32s3-devkitc1/src/mica_visual_udp.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
 - [Board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)
@@ -78,6 +80,7 @@ Pontos principais do cutover HUB75 128x64:
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1)
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1)
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1)
+- [DeviceSessionShadowMessage](../../../src/Device.Protocol/Models/DeviceSessionShadowMessage.cs#L1)
 - [DeviceControlPlaneState](../../../src/Device.Protocol/Models/DeviceControlPlaneState.cs#L1)
 - [DeviceStatsMessage](../../../src/Device.Protocol/Models/DeviceStatsMessage.cs#L1)
 - [DeviceLogMessage](../../../src/Device.Protocol/Models/DeviceLogMessage.cs#L1)
@@ -87,6 +90,8 @@ Pontos principais do cutover HUB75 128x64:
 Notas ativas:
 
 - Firmware oficial unico: `dma_exp` (DevKitC-1 128x64).
+- Direcao oficial: `server = control plane`, `cliente = data plane LAN`, `ESP32 = runtime com ownership por device`.
+- `StreamFrameV2` continua como wire legado; `StreamFrameV3` adiciona `ownerEpoch` para stream direto session-aware.
 - O env oficial `esp32s3_devkitc1_dma_exp` agora usa board local N16R8 (`16MB + OPI PSRAM + 3MB APP / 9.9MB FATFS`) para evitar drift do board padrao `N8` do PlatformIO.
 - O portal AP do firmware voltou a expor `Servidor` editavel; aceita URL completa ou `host[:porta]` e preserva host salvo valido em erro manual.
 

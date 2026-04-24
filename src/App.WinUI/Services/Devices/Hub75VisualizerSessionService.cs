@@ -1,3 +1,4 @@
+using Device.Client;
 using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
@@ -14,6 +15,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(8);
 
     private readonly DeviceOperationsCoordinator deviceOps;
+    private readonly IDeviceClientSessionManager? sessionManager;
     private readonly SemaphoreSlim reconcileGate = new(1, 1);
     private readonly object stateGate = new();
     private readonly Dictionary<string, DeviceActivationState> activationByDeviceId = new(StringComparer.OrdinalIgnoreCase);
@@ -24,9 +26,10 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
     private bool disposed;
     private int reconcileRequested;
 
-    public Hub75VisualizerSessionService(DeviceOperationsCoordinator deviceOps)
+    public Hub75VisualizerSessionService(DeviceOperationsCoordinator deviceOps, IDeviceClientSessionManager? sessionManager = null)
     {
         this.deviceOps = deviceOps;
+        this.sessionManager = sessionManager;
         deviceOps.DeviceListChanged += OnDeviceListChanged;
     }
 
@@ -51,6 +54,11 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
 
             if (!enabled)
             {
+                foreach (var deviceId in activationByDeviceId.Keys.ToArray())
+                {
+                    sessionManager?.StopHeartbeat(deviceId);
+                }
+
                 activationByDeviceId.Clear();
                 CancelDelayedReconcileLocked();
             }
@@ -71,6 +79,11 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
 
         lock (stateGate)
         {
+            foreach (var deviceId in activationByDeviceId.Keys.ToArray())
+            {
+                sessionManager?.StopHeartbeat(deviceId);
+            }
+
             activationByDeviceId.Clear();
             CancelDelayedReconcileLocked();
         }
@@ -151,6 +164,13 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
 
                 try
                 {
+                    if (sessionManager is not null)
+                    {
+                        await sessionManager
+                            .AssumeOwnerAsync(command.DeviceId, "visualizer", cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
                     result = await deviceOps
                         .ActivateAppAsync(command.DeviceId, command.TargetAppId, command.TargetAppName, cancellationToken)
                         .ConfigureAwait(false);
@@ -173,6 +193,7 @@ internal sealed class Hub75VisualizerSessionService : IDisposable
 
                 if (result.Accepted && result.Success)
                 {
+                    sessionManager?.StartHeartbeat(command.DeviceId, "visualizer");
                     shouldRequestRefresh = true;
                 }
             }

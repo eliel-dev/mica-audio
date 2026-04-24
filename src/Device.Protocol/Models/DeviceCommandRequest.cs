@@ -11,4 +11,6 @@ public sealed class DeviceCommandRequest
 
     // DOCS: docs/wiki/guides/add-device-command.md#passos
     public IDictionary<string, string>? Parameters { get; init; }
+
+    public DeviceCommandSessionContext? Session { get; init; }
 }

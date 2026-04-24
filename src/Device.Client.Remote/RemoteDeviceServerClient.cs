@@ -153,11 +153,21 @@ public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDev
         IReadOnlyDictionary<string, string>? parameters,
         TimeSpan timeout,
         CancellationToken cancellationToken)
+        => await SendCommandTrackedAsync(deviceId, commandType, parameters, sessionContext: null, timeout, cancellationToken).ConfigureAwait(false);
+
+    public async Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
         var request = new AdminTrackedCommandRequest
         {
             CommandType = commandType,
             Parameters = parameters is null ? null : new Dictionary<string, string>(parameters, StringComparer.OrdinalIgnoreCase),
+            Session = sessionContext,
             TimeoutMs = Math.Max(1, (int)Math.Ceiling(timeout.TotalMilliseconds)),
         };
 

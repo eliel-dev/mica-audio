@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Collections;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Device.Protocol.Models;
 using MQTTnet;
 using MQTTnet.Protocol;
@@ -193,6 +194,7 @@ public sealed partial class DeviceServerHost
             DeviceMqttChannel.Presence => TryHandlePresencePayload(state, payload, remoteIp),
             DeviceMqttChannel.Stats => TryHandleStatsPayload(state, payload, remoteIp),
             DeviceMqttChannel.Logs => TryHandleLogPayload(state, payload),
+            DeviceMqttChannel.Shadow => TryHandleSessionShadowPayload(state, payload),
             _ => false,
         };
 
@@ -267,6 +269,14 @@ public sealed partial class DeviceServerHost
                     retain: true,
                     CancellationToken.None)
                 .ConfigureAwait(false);
+
+            await PublishApplicationMessageAsync(
+                    server,
+                    DeviceMqttTopics.Shadow(runtimeConfig.MqttRootTopic, deviceId),
+                    Array.Empty<byte>(),
+                    retain: true,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -294,6 +304,19 @@ public sealed partial class DeviceServerHost
         };
 
         await server.InjectApplicationMessage(injected, cancellationToken).ConfigureAwait(false);
+    }
+
+    private bool TryHandleSessionShadowPayload(DeviceSessionState state, byte[] payload)
+    {
+        try
+        {
+            var shadow = JsonSerializer.Deserialize<DeviceSessionShadowMessage>(payload, JsonOptions);
+            return shadow is not null && state.ApplySessionShadow(shadow, timeProvider.GetUtcNow());
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private bool TryResolveDeviceSession(string? deviceId, out DeviceSessionState state)

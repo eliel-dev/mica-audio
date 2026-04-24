@@ -46,6 +46,15 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 | `visualUdpSupported` | `bool?` | capability opt-in para receber frames visuais descartaveis por UDP LAN |
 | `visualUdpPort` | `int?` | porta UDP LAN em que o firmware escuta `VisualUdpFrameV1`, default `5274` |
 | `visualUdpMode` | `string?` | modo visual UDP aceito pelo firmware; nesta entrega somente `bins128` |
+| `sessionMode` | `string?` | modo canonico de sessao do device (`idle`, `visualizer`, `panels`, `clock_fallback`) |
+| `sessionActiveClientId` | `string?` | owner atual do device quando a sessao client-driven esta ativa |
+| `sessionActiveOwnerEpoch` | `uint?` | epoch monotono do owner atual; stream direto deve casar com esse valor |
+| `sessionOwnerLeaseRemainingMs` | `int?` | tempo restante do lease do owner atual |
+| `sessionLockHeld` | `bool?` | indica se ha lock temporario de sessao ativo |
+| `sessionLockClientId` | `string?` | cliente que detem o lock atual |
+| `sessionLockReason` | `string?` | motivo declarado do lock (`settings`, `ota`, etc.) |
+| `sessionLockLeaseRemainingMs` | `int?` | tempo restante do lease do lock atual |
+| `sessionFallbackState` | `string?` | fallback de sessao ativo no display (`none`, `client_disconnected`) |
 
 ## Regras de sanitizacao e pass-through
 
@@ -64,6 +73,27 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 13. `lastSlowCommandDurationMs` cobre apenas comandos lentos concluidos no boot atual; duracao de OTA bem-sucedida nao e persistida apos reboot.
 14. `visualUdpSupported`, `visualUdpPort` e `visualUdpMode` sao capability bits LAN-only; `null` continua significando firmware legado sem suporte declarado.
 15. O host so deve preferir UDP quando `visualUdpMode = bins128`; `Frame128x64 RGB565` permanece em WS/WebP batch.
+16. Os campos `session*` sao aditivos e continuam `nullable` para compatibilidade com firmware legado.
+17. `sessionActiveOwnerEpoch` e a referencia oficial para `StreamFrameV3` e qualquer stream direto owner-bound.
+
+## Shadow retained de sessao
+
+O topico retained `mica/v1/devices/{deviceId}/shadow` passa a ser a fonte de verdade para observacao multi-cliente do ownership do device.
+
+Campos canonicos:
+
+- `deviceId`
+- `shadowVersion`
+- `mode`
+- `activeClientId`
+- `activeOwnerEpoch`
+- `ownerLeaseRemainingMs`
+- `lockHeld`
+- `lockClientId`
+- `lockReason`
+- `lockLeaseRemainingMs`
+- `activeAppId`
+- `fallbackState`
 
 ## Persistencia local
 
@@ -109,10 +139,12 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 
 - [firmware telemetry sender](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1)
+- [DeviceSessionShadowMessage](../../../src/Device.Protocol/Models/DeviceSessionShadowMessage.cs#L1)
 - [DeviceSnapshot](../../../src/Device.Protocol/Models/DeviceSnapshot.cs#L1)
 - [DeviceRecord](../../../src/Device.Protocol/Models/DeviceRecord.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [VisualUdpFrameV1](../../../src/Device.Protocol/Stream/VisualUdpFrameV1.cs#L1)
+- [Firmware session runtime](../../../firmware/esp32s3-devkitc1/src/mica_session.cpp#L1)
 - [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
 - [DeviceMetricsFormatter](../../../src/App.WinUI/Services/Devices/DeviceMetricsFormatter.cs#L1)
 - [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)

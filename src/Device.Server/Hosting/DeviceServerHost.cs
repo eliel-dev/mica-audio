@@ -423,7 +423,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     public async Task<bool> SendCommandAsync(string deviceId, DeviceCommandType commandType, CancellationToken cancellationToken = default)
     {
-        var result = await SendTrackedCommandCoreAsync(deviceId, commandType, null, DefaultCommandTimeout, cancellationToken).ConfigureAwait(false);
+        var result = await SendTrackedCommandCoreAsync(deviceId, commandType, null, null, DefaultCommandTimeout, cancellationToken).ConfigureAwait(false);
         return result.Accepted;
     }
 
@@ -451,7 +451,25 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             effectiveTimeout = DefaultCommandTimeout;
         }
 
-        return SendTrackedCommandCoreAsync(deviceId, commandType, parameters, effectiveTimeout, cancellationToken);
+        return SendTrackedCommandCoreAsync(deviceId, commandType, parameters, null, effectiveTimeout, cancellationToken);
+    }
+
+    // DOCS: docs/wiki/modules/device-server-protocol.md#ownership-shadow-e-lock-lease
+    public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveTimeout = timeout.GetValueOrDefault(DefaultCommandTimeout);
+        if (effectiveTimeout <= TimeSpan.Zero)
+        {
+            effectiveTimeout = DefaultCommandTimeout;
+        }
+
+        return SendTrackedCommandCoreAsync(deviceId, commandType, parameters, sessionContext, effectiveTimeout, cancellationToken);
     }
 
     public bool RemoveDevice(string deviceId)

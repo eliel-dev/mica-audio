@@ -4,10 +4,25 @@
 
 Descrever o fluxo principal do sistema e onde cada modulo participa.
 
-## Pipeline principal
+## Direcao oficial
+
+- `server` = control plane + storage + catalogo + estado duravel.
+- `cliente Windows` = edge client local e primeiro data plane LAN oficial.
+- `ESP32` = runtime de execucao/render com ownership explicito por device.
+- `visualizador` e `Paineis` sao oficialmente `client-driven`:
+  - `visualizador`: captura/processamento local no cliente e envio direto ao ESP;
+  - `Paineis`: sync/cache de assets/config no cliente e push local ao ESP.
+
+## Baseline atual / transicao
+
+- O app desktop ainda preserva caminhos embedded e transporte via server para compatibilidade.
+- `Device.Server` ainda participa do fluxo operacional atual de pareamento, snapshots, comandos tracked e batches `WebP`.
+- O hot path visual mediado por server continua existindo como baseline legado, nao como topologia alvo de baixa latencia.
+
+## Pipeline principal oficial
 
 ```text
-WASAPI loopback -> PcmFrame -> SpectrumAnalyzer -> SpectrumFrame -> VisualizerEngine -> ILedOutput
+WASAPI loopback -> PcmFrame -> SpectrumAnalyzer -> SpectrumFrame -> VisualizerEngine -> Cliente LAN -> ESP32
 ```
 
 ## Fluxo por modulo
@@ -15,8 +30,8 @@ WASAPI loopback -> PcmFrame -> SpectrumAnalyzer -> SpectrumFrame -> VisualizerEn
 1. `Audio.Loopback` captura audio e publica `PcmFrame`.
 2. `Analyzer.Dsp` transforma PCM em espectro e bandas.
 3. `Visual.Win2D` renderiza no canvas a partir de `SpectrumFrame`.
-4. `Output` envia `bins64 + level` para simulador e servidor de dispositivos.
-5. `Device.Server` distribui stream em WebSocket para firmware.
+4. `Output` serializa payload visual e o cliente decide se envia localmente ao ESP, ao simulador ou ao caminho legado.
+5. `Device.Server` fica responsavel por control plane, assets, pairing, estado de device e catalogo.
 
 ## Referencias de codigo
 

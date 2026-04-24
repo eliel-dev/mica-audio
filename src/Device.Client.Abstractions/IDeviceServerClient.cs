@@ -43,6 +43,15 @@ public interface IDeviceServerClient
         TimeSpan timeout,
         CancellationToken cancellationToken);
 
+    Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+        => SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
+
     PanelsBatchRegistration RegisterPanelsBatch(
         string deviceId,
         string panelsSessionId,

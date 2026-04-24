@@ -11,6 +11,7 @@
 #include "mica_panels.h"
 #include "mica_prefs.h"
 #include "mica_provisioning.h"
+#include "mica_session.h"
 
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-128x64-single-canvas-mapping
@@ -20,9 +21,11 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-60-fps-com-pacing-fisico-correto
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-diagnostic-matrix-envs
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-fallback-local-de-conectividade
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---rollback-para-ap-first-estavel
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---ap-first-com-hub75-adiado-no-boot-limpo
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md
+// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-14-serial-monitor-copy-e-a3-extracao-loop.md
 // DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 // DOCS: docs/handoffs/2026-04-14-freertos-ota-background-task.md
@@ -269,6 +272,7 @@ void loop() {
   processSerialProvisioning();
   processQueuedControlCommands();
   processAsyncControlEvents();
+  processClientSessionRuntime(millis());
   const uint32_t serialDoneUs = micros();
   processPendingOtaSafeUpdate();
   processOtaProgressBridge();

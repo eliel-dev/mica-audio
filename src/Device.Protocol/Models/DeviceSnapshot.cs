@@ -114,6 +114,24 @@ public sealed class DeviceSnapshot
 
     public string? VisualUdpMode { get; init; }
 
+    public string? SessionMode { get; init; }
+
+    public string? SessionActiveClientId { get; init; }
+
+    public uint? SessionActiveOwnerEpoch { get; init; }
+
+    public int? SessionOwnerLeaseRemainingMs { get; init; }
+
+    public bool? SessionLockHeld { get; init; }
+
+    public string? SessionLockClientId { get; init; }
+
+    public string? SessionLockReason { get; init; }
+
+    public int? SessionLockLeaseRemainingMs { get; init; }
+
+    public string? SessionFallbackState { get; init; }
+
     public string? ChipModel { get; init; }
 
     public int? ChipRevision { get; init; }

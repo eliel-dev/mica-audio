@@ -1,5 +1,6 @@
 using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Services.Devices;
+using Device.Client;
 using Device.Protocol.Models;
 
 namespace Output.Tests;
@@ -20,6 +21,31 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
         Assert.Equal(DeviceCommandType.SetBrightness, runtime.LastCommandType);
         Assert.NotNull(runtime.LastParameters);
         Assert.Equal("160", runtime.LastParameters!["brightness"]);
+    }
+
+    [Fact]
+    public async Task SetBrightnessAsync_ShouldAttachCurrentSessionContext()
+    {
+        var runtime = new CaptureRuntime();
+        runtime.SetDevices([
+            CreateOnlineSnapshot("device-1", sessionActiveClientId: "win-test", sessionActiveOwnerEpoch: 6),
+        ]);
+        using var sessionManager = new FakeDeviceClientSessionManager("win-test");
+        sessionManager.ObserveDevices(runtime.GetDevices());
+
+        using var coordinator = new DeviceOperationsCoordinator(
+            runtime,
+            settingsRepository: null,
+            settingsDomainService: null,
+            logger: null,
+            sessionManager);
+
+        var result = await coordinator.SetBrightnessAsync("device-1", 88);
+
+        Assert.True(result.Success);
+        Assert.NotNull(runtime.LastSessionContext);
+        Assert.Equal("win-test", runtime.LastSessionContext!.ClientId);
+        Assert.Equal((uint)6, runtime.LastSessionContext.OwnerEpoch);
     }
 
     [Fact]
@@ -86,7 +112,10 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
         Assert.Equal(TimeSpan.FromMinutes(5), runtime.LastTimeout);
     }
 
-    private static DeviceSnapshot CreateOnlineSnapshot(string deviceId)
+    private static DeviceSnapshot CreateOnlineSnapshot(
+        string deviceId,
+        string? sessionActiveClientId = null,
+        uint? sessionActiveOwnerEpoch = null)
     {
         return new DeviceSnapshot
         {
@@ -98,6 +127,8 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
             FirstSeenUtc = DateTimeOffset.UtcNow.AddMinutes(-10),
             LastSeenUtc = DateTimeOffset.UtcNow,
             LastTelemetryUtc = DateTimeOffset.UtcNow,
+            SessionActiveClientId = sessionActiveClientId,
+            SessionActiveOwnerEpoch = sessionActiveOwnerEpoch,
         };
     }
 
@@ -129,6 +160,7 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
         public DeviceCommandType? LastCommandType { get; private set; }
         public Dictionary<string, string>? LastParameters { get; private set; }
         public TimeSpan LastTimeout { get; private set; }
+        public DeviceCommandSessionContext? LastSessionContext { get; private set; }
 
         public string GetServerBaseAddress() => "http://127.0.0.1:5272";
 
@@ -171,10 +203,77 @@ public sealed class DeviceOperationsCoordinatorBrightnessTests
             });
         }
 
+        public Task<CommandDispatchResult> SendCommandTrackedAsync(
+            string deviceId,
+            DeviceCommandType commandType,
+            IReadOnlyDictionary<string, string>? parameters,
+            DeviceCommandSessionContext? sessionContext,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            LastSessionContext = sessionContext;
+            return SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
+        }
+
         public void SetDevices(IReadOnlyList<DeviceSnapshot> snapshots)
         {
             devices = snapshots;
             DevicesChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private sealed class FakeDeviceClientSessionManager(string clientId) : IDeviceClientSessionManager
+    {
+        private readonly Dictionary<string, uint> ownerEpochByDeviceId = new(StringComparer.OrdinalIgnoreCase);
+
+        public string ClientId { get; } = clientId;
+
+        public uint? GetOwnerEpoch(string deviceId)
+            => ownerEpochByDeviceId.TryGetValue(deviceId, out var epoch) ? epoch : null;
+
+        public IReadOnlyList<DeviceClientFrameTarget> GetFrameTargets(string? deviceId, string mode)
+            => Array.Empty<DeviceClientFrameTarget>();
+
+        public DeviceCommandSessionContext? CreateCommandContext(string deviceId)
+            => GetOwnerEpoch(deviceId) is { } epoch ? new DeviceCommandSessionContext(ClientId, epoch, null) : null;
+
+        public Task<DeviceCommandSessionContext> AssumeOwnerAsync(string deviceId, string mode, CancellationToken cancellationToken = default)
+            => Task.FromResult(CreateCommandContext(deviceId) ?? new DeviceCommandSessionContext(ClientId, 1, null));
+
+        public void ObserveDevices(IReadOnlyList<DeviceSnapshot> devices)
+        {
+            foreach (var device in devices)
+            {
+                if (!string.Equals(device.SessionActiveClientId, ClientId, StringComparison.OrdinalIgnoreCase)
+                    || device.SessionActiveOwnerEpoch is not { } epoch)
+                {
+                    continue;
+                }
+
+                ownerEpochByDeviceId[device.DeviceId] = epoch;
+            }
+        }
+
+        public void StartHeartbeat(string deviceId, string mode)
+        {
+        }
+
+        public void StopHeartbeat(string deviceId)
+        {
+        }
+
+        public Task<DeviceClientLockLease> AcquireLockAsync(
+            string deviceId,
+            string reason,
+            TimeSpan ttl,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new DeviceClientLockLease(deviceId, "lock", reason));
+
+        public Task ReleaseLockAsync(string deviceId, string lockToken, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public void Dispose()
+        {
         }
     }
 }

@@ -1,8 +1,13 @@
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-fallback-local-de-conectividade
+// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
+
 #include "mica_display.h"
 #include "mica_globals.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <soc/soc_caps.h>
+#include <time.h>
 
 // ---------------------------------------------------------------------------
 // Fallback state name
@@ -17,6 +22,8 @@ const char* hub75FallbackStateName(Hub75FallbackState state) {
       return "portal";
     case Hub75FallbackState::Updating:
       return "updating";
+    case Hub75FallbackState::ClientDisconnected:
+      return "client_disconnected";
     case Hub75FallbackState::None:
     default:
       return "none";
@@ -469,10 +476,38 @@ void drawConnectivityFallbackIcon(Hub75FallbackState state, uint16_t accentColor
       gMatrix->drawLine(kIconCenterX - 11, kIconTopY + 14, kIconCenterX - 3, kIconTopY + 10, accentColor);
       gMatrix->drawLine(kIconCenterX + 3, kIconTopY + 10, kIconCenterX + 11, kIconTopY + 14, accentColor);
       break;
+    case Hub75FallbackState::ClientDisconnected:
+      gMatrix->drawRect(kIconCenterX - 12, kIconTopY + 2, 24, 10, neutralColor);
+      gMatrix->fillRect(kIconCenterX - 6, kIconTopY + 5, 12, 4, accentColor);
+      gMatrix->drawLine(kIconCenterX - 9, kIconTopY + 15, kIconCenterX + 9, kIconTopY + 15, neutralColor);
+      gMatrix->drawLine(kIconCenterX - 9, kIconTopY + 15, kIconCenterX - 4, kIconTopY + 19, accentColor);
+      gMatrix->drawLine(kIconCenterX + 9, kIconTopY + 15, kIconCenterX + 4, kIconTopY + 19, accentColor);
+      break;
     case Hub75FallbackState::None:
     default:
       break;
   }
+}
+
+bool tryFormatClockText(char* buffer, size_t bufferLength) {
+  if (buffer == nullptr || bufferLength < 6) {
+    return false;
+  }
+
+  const time_t now = time(nullptr);
+  if (now <= 946684800) {
+    snprintf(buffer, bufferLength, "--:--");
+    return false;
+  }
+
+  struct tm localTime = {};
+  if (localtime_r(&now, &localTime) == nullptr) {
+    snprintf(buffer, bufferLength, "--:--");
+    return false;
+  }
+
+  strftime(buffer, bufferLength, "%H:%M", &localTime);
+  return true;
 }
 
 void drawOtaProgressScreen(uint8_t percent, const char* stage) {
@@ -532,6 +567,10 @@ Hub75FallbackState resolveHub75FallbackCandidate() {
 
   if (WiFi.status() != WL_CONNECTED) {
     return Hub75FallbackState::NoWifi;
+  }
+
+  if (gClientDisconnectedFallbackActive) {
+    return Hub75FallbackState::ClientDisconnected;
   }
 
   if (!gWs.isConnected()) {
@@ -622,6 +661,11 @@ bool drawConnectivityFallback(Hub75FallbackState state) {
       subtitle = "Conecte no portal";
       accent = {96, 220, 255};
       break;
+    case Hub75FallbackState::ClientDisconnected:
+      title = "SEM CLIENTE";
+      subtitle = "Aguardando owner";
+      accent = {255, 210, 96};
+      break;
     case Hub75FallbackState::Updating:
 #if defined(MICA_PROFILE_DMA_EXP)
       drawOtaProgressScreen(gOtaProgressPercent, gOtaProgressStage);
@@ -641,8 +685,16 @@ bool drawConnectivityFallback(Hub75FallbackState state) {
   const uint16_t subtitleColor = rgb888ToRgb565(158, 170, 180);
   drawConnectivityFallbackIcon(state, accentColor, titleColor);
   gMatrix->drawFastHLine(24, 22, kMatrixWidth - 48, rgb888ToRgb565(36, 48, 60));
-  drawMatrixTextCentered(title, 36, titleColor, 2);
-  drawMatrixTextCentered(subtitle, 50, subtitleColor, 1);
+  if (state == Hub75FallbackState::ClientDisconnected) {
+    char clockText[8] = {};
+    (void)tryFormatClockText(clockText, sizeof(clockText));
+    drawMatrixTextCentered(clockText, 38, titleColor, 2);
+    drawMatrixTextCentered("cliente off", 50, subtitleColor, 1);
+    drawMatrixTextCentered("aguardando", 58, subtitleColor, 1);
+  } else {
+    drawMatrixTextCentered(title, 36, titleColor, 2);
+    drawMatrixTextCentered(subtitle, 50, subtitleColor, 1);
+  }
   gMatrixBufferModes[gMatrixShadowBackBufferIndex] = MatrixBufferMode::Clear;
   return commitMatrixFrame();
 #else

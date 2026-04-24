@@ -1,6 +1,18 @@
 # Modulo Paineis
 
-A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts HUB75 `128x64`, com persistencia local, composicao desktop-streamed e carga direcionada por `deviceId`.
+A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts HUB75 `128x64`, com persistencia local, composicao client-driven e carga direcionada por `deviceId`.
+
+## Direcao oficial
+
+- `Paineis` passa a ser oficialmente `asset/config sync + cache no cliente + push local ao ESP`.
+- O server fica como fonte de verdade de assets, catalogo, manifests e metadata de device/ownership.
+- O cliente local continua compositor autoritativo e dono do envio ao device na LAN.
+
+## Baseline atual / transicao
+
+- O transporte batch `WebP` via `Device.Server` continua vivo e documentado como baseline atual.
+- O fluxo `queue_panels_batch + download HTTP autenticado` permanece como caminho de compatibilidade enquanto o push local client-owned converge.
+- Ownership continua sendo por `device`: um cliente ativo por vez para modos client-driven.
 
 ## Galeria De Paineis
 

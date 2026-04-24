@@ -1,5 +1,8 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#campos-do-payload-de-telemetria-ws
+// DOCS: docs/wiki/modules/device-server-protocol.md#ownership-shadow-e-lock-lease
+// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-17-control-worker-watchdog-and-wifi-heap-regression-fix.md
 // DOCS: docs/handoffs/2026-04-18-provisioned-boot-wifi-before-hub75.md
@@ -17,6 +20,7 @@
 #include "mica_ota.h"
 #include "mica_panels.h"
 #include "mica_provisioning.h"
+#include "mica_session.h"
 
 namespace {
 
@@ -334,7 +338,27 @@ static bool scheduleFirmwareUpdate(const String& commandId, const String& reques
   return true;
 }
 
-static ControlCommandHandleResult handleControlCommandMessage(const JsonDocument& control) {
+static bool isRecognizedControlCommand(const char* command) {
+  return command != nullptr
+      && (strcmp(command, "enter_provisioning") == 0
+          || strcmp(command, "revoke_and_restart") == 0
+          || strcmp(command, "test_led") == 0
+          || strcmp(command, "set_brightness") == 0
+          || strcmp(command, "update_firmware") == 0
+          || strcmp(command, "install_app") == 0
+          || strcmp(command, "activate_app") == 0
+          || strcmp(command, "set_app_config") == 0
+          || strcmp(command, "queue_panels_batch") == 0);
+}
+
+static void rejectSessionCommand(const String& commandId, const char* errorCode, const String& message) {
+  (void)publishDeviceLog("warning", "session", errorCode, message, false);
+  if (commandId.length() > 0) {
+    sendCommandProgress(commandId, 100, errorCode, message, 0);
+  }
+}
+
+static ControlCommandHandleResult handleControlCommandMessageCore(const JsonDocument& control) {
   const char* command = control["command"] | "";
   String commandId = control["commandId"] | "";
   JsonObjectConst parameters = control["parameters"].as<JsonObjectConst>();
@@ -564,6 +588,133 @@ static ControlCommandHandleResult handleControlCommandMessage(const JsonDocument
   return ControlCommandHandleResult::Handled;
 }
 
+static ControlCommandHandleResult handleSessionAwareControlCommand(
+    const ControlCommandEnvelope& envelope,
+    const JsonDocument& control) {
+  const char* command = control["command"] | "";
+  const String commandId = control["commandId"] | "";
+  const JsonObjectConst parameters = control["parameters"].as<JsonObjectConst>();
+
+  if (!isRecognizedControlCommand(command) && !isSessionCommandName(command)) {
+    return handleControlCommandMessageCore(control);
+  }
+
+  const unsigned long nowMs = millis();
+  expireSessionLeases(nowMs);
+  const bool ownerActive = hasActiveClientOwner(nowMs);
+  const bool sameOwnerClient = ownerActive && gSessionShadowState.activeClientId.equals(envelope.clientId);
+  const bool sessionAware = isSessionAwareEnvelope(envelope);
+  if (!sessionAware) {
+    return handleControlCommandMessageCore(control);
+  }
+
+  if (strcmp(command, "session_heartbeat") == 0) {
+    ClientSessionMode modeHint = gSessionShadowState.mode;
+    String modeRaw = parameters["mode"] | "";
+    modeRaw.trim();
+    modeRaw.toLowerCase();
+    if (modeRaw == "visualizer") {
+      modeHint = ClientSessionMode::Visualizer;
+    } else if (modeRaw == "panels") {
+      modeHint = ClientSessionMode::Panels;
+    } else if (modeRaw == "idle") {
+      modeHint = ClientSessionMode::Idle;
+    }
+
+    if (!hasActiveClientOwner(nowMs)) {
+      adoptActiveClientOwner(envelope.clientId, nowMs);
+    } else if (!isActiveClientOwner(envelope.clientId, envelope.ownerEpoch, nowMs)
+               && !(sameOwnerClient && envelope.ownerEpoch == 0u)) {
+      rejectSessionCommand(commandId, "stale_owner_epoch", "Heartbeat ignorado para owner antigo.");
+      return ControlCommandHandleResult::Handled;
+    } else {
+      renewActiveClientOwner(nowMs);
+    }
+
+    setClientSessionMode(modeHint, nowMs);
+    if (envelope.lockToken.length() > 0) {
+      (void)tryRenewClientLock(envelope.clientId, envelope.lockToken, nowMs);
+    }
+    (void)publishClientSessionShadow(nowMs, false);
+    return ControlCommandHandleResult::Handled;
+  }
+
+  if (strcmp(command, "session_lock_acquire") == 0) {
+    String failureCode;
+    String failureMessage;
+    const String reason = parameters["reason"] | "";
+    const uint32_t requestedLeaseMs = parameters["leaseMs"] | 0u;
+
+    if (!hasActiveClientOwner(nowMs)
+        || (!isActiveClientOwner(envelope.clientId, envelope.ownerEpoch, nowMs)
+            && !(sameOwnerClient && envelope.ownerEpoch == 0u))) {
+      adoptActiveClientOwner(envelope.clientId, nowMs);
+    } else {
+      renewActiveClientOwner(nowMs);
+    }
+
+    if (!tryAcquireClientLock(
+            envelope.clientId,
+            envelope.lockToken,
+            reason,
+            requestedLeaseMs,
+            nowMs,
+            failureCode,
+            failureMessage)) {
+      rejectSessionCommand(commandId, failureCode.c_str(), failureMessage);
+      return ControlCommandHandleResult::Handled;
+    }
+
+    if (commandId.length() > 0) {
+      sendCommandProgress(commandId, 100, "lock-acquired", "Lock de sessao adquirido.", 1);
+    }
+    (void)publishClientSessionShadow(nowMs, false);
+    return ControlCommandHandleResult::Handled;
+  }
+
+  if (strcmp(command, "session_lock_release") == 0) {
+    String failureCode;
+    String failureMessage;
+    if (!tryReleaseClientLock(envelope.clientId, envelope.lockToken, nowMs, failureCode, failureMessage)) {
+      rejectSessionCommand(commandId, failureCode.c_str(), failureMessage);
+      return ControlCommandHandleResult::Handled;
+    }
+
+    if (commandId.length() > 0) {
+      sendCommandProgress(commandId, 100, "lock-released", "Lock de sessao liberado.", 1);
+    }
+    (void)publishClientSessionShadow(nowMs, false);
+    return ControlCommandHandleResult::Handled;
+  }
+
+  if (isClientLockHeldByAnotherClient(envelope.clientId, nowMs)) {
+    rejectSessionCommand(commandId, "locked_by_other_client", "Outro cliente detem o lock ativo.");
+    return ControlCommandHandleResult::Handled;
+  }
+
+  if (doesCommandRequireSessionLock(command) && !isClientLockHeldByClient(envelope.clientId, envelope.lockToken, nowMs)) {
+    rejectSessionCommand(commandId, "lock_required", "Este comando exige lock ativo do cliente.");
+    return ControlCommandHandleResult::Handled;
+  }
+
+  if (!hasActiveClientOwner(nowMs)) {
+    adoptActiveClientOwner(envelope.clientId, nowMs);
+  } else if (!isActiveClientOwner(envelope.clientId, envelope.ownerEpoch, nowMs)
+             && !(sameOwnerClient && envelope.ownerEpoch == 0u)) {
+    adoptActiveClientOwner(envelope.clientId, nowMs);
+  } else {
+    renewActiveClientOwner(nowMs);
+  }
+
+  const ControlCommandHandleResult result = handleControlCommandMessageCore(control);
+  if (result != ControlCommandHandleResult::Deferred) {
+    setClientSessionMode(resolveSessionModeHint(command, parameters), nowMs);
+    (void)publishClientSessionShadow(nowMs, false);
+  }
+
+  return result;
+}
+
 static void processPanelsBatchSlowCommand(const SlowCommandRequest& request) {
   PanelsBatchBuffer batch = {};
   batch.panelsSessionId = request.panels.panelsSessionId;
@@ -723,6 +874,7 @@ static bool handleAsyncOtaStartEvent(AsyncControlEvent& event) {
 
 void initializeControlCommandRuntime() {
   initializeTaskWatchdogRuntime();
+  initializeClientSessionRuntime();
 
   if (gControlCommandQueue == nullptr) {
     gControlCommandQueue = xQueueCreate(kControlCommandQueueDepth, sizeof(ControlCommandEnvelope*));
@@ -752,6 +904,9 @@ bool enqueueIncomingControlCommand(ControlCommandSource source, const uint8_t* p
   envelope->source = source;
   envelope->command = command;
   envelope->commandId = control["commandId"] | "";
+  envelope->clientId = control["clientId"] | "";
+  envelope->ownerEpoch = control["ownerEpoch"] | 0u;
+  envelope->lockToken = control["lockToken"] | "";
   envelope->payloadJson = copyPayloadToString(payload, length);
 
   ControlCommandEnvelope* queuedEnvelope = envelope;
@@ -765,6 +920,7 @@ bool enqueueIncomingControlCommand(ControlCommandSource source, const uint8_t* p
 }
 
 void processQueuedControlCommands() {
+  expireSessionLeases(millis());
   if (gDeferredControlCommand != nullptr && isSlowCommandDomainBusy()) {
     return;
   }
@@ -794,7 +950,7 @@ void processQueuedControlCommands() {
       continue;
     }
 
-    const ControlCommandHandleResult result = handleControlCommandMessage(control);
+    const ControlCommandHandleResult result = handleSessionAwareControlCommand(*envelope, control);
     if (result == ControlCommandHandleResult::Deferred) {
       gDeferredControlCommand = envelope;
       break;

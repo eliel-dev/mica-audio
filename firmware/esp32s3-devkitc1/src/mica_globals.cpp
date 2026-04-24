@@ -1,5 +1,7 @@
 #include "mica_globals.h"
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 
 // ---------------------------------------------------------------------------
 // Library object globals
@@ -22,6 +24,13 @@ String gToken;
 String gActiveAppId;
 String gActiveAppName;
 String gActiveAppConfig;
+
+// ---------------------------------------------------------------------------
+// Client session / ownership state
+// ---------------------------------------------------------------------------
+DeviceSessionShadowState gSessionShadowState = {};
+bool gClientDisconnectedFallbackActive = false;
+unsigned long gSessionLastLeaseTickMs = 0;
 
 // ---------------------------------------------------------------------------
 // Stream / bins buffers

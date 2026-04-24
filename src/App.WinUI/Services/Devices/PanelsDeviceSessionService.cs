@@ -1,3 +1,4 @@
+using Device.Client;
 using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
@@ -14,6 +15,7 @@ internal sealed class PanelsDeviceSessionService : IDisposable
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(8);
 
     private readonly DeviceOperationsCoordinator deviceOps;
+    private readonly IDeviceClientSessionManager? sessionManager;
     private readonly SemaphoreSlim reconcileGate = new(1, 1);
     private readonly object stateGate = new();
 
@@ -31,9 +33,10 @@ internal sealed class PanelsDeviceSessionService : IDisposable
     private bool disposed;
     private int reconcileRequested;
 
-    public PanelsDeviceSessionService(DeviceOperationsCoordinator deviceOps)
+    public PanelsDeviceSessionService(DeviceOperationsCoordinator deviceOps, IDeviceClientSessionManager? sessionManager = null)
     {
         this.deviceOps = deviceOps;
+        this.sessionManager = sessionManager;
         deviceOps.DeviceListChanged += OnDeviceListChanged;
     }
 
@@ -86,6 +89,11 @@ internal sealed class PanelsDeviceSessionService : IDisposable
         lock (stateGate)
         {
             targetEnabled = false;
+            if (!string.IsNullOrWhiteSpace(targetDeviceId))
+            {
+                sessionManager?.StopHeartbeat(targetDeviceId);
+            }
+
             nextAttemptUtc = DateTimeOffset.MinValue;
             retryCount = 0;
             lastErrorCode = null;
@@ -123,6 +131,7 @@ internal sealed class PanelsDeviceSessionService : IDisposable
             }
 
             suppressedByHigherPriority = true;
+            sessionManager?.StopHeartbeat(targetDeviceId);
             nextAttemptUtc = DateTimeOffset.MinValue;
             retryCount = 0;
             lastErrorCode = null;
@@ -249,6 +258,13 @@ internal sealed class PanelsDeviceSessionService : IDisposable
             CommandDispatchResult result;
             try
             {
+                if (plan.Value.Action == DeviceSessionAction.ActivatePanels && sessionManager is not null)
+                {
+                    await sessionManager
+                        .AssumeOwnerAsync(plan.Value.DeviceId, "panels", cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
                 result = await deviceOps
                     .ActivateAppAsync(plan.Value.DeviceId, plan.Value.TargetAppId, plan.Value.TargetAppName, cancellationToken)
                     .ConfigureAwait(false);
@@ -271,6 +287,15 @@ internal sealed class PanelsDeviceSessionService : IDisposable
 
             if (result.Accepted && result.Success)
             {
+                if (plan.Value.Action == DeviceSessionAction.ActivatePanels)
+                {
+                    sessionManager?.StartHeartbeat(plan.Value.DeviceId, "panels");
+                }
+                else
+                {
+                    sessionManager?.StopHeartbeat(plan.Value.DeviceId);
+                }
+
                 deviceOps.RequestRefresh();
             }
 

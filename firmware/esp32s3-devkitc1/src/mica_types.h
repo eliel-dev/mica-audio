@@ -2,8 +2,12 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-128x64-single-canvas-mapping
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---buffer-ws-para-frame-128x64
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
+// DOCS: docs/wiki/reference/ws-protocol-v2.md#estrutura-streamframev3
+// DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#shadow-retained-de-sessao
 // DOCS: docs/handoffs/2026-04-17-control-worker-watchdog-and-wifi-heap-regression-fix.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
+// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 
 #include <Arduino.h>
@@ -23,8 +27,11 @@
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 145;
 constexpr size_t kStreamFrame128x64Rgb565Size = 16400;
+constexpr size_t kStreamFrameV3Size = 149;
+constexpr size_t kStreamFrameV3Frame128x64Rgb565Size = 16404;
 constexpr size_t kExpectedWebSocketMaxDataSize = 32768;
 constexpr uint8_t kStreamVersion = 2;
+constexpr uint8_t kStreamVersionOwned = 3;
 constexpr uint8_t kStreamBinsMessageType = 1;
 constexpr uint8_t kStreamFrame128x64Rgb565MessageType = 2;
 constexpr const char* kPanelsBatchExpectedContentType = "image/webp";
@@ -64,6 +71,11 @@ constexpr uint8_t kSlowCommandQueueDepth = 2;
 constexpr uint8_t kMaxControlCommandsPerLoop = 4;
 constexpr uint8_t kMaxAsyncEventsPerLoop = 8;
 constexpr uint32_t kTaskWatchdogTimeoutMs = 30000;
+constexpr unsigned long kSessionOwnerHeartbeatIntervalMs = 2000;
+constexpr unsigned long kSessionOwnerExpiryMs = 6000;
+constexpr unsigned long kSessionLockLeaseDefaultMs = 15000;
+constexpr unsigned long kSessionLockLeaseMaxMs = 15000;
+constexpr unsigned long kSessionLeaseTickMs = 250;
 
 // ---------------------------------------------------------------------------
 // Matrix dimensions
@@ -222,6 +234,9 @@ static_assert(
 static_assert(
     WEBSOCKETS_MAX_DATA_SIZE > kStreamFrame128x64Rgb565Size,
     "Frame128x64Rgb565 payload does not fit in the current WebSockets max frame size.");
+static_assert(
+    WEBSOCKETS_MAX_DATA_SIZE > kStreamFrameV3Frame128x64Rgb565Size,
+    "Owned Frame128x64Rgb565 payload does not fit in the current WebSockets max frame size.");
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -239,6 +254,14 @@ enum class Hub75FallbackState : uint8_t {
   NoServer = 2,
   Portal = 3,
   Updating = 4,
+  ClientDisconnected = 5,
+};
+
+enum class ClientSessionMode : uint8_t {
+  Idle = 0,
+  Visualizer = 1,
+  Panels = 2,
+  ClockFallback = 3,
 };
 
 enum class Hub75BinsVisualStyle : uint8_t {
@@ -370,7 +393,31 @@ struct ControlCommandEnvelope {
   ControlCommandSource source = ControlCommandSource::Mqtt;
   String command;
   String commandId;
+  String clientId;
+  uint32_t ownerEpoch = 0;
+  String lockToken;
   String payloadJson;
+};
+
+struct ClientLockLease {
+  bool held = false;
+  String clientId;
+  String token;
+  String reason;
+  unsigned long acquiredAtMs = 0;
+  unsigned long lastHeartbeatAtMs = 0;
+  unsigned long expiresAtMs = 0;
+};
+
+struct DeviceSessionShadowState {
+  ClientSessionMode mode = ClientSessionMode::ClockFallback;
+  String activeClientId;
+  uint32_t activeOwnerEpoch = 0;
+  unsigned long activeOwnerExpiresAtMs = 0;
+  ClientLockLease lock;
+  uint32_t shadowVersion = 0;
+  unsigned long lastMutationAtMs = 0;
+  bool dirty = false;
 };
 
 struct SlowCommandRequest {

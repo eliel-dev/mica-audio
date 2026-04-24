@@ -11,6 +11,7 @@ public sealed class DeviceSessionState
     private readonly TimeSpan detachGracePeriod;
     private DateTimeOffset? controlPlaneDetachGraceUntilUtc;
     private DateTimeOffset? lastLegacyControlPlaneActivityUtc;
+    private DeviceSessionShadowMessage? sessionShadow;
 
     public DeviceSessionState(DeviceRecord record, TimeSpan detachGracePeriod)
     {
@@ -102,7 +103,16 @@ public sealed class DeviceSessionState
         bool? animatedWebpBatchSupported = null,
         bool? visualUdpSupported = null,
         int? visualUdpPort = null,
-        string? visualUdpMode = null)
+        string? visualUdpMode = null,
+        string? sessionMode = null,
+        string? sessionActiveClientId = null,
+        uint? sessionActiveOwnerEpoch = null,
+        int? sessionOwnerLeaseRemainingMs = null,
+        bool? sessionLockHeld = null,
+        string? sessionLockClientId = null,
+        string? sessionLockReason = null,
+        int? sessionLockLeaseRemainingMs = null,
+        string? sessionFallbackState = null)
     {
         LastActivityUtc = now;
         Record = DeviceRecordMutations.MarkTelemetry(
@@ -152,6 +162,62 @@ public sealed class DeviceSessionState
             visualUdpSupported,
             visualUdpPort,
             visualUdpMode);
+
+        if (HasSessionTelemetry(
+                sessionMode,
+                sessionActiveClientId,
+                sessionActiveOwnerEpoch,
+                sessionOwnerLeaseRemainingMs,
+                sessionLockHeld,
+                sessionLockClientId,
+                sessionLockReason,
+                sessionLockLeaseRemainingMs,
+                sessionFallbackState))
+        {
+            sessionShadow = new DeviceSessionShadowMessage
+            {
+                DeviceId = Record.DeviceId,
+                Mode = sessionMode,
+                ActiveClientId = sessionActiveClientId,
+                ActiveOwnerEpoch = sessionActiveOwnerEpoch,
+                OwnerLeaseRemainingMs = sessionOwnerLeaseRemainingMs,
+                LockHeld = sessionLockHeld,
+                LockClientId = sessionLockClientId,
+                LockReason = sessionLockReason,
+                LockLeaseRemainingMs = sessionLockLeaseRemainingMs,
+                FallbackState = sessionFallbackState,
+                ActiveAppId = Record.ActiveAppId,
+            };
+        }
+    }
+
+    public bool ApplySessionShadow(DeviceSessionShadowMessage shadow, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(shadow);
+
+        if (!string.IsNullOrWhiteSpace(shadow.DeviceId)
+            && !string.Equals(shadow.DeviceId, Record.DeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        LastActivityUtc = now;
+        sessionShadow = new DeviceSessionShadowMessage
+        {
+            DeviceId = Record.DeviceId,
+            ShadowVersion = shadow.ShadowVersion,
+            Mode = NormalizeOptional(shadow.Mode),
+            ActiveClientId = NormalizeOptional(shadow.ActiveClientId),
+            ActiveOwnerEpoch = shadow.ActiveOwnerEpoch,
+            OwnerLeaseRemainingMs = NormalizeNonNegative(shadow.OwnerLeaseRemainingMs),
+            LockHeld = shadow.LockHeld,
+            LockClientId = NormalizeOptional(shadow.LockClientId),
+            LockReason = NormalizeOptional(shadow.LockReason),
+            LockLeaseRemainingMs = NormalizeNonNegative(shadow.LockLeaseRemainingMs),
+            ActiveAppId = NormalizeOptional(shadow.ActiveAppId),
+            FallbackState = NormalizeOptional(shadow.FallbackState),
+        };
+        return true;
     }
 
     public void MarkStats(
@@ -237,7 +303,8 @@ public sealed class DeviceSessionState
         return DeviceRecordMutations.ToSnapshot(
             Record,
             controlPlaneState == DeviceControlPlaneState.MqttOnline ? DeviceStatus.Online : DeviceStatus.Offline,
-            controlPlaneState);
+            controlPlaneState,
+            sessionShadow);
     }
 
     private static bool IsWithinGraceWindow(DateTimeOffset now, ref DateTimeOffset? graceUntilUtc)
@@ -271,4 +338,32 @@ public sealed class DeviceSessionState
         lastActivityUtc = null;
         return false;
     }
+
+    private static bool HasSessionTelemetry(
+        string? sessionMode,
+        string? sessionActiveClientId,
+        uint? sessionActiveOwnerEpoch,
+        int? sessionOwnerLeaseRemainingMs,
+        bool? sessionLockHeld,
+        string? sessionLockClientId,
+        string? sessionLockReason,
+        int? sessionLockLeaseRemainingMs,
+        string? sessionFallbackState)
+    {
+        return !string.IsNullOrWhiteSpace(sessionMode)
+            || !string.IsNullOrWhiteSpace(sessionActiveClientId)
+            || sessionActiveOwnerEpoch.HasValue
+            || sessionOwnerLeaseRemainingMs.HasValue
+            || sessionLockHeld.HasValue
+            || !string.IsNullOrWhiteSpace(sessionLockClientId)
+            || !string.IsNullOrWhiteSpace(sessionLockReason)
+            || sessionLockLeaseRemainingMs.HasValue
+            || !string.IsNullOrWhiteSpace(sessionFallbackState);
+    }
+
+    private static int? NormalizeNonNegative(int? value)
+        => value is >= 0 ? value : null;
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

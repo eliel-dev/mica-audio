@@ -2,6 +2,13 @@
 
 Documentacao tecnica versionada junto com o codigo para acelerar manutencao, onboarding e continuidade por humanos e IA.
 
+## Direcao oficial atual
+
+- `server` = control plane.
+- `cliente Windows` = edge client local / data plane LAN.
+- `ESP32` = runtime com ownership por device.
+- `visualizador` e `Paineis` sao oficialmente client-driven; a wiki continua marcando caminhos via server como `baseline atual / transicao` quando ainda existirem no codigo.
+
 ## Como usar esta wiki
 
 1. Comece por `architecture/01-system-overview.md` para entender o mapa geral.

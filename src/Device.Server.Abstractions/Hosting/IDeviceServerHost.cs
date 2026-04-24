@@ -44,6 +44,15 @@ public interface IDeviceServerHost : IDeviceFrameTransport, IAsyncDisposable
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default);
 
+    Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+        => SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
+
     bool RemoveDevice(string deviceId);
 
     PanelsBatchRegistration RegisterPanelsBatch(

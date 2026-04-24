@@ -15,6 +15,127 @@ namespace Output.Tests;
 public sealed class DeviceServerHostMqttTests
 {
     [Fact]
+    public async Task MqttSessionShadowPublish_ShouldUpdateSessionFieldsInSnapshot()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            MqttRootTopic = DeviceServerTestHarness.DefaultMqttRootTopic,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-shadow");
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.PublishSessionShadowAsync(mqttClient, paired.DeviceId, new DeviceSessionShadowMessage
+        {
+            DeviceId = paired.DeviceId,
+            ShadowVersion = 3,
+            Mode = "visualizer",
+            ActiveClientId = "win-eliel-1234abcd",
+            ActiveOwnerEpoch = 7,
+            OwnerLeaseRemainingMs = 4200,
+            LockHeld = true,
+            LockClientId = "win-eliel-1234abcd",
+            LockReason = "settings",
+            LockLeaseRemainingMs = 11000,
+            ActiveAppId = "visualizer-hub75",
+            FallbackState = "none",
+        });
+
+        var updated = await DeviceServerTestHarness.WaitForConditionAsync(
+            () => host.GetDevicesSnapshot().Any(snapshot =>
+                string.Equals(snapshot.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase)
+                && snapshot.SessionActiveOwnerEpoch == 7),
+            TimeSpan.FromSeconds(3));
+
+        Assert.True(updated, "Snapshot nao refletiu o shadow MQTT de sessao.");
+        var device = Assert.Single(host.GetDevicesSnapshot(), snapshot =>
+            string.Equals(snapshot.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("visualizer", device.SessionMode);
+        Assert.Equal("win-eliel-1234abcd", device.SessionActiveClientId);
+        Assert.Equal((uint)7, device.SessionActiveOwnerEpoch);
+        Assert.Equal(4200, device.SessionOwnerLeaseRemainingMs);
+        Assert.True(device.SessionLockHeld);
+        Assert.Equal("win-eliel-1234abcd", device.SessionLockClientId);
+        Assert.Equal("settings", device.SessionLockReason);
+        Assert.Equal(11000, device.SessionLockLeaseRemainingMs);
+        Assert.Equal("none", device.SessionFallbackState);
+    }
+
+    [Fact]
+    public async Task SendTrackedCommandAsync_WithSessionContext_ShouldPublishMqttCommandSessionFields()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            MqttRootTopic = DeviceServerTestHarness.DefaultMqttRootTopic,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-session-command");
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.SubscribeAsync(mqttClient, DeviceServerTestHarness.GetCommandsTopic(paired.DeviceId));
+
+        JsonElement? command = null;
+        mqttClient.ApplicationMessageReceivedAsync += args =>
+        {
+            command = JsonSerializer.Deserialize<JsonElement>(DeviceServerTestHarness.DecodePayload(args));
+            var commandId = command.Value.GetProperty("commandId").GetString();
+            return DeviceServerTestHarness.PublishCommandEventAsync(
+                mqttClient,
+                paired.DeviceId,
+                commandId!,
+                success: true,
+                progressPercent: 100,
+                stage: "done",
+                message: "ok");
+        };
+
+        var result = await host.SendCommandTrackedAsync(
+            paired.DeviceId,
+            DeviceCommandType.SetBrightness,
+            new Dictionary<string, string> { ["brightness"] = "120" },
+            new DeviceCommandSessionContext("win-eliel-1234abcd", 7, "lock-token"),
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.NotNull(command);
+        Assert.Equal("win-eliel-1234abcd", command.Value.GetProperty("clientId").GetString());
+        Assert.Equal(7u, command.Value.GetProperty("ownerEpoch").GetUInt32());
+        Assert.Equal("lock-token", command.Value.GetProperty("lockToken").GetString());
+        Assert.Equal("set_brightness", command.Value.GetProperty("command").GetString());
+    }
+
+    [Fact]
     public async Task PairingAndServerInfo_ShouldPreserveExternalRequestHostPort()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();

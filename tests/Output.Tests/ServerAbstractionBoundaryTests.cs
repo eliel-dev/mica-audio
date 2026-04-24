@@ -46,6 +46,8 @@ public sealed class ServerAbstractionBoundaryTests
         Assert.Equal("Device.Client.Abstractions", typeof(IDeviceServerClient).Assembly.GetName().Name);
         Assert.Equal("Device.Client.Abstractions", typeof(IDeviceServerClientRuntime).Assembly.GetName().Name);
         Assert.Equal("Device.Client.Abstractions", typeof(IDeviceFrameTransport).Assembly.GetName().Name);
+        Assert.Equal("Device.Client.Abstractions", typeof(IDeviceClientSessionManager).Assembly.GetName().Name);
+        Assert.Equal("Device.Client.Abstractions", typeof(DeviceClientFrameTarget).Assembly.GetName().Name);
         Assert.Equal("Device.Client.Abstractions", typeof(PanelsBatchRegistration).Assembly.GetName().Name);
         Assert.True(typeof(IDeviceFrameTransport).IsAssignableFrom(typeof(IDeviceServerHost)));
     }
@@ -70,11 +72,13 @@ public sealed class ServerAbstractionBoundaryTests
     }
 
     [Fact]
-    public void Esp32Output_ShouldDependOnFrameTransportOnly()
+    public void Esp32Output_ShouldDependOnFrameTransportAndOptionalSessionManagerOnly()
     {
         var constructor = Assert.Single(typeof(Esp32S3LedOutput).GetConstructors());
 
         Assert.Equal(typeof(IDeviceFrameTransport), constructor.GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IDeviceClientSessionManager), constructor.GetParameters()[1].ParameterType);
+        Assert.True(constructor.GetParameters()[1].HasDefaultValue);
     }
 
     [Fact]

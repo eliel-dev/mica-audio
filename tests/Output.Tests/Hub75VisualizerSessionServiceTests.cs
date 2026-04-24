@@ -1,4 +1,5 @@
 using App.WinUI.Services.Devices;
+using Device.Client;
 using Device.Protocol.Models;
 using System.Diagnostics;
 
@@ -28,6 +29,41 @@ public sealed class Hub75VisualizerSessionServiceTests
         await WaitForConditionAsync(
             () => runtime.HasActivateCommand("device-1", Hub75VisualizerSessionService.VisualizerAppId),
             TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
+    public async Task Enable_ShouldAssumeOwnershipAndStartVisualizerHeartbeat()
+    {
+        var runtime = new FakeDeviceOperationsRuntime();
+        using var sessionManager = new FakeDeviceClientSessionManager();
+        using var coordinator = new DeviceOperationsCoordinator(
+            runtime,
+            settingsRepository: null,
+            settingsDomainService: null,
+            logger: null,
+            sessionManager);
+        using var service = new Hub75VisualizerSessionService(coordinator, sessionManager);
+
+        runtime.SetDevices([
+            CreateSnapshot("device-1", DeviceStatus.Online, "analogclock", "Relogio"),
+        ]);
+
+        await WaitForConditionAsync(
+            () => coordinator.GetStateSnapshot().DeviceListSnapshot.Any(static d =>
+                string.Equals(d.DeviceId, "device-1", StringComparison.OrdinalIgnoreCase)
+                && d.Status == DeviceStatus.Online),
+            TimeSpan.FromSeconds(3));
+
+        await service.SetHub75ModeAsync(enabled: true);
+
+        await WaitForConditionAsync(
+            () => sessionManager.StartedHeartbeats.Any(item =>
+                string.Equals(item.DeviceId, "device-1", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.Mode, "visualizer", StringComparison.OrdinalIgnoreCase)),
+            TimeSpan.FromSeconds(3));
+        Assert.Contains(sessionManager.AssumedOwners, item =>
+            string.Equals(item.DeviceId, "device-1", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(item.Mode, "visualizer", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -360,5 +396,53 @@ public sealed class Hub75VisualizerSessionServiceTests
         }
 
         private sealed record CommandRecord(string DeviceId, DeviceCommandType CommandType, string? AppId, string? DisplayName);
+    }
+
+    private sealed class FakeDeviceClientSessionManager : IDeviceClientSessionManager
+    {
+        public string ClientId => "win-test";
+
+        public List<(string DeviceId, string Mode)> AssumedOwners { get; } = new();
+
+        public List<(string DeviceId, string Mode)> StartedHeartbeats { get; } = new();
+
+        public uint? GetOwnerEpoch(string deviceId) => 1;
+
+        public IReadOnlyList<DeviceClientFrameTarget> GetFrameTargets(string? deviceId, string mode)
+            => Array.Empty<DeviceClientFrameTarget>();
+
+        public DeviceCommandSessionContext? CreateCommandContext(string deviceId)
+            => new(ClientId, 1, null);
+
+        public Task<DeviceCommandSessionContext> AssumeOwnerAsync(string deviceId, string mode, CancellationToken cancellationToken = default)
+        {
+            AssumedOwners.Add((deviceId, mode));
+            return Task.FromResult(new DeviceCommandSessionContext(ClientId, 1, null));
+        }
+
+        public void ObserveDevices(IReadOnlyList<DeviceSnapshot> devices)
+        {
+        }
+
+        public void StartHeartbeat(string deviceId, string mode)
+            => StartedHeartbeats.Add((deviceId, mode));
+
+        public void StopHeartbeat(string deviceId)
+        {
+        }
+
+        public Task<DeviceClientLockLease> AcquireLockAsync(
+            string deviceId,
+            string reason,
+            TimeSpan ttl,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new DeviceClientLockLease(deviceId, "lock", reason));
+
+        public Task ReleaseLockAsync(string deviceId, string lockToken, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
     }
 }

@@ -46,6 +46,15 @@ public sealed class DeviceTelemetryMessageTests
               "testLedEnabled": true,
               "testLedDuty": 120,
               "animatedWebpBatchSupported": true,
+              "sessionMode": "visualizer",
+              "sessionActiveClientId": "win-eliel",
+              "sessionActiveOwnerEpoch": 4,
+              "sessionOwnerLeaseRemainingMs": 4200,
+              "sessionLockHeld": true,
+              "sessionLockClientId": "win-eliel",
+              "sessionLockReason": "settings",
+              "sessionLockLeaseRemainingMs": 11000,
+              "sessionFallbackState": "none",
               "firmwareVersion": "v1.2.3",
               "ipAddress": "192.168.1.23"
             }
@@ -85,6 +94,15 @@ public sealed class DeviceTelemetryMessageTests
         Assert.True(telemetry.TestLedEnabled);
         Assert.Equal(120, telemetry.TestLedDuty);
         Assert.True(telemetry.AnimatedWebpBatchSupported);
+        Assert.Equal("visualizer", telemetry.SessionMode);
+        Assert.Equal("win-eliel", telemetry.SessionActiveClientId);
+        Assert.Equal(4u, telemetry.SessionActiveOwnerEpoch);
+        Assert.Equal(4200, telemetry.SessionOwnerLeaseRemainingMs);
+        Assert.True(telemetry.SessionLockHeld);
+        Assert.Equal("win-eliel", telemetry.SessionLockClientId);
+        Assert.Equal("settings", telemetry.SessionLockReason);
+        Assert.Equal(11000, telemetry.SessionLockLeaseRemainingMs);
+        Assert.Equal("none", telemetry.SessionFallbackState);
         Assert.Equal("v1.2.3", telemetry.FirmwareVersion);
         Assert.Equal("192.168.1.23", telemetry.IpAddress);
     }
@@ -135,6 +153,15 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Null(telemetry.TestLedEnabled);
         Assert.Null(telemetry.TestLedDuty);
         Assert.Null(telemetry.AnimatedWebpBatchSupported);
+        Assert.Null(telemetry.SessionMode);
+        Assert.Null(telemetry.SessionActiveClientId);
+        Assert.Null(telemetry.SessionActiveOwnerEpoch);
+        Assert.Null(telemetry.SessionOwnerLeaseRemainingMs);
+        Assert.Null(telemetry.SessionLockHeld);
+        Assert.Null(telemetry.SessionLockClientId);
+        Assert.Null(telemetry.SessionLockReason);
+        Assert.Null(telemetry.SessionLockLeaseRemainingMs);
+        Assert.Null(telemetry.SessionFallbackState);
     }
 
     [Fact]

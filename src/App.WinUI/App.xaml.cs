@@ -209,17 +209,22 @@ public partial class App : Application
             services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<IDeviceServerHost>());
             services.AddSingleton<IDeviceServerClientRuntime>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
         }
+
+        services.AddSingleton<IDeviceClientSessionManager, WindowsDeviceClientSessionManager>();
         services.AddSingleton<DeviceOperationsCoordinator>(sp =>
         {
             var coordinator = new DeviceOperationsCoordinator(
                 sp.GetRequiredService<IDeviceServerClient>(),
                 sp.GetRequiredService<SettingsRepository>(),
                 sp.GetRequiredService<AppSettingsDomainService>(),
-                sp.GetRequiredService<ILogger<DeviceOperationsCoordinator>>());
+                sp.GetRequiredService<ILogger<DeviceOperationsCoordinator>>(),
+                sp.GetRequiredService<IDeviceClientSessionManager>());
             coordinator.CentralLogStore = sp.GetRequiredService<AppLogStore>();
             return coordinator;
         });
-        services.AddSingleton<Hub75VisualizerSessionService>();
+        services.AddSingleton(sp => new Hub75VisualizerSessionService(
+            sp.GetRequiredService<DeviceOperationsCoordinator>(),
+            sp.GetRequiredService<IDeviceClientSessionManager>()));
 
         services.AddSingleton<IAppCatalogService, AppCatalogService>();
         services.AddSingleton<IAppModifierStateStore, AppModifierStateStore>();
@@ -240,15 +245,20 @@ public partial class App : Application
         services.AddSingleton<ILoopbackCapture, WasapiLoopbackCaptureService>();
         services.AddSingleton<SimulatorLedOutput>();
         services.AddSingleton<NullLedOutput>();
-        services.AddSingleton(sp => new Esp32S3LedOutput(sp.GetRequiredService<IDeviceFrameTransport>()));
-        services.AddSingleton<PanelsDeviceSessionService>();
+        services.AddSingleton(sp => new Esp32S3LedOutput(
+            sp.GetRequiredService<IDeviceFrameTransport>(),
+            sp.GetRequiredService<IDeviceClientSessionManager>()));
+        services.AddSingleton(sp => new PanelsDeviceSessionService(
+            sp.GetRequiredService<DeviceOperationsCoordinator>(),
+            sp.GetRequiredService<IDeviceClientSessionManager>()));
         services.AddSingleton(sp => new PanelsPlaybackService(
             sp.GetRequiredService<IDeviceServerClient>(),
             sp.GetRequiredService<IDeviceFrameTransport>(),
             sp.GetRequiredService<PanelsFrameComposer>(),
             sp.GetRequiredService<PanelsDeviceSessionService>(),
             sp.GetRequiredService<Hub75VisualizerSessionService>(),
-            enableMatrixTransport: true));
+            enableMatrixTransport: true,
+            sessionManager: sp.GetRequiredService<IDeviceClientSessionManager>()));
 
         services.AddTransient<MainPageViewModel>();
         services.AddTransient<DevicesPageViewModel>();

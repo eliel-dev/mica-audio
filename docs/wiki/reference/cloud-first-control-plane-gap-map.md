@@ -6,6 +6,12 @@ Comparar o control plane atual do Mica com o target-state cloud-first antes de q
 
 Este documento e preparatorio. Ele nao muda contrato publico, nao define endpoints novos e nao autoriza remover MQTT do runtime local atual.
 
+## Direcao oficial
+
+- O target-state cloud-first do Mica assume `server = control plane`.
+- `visualizador` e `Paineis` deixam de ser requisitos do data plane cloud.
+- O gap principal deixa de ser "como rotear cada frame pela nuvem" e passa a ser "como expor control plane publico, ownership e assets sem quebrar o data plane LAN local".
+
 ## Fontes e escopo
 
 - Target-state canonico: [Cloud-first multi-panel future architecture](../architecture/07-cloud-first-multi-panel-future-architecture.md#protocolo-publico-futuro).
@@ -38,7 +44,7 @@ Este documento e preparatorio. Ele nao muda contrato publico, nao define endpoin
 | MQTT `command-events` | Device publica progresso/conclusao por `commandId`. | Eventos futuros devem trafegar em WSS/public session com semantica de progresso preservada. |
 | MQTT `status`/`presence` | Fonte oficial de online/offline local; retained. | Presenca futura precisa ser estado de sessao cloud, nao broker local embutido. |
 | MQTT `stats`/`logs` | Telemetria estruturada e logs chegam ao host e alimentam snapshot/UI. | Deve migrar para canal publico WSS mantendo campos nullable e compatibilidade com firmware legado. |
-| WS `/ws/v1/stream` | Stream visual binario do device; hot path de frames HUB75. | Target-state precisa WSS publico para devices e publishers, com streaming compacto e sem assumir WinUI como host. |
+| WS `/ws/v1/stream` | Stream visual binario legado/de transicao para o device. | O target-state pode manter WSS publico para casos remotos, mas o caminho oficial de baixa latencia passa a ser `cliente local -> ESP` na LAN. |
 | WS `/ws/device/{deviceId}` | Dashboard local/WebView2, DTO dedicado e sem auth de device. | Nao e contrato publico do firmware; precisa permanecer separado de API cloud/admin. |
 
 ## Gaps principais

@@ -8,6 +8,17 @@
 4. `LedFrameDeduplicator` codifica RGB565 e decide se o frame precisa ser reenviado
 5. `SimulatorLedOutput` mantem snapshot local nativo `128x64`
 
+## Direcao oficial
+
+- `Output` continua sendo o adaptador que serializa payload visual no cliente.
+- O caminho oficial de baixa latencia passa a ser `cliente local -> ESP`, nao `cliente -> server -> ESP`.
+- O wire legacy `StreamFrameV2` continua valido em transicao; `StreamFrameV3` existe para ownership explicito por `ownerEpoch` quando o data plane direto estiver ativo.
+
+## Baseline atual / transicao
+
+- `Esp32S3LedOutput` continua emitindo `StreamFrameV2` no runtime atual.
+- `StreamFrameV3` entra como contrato owner-bound preparado para clientes LAN session-aware, sem quebrar o baseline legado.
+
 ## Atualizacao 2026-03 - shipping mode HUB75 em Bins128
 
 - O caminho shipping/default do desktop voltou a priorizar `Bins128`.
@@ -106,3 +117,4 @@
 - [Bins128PreviewRenderer](../../../src/Output/Led/Bins128PreviewRenderer.cs#L1)
 - [SimulatorLedOutput](../../../src/Output/Led/SimulatorLedOutput.cs#L1)
 - [StreamFrameV2](../reference/ws-protocol-v2.md)
+- [StreamFrameV3](../../../src/Device.Protocol/Stream/StreamFrameV3.cs#L1)

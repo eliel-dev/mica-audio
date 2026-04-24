@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Net.WebSockets;
+using System.Text.Json;
 using Device.Client.Remote;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
@@ -10,6 +11,38 @@ namespace Output.Tests;
 public sealed class RemoteDeviceServerClientTests
 {
     private const string AdminToken = "remote-client-test-token";
+
+    [Fact]
+    public async Task SendCommandTrackedAsync_WithSessionContext_ShouldSerializeSessionInAdminRequest()
+    {
+        using var handler = new CaptureAdminCommandHandler();
+        using var httpClient = new HttpClient(handler);
+        await using var remote = new RemoteDeviceServerClient(
+            httpClient,
+            new RemoteDeviceServerClientOptions
+            {
+                BaseAddress = "http://127.0.0.1:5272",
+                AdminToken = AdminToken,
+            });
+
+        var result = await remote.SendCommandTrackedAsync(
+            "device-remote",
+            DeviceCommandType.SetBrightness,
+            new Dictionary<string, string> { ["brightness"] = "90" },
+            new DeviceCommandSessionContext("win-eliel-1234abcd", 12, "lock-1"),
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal("/api/v1/admin/devices/device-remote/commands/tracked", handler.LastRequestPath);
+        Assert.NotNull(handler.LastRequest);
+        Assert.Equal(DeviceCommandType.SetBrightness, handler.LastRequest!.CommandType);
+        Assert.Equal("90", handler.LastRequest.Parameters!["brightness"]);
+        Assert.NotNull(handler.LastRequest.Session);
+        Assert.Equal("win-eliel-1234abcd", handler.LastRequest.Session!.ClientId);
+        Assert.Equal((uint)12, handler.LastRequest.Session.OwnerEpoch);
+        Assert.Equal("lock-1", handler.LastRequest.Session.LockToken);
+    }
 
     [Fact]
     public async Task RemoteDeviceServerClient_ShouldCreatePairingCodeListAndRemoveDevices()
@@ -177,5 +210,35 @@ public sealed class RemoteDeviceServerClientTests
         }
 
         ws.Abort();
+    }
+
+    private sealed class CaptureAdminCommandHandler : HttpMessageHandler
+    {
+        public string? LastRequestPath { get; private set; }
+
+        public AdminTrackedCommandRequest? LastRequest { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequestPath = request.RequestUri?.PathAndQuery;
+            LastRequest = await request.Content!.ReadFromJsonAsync<AdminTrackedCommandRequest>(
+                new JsonSerializerOptions(JsonSerializerDefaults.Web),
+                cancellationToken);
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new CommandDispatchResult
+                {
+                    DeviceId = "device-remote",
+                    CommandId = "cmd-remote",
+                    Accepted = true,
+                    Completed = true,
+                    Success = true,
+                    ProgressPercent = 100,
+                    Stage = "done",
+                    Message = "ok",
+                }),
+            };
+        }
     }
 }

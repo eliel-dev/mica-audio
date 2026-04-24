@@ -398,7 +398,11 @@ internal static class DeviceRecordMutations
         };
     }
 
-    public static DeviceSnapshot ToSnapshot(DeviceRecord source, DeviceStatus status, DeviceControlPlaneState controlPlaneState)
+    public static DeviceSnapshot ToSnapshot(
+        DeviceRecord source,
+        DeviceStatus status,
+        DeviceControlPlaneState controlPlaneState,
+        DeviceSessionShadowMessage? sessionShadow = null)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -459,6 +463,15 @@ internal static class DeviceRecordMutations
             VisualUdpSupported = source.VisualUdpSupported,
             VisualUdpPort = source.VisualUdpPort,
             VisualUdpMode = source.VisualUdpMode,
+            SessionMode = NormalizeOptional(sessionShadow?.Mode),
+            SessionActiveClientId = NormalizeOptional(sessionShadow?.ActiveClientId),
+            SessionActiveOwnerEpoch = sessionShadow?.ActiveOwnerEpoch,
+            SessionOwnerLeaseRemainingMs = NormalizeNonNegative(sessionShadow?.OwnerLeaseRemainingMs),
+            SessionLockHeld = sessionShadow?.LockHeld,
+            SessionLockClientId = NormalizeOptional(sessionShadow?.LockClientId),
+            SessionLockReason = NormalizeOptional(sessionShadow?.LockReason),
+            SessionLockLeaseRemainingMs = NormalizeNonNegative(sessionShadow?.LockLeaseRemainingMs),
+            SessionFallbackState = NormalizeOptional(sessionShadow?.FallbackState),
             ChipModel = source.ChipModel,
             ChipRevision = source.ChipRevision,
             ChipCores = source.ChipCores,
@@ -474,4 +487,10 @@ internal static class DeviceRecordMutations
 
     private static int? NormalizeUdpPort(int? port)
         => port is >= 1 and <= 65535 ? port : null;
+
+    private static int? NormalizeNonNegative(int? value)
+        => value is >= 0 ? value : null;
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

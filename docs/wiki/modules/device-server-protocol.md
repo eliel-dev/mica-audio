@@ -2,13 +2,25 @@
 
 ## Objetivo
 
-Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e stream de frames para dispositivos ESP32.
+Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemetria, assets e estado duravel dos dispositivos ESP32.
+
+## Direcao oficial
+
+- O `Device.Server` e o control plane oficial do sistema.
+- O server continua dono de pairing, catalogo, comandos tracked, snapshots, logs, assets e metadata de ownership/mode.
+- O server nao e mais a topologia oficial do hot path visual para `visualizador` e `Paineis`; nesses casos, o cliente local fala direto com o ESP na LAN.
+
+## Baseline atual / transicao
+
+- O host ainda preserva `/ws/v1/stream`, UDP LAN opt-in e o fluxo embedded/remoto atual.
+- Esses caminhos continuam validos como compatibilidade enquanto o client-owned data plane converge.
+- O server continua mediando o runtime legado e o fluxo atual de batches `WebP`.
 
 ## Responsabilidades
 
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
 - Broker MQTT embutido para `commands`, `command-events`, `status`, `presence`, `stats` e `logs`.
-- WebSocket `/ws/v1/stream` exclusivamente para stream visual binario.
+- WebSocket `/ws/v1/stream` exclusivamente para stream visual binario legado/de transicao.
 - UDP LAN opt-in para stream visual descartavel `Bins128`, com WS como fallback.
 - Admin API opt-in por token para clients remotos WinUI (`/api/v1/admin/*`).
 - WebSockets admin para eventos (`/ws/v1/admin/events`) e frames remotos (`/ws/v1/admin/frames`).
@@ -43,7 +55,27 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 7. App envia comandos tracked (`SendCommandTrackedAsync`) via `mica/v1/devices/{deviceId}/commands`.
 8. `ICommandStateStore` e `TrackedCommandState` correlacionam `command-events` por `commandId`.
 9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
-10. `IDeviceFrameTransport.BroadcastFrame/SendFrame` distribui stream para UDP LAN opt-in quando elegivel ou para sockets WS conectados como fallback.
+10. `IDeviceFrameTransport.BroadcastFrame/SendFrame` continua existindo como baseline legado/de transicao; a direcao oficial para tempo real e cliente LAN direto no ESP.
+
+## Ownership, shadow e lock lease
+
+- O firmware passa a tratar `MQTT` como plano canonico de sessao por device.
+- O topico retained `mica/v1/devices/{deviceId}/shadow` passa a carregar:
+  - `shadowVersion`
+  - `mode`
+  - `activeClientId`
+  - `activeOwnerEpoch`
+  - `ownerLeaseRemainingMs`
+  - `lockHeld`
+  - `lockClientId`
+  - `lockReason`
+  - `lockLeaseRemainingMs`
+  - `activeAppId`
+  - `fallbackState`
+- `clientId`, `ownerEpoch` e `lockToken` entram como envelope canonico dos comandos de sessao-aware.
+- `session_heartbeat`, `session_lock_acquire` e `session_lock_release` passam a compor o protocolo canonicamente observado pelo device.
+- `last-writer-wins` define o owner atual por device; lock com lease continua separado do ownership.
+- `WS/UDP` seguem como data plane visual, mas subordinados ao `ownerEpoch` atual do device.
 
 ## Atualizacao 2026-04 - Fronteira De Client Embutido
 
@@ -161,6 +193,7 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - Normalizacao de runtime em `DeviceServerRuntimeConfig`.
 - Transicoes de estado em `DeviceRecordMutations` e `DeviceSessionState`.
 - Envelope visual UDP em `VisualUdpFrameV1` e receiver firmware `mica_visual_udp.cpp`.
+- Ownership/shadow do device em `DeviceSessionShadowMessage`, `StreamFrameV3` e `mica_session.cpp`.
 
 ## Riscos e efeitos colaterais
 
@@ -316,8 +349,11 @@ Fornecer servidor HTTP/WS/MQTT embutido para pareamento, controle/telemetria e s
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1) - assinatura: `public sealed class DevicePresenceMessage`
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1) - assinatura: `public sealed class DeviceTelemetryMessage`
+- [DeviceSessionShadowMessage](../../../src/Device.Protocol/Models/DeviceSessionShadowMessage.cs#L1) - assinatura: `public sealed class DeviceSessionShadowMessage`
+- [StreamFrameV3](../../../src/Device.Protocol/Stream/StreamFrameV3.cs#L1) - assinatura: `public static class StreamFrameV3`
 - [VisualUdpFrameV1](../../../src/Device.Protocol/Stream/VisualUdpFrameV1.cs#L1) - assinatura: `public static class VisualUdpFrameV1`
 - [Firmware UDP visual receiver](../../../firmware/esp32s3-devkitc1/src/mica_visual_udp.cpp#L1) - assinatura: `void processVisualUdpReceiver()`
+- [Firmware session runtime](../../../firmware/esp32s3-devkitc1/src/mica_session.cpp#L1) - assinatura: `void processClientSessionRuntime(...)`
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1) - assinatura: `public sealed class PanelsBatchCommandPayload`
 - [DeviceFirmwareReleaseInfo](../../../src/Device.Protocol/Models/DeviceFirmwareReleaseInfo.cs#L1) - assinatura: `public sealed class DeviceFirmwareReleaseInfo`
 - [DeviceStatsMessage](../../../src/Device.Protocol/Models/DeviceStatsMessage.cs#L1) - assinatura: `public sealed class DeviceStatsMessage`

@@ -1,6 +1,8 @@
 #pragma once
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 
 #include "mica_types.h"
 #include <Preferences.h>
@@ -36,6 +38,13 @@ extern String gToken;
 extern String gActiveAppId;
 extern String gActiveAppName;
 extern String gActiveAppConfig;
+
+// ---------------------------------------------------------------------------
+// Client session / ownership state
+// ---------------------------------------------------------------------------
+extern DeviceSessionShadowState gSessionShadowState;
+extern bool gClientDisconnectedFallbackActive;
+extern unsigned long gSessionLastLeaseTickMs;
 
 // ---------------------------------------------------------------------------
 // Stream / bins buffers

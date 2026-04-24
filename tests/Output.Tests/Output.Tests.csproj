@@ -79,6 +79,7 @@
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceCommandExecutionContext.cs" Link="Shared\Devices\DeviceCommandExecutionContext.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceCommandTracker.cs" Link="Shared\Devices\DeviceCommandTracker.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceCommandDispatcher.cs" Link="Shared\Devices\DeviceCommandDispatcher.cs" />
+    <Compile Include="..\..\src\App.WinUI\Services\Devices\WindowsDeviceClientSessionManager.cs" Link="Shared\Devices\WindowsDeviceClientSessionManager.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceOperationsText.cs" Link="Shared\Devices\DeviceOperationsText.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceOperationsState.cs" Link="Shared\Devices\DeviceOperationsState.cs" />
     <Compile Include="..\..\src\App.WinUI\Services\Devices\DeviceOperationsCoordinator.cs" Link="Shared\Devices\DeviceOperationsCoordinator.cs" />

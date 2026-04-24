@@ -5,6 +5,8 @@ using System.Text;
 namespace Device.Protocol.Stream;
 
 // DOCS: docs/wiki/reference/ws-protocol-v2.md#udp-visual-v1
+// DOCS: docs/wiki/modules/device-server-protocol.md#ownership-shadow-e-lock-lease
+// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public static class VisualUdpFrameV1
 {
@@ -101,9 +103,17 @@ public static class VisualUdpFrameV1
     }
 
     public static bool IsSupportedPayload(ReadOnlySpan<byte> payload)
+        => IsLegacyBinsPayload(payload) || IsOwnedBinsPayload(payload);
+
+    private static bool IsLegacyBinsPayload(ReadOnlySpan<byte> payload)
         => payload.Length == StreamFrameV2.PayloadSizeBins128
            && payload[0] == StreamFrameV2.Version
            && payload[1] == StreamFrameV2.MessageTypeBins128;
+
+    private static bool IsOwnedBinsPayload(ReadOnlySpan<byte> payload)
+        => payload.Length == StreamFrameV3.PayloadSizeBins128
+           && payload[0] == StreamFrameV3.Version
+           && payload[1] == StreamFrameV3.MessageTypeBins128;
 
     private static void WriteTag(string token, ReadOnlySpan<byte> data, Span<byte> destination)
     {

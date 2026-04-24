@@ -21,6 +21,7 @@ public sealed partial class DeviceServerHost
         string deviceId,
         DeviceCommandType commandType,
         IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
@@ -96,6 +97,24 @@ public sealed partial class DeviceServerHost
         if (parameters is not null && parameters.Count > 0)
         {
             commandEnvelope["parameters"] = parameters;
+        }
+
+        if (sessionContext is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(sessionContext.ClientId))
+            {
+                commandEnvelope["clientId"] = sessionContext.ClientId.Trim();
+            }
+
+            if (sessionContext.OwnerEpoch > 0)
+            {
+                commandEnvelope["ownerEpoch"] = sessionContext.OwnerEpoch;
+            }
+
+            if (!string.IsNullOrWhiteSpace(sessionContext.LockToken))
+            {
+                commandEnvelope["lockToken"] = sessionContext.LockToken.Trim();
+            }
         }
 
         var payload = JsonSerializer.SerializeToUtf8Bytes(commandEnvelope, JsonOptions);
@@ -549,7 +568,16 @@ public sealed partial class DeviceServerHost
             telemetry.AnimatedWebpBatchSupported,
             telemetry.VisualUdpSupported,
             telemetry.VisualUdpPort,
-            telemetry.VisualUdpMode);
+            telemetry.VisualUdpMode,
+            telemetry.SessionMode,
+            telemetry.SessionActiveClientId,
+            telemetry.SessionActiveOwnerEpoch,
+            telemetry.SessionOwnerLeaseRemainingMs,
+            telemetry.SessionLockHeld,
+            telemetry.SessionLockClientId,
+            telemetry.SessionLockReason,
+            telemetry.SessionLockLeaseRemainingMs,
+            telemetry.SessionFallbackState);
         return true;
     }
 
@@ -793,6 +821,9 @@ public sealed partial class DeviceServerHost
             DeviceCommandType.SetBrightness => "set_brightness",
             DeviceCommandType.UpdateFirmware => "update_firmware",
             DeviceCommandType.QueuePanelsBatch => "queue_panels_batch",
+            DeviceCommandType.SessionHeartbeat => "session_heartbeat",
+            DeviceCommandType.SessionLockAcquire => "session_lock_acquire",
+            DeviceCommandType.SessionLockRelease => "session_lock_release",
             _ => "unknown",
         };
     }

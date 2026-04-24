@@ -29,6 +29,7 @@ internal sealed class PanelsPlaybackService : IDisposable
 
     private readonly IDeviceServerClient serverClient;
     private readonly IDeviceFrameTransport frameTransport;
+    private readonly IDeviceClientSessionManager? sessionManager;
     private readonly PanelsFrameComposer composer;
     private readonly PanelsDeviceSessionService deviceSessionService;
     private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
@@ -53,10 +54,12 @@ internal sealed class PanelsPlaybackService : IDisposable
         PanelsFrameComposer composer,
         PanelsDeviceSessionService deviceSessionService,
         Hub75VisualizerSessionService hub75VisualizerSessionService,
-        bool enableMatrixTransport = true)
+        bool enableMatrixTransport = true,
+        IDeviceClientSessionManager? sessionManager = null)
     {
         this.serverClient = serverClient;
         this.frameTransport = frameTransport;
+        this.sessionManager = sessionManager;
         this.composer = composer;
         this.deviceSessionService = deviceSessionService;
         this.hub75VisualizerSessionService = hub75VisualizerSessionService;
@@ -301,7 +304,7 @@ internal sealed class PanelsPlaybackService : IDisposable
 
             if (enableMatrixTransport)
             {
-                output = new Esp32S3LedOutput(frameTransport);
+                output = new Esp32S3LedOutput(frameTransport, sessionManager);
                 output.Start(new LedOutputConfig
                 {
                     Width = LedDefaults.MatrixWidth,
@@ -558,6 +561,7 @@ internal sealed class PanelsPlaybackService : IDisposable
                 deviceId,
                 DeviceCommandType.QueuePanelsBatch,
                 payload.ToParameters(),
+                sessionManager?.CreateCommandContext(deviceId),
                 timeout: BatchCommandTimeout,
                 cancellationToken)
             .ConfigureAwait(false);

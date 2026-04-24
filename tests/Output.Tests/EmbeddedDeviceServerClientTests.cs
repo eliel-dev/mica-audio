@@ -125,6 +125,41 @@ public sealed class EmbeddedDeviceServerClientTests
     }
 
     [Fact]
+    public async Task SendCommandTrackedAsync_WithSessionContext_ShouldForwardContextToEmbeddedHost()
+    {
+        var commandResult = new CommandDispatchResult
+        {
+            DeviceId = "device-session",
+            CommandId = "cmd-session",
+            Accepted = true,
+            Completed = true,
+            Success = true,
+            ProgressPercent = 100,
+            Stage = "done",
+        };
+        await using var host = new FakeDeviceServerHost
+        {
+            CommandResult = commandResult,
+        };
+        await using var client = CreateClient(host, new FakeEmbeddedDeviceRegistryStore([]));
+
+        var result = await client.SendCommandTrackedAsync(
+            "device-session",
+            DeviceCommandType.SetBrightness,
+            new Dictionary<string, string> { ["brightness"] = "110" },
+            new DeviceCommandSessionContext("win-eliel-1234abcd", 9, "lock-embedded"),
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None);
+
+        Assert.Same(commandResult, result);
+        Assert.Equal(DeviceCommandType.SetBrightness, host.LastTrackedCommandType);
+        Assert.NotNull(host.LastTrackedSessionContext);
+        Assert.Equal("win-eliel-1234abcd", host.LastTrackedSessionContext!.ClientId);
+        Assert.Equal((uint)9, host.LastTrackedSessionContext.OwnerEpoch);
+        Assert.Equal("lock-embedded", host.LastTrackedSessionContext.LockToken);
+    }
+
+    [Fact]
     public async Task HostEvents_ShouldBeForwardedThroughClient()
     {
         await using var host = new FakeDeviceServerHost();
@@ -232,6 +267,8 @@ public sealed class EmbeddedDeviceServerClientTests
 
         public IReadOnlyDictionary<string, string>? LastTrackedParameters { get; private set; }
 
+        public DeviceCommandSessionContext? LastTrackedSessionContext { get; private set; }
+
         public string? LastBatchDeviceId { get; private set; }
 
         public event EventHandler? DevicesChanged;
@@ -285,6 +322,20 @@ public sealed class EmbeddedDeviceServerClientTests
         {
             LastTrackedCommandType = commandType;
             LastTrackedParameters = parameters;
+            return Task.FromResult(CommandResult);
+        }
+
+        public Task<CommandDispatchResult> SendCommandTrackedAsync(
+            string deviceId,
+            DeviceCommandType commandType,
+            IReadOnlyDictionary<string, string>? parameters,
+            DeviceCommandSessionContext? sessionContext,
+            TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default)
+        {
+            LastTrackedCommandType = commandType;
+            LastTrackedParameters = parameters;
+            LastTrackedSessionContext = sessionContext;
             return Task.FromResult(CommandResult);
         }
 

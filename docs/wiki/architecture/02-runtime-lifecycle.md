@@ -4,6 +4,18 @@
 
 Documentar o ciclo de vida da app, as trocas de secao da shell e o runtime ativo de `Paineis`.
 
+## Direcao oficial
+
+- A shell WinUI continua sendo o primeiro cliente oficial do Mica.
+- O runtime visual local passa a ser o dono do data plane LAN para `visualizador` e `Paineis`.
+- O server nao participa mais da narrativa oficial de hot path visual; ele permanece como control plane e fonte de verdade duravel.
+
+## Baseline atual / transicao
+
+- O startup ainda inicializa servicos embedded/local por compatibilidade.
+- `PanelsPlaybackService` e o visualizador ainda convivem com caminhos via `IDeviceServerClient` e `IDeviceFrameTransport` que preservam o baseline atual.
+- O modo `Embedded` continua sendo fallback seguro enquanto o client-driven direto ao ESP termina de convergir.
+
 ## Startup
 
 1. `App.OnLaunched` cria `Window` + `Frame` raiz.
@@ -26,7 +38,7 @@ Documentar o ciclo de vida da app, as trocas de secao da shell e o runtime ativo
 
 - `PanelsPage` carrega catalogo, store e thumbnails ao entrar.
 - `PanelsPlaybackService` mantem no maximo um painel ativo em background.
-- O runtime de painel continua no desktop; o ESP32 recebe apenas o frame final composto.
+- O runtime de painel continua no desktop; o ESP32 recebe apenas o resultado final do cliente local.
 
 ## Fullscreen
 

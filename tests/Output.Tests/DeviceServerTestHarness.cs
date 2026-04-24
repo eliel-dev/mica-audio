@@ -163,6 +163,16 @@ internal static class DeviceServerTestHarness
             .Build(), CancellationToken.None);
     }
 
+    public static async Task PublishSessionShadowAsync(IMqttClient client, string deviceId, object payload)
+    {
+        await client.PublishAsync(new MqttApplicationMessageBuilder()
+            .WithTopic(GetShadowTopic(deviceId))
+            .WithPayload(JsonSerializer.SerializeToUtf8Bytes(payload))
+            .WithRetainFlag(true)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            .Build(), CancellationToken.None);
+    }
+
     public static async Task PublishCommandEventAsync(
         IMqttClient client,
         string deviceId,
@@ -209,6 +219,8 @@ internal static class DeviceServerTestHarness
     public static string GetStatsTopic(string deviceId) => $"{DefaultMqttRootTopic}/{deviceId}/stats";
 
     public static string GetLogsTopic(string deviceId) => $"{DefaultMqttRootTopic}/{deviceId}/logs";
+
+    public static string GetShadowTopic(string deviceId) => $"{DefaultMqttRootTopic}/{deviceId}/shadow";
 
     public static string DecodePayload(MqttApplicationMessageReceivedEventArgs args)
     {

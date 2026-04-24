@@ -17,6 +17,13 @@ Descrever o estado futuro recomendado do Mica para:
 4. mover widgets cloud-safe para a nuvem;
 5. manter audio e metricas locais como dados produzidos no cliente.
 
+## Direcao oficial
+
+- O cloud-first do Mica e `control-plane-first`, nao `data-plane-first`.
+- O server publico continua importante para pairing, catalogo, assets, ownership metadata e estado duravel.
+- `visualizador` e `Paineis` permanecem client-owned em LAN, mesmo quando o control plane estiver em cloud.
+- O ESP32 observa ownership por device e executa fallback local quando o owner expira.
+
 ## Principios fechados
 
 1. O Mica adota separacao clara entre `servidor`, `firmware` e `clientes`.

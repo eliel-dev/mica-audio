@@ -87,6 +87,7 @@ public sealed partial class DeviceServerHost
                 deviceId,
                 req.CommandType,
                 req.Parameters,
+                req.Session,
                 timeout,
                 ctx.RequestAborted)
             .ConfigureAwait(false);

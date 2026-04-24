@@ -1,5 +1,11 @@
 # Modulo Server Build And Artifacts
 
+## Direcao oficial
+
+- `MicaAudio.Server` e o artefato oficial do control plane.
+- O host standalone existe para pairing, assets, ownership metadata, catalogo, telemetria e administracao.
+- Ele nao e mais o hot path visual oficial para `visualizador` e `Paineis`; esses fluxos passam a ser client-driven na LAN.
+
 ## Server standalone
 
 - `MicaAudio.Server` e o primeiro executavel standalone do control plane, mantendo `Device.Server` como biblioteca de hosting/transportes.

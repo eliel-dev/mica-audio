@@ -11,6 +11,12 @@ Migrar o Mica para uma arquitetura `server + firmware + clients`, cloud-first e 
 
 O alvo principal do servidor e `.NET 10 / ASP.NET Core` em Docker. Mudanca de stack fica fora do caminho principal porque o repositorio ja tem `Device.Server`, `Device.Protocol`, observabilidade e contratos em C#; a extracao para host standalone tem menor risco do que reescrever o control plane antes de estabilizar cloud.
 
+## Direcao oficial
+
+- Render/Fly/cloud entram como control plane publico.
+- O hot path visual oficial continua fora do servidor: cliente local captura/processa e fala direto com o ESP na LAN.
+- O deploy cloud deixa de carregar a expectativa de transportar frames em tempo real para `visualizador` e `Paineis`.
+
 ## Escopo oficial
 
 ### Escopo de produto v1
@@ -91,7 +97,7 @@ O estado atual relevante para a migracao e:
 3. Pair codes, sessoes, comandos pendentes e batches WebP vivem em memoria do processo; o standalone persiste apenas o registry de devices em JSON local.
 4. O catalogo oficial de firmware fica embarcado no app desktop.
 5. O control plane operacional usa HTTP local, WS local e MQTT embutido.
-6. O hot path visual continua em `Esp32S3LedOutput -> DeviceServerHost.BroadcastFrame -> /ws/v1/stream`.
+6. O hot path visual legado ainda existe em `Esp32S3LedOutput -> DeviceServerHost.BroadcastFrame -> /ws/v1/stream`, mas a direcao oficial passa a ser `cliente LAN -> ESP`.
 7. `Paineis` ja tem batch WebP, mas o batch atual e in-memory.
 8. `render.yaml` e `src/MicaAudio.Server/Dockerfile` existem para smoke Docker/Render do server standalone.
 9. O WinUI possui modo remoto opt-in contra `MicaAudio.Server` via Admin API/WSS, com `Embedded` ainda como default seguro.

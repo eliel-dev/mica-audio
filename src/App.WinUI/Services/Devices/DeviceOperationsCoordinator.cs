@@ -29,6 +29,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
     private readonly DeviceRefreshCoordinator refreshCoordinator = new();
     private readonly DeviceLifecycleThresholdProvider lifecycleThresholdProvider;
     private readonly DeviceCommandDispatcher commandDispatcher;
+    private readonly IDeviceClientSessionManager? sessionManager;
     private readonly ILogger<DeviceOperationsCoordinator>? logger;
     private readonly Timer refreshTimer;
     private bool disposed;
@@ -37,8 +38,9 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         IDeviceServerClient integration,
         SettingsRepository? settingsRepository,
         AppSettingsDomainService? settingsDomainService,
-        ILogger<DeviceOperationsCoordinator>? logger = null)
-        : this(new DeviceOperationsRuntime(integration), settingsRepository, settingsDomainService, logger)
+        ILogger<DeviceOperationsCoordinator>? logger = null,
+        IDeviceClientSessionManager? sessionManager = null)
+        : this(new DeviceOperationsRuntime(integration), settingsRepository, settingsDomainService, logger, sessionManager)
     {
     }
 
@@ -46,10 +48,12 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
         IDeviceOperationsRuntime integration,
         SettingsRepository? settingsRepository,
         AppSettingsDomainService? settingsDomainService,
-        ILogger<DeviceOperationsCoordinator>? logger = null)
+        ILogger<DeviceOperationsCoordinator>? logger = null,
+        IDeviceClientSessionManager? sessionManager = null)
     {
         this.integration = integration;
         this.logger = logger;
+        this.sessionManager = sessionManager;
         lifecycleThresholdProvider = new DeviceLifecycleThresholdProvider(settingsRepository, settingsDomainService);
         commandDispatcher = new DeviceCommandDispatcher(integration, CommandTimeout);
         refreshTimer = new Timer(OnRefreshTimerTick, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
@@ -308,37 +312,63 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
             LogDeviceCommandStarted(logger, commandType, normalizedDeviceId);
         }
 
-        var result = await commandDispatcher
-            .DispatchAsync(normalizedDeviceId, commandType, parameters, timeoutOverride, cancellationToken)
-            .ConfigureAwait(false);
-
-        activity?.SetTag(AppObservability.CommandIdKey, result.CommandId);
-        activity?.SetTag("command.stage", result.Stage);
-        activity?.SetTag("command.success", result.Success);
-        if (!result.Success)
+        DeviceClientLockLease? lockLease = null;
+        var sessionContext = sessionManager?.CreateCommandContext(normalizedDeviceId);
+        try
         {
-            activity?.SetStatus(ActivityStatusCode.Error, result.ErrorCode ?? result.Stage);
-            if (logger is not null)
+            if (IsProtectedCommand(commandType) && sessionManager is not null)
             {
-                LogDeviceCommandFailed(logger, commandType, normalizedDeviceId, result.Stage ?? "unknown", result.ErrorCode ?? "none");
+                lockLease = await sessionManager
+                    .AcquireLockAsync(normalizedDeviceId, commandType.ToString(), TimeSpan.FromSeconds(15), cancellationToken)
+                    .ConfigureAwait(false);
+                sessionContext = sessionManager.CreateCommandContext(normalizedDeviceId);
+            }
+
+            var result = await commandDispatcher
+                .DispatchAsync(normalizedDeviceId, commandType, parameters, sessionContext, timeoutOverride, cancellationToken)
+                .ConfigureAwait(false);
+
+            activity?.SetTag(AppObservability.CommandIdKey, result.CommandId);
+            activity?.SetTag("command.stage", result.Stage);
+            activity?.SetTag("command.success", result.Success);
+            if (!result.Success)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, result.ErrorCode ?? result.Stage);
+                if (logger is not null)
+                {
+                    LogDeviceCommandFailed(logger, commandType, normalizedDeviceId, result.Stage ?? "unknown", result.ErrorCode ?? "none");
+                }
+            }
+            else
+            {
+                if (logger is not null)
+                {
+                    LogDeviceCommandSucceeded(logger, commandType, normalizedDeviceId, result.CommandId ?? string.Empty);
+                }
+            }
+
+            commandTracker.Complete(normalizedDeviceId, result);
+            RaiseStateChanged();
+
+            var resultMessage = DeviceOperationsText.BuildResultLogMessage(result);
+            var resultSeverity = result.Success ? DeviceLogSeverity.Info : DeviceLogSeverity.Warning;
+            AppendDeviceLog(normalizedDeviceId, resultMessage, severity: resultSeverity, category: "command", code: result.Stage);
+            AppendLog(resultMessage, severity: resultSeverity, category: "command", code: result.Stage, source: DeviceLogSource.App);
+            return result;
+        }
+        finally
+        {
+            if (lockLease is not null && sessionManager is not null)
+            {
+                try
+                {
+                    await sessionManager.ReleaseLockAsync(normalizedDeviceId, lockLease.LockToken, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch
+                {
+                }
             }
         }
-        else
-        {
-            if (logger is not null)
-            {
-                LogDeviceCommandSucceeded(logger, commandType, normalizedDeviceId, result.CommandId ?? string.Empty);
-            }
-        }
-
-        commandTracker.Complete(normalizedDeviceId, result);
-        RaiseStateChanged();
-
-        var resultMessage = DeviceOperationsText.BuildResultLogMessage(result);
-        var resultSeverity = result.Success ? DeviceLogSeverity.Info : DeviceLogSeverity.Warning;
-        AppendDeviceLog(normalizedDeviceId, resultMessage, severity: resultSeverity, category: "command", code: result.Stage);
-        AppendLog(resultMessage, severity: resultSeverity, category: "command", code: result.Stage, source: DeviceLogSource.App);
-        return result;
     }
 
     private static bool TryGetAppId(IReadOnlyDictionary<string, string>? parameters, out string? appId)
@@ -419,6 +449,7 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
                 devices,
                 lifecycleThresholds,
                 DateTimeOffset.UtcNow);
+            sessionManager?.ObserveDevices(nextSnapshot);
 
             var update = refreshCoordinator.Apply(nextSnapshot, forcePublish, DateTimeOffset.UtcNow);
             if (update.Changed)
@@ -479,6 +510,15 @@ internal sealed partial class DeviceOperationsCoordinator : IDisposable
             _ => LogSeverity.Info,
         };
 
+    private static bool IsProtectedCommand(DeviceCommandType commandType)
+    {
+        return commandType is DeviceCommandType.EnterProvisioning
+            or DeviceCommandType.RevokeAndRestart
+            or DeviceCommandType.UpdateFirmware
+            or DeviceCommandType.InstallApp
+            or DeviceCommandType.SetAppConfig;
+    }
+
     private void RaiseStateChanged()
     {
         StateChanged?.Invoke(this, EventArgs.Empty);
@@ -533,6 +573,15 @@ internal interface IDeviceOperationsRuntime
         IReadOnlyDictionary<string, string>? parameters,
         TimeSpan timeout,
         CancellationToken cancellationToken);
+
+    Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+        => SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
 }
 
 internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
@@ -593,5 +642,16 @@ internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
         CancellationToken cancellationToken)
     {
         return integration.SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
+    }
+
+    public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        return integration.SendCommandTrackedAsync(deviceId, commandType, parameters, sessionContext, timeout, cancellationToken);
     }
 }

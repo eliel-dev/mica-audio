@@ -8,5 +8,7 @@ public sealed class AdminTrackedCommandRequest
 
     public Dictionary<string, string>? Parameters { get; init; }
 
+    public DeviceCommandSessionContext? Session { get; init; }
+
     public int TimeoutMs { get; init; } = 5000;
 }

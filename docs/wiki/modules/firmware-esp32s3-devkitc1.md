@@ -15,6 +15,28 @@
 4. conecta o control plane MQTT para `presence`, `status`, `stats`, `logs` e `commands`
 5. reporta `boardModel = esp32s3_devkitc1` e `panelType = hub75_p2_5_128x64_smd2121_scan32`
 
+## Direcao oficial
+
+- O firmware do ESP32-S3 passa a ser runtime de execucao/render com ownership explicito por `device`.
+- `MQTT` vira o plano canonico de sessao: `shadow`, `takeover`, `lock lease` e heartbeat.
+- `WS/UDP` continuam no data plane visual, mas subordinados ao `ownerEpoch` atual.
+- Quando o owner expira, o fallback oficial do painel passa a ser `relogio + cliente desconectado`.
+
+## Baseline atual / transicao
+
+- `StreamFrameV2` continua aceito como wire legado.
+- `StreamFrameV3` entra como wire owner-bound para clientes session-aware.
+- O firmware continua aceitando o caminho legado enquanto nao houver owner ativo, para nao quebrar a transicao.
+
+## Ownership, shadow e lock lease
+
+- `mica_session.h/.cpp` concentra o estado efemero de sessao do device.
+- O topico retained `.../shadow` passa a ser a fonte oficial de ownership para observacao multi-cliente.
+- `clientId`, `ownerEpoch` e `lockToken` entram no envelope de comandos session-aware.
+- `session_heartbeat`, `session_lock_acquire` e `session_lock_release` passam a ser comandos canonicos de sessao.
+- Quando ha owner ativo, o firmware passa a exigir `ownerEpoch` valido no stream owner-bound e descarta payload stale.
+- Quando o owner expira, o fallback do HUB75 passa a usar `ClientDisconnected` com relogio local e mensagem de desconexao.
+
 ## Perfil oficial
 
 1. O unico firmware ativo da base e `dma_exp`.
@@ -62,11 +84,12 @@
 10. `mica_visual_udp.h/.cpp` para receiver UDP LAN opcional de `Bins128`
 11. `mica_ota.h/.cpp` para OTA context, download e progress bridge
 12. `mica_panels.h/.cpp` para panels batch: download, validacao e playback
-13. `mica_commands.h/.cpp` para parser de comandos tracked
-14. `mica_provisioning.h/.cpp` para serial provisioning, WiFiManager e pairing
-15. `firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py` para preservar o override de payload WS no build oficial
-16. `firmware/esp32s3-devkitc1/scripts/patch_hub75_bulk_rgb565.py` para expor o writer bulk RGB565 na dependencia HUB75 pinada
-17. `scripts/build-precompiled-firmware.ps1` para gerar `BIN + manifesto` embarcados no app
+13. `mica_commands.h/.cpp` para parser de comandos tracked e gate central de ownership
+14. `mica_session.h/.cpp` para shadow retained, leases, owner epoch e lock de sessao
+15. `mica_provisioning.h/.cpp` para serial provisioning, WiFiManager e pairing
+16. `firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py` para preservar o override de payload WS no build oficial
+17. `firmware/esp32s3-devkitc1/scripts/patch_hub75_bulk_rgb565.py` para expor o writer bulk RGB565 na dependencia HUB75 pinada
+18. `scripts/build-precompiled-firmware.ps1` para gerar `BIN + manifesto` embarcados no app
 
 ## Atualizacao 2026-04 - Rollback para AP-first estavel
 

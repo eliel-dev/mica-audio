@@ -32,6 +32,7 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<IEmbeddedDeviceServerClientRuntime>());
         Assert.NotNull(provider.GetService<IDeviceServerClientRuntime>());
         Assert.NotNull(provider.GetService<IDeviceServerHost>());
+        Assert.NotNull(provider.GetService<IDeviceClientSessionManager>());
         Assert.NotNull(provider.GetService<IPanelsBatchStore>());
         Assert.NotNull(provider.GetService<IDevicePairingStore>());
         Assert.NotNull(provider.GetService<ICommandStateStore>());
@@ -96,10 +97,12 @@ public sealed class WinUiBootstrapSmokeTests
     {
         var constructor = typeof(PanelsPlaybackService)
             .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-            .Single(ctor => ctor.GetParameters().Length == 6);
+            .Single(ctor => ctor.GetParameters().Length == 7);
 
         Assert.Equal(typeof(IDeviceServerClient), constructor.GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IDeviceFrameTransport), constructor.GetParameters()[1].ParameterType);
+        Assert.Equal(typeof(IDeviceClientSessionManager), constructor.GetParameters()[6].ParameterType);
+        Assert.True(constructor.GetParameters()[6].HasDefaultValue);
     }
 
     [Fact]

@@ -131,6 +131,15 @@ public sealed partial class EmbeddedDeviceServerClient : IDeviceServerClient, IE
         CancellationToken cancellationToken)
         => serverHost.SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
 
+    public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+        => serverHost.SendCommandTrackedAsync(deviceId, commandType, parameters, sessionContext, timeout, cancellationToken);
+
     public bool RemoveDevice(string deviceId) => serverHost.RemoveDevice(deviceId);
 
     public Task<bool> RemoveDeviceAsync(string deviceId, CancellationToken cancellationToken = default)

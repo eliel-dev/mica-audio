@@ -21,6 +21,9 @@ internal static class DeviceMqttTopics
     public static string Logs(string rootTopic, string deviceId)
         => $"{rootTopic}/{deviceId}/logs";
 
+    public static string Shadow(string rootTopic, string deviceId)
+        => $"{rootTopic}/{deviceId}/shadow";
+
     public static bool TryParse(string rootTopic, string topic, out DeviceMqttTopicDescriptor descriptor)
     {
         descriptor = default;
@@ -52,6 +55,7 @@ internal static class DeviceMqttTopics
             "presence" => DeviceMqttChannel.Presence,
             "stats" => DeviceMqttChannel.Stats,
             "logs" => DeviceMqttChannel.Logs,
+            "shadow" => DeviceMqttChannel.Shadow,
             _ => DeviceMqttChannel.Unknown,
         };
 
@@ -76,4 +80,5 @@ internal enum DeviceMqttChannel
     Presence = 4,
     Stats = 5,
     Logs = 6,
+    Shadow = 7,
 }

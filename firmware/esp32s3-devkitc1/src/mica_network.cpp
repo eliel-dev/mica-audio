@@ -1,5 +1,9 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---rollback-para-ap-first-estavel
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
+// DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#shadow-retained-de-sessao
+// DOCS: docs/wiki/modules/device-server-protocol.md#ownership-shadow-e-lock-lease
+// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
@@ -13,6 +17,7 @@
 #include "mica_globals.h"
 #include "mica_ota.h"
 #include "mica_panels.h"
+#include "mica_session.h"
 #include "mica_visual_udp.h"
 
 #include "mica_commands.h"
@@ -757,6 +762,23 @@ void sendTelemetry(bool force) {
   telemetry["visualUdpSupported"] = true;
   telemetry["visualUdpPort"] = kVisualUdpPort;
   telemetry["visualUdpMode"] = "bins128";
+  telemetry["sessionMode"] = clientSessionModeName(gSessionShadowState.mode);
+  if (hasActiveClientOwner(now)) {
+    telemetry["sessionActiveClientId"] = gSessionShadowState.activeClientId;
+    telemetry["sessionActiveOwnerEpoch"] = gSessionShadowState.activeOwnerEpoch;
+    telemetry["sessionOwnerLeaseRemainingMs"] =
+        static_cast<uint32_t>(gSessionShadowState.activeOwnerExpiresAtMs - now);
+  }
+  const bool sessionLockHeld = gSessionShadowState.lock.held
+      && gSessionShadowState.lock.expiresAtMs > now;
+  telemetry["sessionLockHeld"] = sessionLockHeld;
+  if (sessionLockHeld) {
+    telemetry["sessionLockClientId"] = gSessionShadowState.lock.clientId;
+    telemetry["sessionLockReason"] = gSessionShadowState.lock.reason;
+    telemetry["sessionLockLeaseRemainingMs"] =
+        static_cast<uint32_t>(gSessionShadowState.lock.expiresAtMs - now);
+  }
+  telemetry["sessionFallbackState"] = clientSessionFallbackStateName();
   telemetry["resetReason"] = resetReasonCodeToString(gResetReasonCode);
   telemetry["controlQueueDepth"] = currentControlQueueDepth();
   telemetry["controlWorkerState"] = controlWorkerStateToTelemetry(gControlWorkerState);
@@ -792,7 +814,10 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
     return false;
   }
 
-  if (payload[0] != kStreamVersion) {
+  const uint8_t streamVersion = payload[0];
+  const bool legacyStream = streamVersion == kStreamVersion;
+  const bool ownedStream = streamVersion == kStreamVersionOwned;
+  if (!legacyStream && !ownedStream) {
     registerInvalidStreamFrame("version_invalid");
     return false;
   }
@@ -806,9 +831,24 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
                     (static_cast<uint32_t>(payload[5]) << 24);
   }
 
+  uint32_t ownerEpoch = 0;
+  const bool hasOwnerEpoch = ownedStream && len >= 10;
+  if (hasOwnerEpoch) {
+    ownerEpoch = static_cast<uint32_t>(payload[6]) |
+                 (static_cast<uint32_t>(payload[7]) << 8) |
+                 (static_cast<uint32_t>(payload[8]) << 16) |
+                 (static_cast<uint32_t>(payload[9]) << 24);
+  }
+
+  if (!shouldAcceptOwnedStreamFrame(ownerEpoch, hasOwnerEpoch, millis())) {
+    registerInvalidStreamFrame(hasOwnerEpoch ? "owner_epoch_stale" : "owner_epoch_missing");
+    return false;
+  }
+
   const uint8_t messageType = payload[1];
   if (messageType == kStreamBinsMessageType) {
-    if (len < kStreamFrameSize) {
+    const size_t expectedSize = ownedStream ? kStreamFrameV3Size : kStreamFrameSize;
+    if (len < expectedSize) {
       registerInvalidStreamFrame("bins_short");
       return false;
     }
@@ -827,23 +867,31 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
       gHasStreamLastSequence = true;
     }
 
+    const uint8_t levelOffset = ownedStream ? 18u : 14u;
+    const uint8_t binsOffset = ownedStream ? 19u : 15u;
+    const uint8_t brightnessOffset = ownedStream ? 147u : 143u;
+    const uint8_t flagsOffset = ownedStream ? 148u : 144u;
     const uint8_t nextBinsIndex = static_cast<uint8_t>(gBinsActiveIndex ^ 1u);
     portENTER_CRITICAL(&gStreamBufferMux);
-    gLevel = payload[14];
-    memcpy(gBinsBuffers[nextBinsIndex], payload + 15, kBinsCount);
+    gLevel = payload[levelOffset];
+    memcpy(gBinsBuffers[nextBinsIndex], payload + binsOffset, kBinsCount);
     gBinsActiveIndex = nextBinsIndex;
-    gStreamBrightness = payload[143];
-    gBinsFlags = payload[144];
+    gStreamBrightness = payload[brightnessOffset];
+    gBinsFlags = payload[flagsOffset];
     portEXIT_CRITICAL(&gStreamBufferMux);
     gFrameModeActive = false;
     gLastFrameMs = millis();
     gMatrixSignalTimedOut = false;
+    if (ownedStream) {
+      noteAcceptedOwnedStreamFrame(ownerEpoch, ClientSessionMode::Visualizer, gLastFrameMs);
+    }
     markMatrixFrameDirty(true);
     return true;
   }
 
   if (messageType == kStreamFrame128x64Rgb565MessageType) {
-    if (len < kStreamFrame128x64Rgb565Size) {
+    const size_t expectedSize = ownedStream ? kStreamFrameV3Frame128x64Rgb565Size : kStreamFrame128x64Rgb565Size;
+    if (len < expectedSize) {
       registerInvalidStreamFrame("frame_short");
       return false;
     }
@@ -864,9 +912,11 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
 
     const uint8_t nextFrameIndex = static_cast<uint8_t>(gFrameRgb565ActiveIndex ^ 1u);
     uint16_t* frameBackBuffer = gFrameRgb565Buffers[nextFrameIndex];
-    gStreamBrightness = payload[14];
+    const uint8_t brightnessOffset = ownedStream ? 18u : 14u;
+    const uint8_t frameOffset = ownedStream ? 19u : 15u;
+    gStreamBrightness = payload[brightnessOffset];
     // Payload is already little-endian and ESP32 is little-endian, so we can bulk copy.
-    memcpy(frameBackBuffer, payload + 15, static_cast<size_t>(kMatrixPixelCount) * sizeof(uint16_t));
+    memcpy(frameBackBuffer, payload + frameOffset, static_cast<size_t>(kMatrixPixelCount) * sizeof(uint16_t));
 
     portENTER_CRITICAL(&gStreamBufferMux);
     gFrameRgb565ActiveIndex = nextFrameIndex;
@@ -875,6 +925,9 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
     gFrameModeActive = true;
     gLastFrameMs = millis();
     gMatrixSignalTimedOut = false;
+    if (ownedStream) {
+      noteAcceptedOwnedStreamFrame(ownerEpoch, ClientSessionMode::Visualizer, gLastFrameMs);
+    }
     markMatrixFrameDirty(true);
     return true;
   }
@@ -993,6 +1046,7 @@ void connectMqtt() {
   (void)publishPresence("online");
   (void)publishDeviceLog("info", "mqtt", "connected", "Controle MQTT conectado.", false);
   (void)publishDeviceStats();
+  (void)publishClientSessionShadow(millis(), true);
   sendTelemetry(true);
   publishPendingOtaReportIfNeeded();
 }

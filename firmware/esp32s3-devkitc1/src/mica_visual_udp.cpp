@@ -1,5 +1,7 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---visual-udp-lan-opt-in
+// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
 // DOCS: docs/wiki/reference/ws-protocol-v2.md#udp-visual-v1
+// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 
 #include "mica_visual_udp.h"
@@ -96,13 +98,16 @@ bool validateUdpDatagram(const uint8_t* datagram, size_t length, uint32_t& seque
 
   payloadLength = readLe16(datagram + 10);
   const size_t expectedLength = kVisualUdpFrameHeaderSize + payloadLength + kVisualUdpFrameTagSize;
-  if (payloadLength != kStreamFrameSize || expectedLength != length) {
+  const bool legacyBinsPayload = payloadLength == kStreamFrameSize;
+  const bool ownedBinsPayload = payloadLength == kStreamFrameV3Size;
+  if ((!legacyBinsPayload && !ownedBinsPayload) || expectedLength != length) {
     registerInvalidStreamFrame("udp_payload_length_invalid");
     return false;
   }
 
   payload = datagram + kVisualUdpFrameHeaderSize;
-  if (payload[0] != kStreamVersion || payload[1] != kStreamBinsMessageType) {
+  const bool supportedVersion = payload[0] == kStreamVersion || payload[0] == kStreamVersionOwned;
+  if (!supportedVersion || payload[1] != kStreamBinsMessageType) {
     registerInvalidStreamFrame("udp_payload_type_invalid");
     return false;
   }

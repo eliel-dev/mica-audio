@@ -11,4 +11,7 @@ public enum DeviceCommandType
     SetBrightness = 8,
     UpdateFirmware = 9,
     QueuePanelsBatch = 10,
+    SessionHeartbeat = 11,
+    SessionLockAcquire = 12,
+    SessionLockRelease = 13,
 }
