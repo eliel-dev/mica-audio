@@ -47,6 +47,7 @@ Pontos principais do cutover HUB75 128x64:
 - [StandalonePanelLibraryStore](../../../src/MicaAudio.Server/StandalonePanelLibraryStore.cs#L1)
 - [StandaloneMediaLibraryStore](../../../src/MicaAudio.Server/StandaloneMediaLibraryStore.cs#L1)
 - [MicaAudio.Server Dockerfile](../../../src/MicaAudio.Server/Dockerfile#L1)
+- [Docker server redeploy](../../../scripts/docker-server-redeploy.ps1#L1)
 - [Render Blueprint](../../../render.yaml#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [DeviceServerHost Admin](../../../src/Device.Server/Hosting/DeviceServerHost.Admin.cs#L1)
@@ -186,7 +187,7 @@ Observacoes ativas:
 
 - `MicaAudio.Server` agora fornece o primeiro host standalone/Docker para smoke local e Render, reaproveitando `DeviceServerHost` sem transformar ainda o WinUI em client remoto.
 - O standalone/Docker agora separa bind interno de endereco anunciado: `MICA_SERVER__PUBLICHTTPBASEADDRESS` preserva a porta publica HTTP e `MICA_SERVER__PUBLICHOST` anuncia o host MQTT local/legado.
-- Docker local pode publicar `5274/udp` para visual LAN opt-in e `5275/udp` para discovery LAN; Render/cloud permanecem em HTTP/WSS.
+- Docker local usa `scripts/docker-server-redeploy.ps1` como caminho oficial para rebuild/redeploy, publicando `5274/udp` para visual LAN opt-in e `5275/udp` para discovery LAN; Render/cloud permanecem em HTTP/WSS.
 - O server standalone persiste `devices.json`, `panels/panels.json` e blobs/index de midia em `MICA_SERVER__STORAGEROOT`.
 - O WinUI agora tambem possui modo `Remote`, opt-in em `Configuracoes`, que usa `Device.Client.Remote` contra `MicaAudio.Server` com token admin DPAPI; `Embedded` permanece default.
 

@@ -22,26 +22,14 @@
   - `MICA_SERVER__MAXMEDIAUPLOADBYTES` define o limite de upload de midia da biblioteca (`20971520` por default);
   - `MICA_SERVER__STORAGEROOT` define onde o standalone grava `devices.json`, `panels/panels.json` e `media/*`.
 - `src/MicaAudio.Server/Dockerfile` usa build multi-stage com imagens oficiais .NET 10 e `render.yaml` define Web Service Docker com health check em `/api/v1/health`.
-- Docker local com porta externa diferente do bind interno deve publicar HTTP, MQTT e discovery UDP e anunciar o IP LAN do PC:
+- Docker local em workspace/dev deve usar o helper oficial, que rebuilda a imagem, para/remove apenas o container `mica-audio-server`, sobe a nova versao com volume persistente e anuncia automaticamente o IP LAN do PC:
 
 ```powershell
-docker run --rm --name mica-audio-server-dev `
-  -e PORT=8080 `
-  -e MICA_SERVER__ADMINTOKEN=dev-token `
-  -e MICA_SERVER__RESTRICTTOPRIVATENETWORKS=false `
-  -e MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=true `
-  -e MICA_SERVER__DISCOVERYUDPPORT=5275 `
-  -e MICA_SERVER__MAXMEDIAUPLOADBYTES=20971520 `
-  -e MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true `
-  -e MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272 `
-  -e MICA_SERVER__PUBLICHOST=<IP_DO_PC> `
-  -p 5272:8080 `
-  -p 5273:5273 `
-  -p 5274:5274/udp `
-  -p 5275:5275/udp `
-  mica-audio-server:remote-dev
+powershell -ExecutionPolicy Bypass -File .\scripts\docker-server-redeploy.ps1
 ```
 
+- Defaults do helper: imagem `micaaudio-server:dev`, container `mica-audio-server`, HTTP externo `5272`, MQTT `5273`, UDP visual `5274/udp`, UDP discovery `5275/udp`, volume Docker `mica-audio-server-data` montado em `/data` e `MICA_SERVER__STORAGEROOT=/data`.
+- Para forcar um IP especifico, usar `-PublicHost <IP_DO_PC>`. Para acompanhar logs apos subir, usar `-FollowLogs`. Para ver os comandos sem executar, usar `-DryRun`.
 - No fluxo normal, o firmware precisa apenas de Wi-Fi; `Servidor` no portal AP fica opcional como fallback tecnico. Se usado manualmente, informe `http://<IP_DO_PC>:5272`; nao use `localhost` nem `127.0.0.1` para um ESP fisico.
 - UDP visual e opcional/LAN-only; sem `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` ou sem `-p 5274:5274/udp`, o caminho WS segue como fallback.
 - UDP discovery e LAN-only; sem `MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=true` ou sem `-p 5275:5275/udp`, o firmware nao aparece automaticamente no client e o pareamento legado fica como compatibilidade.
@@ -102,6 +90,7 @@ O catalogo ativo nao expoe mais Matrix Portal S3, painel `64x32` nem o perfil `s
 - [MicaAudioServerOptions](../../../src/MicaAudio.Server/MicaAudioServerOptions.cs#L1)
 - [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1)
 - [MicaAudio.Server Dockerfile](../../../src/MicaAudio.Server/Dockerfile#L1)
+- [Docker server redeploy](../../../scripts/docker-server-redeploy.ps1#L1)
 - [Render Blueprint](../../../render.yaml#L1)
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
 - [AppData Firmware](../../../src/App.WinUI/AppData/Firmware)
