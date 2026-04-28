@@ -119,7 +119,7 @@ Tamanho total: `16404` bytes.
 
 ## UDP Visual v1
 
-`VisualUdpFrameV1` e um envelope LAN-only opcional para transportar `StreamFrameV2` tipo `1` (`Bins128`) sem passar pelo WebSocket do device. O caminho WS continua sendo o fallback oficial e o unico caminho para `Frame128x64 RGB565` nesta entrega.
+`VisualUdpFrameV1` e um envelope LAN-only para transportar `StreamFrameV2`/`StreamFrameV3` tipo `1` (`Bins128`) sem passar pelo WebSocket do device. No modo `Remote`, o caminho oficial e WinUI -> ESP direto pela LAN usando os endpoints descobertos em `/api/v1/admin/visual-endpoints`. O caminho WS continua sendo fallback e o unico caminho para `Frame128x64 RGB565` nesta entrega.
 
 Layout do datagrama:
 
@@ -133,10 +133,11 @@ Layout do datagrama:
 
 Politicas travadas:
 
-- UDP so e usado quando o server esta com `PreferLanUdpVisualTransport=true`, o device esta online no control plane, possui `LastKnownIp` LAN e anunciou `visualUdpSupported=true`.
+- UDP direto do WinUI so e usado quando o endpoint admin informa device online, `LanIpAddress` valido, token do device, `visualUdpPort` e `visualUdpMode = bins128`.
+- UDP server->ESP continua opt-in por `PreferLanUdpVisualTransport=true`, para diagnostico local; no fluxo Docker padrao ele permanece desligado.
 - O firmware aceita apenas `visualUdpMode = bins128` e descarta payload desconhecido, HMAC invalido ou sequencia antiga.
 - `Frame128x64 RGB565` permanece em WS/WebP batch; nao deve ser enviado como datagrama UDP bruto por risco de fragmentacao IP.
-- Render/cloud continua HTTPS/WSS; UDP e apenas otimizacao local descartavel para audio visual.
+- Render/cloud continua HTTPS/WSS; UDP direto e apenas para PC WinUI e ESP na mesma LAN.
 
 ## Referencias
 

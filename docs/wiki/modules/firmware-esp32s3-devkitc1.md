@@ -12,7 +12,7 @@
 1. sobe Wi-Fi salvo ou abre portal AP quando ainda nao ha Wi-Fi configurado
 2. descobre o `MicaAudio.Server` por UDP LAN e registra/reutiliza o device sem codigo de pareamento
 3. conecta HTTP/WS/MQTT usando `deviceId`, token e endpoints recebidos do discovery
-4. recebe `StreamFrameV2` tipo `1` (`bins128`) por WS ou UDP LAN opt-in, ou tipo `2` (`frame 128x64 RGB565`) por WS
+4. recebe `StreamFrameV2` tipo `1` (`bins128`) por WS ou UDP LAN direto, ou tipo `2` (`frame 128x64 RGB565`) por WS
 5. renderiza `drawBars`, `drawFrame128x64` ou o fallback local de conectividade
 6. conecta o control plane MQTT para `presence`, `status`, `stats`, `logs` e `commands`
 7. reporta `boardModel = esp32s3_devkitc1` e `panelType = hub75_p2_5_128x64_smd2121_scan32`
@@ -34,8 +34,10 @@
 
 - O portal AP fica responsavel por Wi-Fi, nome do dispositivo e campo `Servidor` opcional apenas para fallback tecnico.
 - O caminho normal nao pede mais codigo de pareamento: depois que o Wi-Fi conecta, o firmware envia broadcast UDP `mica.discovery.v1` na porta `5275`.
-- O payload discovery inclui `deviceMac`, `deviceName`, `firmwareVersion`, `boardModel`, `panelType` e `profile`.
+- O payload discovery inclui `deviceMac`, `deviceIp`, `deviceName`, `firmwareVersion`, `boardModel`, `panelType` e `profile`.
 - A resposta `MicaDiscoveryResponseV1` persiste `deviceId`, `token`, `httpBase`, `mqttHost`, `mqttPort`, `mqttRootTopic`, `wsPath` e `visualUdpPort` em `Preferences`.
+- Reflash com NVS preservada continua usando `deviceId/token`; reflash com NVS apagada redescobre por `deviceMac` e recebe o mesmo registro/token do servidor.
+- O pareamento legado tambem envia `deviceMac`, e a telemetria MQTT envia `deviceMac` + `ipAddress` para backfill de registros antigos e atualizacao do `LanIpAddress`.
 - Com Wi-Fi salvo, ausencia de `deviceId/token/host` nao abre AP automaticamente; o device permanece vivo e tenta discovery com backoff.
 - O endpoint `/api/v1/pair` e o parser de pair code continuam no firmware apenas como compatibilidade tecnica.
 - `processNetworkPoll()` executa discovery, MQTT e WS de forma cooperativa; chamadas HTTP/MQTT receberam timeouts explicitos e pontos de `feedTaskWatchdog()` para evitar que `loopTask` ultrapasse o budget do TWDT.
@@ -476,6 +478,7 @@
 - `mica_visual_udp.cpp` abre um socket UDP nao bloqueante via BSD/lwIP somente quando o Wi-Fi esta conectado; ao cair Wi-Fi, o socket e fechado.
 - O receiver valida envelope `VisualUdpFrameV1` (`MICA`, versao `1`, tamanho, sequencia e HMAC-SHA256 truncado pelo token do device).
 - Somente `StreamFrameV2` tipo `1` (`Bins128`) e aceito por UDP; `Frame128x64 RGB565` continua no WebSocket para evitar fragmentacao.
+- No modo `Remote`, o emissor normal do UDP visual e o WinUI na mesma LAN, usando endpoint e token autorizados pelo servidor; o Docker nao precisa repassar esses frames no caminho padrao.
 - Pacotes invalidos incrementam o contador existente de frames invalidos e nao alteram o frame atual.
 - O WebSocket segue como fallback e tambem cancela playback WebP quando um stream binario valido chega.
 - O pacing do playback WebP agora usa deltas entre timestamps depois de apresentar o frame, evitando acelerar frames seguintes quando o primeiro decode for lento.
@@ -565,9 +568,9 @@
 
 - `kFirmwareVersion` agora usa macro `MICA_FIRMWARE_VERSION`.
 - Fallback estatico: `src/firmware_version.h`.
-- Build precompilado gera `src/firmware_version.auto.h` com carimbo `UTC timestamp + tag + short commit`.
+- Build precompilado gera `src/firmware_version.auto.h` com carimbo `UTC timestamp + tag/ou untagged + short commit`.
 - Formato oficial do pacote embarcado:
-  - `vyyyy.MM.dd-HHmmssZ-<tag>-<sha>`
+  - `vyyyy.MM.dd-HHmmssZ-<tag-or-untagged>-<sha>`
 - O objetivo do timestamp e diferenciar duas geracoes do mesmo commit no mesmo dia sem criar campo extra de release.
 - O arquivo auto-gerado e temporario (limpo ao final do script de build).
 - O dashboard e o dialogo de update exibem esse valor como `Ultimo release`.

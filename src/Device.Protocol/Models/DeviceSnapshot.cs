@@ -2,6 +2,7 @@ namespace Device.Protocol.Models;
 
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#persistencia-local
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 public sealed class DeviceSnapshot
 {
     public string DeviceId { get; init; } = string.Empty;
@@ -27,6 +28,8 @@ public sealed class DeviceSnapshot
     public DeviceConfigState ConfigState { get; init; }
 
     public string? LastKnownIp { get; init; }
+
+    public string? LanIpAddress { get; init; }
 
     public int? LastKnownRssi { get; init; }
 
@@ -113,6 +116,8 @@ public sealed class DeviceSnapshot
     public int? VisualUdpPort { get; init; }
 
     public string? VisualUdpMode { get; init; }
+
+    public bool StreamSocketConnected { get; set; }
 
     public string? SessionMode { get; init; }
 

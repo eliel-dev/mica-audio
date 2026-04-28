@@ -3,6 +3,7 @@
 # DOCS: docs/wiki/reference/code-index.md
 # DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 # DOCS: docs/handoffs/2026-04-14-versioning-semver-e-ota-stages.md
+# DOCS: docs/handoffs/2026-04-28-docker-visual-ws-and-firmware-versioning.md
 param(
     [switch]$SkipToolInstall,
     [string]$OutputRoot
@@ -222,46 +223,20 @@ function Try-GetGitLine {
 }
 
 function Resolve-FirmwareVersion {
-    # SemVer via git describe: deterministic, same commit = same version.
-    # With tag at HEAD:        "v1.0.0"
-    # Without tag, N ahead:    "v1.0.0-14-gb116aea"
-    # No tags in repo:         "v0.0.0-0-g<sha>"
-    # Dirty working tree:      appends "-dirty" (scoped to firmware/ only)
+    # CalVer timestamp: each official package generation gets a distinct ID.
+    # With tag:                 "v2026.04.28-221500Z-v1.0.0-aac170d"
+    # Without tag:              "v2026.04.28-221500Z-untagged-aac170d"
+    # Dirty working tree:       appends "-dirty" (scoped to firmware/ only)
 
-    $version = $null
-
-    $described = Try-GetGitLine -Args @('-C', $repoRoot, 'describe', '--tags', '--long', '--always')
-    if (-not [string]::IsNullOrWhiteSpace($described)) {
-        # git describe --tags --long outputs: <tag>-<N>-g<sha> (e.g. v1.0.0-0-gb116aea)
-        # --always without tags outputs just the short sha (e.g. b116aea)
-        if ($described -match '^(.+)-(\d+)-g([0-9a-f]+)$') {
-            $tag = $Matches[1]
-            $distance = [int]$Matches[2]
-            $sha = $Matches[3]
-            if ($distance -eq 0) {
-                $version = $tag
-            }
-            else {
-                $normalizedTag = Normalize-VersionToken -Value $tag
-                $version = "$normalizedTag-$distance-g$sha"
-            }
-        }
-        else {
-            # Fallback: no tags at all, git describe --always returns bare sha
-            $version = "v0.0.0-0-g$described"
-        }
+    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy.MM.dd-HHmmss'Z'", [System.Globalization.CultureInfo]::InvariantCulture)
+    $tag = Try-GetGitLine -Args @('-C', $repoRoot, 'describe', '--tags', '--abbrev=0')
+    if ([string]::IsNullOrWhiteSpace($tag)) {
+        $tag = 'untagged'
     }
 
-    if ($null -eq $version) {
-        # Git unavailable or describe failed
-        $sha = Try-GetGitLine -Args @('-C', $repoRoot, 'rev-parse', '--short', 'HEAD')
-        if (-not [string]::IsNullOrWhiteSpace($sha)) {
-            $version = "v0.0.0-0-g$sha"
-        }
-        else {
-            $version = 'v0.0.0-0-gnocommit'
-        }
-    }
+    $normalizedTag = Normalize-VersionToken -Value $tag
+    $sha = Resolve-GitSha
+    $version = "v$timestamp-$normalizedTag-$sha"
 
     # Append -dirty when firmware/ has uncommitted changes (staged or unstaged).
     # Scoped to firmware/ only — C#/docs changes don't affect firmware version.

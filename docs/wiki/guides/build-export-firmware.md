@@ -22,7 +22,7 @@ Este e o caminho oficial de campo quando voce nao vai usar OTA: o app so garante
   - `esp32s3-devkitc1-128x64-dma_exp_merged.bin`
 - O nome sugerido ao usuario no save picker inclui a versao do manifesto oficial:
   - formato: `<base>_<firmwareVersion>.bin`
-  - exemplo: `esp32s3-devkitc1-128x64-dma_exp_merged_v0.0.0-8-g4f86ce0-dirty.bin`
+  - exemplo: `esp32s3-devkitc1-128x64-dma_exp_merged_v2026.04.28-221500Z-untagged-aac170d-dirty.bin`
 - O rename vale apenas para o arquivo exportado pelo usuario; o pipeline interno de build, manifesto e OTA continua usando o nome interno estavel.
 
 ## Referencias de codigo

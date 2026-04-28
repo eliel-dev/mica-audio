@@ -22,9 +22,11 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 - UDP discovery LAN em `5275/udp` para registrar devices confiaveis sem codigo de pareamento.
 - Broker MQTT embutido para `commands`, `command-events`, `status`, `presence`, `stats` e `logs`.
 - WebSocket `/ws/v1/stream` exclusivamente para stream visual binario legado/de transicao.
-- UDP LAN opt-in para stream visual descartavel `Bins128`, com WS como fallback.
+- Endpoint de descoberta visual LAN para o WinUI remoto enviar `Bins128` direto ao ESP por UDP, com WS admin como fallback.
+- UDP visual server->ESP permanece opt-in/experimental para diagnostico local.
 - Admin API opt-in por token para clients remotos WinUI (`/api/v1/admin/*`).
 - Admin API de biblioteca para paineis e midias persistidos no `StorageRoot`.
+- Admin API de endpoints visuais LAN (`GET /api/v1/admin/visual-endpoints`) para descobrir ESPs online aptos a UDP direto.
 - WebSockets admin para eventos (`/ws/v1/admin/events`) e frames remotos (`/ws/v1/admin/frames`).
 - Dashboard local para `WebView2` via `GET /dashboard` + `WS /ws/device/{deviceId}` com DTO dedicado.
 - Sessao de comandos rastreados com timeout.
@@ -49,8 +51,8 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 ## Fluxo de execucao
 
 1. `DeviceServerHost.StartAsync` sobe web app local.
-2. Dispositivo com Wi-Fi envia broadcast UDP `mica.discovery.v1` com MAC, nome, firmware, board, painel e profile.
-3. Servidor com `TrustedLanAutoRegistration=true` registra ou reutiliza o device por `DeviceMac` e responde por UDP com `deviceId`, `token`, `httpBase`, MQTT, WS e UDP visual.
+2. Dispositivo com Wi-Fi envia broadcast UDP `mica.discovery.v1` com MAC, IP LAN, nome, firmware, board, painel e profile.
+3. Servidor com `TrustedLanAutoRegistration=true` registra ou reutiliza o device por `DeviceMac`, grava `LanIpAddress` a partir do IP declarado pelo firmware e responde por UDP com `deviceId`, `token`, `httpBase`, MQTT, WS e UDP visual.
 4. Device autentica no broker MQTT com `clientId = username = deviceId` e `password = token`.
 5. `presence`, `status` e `stats` MQTT alimentam online/offline e o snapshot operacional do device.
 6. `ISessionStateStore` mantem o estado efemero de presenca e snapshot, sem expor WebSocket/frame stream.
@@ -58,7 +60,8 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 8. `ICommandStateStore` e `TrackedCommandState` correlacionam `command-events` por `commandId`.
 9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
 10. `/api/v1/pair` permanece disponivel apenas como compatibilidade/deprecado para fluxos tecnicos.
-11. `IDeviceFrameTransport.BroadcastFrame/SendFrame` continua existindo como baseline legado/de transicao; a direcao oficial para tempo real e cliente LAN direto no ESP.
+11. `Device.Client.Remote` consulta `/api/v1/admin/visual-endpoints` e envia `Bins128` direto ao `LanIpAddress:visualUdpPort` do ESP via `VisualUdpFrameV1`; `Frame128x64`, GIF/painel e endpoints ausentes caem para `/ws/v1/admin/frames`.
+12. `IDeviceFrameTransport.BroadcastFrame/SendFrame` continua existindo como baseline legado/de transicao; a direcao oficial para tempo real e cliente LAN direto no ESP.
 
 ## Ownership, shadow e lock lease
 
@@ -132,6 +135,7 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
   - `PanelWidgetItem`
   - `MediaAssetInfo`
 - `DeviceRecord.DeviceMac` passou a ser persistido. Re-registro LAN com o mesmo MAC reutiliza o registro/token existente em vez de criar device duplicado.
+- `MicaDiscoveryRequestV1.DeviceIp` passou a carregar o IP LAN real do ESP para preencher `LanIpAddress`, sem depender do IP observado pelo socket HTTP/MQTT quando o servidor roda em Docker.
 - `DeviceServerHost` abre UDP discovery apenas quando `ServerConfig.TrustedLanAutoRegistration=true`.
 - A resposta discovery anuncia os mesmos endpoints operacionais que o firmware precisa no boot: HTTP, MQTT, root topic, WS path e porta UDP visual.
 - `MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=false` bloqueia auto-registro e deixa `/api/v1/pair` como compatibilidade temporaria.
@@ -147,6 +151,20 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
   - `DELETE /api/v1/admin/library/media/{mediaId}`
 - Upload de midia respeita `MaxMediaUploadBytes` (`MICA_SERVER__MAXMEDIAUPLOADBYTES`, default `20971520`) e deduplica blobs por `SHA-256`.
 
+## Atualizacao 2026-04 - Direct LAN Visual + Stable Device Identity
+
+- `DeviceMac` virou a identidade primaria de re-registro LAN. Um flash com NVS preservada continua usando `deviceId/token`; um flash limpo com NVS apagada redescobre o servidor por MAC e recebe o mesmo `deviceId/token`.
+- `/api/v1/pair` permanece legado, mas agora tambem aceita `DeviceMac` e reutiliza o registro existente quando o MAC ja esta cadastrado.
+- A telemetria MQTT aceita `deviceMac`; se um registro legado autenticado ainda nao tiver MAC, o servidor faz backfill apenas nesse registro autenticado.
+- Registros antigos offline sem MAC nao sao mesclados automaticamente por IP, porque `LastKnownIp` pode ser NAT/bridge de Docker ou DHCP reutilizado.
+- `DeviceRecord` e `DeviceSnapshot` separam `LanIpAddress` de `LastKnownIp`:
+  - `LanIpAddress` vem de `deviceIp` no discovery ou `ipAddress` na telemetria do firmware;
+  - `LastKnownIp` continua representando o IP observado pela conexao e pode ser `172.17.0.1` em Docker.
+- `GET /api/v1/admin/visual-endpoints` retorna somente devices online no control plane MQTT, UDP-capable, com token e `LanIpAddress` valido.
+- `Device.Client.Remote` usa esse endpoint para enviar `StreamFrameV2/3` tipo `Bins128` direto do WinUI para o ESP via `VisualUdpFrameV1` autenticado por HMAC com o token do device.
+- O fallback por `/ws/v1/admin/frames` continua para `Frame128x64`, payloads grandes, GIF/painel, endpoint ausente ou erro UDP.
+- O caminho Docker local padrao continua com UDP visual server->ESP desligado; o hot path remoto normal nao depende do container repassar frames visuais.
+
 ## Atualizacao 2026-04 - Server Standalone + Docker/Render Smoke
 
 - `MicaAudio.Server` e o primeiro executavel standalone do server e reutiliza `DeviceServerHost` como implementacao real de HTTP/WS/MQTT.
@@ -154,6 +172,10 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 - A porta HTTP continua `5272` por default, mas o env `PORT` tem precedencia para Render; `render.yaml` configura `StorageRoot=/data` e `RestrictToPrivateNetworks=false`.
 - O startup pode gerar um pair code transitorio em log/console (`StartupPairCodeTtlSeconds`, default `0`, valor maior que `0` liga) para compatibilidade tecnica.
 - O fluxo WinUI embedded permanece o default do app desktop; este corte nao cria client remoto nem muda firmware, endpoints, payloads, MQTT topics ou auth.
+
+## Admin API Remota
+
+Esta secao ancora os DTOs e handlers admin remotos. O historico operacional detalhado fica na atualizacao abaixo.
 
 ## Atualizacao 2026-04 - Admin API E WinUI Remote
 
@@ -171,15 +193,19 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
   - `POST /api/v1/admin/library/media`
   - `GET /api/v1/admin/library/media/{mediaId}`
   - `DELETE /api/v1/admin/library/media/{mediaId}`
+  - `GET /api/v1/admin/visual-endpoints`
 - `WS /ws/v1/admin/events` publica JSON de `devices_changed`, `device_log`, `command_progress` e `heartbeat`.
+
+## Admin WebSocket Frames
+
 - `WS /ws/v1/admin/frames` recebe envelope binario admin -> server e chama `BroadcastFrame` ou `SendFrame` sem mudar `StreamFrameV2`.
-- `Device.Client.Remote` implementa `IDeviceServerClient` via HTTP Admin API e `IDeviceFrameTransport` via WebSocket admin, enquanto o firmware e os endpoints de device atuais continuam inalterados.
+- `Device.Client.Remote` implementa `IDeviceServerClient` via HTTP Admin API e `IDeviceFrameTransport` hibrido: UDP direto para `Bins128` com endpoint visual LAN valido, WebSocket admin como fallback.
 
 ## Atualizacao 2026-04 - Visual UDP LAN Opt-In
 
 - `ServerConfig.VisualUdpPort` usa default `5274` e `ServerConfig.PreferLanUdpVisualTransport` liga a preferencia UDP de forma explicita.
 - O firmware anuncia `visualUdpSupported`, `visualUdpPort` e `visualUdpMode` pela telemetria; campos ausentes continuam sendo firmware legado.
-- `DeviceServerHost` tenta UDP apenas quando o device esta online no control plane, possui `LastKnownIp` LAN, tem token valido e anunciou `visualUdpMode = bins128`.
+- `DeviceServerHost` tenta UDP server->ESP apenas quando opt-in esta ligado, o device esta online no control plane, possui `LanIpAddress` LAN, tem token valido e anunciou `visualUdpMode = bins128`.
 - O envelope `VisualUdpFrameV1` usa `magic/version/sequence/payloadLength/payload/tag`, com `tag = HMAC-SHA256` truncado pelo token do device.
 - UDP v1 aceita apenas `StreamFrameV2.Bins128`; `Frame128x64 RGB565` permanece em WS/WebP batch para evitar fragmentacao IP.
 - `DeviceFrameConnection` manteve `DropOldest`, mas a fila visual passou a default `3` para absorver jitter curto sem acumular latencia longa.

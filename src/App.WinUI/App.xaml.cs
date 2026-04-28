@@ -37,6 +37,7 @@ namespace App.WinUI;
 // DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 public partial class App : Application
 {
     private static readonly JsonSerializerOptions StartupJsonOptions = new()
@@ -173,6 +174,7 @@ public partial class App : Application
         services.AddSingleton<ICommandStateStore, InMemoryCommandStateStore>();
         services.AddSingleton<ISessionStateStore, InMemorySessionStateStore>();
         services.AddSingleton<RemoteDeviceServerSecretStore>();
+        services.AddSingleton<RemoteDeviceServerConnectionTester>();
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
             sp.GetService<IDeviceOfficialFirmwareCatalog>(),
@@ -305,7 +307,8 @@ public partial class App : Application
         services.AddTransient<SettingsPage>(sp => new SettingsPage(
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>(),
-            sp.GetRequiredService<RemoteDeviceServerSecretStore>()));
+            sp.GetRequiredService<RemoteDeviceServerSecretStore>(),
+            sp.GetRequiredService<RemoteDeviceServerConnectionTester>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>

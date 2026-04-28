@@ -30,6 +30,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -510,7 +511,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return sessionStateStore.CreateSnapshots(timeProvider.GetUtcNow(), runtimeConfig.DeviceOfflineTimeout);
+            var snapshots = sessionStateStore.CreateSnapshots(timeProvider.GetUtcNow(), runtimeConfig.DeviceOfflineTimeout);
+            foreach (var snapshot in snapshots)
+            {
+                snapshot.StreamSocketConnected = IsFrameSocketOpen(snapshot.DeviceId);
+            }
+
+            return snapshots;
         }
     }
 
@@ -521,6 +528,10 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return sessionStateStore.CreateRecords();
         }
     }
+
+    private bool IsFrameSocketOpen(string deviceId)
+        => frameConnections.TryGetValue(deviceId, out var connection)
+           && connection?.Socket is { State: WebSocketState.Open };
 
     public string GetPublicHttpBaseAddress()
     {
@@ -593,6 +604,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         {
             var now = timeProvider.GetUtcNow();
             var remoteIpValue = remoteIp?.ToString();
+            var lanIpValue = NormalizeOptional(request.DeviceIp) ?? remoteIpValue;
             var existing = sessionStateStore
                 .CreateRecords()
                 .FirstOrDefault(candidate => string.Equals(
@@ -616,7 +628,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                     existingState.Record.ActiveAppId,
                     existingState.Record.ActiveAppName,
                     NormalizeOptional(request.BoardModel),
-                    NormalizeOptional(request.PanelType));
+                    NormalizeOptional(request.PanelType),
+                    lanIpValue);
                 record = existingState.Record;
             }
             else
@@ -638,7 +651,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                     boardModel: NormalizeOptional(request.BoardModel),
                     panelType: NormalizeOptional(request.PanelType),
                     now: now,
-                    deviceMac: deviceMac);
+                    deviceMac: deviceMac,
+                    lanIpAddress: lanIpValue);
 
                 var state = new DeviceSessionState(record, SocketDetachGracePeriod);
                 sessionStateStore.Upsert(state);
@@ -841,7 +855,10 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         address = IPAddress.None;
         port = 0;
 
-        if (string.IsNullOrWhiteSpace(record.LastKnownIp) || !IPAddress.TryParse(record.LastKnownIp, out var parsedAddress))
+        var addressText = string.IsNullOrWhiteSpace(record.LanIpAddress)
+            ? record.LastKnownIp
+            : record.LanIpAddress;
+        if (string.IsNullOrWhiteSpace(addressText) || !IPAddress.TryParse(addressText, out var parsedAddress))
         {
             return false;
         }
@@ -910,28 +927,61 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         DeviceSessionState state;
         lock (gate)
         {
-            if (sessionStateStore.Count >= runtimeConfig.MaxDevices)
-            {
-                return Results.BadRequest(new { error = "max_devices_reached" });
-            }
-
             var now = timeProvider.GetUtcNow();
-            var record = DeviceRecordMutations.CreatePairedRecord(
-                deviceId: $"mp-{Guid.NewGuid():N}",
-                token: WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(24)),
-                name: string.IsNullOrWhiteSpace(req.DeviceName) ? ResolveDefaultDeviceName(req.BoardModel) : req.DeviceName.Trim(),
-                profile: NormalizeFirmwareProfile(req.Profile),
-                firmwareVersion: req.FirmwareVersion,
-                ip: ctx.Connection.RemoteIpAddress?.ToString(),
-                boardModel: NormalizeOptional(req.BoardModel),
-                panelType: NormalizeOptional(req.PanelType),
-                now: now);
+            var deviceMac = NormalizeDeviceMac(req.DeviceMac);
+            var remoteIp = ctx.Connection.RemoteIpAddress?.ToString();
+            state = string.IsNullOrWhiteSpace(deviceMac)
+                ? null!
+                : sessionStateStore
+                    .CreateRecords()
+                    .Where(candidate => string.Equals(
+                        NormalizeDeviceMac(candidate.DeviceMac),
+                        deviceMac,
+                        StringComparison.OrdinalIgnoreCase))
+                    .Select(candidate =>
+                    {
+                        sessionStateStore.TryGetValue(candidate.DeviceId, out var candidateState);
+                        return candidateState;
+                    })
+                    .FirstOrDefault(candidate => candidate is not null)!;
 
-            state = new DeviceSessionState(record, SocketDetachGracePeriod);
-            var replaced = sessionStateStore.Upsert(state);
-            if (replaced is not null)
+            if (state is not null)
             {
-                frameConnections.RemoveAndDispose(record.DeviceId);
+                state.MarkSeen(
+                    now,
+                    remoteIp,
+                    state.Record.LastKnownRssi,
+                    req.FirmwareVersion,
+                    state.Record.ActiveAppId,
+                    state.Record.ActiveAppName,
+                    NormalizeOptional(req.BoardModel),
+                    NormalizeOptional(req.PanelType));
+            }
+            else
+            {
+                if (sessionStateStore.Count >= runtimeConfig.MaxDevices)
+                {
+                    return Results.BadRequest(new { error = "max_devices_reached" });
+                }
+
+                var record = DeviceRecordMutations.CreatePairedRecord(
+                    deviceId: $"mp-{Guid.NewGuid():N}",
+                    token: WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(24)),
+                    name: string.IsNullOrWhiteSpace(req.DeviceName) ? ResolveDefaultDeviceName(req.BoardModel) : req.DeviceName.Trim(),
+                    profile: NormalizeFirmwareProfile(req.Profile),
+                    firmwareVersion: req.FirmwareVersion,
+                    ip: remoteIp,
+                    boardModel: NormalizeOptional(req.BoardModel),
+                    panelType: NormalizeOptional(req.PanelType),
+                    now: now,
+                    deviceMac: deviceMac);
+
+                state = new DeviceSessionState(record, SocketDetachGracePeriod);
+                var replaced = sessionStateStore.Upsert(state);
+                if (replaced is not null)
+                {
+                    frameConnections.RemoveAndDispose(record.DeviceId);
+                }
             }
 
             pairingStore.ResetAttempts(remoteIpKey);

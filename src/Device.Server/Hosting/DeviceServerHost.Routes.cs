@@ -8,6 +8,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 public sealed partial class DeviceServerHost
 {
     private void MapRoutes(WebApplication localApp)
@@ -24,6 +25,7 @@ public sealed partial class DeviceServerHost
 
         var admin = api.MapGroup("/admin");
         admin.MapGet("/devices", (Delegate)HandleAdminDevices);
+        admin.MapGet("/visual-endpoints", (Delegate)HandleAdminVisualEndpoints);
         admin.MapPost("/pairing-codes", (Delegate)HandleAdminCreatePairingCodeAsync);
         admin.MapDelete("/devices/{deviceId}", (Delegate)HandleAdminRemoveDevice);
         admin.MapPost("/devices/{deviceId}/commands/tracked", (Delegate)HandleAdminTrackedCommandAsync);

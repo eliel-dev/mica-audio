@@ -30,12 +30,19 @@ internal static class DeviceServerTestHarness
         }
     }
 
+    public static int GetFreeUdpPort()
+    {
+        using var udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        return ((IPEndPoint)udp.Client.LocalEndPoint!).Port;
+    }
+
     public static async Task<PairDeviceResponse> PairDeviceAsync(
         DeviceServerHost host,
         HttpClient client,
         string deviceName,
         string? boardModel = null,
         string? panelType = null,
+        string? deviceMac = null,
         string? hostHeader = null)
     {
         var pairing = host.CreatePairingCode(TimeSpan.FromMinutes(5));
@@ -47,6 +54,7 @@ internal static class DeviceServerTestHarness
                 DeviceName = deviceName,
                 BoardModel = boardModel,
                 PanelType = panelType,
+                DeviceMac = deviceMac,
             }),
         };
 

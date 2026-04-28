@@ -6,6 +6,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 public sealed class DeviceSessionState
 {
     private readonly TimeSpan detachGracePeriod;
@@ -38,7 +39,8 @@ public sealed class DeviceSessionState
         string? activeAppId = null,
         string? activeAppName = null,
         string? boardModel = null,
-        string? panelType = null)
+        string? panelType = null,
+        string? lanIpAddress = null)
     {
         LastActivityUtc = now;
         Record = DeviceRecordMutations.MarkSeen(
@@ -50,7 +52,8 @@ public sealed class DeviceSessionState
             activeAppId,
             activeAppName,
             boardModel,
-            panelType);
+            panelType,
+            lanIpAddress);
     }
 
     public void MarkAuthenticated(DateTimeOffset now)
@@ -104,6 +107,8 @@ public sealed class DeviceSessionState
         bool? visualUdpSupported = null,
         int? visualUdpPort = null,
         string? visualUdpMode = null,
+        string? deviceMac = null,
+        string? lanIpAddress = null,
         string? sessionMode = null,
         string? sessionActiveClientId = null,
         uint? sessionActiveOwnerEpoch = null,
@@ -161,7 +166,9 @@ public sealed class DeviceSessionState
             animatedWebpBatchSupported,
             visualUdpSupported,
             visualUdpPort,
-            visualUdpMode);
+            visualUdpMode,
+            deviceMac,
+            lanIpAddress);
 
         if (HasSessionTelemetry(
                 sessionMode,

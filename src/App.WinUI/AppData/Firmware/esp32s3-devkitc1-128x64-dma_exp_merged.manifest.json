@@ -1,15 +1,15 @@
 ﻿{
     "schemaVersion":  3,
-    "firmwareVersion":  "v0.0.0-5-g0ffea7d-dirty",
-    "gitSha":  "0ffea7d",
+    "firmwareVersion":  "v2026.04.28-222740Z-untagged-aac170d",
+    "gitSha":  "aac170d",
     "profile":  "dma_exp",
     "boardModel":  "esp32s3_devkitc1",
     "panelType":  "hub75_p2_5_128x64_smd2121_scan32",
     "controlPlane":  "mqtt",
-    "builtAtUtc":  "2026-04-17T19:08:06.9840139Z",
-    "sha256":  "e9a799b5445e171d189ef3c07aad45e8c4c1d7f10ca6f460d04aa4d9af854756",
-    "fileSizeBytes":  1591776,
+    "builtAtUtc":  "2026-04-28T22:28:11.8506063Z",
+    "sha256":  "758f6082711dcc109823507bd910be633ea55ca8ac90f4c1a1590f49d6e0c0b8",
+    "fileSizeBytes":  1628944,
     "otaFileName":  "esp32s3-devkitc1-128x64-dma_exp_ota.bin",
-    "otaSha256":  "7aa4e3adbd861320ed718d4b062ac844d9cf6b5557f9b9ccb71ed292dc93b9b7",
-    "otaFileSizeBytes":  1526240
+    "otaSha256":  "1b814e79100660175163c83de26064bffb231e993d436253328827f987a2aab5",
+    "otaFileSizeBytes":  1563408
 }

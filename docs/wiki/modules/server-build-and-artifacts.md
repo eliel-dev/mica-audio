@@ -16,7 +16,7 @@
   - `MICA_SERVER__PUBLICHTTPBASEADDRESS` define a base HTTP anunciada para firmware/clients quando o bind interno difere da porta publica;
   - `MICA_SERVER__PUBLICHOST` define o host MQTT anunciado para uso local/legado;
   - `MICA_SERVER__VISUALUDPPORT` define a porta UDP LAN anunciada para visual opt-in (`5274` por default);
-  - `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` permite o host preferir UDP LAN para `Bins128` quando o device anunciar suporte;
+  - `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` permite o host preferir UDP LAN para `Bins128` quando o device anunciar suporte; em Docker local fica opt-in por `-PreferVisualUdp`;
   - `MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=true` habilita auto-registro LAN por UDP discovery;
   - `MICA_SERVER__DISCOVERYUDPPORT` define a porta UDP discovery (`5275` por default);
   - `MICA_SERVER__MAXMEDIAUPLOADBYTES` define o limite de upload de midia da biblioteca (`20971520` por default);
@@ -28,10 +28,10 @@
 powershell -ExecutionPolicy Bypass -File .\scripts\docker-server-redeploy.ps1
 ```
 
-- Defaults do helper: imagem `micaaudio-server:dev`, container `mica-audio-server`, HTTP externo `5272`, MQTT `5273`, UDP visual `5274/udp`, UDP discovery `5275/udp`, volume Docker `mica-audio-server-data` montado em `/data` e `MICA_SERVER__STORAGEROOT=/data`.
-- Para forcar um IP especifico, usar `-PublicHost <IP_DO_PC>`. Para acompanhar logs apos subir, usar `-FollowLogs`. Para ver os comandos sem executar, usar `-DryRun`.
+- Defaults do helper: imagem `micaaudio-server:dev`, container `mica-audio-server`, HTTP externo `5272`, MQTT `5273`, transporte visual por WS, UDP discovery `5275/udp`, volume Docker `mica-audio-server-data` montado em `/data` e `MICA_SERVER__STORAGEROOT=/data`.
+- Para forcar um IP especifico, usar `-PublicHost <IP_DO_PC>`. Para acompanhar logs apos subir, usar `-FollowLogs`. Para ver os comandos sem executar, usar `-DryRun`. Para teste fisico especifico de UDP visual, usar `-PreferVisualUdp`, que habilita `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` e publica `5274/udp`.
 - No fluxo normal, o firmware precisa apenas de Wi-Fi; `Servidor` no portal AP fica opcional como fallback tecnico. Se usado manualmente, informe `http://<IP_DO_PC>:5272`; nao use `localhost` nem `127.0.0.1` para um ESP fisico.
-- UDP visual e opcional/LAN-only; sem `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` ou sem `-p 5274:5274/udp`, o caminho WS segue como fallback.
+- UDP visual e opcional/LAN-only; no helper Docker local o caminho WS e o default confiavel, e `5274/udp` so e publicado com `-PreferVisualUdp`.
 - UDP discovery e LAN-only; sem `MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=true` ou sem `-p 5275:5275/udp`, o firmware nao aparece automaticamente no client e o pareamento legado fica como compatibilidade.
 - O smoke Render desta fase valida runtime HTTP/WS publico; operacao cloud completa de firmware e WinUI remoto ficam para fases posteriores.
 
@@ -73,8 +73,8 @@ O catalogo ativo nao expoe mais Matrix Portal S3, painel `64x32` nem o perfil `s
   - `panelType`
   - `profile`
   - `controlPlane`
-- O `firmwareVersion` do pacote oficial agora usa carimbo `UTC timestamp + tag + short commit`:
-  - formato: `vyyyy.MM.dd-HHmmssZ-<tag>-<sha>`
+- O `firmwareVersion` do pacote oficial agora usa carimbo `UTC timestamp + tag/ou untagged + short commit`:
+  - formato: `vyyyy.MM.dd-HHmmssZ-<tag-or-untagged>-<sha>`
   - duas geracoes no mesmo dia passam a produzir IDs distintos.
 - O host local reutiliza esse manifesto para:
   - informar `Ultimo release` no dashboard;

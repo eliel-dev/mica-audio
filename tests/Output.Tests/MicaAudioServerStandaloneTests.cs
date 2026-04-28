@@ -178,6 +178,31 @@ public sealed class MicaAudioServerStandaloneTests
         Assert.Contains("EXPOSE 8080 5273 5274/udp 5275/udp", dockerfile);
     }
 
+    [Fact]
+    public void DockerRedeployScript_ShouldDefaultToWsAndKeepVisualUdpOptIn()
+    {
+        var script = File.ReadAllText(GetRepoPath("scripts", "docker-server-redeploy.ps1"));
+
+        Assert.Contains("[switch]$PreferVisualUdp", script);
+        Assert.Contains("$preferVisualUdpValue = if ($PreferVisualUdp)", script);
+        Assert.Contains("\"MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=$preferVisualUdpValue\"", script);
+        Assert.Contains("Visual transport:", script);
+        Assert.Contains("WS", script);
+        Assert.Contains("-PreferVisualUdp", script);
+        Assert.DoesNotContain("\"MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true\"", script);
+    }
+
+    [Fact]
+    public void FirmwareBuildScript_ShouldUseTimestampVersionWhenRepoHasNoTags()
+    {
+        var script = File.ReadAllText(GetRepoPath("scripts", "build-precompiled-firmware.ps1"));
+
+        Assert.Contains("yyyy.MM.dd-HHmmss'Z'", script);
+        Assert.Contains("untagged", script);
+        Assert.Contains("$version = \"v$timestamp-$normalizedTag-$sha\"", script);
+        Assert.DoesNotContain("v0.0.0-0-g", script);
+    }
+
     [Theory]
     [InlineData("tests", "Integration.Smoke", "Integration.Smoke.csproj")]
     [InlineData("BenchmarkSuite1", "BenchmarkSuite1.csproj")]

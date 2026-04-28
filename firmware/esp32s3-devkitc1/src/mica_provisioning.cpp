@@ -5,6 +5,7 @@
 // DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 
 #include "mica_provisioning.h"
 
@@ -251,6 +252,7 @@ static bool pairWithServer(const String& pairingCode, const String& deviceName, 
   JsonDocument req;
   req["pairingCode"] = pairingCode;
   req["deviceName"] = deviceName;
+  req["deviceMac"] = WiFi.macAddress();
   req["profile"] = kFirmwareProfile;
   req["firmwareVersion"] = kFirmwareVersion;
   req["boardModel"] = kBoardModel;

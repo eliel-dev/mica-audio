@@ -369,6 +369,60 @@ public sealed class DeviceServerHostMqttTests
     }
 
     [Fact]
+    public async Task MqttStatusPublish_ShouldBackfillDeviceMacAndPreserveLanIpFromTelemetry()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "mqtt-mac-backfill");
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            paired.DeviceId,
+            paired.Token);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, paired.DeviceId, "online");
+        await DeviceServerTestHarness.PublishTelemetryAsync(mqttClient, paired.DeviceId, new
+        {
+            deviceId = paired.DeviceId,
+            deviceMac = "AA:BB:CC:DD:EE:33",
+            ipAddress = "192.168.15.60",
+            firmwareVersion = "v2026.04.28-222740Z-untagged-aac170d",
+        });
+        await DeviceServerTestHarness.PublishStatsAsync(mqttClient, paired.DeviceId, new
+        {
+            deviceId = paired.DeviceId,
+            chipModel = "ESP32-S3",
+        });
+
+        var updated = await DeviceServerTestHarness.WaitForConditionAsync(() =>
+        {
+            var snapshot = host.GetDevicesSnapshot().FirstOrDefault(d =>
+                string.Equals(d.DeviceId, paired.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            return snapshot is not null
+                && string.Equals(snapshot.LanIpAddress, "192.168.15.60", StringComparison.Ordinal)
+                && string.Equals(snapshot.ChipModel, "ESP32-S3", StringComparison.Ordinal);
+        }, TimeSpan.FromSeconds(5));
+
+        Assert.True(updated, "Snapshot nao preservou o IP LAN informado pela telemetria.");
+        var record = Assert.Single(host.GetDeviceRecords());
+        Assert.Equal("aa:bb:cc:dd:ee:33", record.DeviceMac);
+        Assert.Equal("192.168.15.60", record.LanIpAddress);
+    }
+
+    [Fact]
     public async Task MqttStatsPublish_ShouldUpdateSnapshotAndPersistRetainedState()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();

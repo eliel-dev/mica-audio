@@ -569,6 +569,8 @@ public sealed partial class DeviceServerHost
             telemetry.VisualUdpSupported,
             telemetry.VisualUdpPort,
             telemetry.VisualUdpMode,
+            telemetry.DeviceMac,
+            telemetry.IpAddress,
             telemetry.SessionMode,
             telemetry.SessionActiveClientId,
             telemetry.SessionActiveOwnerEpoch,

@@ -6,9 +6,12 @@ namespace Device.Protocol.Models;
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 public sealed class DeviceTelemetryMessage
 {
     public string DeviceId { get; init; } = string.Empty;
+
+    public string? DeviceMac { get; init; }
 
     public int? Rssi { get; init; }
 

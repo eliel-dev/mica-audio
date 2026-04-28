@@ -8,6 +8,7 @@
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 
 #include "mica_network.h"
 
@@ -199,6 +200,7 @@ static void sendLanDiscoveryBroadcast(unsigned long now) {
   JsonDocument request;
   request["protocol"] = "mica.discovery.v1";
   request["deviceMac"] = WiFi.macAddress();
+  request["deviceIp"] = WiFi.localIP().toString();
   request["deviceName"] = prefsGetStringOrDefault("name", String(kBoardDisplayName));
   request["firmwareVersion"] = kFirmwareVersion;
   request["boardModel"] = kBoardModel;
@@ -891,6 +893,7 @@ void sendTelemetry(bool force) {
   const uint32_t freeHeapBytes = ESP.getFreeHeap();
 
   telemetry["deviceId"] = gDeviceId;
+  telemetry["deviceMac"] = WiFi.macAddress();
   telemetry["wifiConnected"] = wifiConnected;
   telemetry["wifiState"] = gWifiState;
   telemetry["provisioningPortalActive"] = gProvisioningPortalActive;

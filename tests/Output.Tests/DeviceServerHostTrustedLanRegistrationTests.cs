@@ -28,6 +28,7 @@ public sealed class DeviceServerHostTrustedLanRegistrationTests
         var request = new MicaDiscoveryRequestV1
         {
             DeviceMac = "AA:BB:CC:DD:EE:FF",
+            DeviceIp = "192.168.15.51",
             DeviceName = "Painel bancada",
             FirmwareVersion = "0.7.0-test",
             BoardModel = "esp32s3_devkitc1",
@@ -55,6 +56,57 @@ public sealed class DeviceServerHostTrustedLanRegistrationTests
         Assert.Equal("esp32s3_devkitc1", record.BoardModel);
         Assert.Equal("hub75_128x64", record.PanelType);
         Assert.Equal("192.168.15.51", record.LastKnownIp);
+        Assert.Equal("192.168.15.51", record.LanIpAddress);
+    }
+
+    [Fact]
+    public async Task TrustedLanRegistration_ShouldReuseSameDeviceAfterCleanFlashAndUpdateFirmware()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "192.168.15.10",
+            Port = port,
+            MqttPort = mqttPort,
+            TrustedLanAutoRegistration = true,
+        });
+
+        var first = host.TryRegisterTrustedLanDevice(new MicaDiscoveryRequestV1
+        {
+            DeviceMac = "AA:BB:CC:DD:EE:01",
+            DeviceIp = "192.168.15.51",
+            DeviceName = "Painel bancada",
+            FirmwareVersion = "v2026.04.28-210000Z-untagged-aac170d",
+            BoardModel = "esp32s3_devkitc1",
+            PanelType = "hub75_128x64",
+            Profile = "dma_exp",
+        }, IPAddress.Parse("172.17.0.1"));
+
+        var second = host.TryRegisterTrustedLanDevice(new MicaDiscoveryRequestV1
+        {
+            DeviceMac = "aa-bb-cc-dd-ee-01",
+            DeviceIp = "192.168.15.52",
+            DeviceName = "Painel bancada novo flash",
+            FirmwareVersion = "v2026.04.28-222740Z-untagged-aac170d",
+            BoardModel = "esp32s3_devkitc1",
+            PanelType = "hub75_128x64",
+            Profile = "dma_exp",
+        }, IPAddress.Parse("172.17.0.1"));
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Equal(first!.DeviceId, second!.DeviceId);
+        Assert.Equal(first.Token, second.Token);
+
+        var record = Assert.Single(host.GetDeviceRecords());
+        Assert.Equal(first.DeviceId, record.DeviceId);
+        Assert.Equal("aa:bb:cc:dd:ee:01", record.DeviceMac);
+        Assert.Equal("v2026.04.28-222740Z-untagged-aac170d", record.FirmwareVersion);
+        Assert.Equal("172.17.0.1", record.LastKnownIp);
+        Assert.Equal("192.168.15.52", record.LanIpAddress);
     }
 
     [Fact]

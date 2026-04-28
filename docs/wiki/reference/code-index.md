@@ -29,6 +29,7 @@ Pontos principais do cutover HUB75 128x64:
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [RemoteDeviceServerSecretStore](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerSecretStore.cs#L1)
+- [RemoteDeviceServerConnectionTester](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerConnectionTester.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
@@ -96,6 +97,8 @@ Pontos principais do cutover HUB75 128x64:
 - [DeviceStatsMessage](../../../src/Device.Protocol/Models/DeviceStatsMessage.cs#L1)
 - [DeviceLogMessage](../../../src/Device.Protocol/Models/DeviceLogMessage.cs#L1)
 - [AdminDevicesResponse](../../../src/Device.Protocol/Models/AdminDevicesResponse.cs#L1)
+- [AdminVisualEndpointsResponse](../../../src/Device.Protocol/Models/AdminVisualEndpointsResponse.cs#L1)
+- [DeviceVisualEndpointInfo](../../../src/Device.Protocol/Models/DeviceVisualEndpointInfo.cs#L1)
 - [AdminEventMessage](../../../src/Device.Protocol/Models/AdminEventMessage.cs#L1)
 
 Notas ativas:
@@ -176,7 +179,8 @@ Observacoes ativas:
 - O DeviceServerHost aplica grace curto de detach WS (500ms) e detach por identidade de socket para reduzir flapping em reconexao rapida.
 - O online/offline oficial da UI agora vem do control plane MQTT; WS isolado nao basta mais para marcar device online.
 - O snapshot tambem diferencia `LegacyOnly` para firmware que ainda usa WS-texto/HTTP no control plane.
-- O hot path visual continua em `Esp32S3LedOutput -> IDeviceFrameTransport -> DeviceServerHost.BroadcastFrame/SendFrame`; por default sai por `/ws/v1/stream`, com UDP LAN opt-in para `Bins128` quando o device anuncia capability e `PreferLanUdpVisualTransport=true`.
+- O hot path visual remoto para `Bins128` agora e `WinUI Remote -> /api/v1/admin/visual-endpoints -> UDP direto no ESP`; `Frame128x64`, paineis/GIFs e endpoints ausentes continuam no fallback `/ws/v1/admin/frames`.
+- O hot path visual embedded continua em `Esp32S3LedOutput -> IDeviceFrameTransport -> DeviceServerHost.BroadcastFrame/SendFrame`; por default sai por `/ws/v1/stream`, com UDP server->ESP apenas quando o device anuncia capability e `PreferLanUdpVisualTransport=true`.
 - Os contratos consumidos por clients (`IDeviceServerClient`, `IDeviceFrameTransport`, `PanelsBatchRegistration`) vivem em `Device.Client.Abstractions`; `Device.Server.Abstractions` fica restrito ao host embedded/lifecycle.
 - A implementacao local desses contratos vive em `Device.Client.Embedded`; o WinUI registra `EmbeddedDeviceServerClient` como `IDeviceServerClient` e `IEmbeddedDeviceServerClientRuntime`, mantendo `DeviceServerHost` apenas no composition root.
 - O storage efemero de batches `WebP` vive atras de `IPanelsBatchStore`; o runtime embedded registra `InMemoryPanelsBatchStore` como default, preservando payload em memoria e limite de `4` batches por device.
@@ -187,9 +191,9 @@ Observacoes ativas:
 
 - `MicaAudio.Server` agora fornece o primeiro host standalone/Docker para smoke local e Render, reaproveitando `DeviceServerHost` sem transformar ainda o WinUI em client remoto.
 - O standalone/Docker agora separa bind interno de endereco anunciado: `MICA_SERVER__PUBLICHTTPBASEADDRESS` preserva a porta publica HTTP e `MICA_SERVER__PUBLICHOST` anuncia o host MQTT local/legado.
-- Docker local usa `scripts/docker-server-redeploy.ps1` como caminho oficial para rebuild/redeploy, publicando `5274/udp` para visual LAN opt-in e `5275/udp` para discovery LAN; Render/cloud permanecem em HTTP/WSS.
+- Docker local usa `scripts/docker-server-redeploy.ps1` como caminho oficial para rebuild/redeploy, com visual por WS como default, `5274/udp` apenas com `-PreferVisualUdp` e `5275/udp` para discovery LAN; Render/cloud permanecem em HTTP/WSS.
 - O server standalone persiste `devices.json`, `panels/panels.json` e blobs/index de midia em `MICA_SERVER__STORAGEROOT`.
-- O WinUI agora tambem possui modo `Remote`, opt-in em `Configuracoes`, que usa `Device.Client.Remote` contra `MicaAudio.Server` com token admin DPAPI; `Embedded` permanece default.
+- O WinUI agora tambem possui modo `Remote`, opt-in em `Configuracoes`, que usa `Device.Client.Remote` contra `MicaAudio.Server` com token admin DPAPI, botao `Testar servidor remoto` e descoberta de endpoints visuais LAN; `Embedded` permanece default.
 
 Pontos centrais do pipeline de analise e captura:
 

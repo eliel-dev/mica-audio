@@ -102,6 +102,123 @@ public sealed class DeviceServerHostAdminApiTests
     }
 
     [Fact]
+    public async Task PairingLegacy_ShouldReuseExistingDeviceByMac()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            RestrictToPrivateNetworks = true,
+            AdminToken = AdminToken,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var first = await DeviceServerTestHarness.PairDeviceAsync(
+            host,
+            client,
+            "legacy-pair-first",
+            deviceMac: "AA:BB:CC:DD:EE:22");
+        var second = await DeviceServerTestHarness.PairDeviceAsync(
+            host,
+            client,
+            "legacy-pair-second",
+            deviceMac: "aa-bb-cc-dd-ee-22");
+
+        Assert.Equal(first.DeviceId, second.DeviceId);
+        Assert.Equal(first.Token, second.Token);
+
+        var record = Assert.Single(host.GetDeviceRecords());
+        Assert.Equal("aa:bb:cc:dd:ee:22", record.DeviceMac);
+    }
+
+    [Fact]
+    public async Task AdminVisualEndpoints_ShouldReturnOnlyOnlineUdpCapableDevicesWithLanIp()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+            AdminToken = AdminToken,
+        });
+
+        host.SeedDevices(
+        [
+            new DeviceRecord
+            {
+                DeviceId = "online-udp",
+                Token = "online-token",
+                Name = "Online UDP",
+                LastSeenUtc = DateTimeOffset.UtcNow,
+                LanIpAddress = "192.168.15.51",
+                LastKnownIp = "172.17.0.1",
+                VisualUdpSupported = true,
+                VisualUdpPort = 5274,
+                VisualUdpMode = "bins128",
+                FirmwareVersion = "v2026.04.28-222740Z-untagged-aac170d",
+            },
+            new DeviceRecord
+            {
+                DeviceId = "offline-udp",
+                Token = "offline-token",
+                Name = "Offline UDP",
+                LastSeenUtc = DateTimeOffset.UtcNow,
+                LanIpAddress = "192.168.15.52",
+                VisualUdpSupported = true,
+                VisualUdpPort = 5274,
+                VisualUdpMode = "bins128",
+            },
+            new DeviceRecord
+            {
+                DeviceId = "online-no-lan",
+                Token = "online-no-lan-token",
+                Name = "Online no LAN",
+                LastSeenUtc = DateTimeOffset.UtcNow,
+                LastKnownIp = "172.17.0.1",
+                VisualUdpSupported = true,
+                VisualUdpPort = 5274,
+                VisualUdpMode = "bins128",
+            },
+        ]);
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            "online-udp",
+            "online-token");
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, "online-udp", "online");
+
+        var online = await DeviceServerTestHarness.WaitForConditionAsync(
+            () => DeviceServerTestHarness.GetDeviceStatus(host, "online-udp") == DeviceStatus.Online,
+            TimeSpan.FromSeconds(5));
+        Assert.True(online, "Device seedado nao entrou em online pelo MQTT.");
+
+        using var request = CreateAdminRequest(HttpMethod.Get, "/api/v1/admin/visual-endpoints");
+        using var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<AdminVisualEndpointsResponse>();
+
+        Assert.NotNull(body);
+        var endpoint = Assert.Single(body!.Devices);
+        Assert.Equal("online-udp", endpoint.DeviceId);
+        Assert.Equal("192.168.15.51", endpoint.LanIpAddress);
+        Assert.Equal(5274, endpoint.VisualUdpPort);
+        Assert.Equal("bins128", endpoint.VisualUdpMode);
+        Assert.Equal("online-token", endpoint.DeviceToken);
+        Assert.Equal("v2026.04.28-222740Z-untagged-aac170d", endpoint.FirmwareVersion);
+        Assert.Equal(DeviceControlPlaneState.MqttOnline, endpoint.ControlPlaneState);
+    }
+
+    [Fact]
     public async Task AdminPanelsBatch_ShouldRegisterAndClearBatch()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();

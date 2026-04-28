@@ -8,6 +8,8 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 
 | Campo | Tipo | Semantica |
 | --- | --- | --- |
+| `deviceMac` | `string?` | MAC Wi-Fi do ESP32-S3; usado para backfill seguro de registros legados autenticados sem `DeviceMac` |
+| `ipAddress` | `string?` | IP LAN declarado pelo firmware; alimenta `LanIpAddress` e nao deve ser substituido por IP observado de Docker/bridge |
 | `uptimeSeconds` | `int?` | uptime do firmware em segundos |
 | `loopHealthyPercent` | `int?` | percentual de iteracoes do `loop()` concluidas em ate `25 ms`, calculado em janela fixa de `5 s` |
 | `loopLoadPercent` | `int?` | campo legado de compatibilidade; nao e mais a metrica oficial consumida pelo dashboard HTML |
@@ -75,6 +77,8 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 15. O host so deve preferir UDP quando `visualUdpMode = bins128`; `Frame128x64 RGB565` permanece em WS/WebP batch.
 16. Os campos `session*` sao aditivos e continuam `nullable` para compatibilidade com firmware legado.
 17. `sessionActiveOwnerEpoch` e a referencia oficial para `StreamFrameV3` e qualquer stream direto owner-bound.
+18. `deviceMac` so deve preencher `DeviceMac` quando o registro autenticado ainda nao possui MAC; nao ha merge automatico por IP para registros antigos offline.
+19. `ipAddress` atualiza `LanIpAddress`; `LastKnownIp` continua sendo o IP observado da conexao e pode representar Docker/bridge.
 
 ## Shadow retained de sessao
 

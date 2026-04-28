@@ -6,6 +6,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 internal static class DeviceRecordMutations
 {
     public static DeviceRecord CreatePairedRecord(
@@ -18,7 +19,8 @@ internal static class DeviceRecordMutations
         string? boardModel,
         string? panelType,
         DateTimeOffset now,
-        string? deviceMac = null)
+        string? deviceMac = null,
+        string? lanIpAddress = null)
     {
         return new DeviceRecord
         {
@@ -30,6 +32,7 @@ internal static class DeviceRecordMutations
             CreatedAtUtc = now,
             LastSeenUtc = now,
             LastKnownIp = ip,
+            LanIpAddress = NormalizeOptional(lanIpAddress),
             FirmwareVersion = firmwareVersion,
             BoardModel = boardModel,
             PanelType = panelType,
@@ -46,7 +49,8 @@ internal static class DeviceRecordMutations
         string? activeAppId = null,
         string? activeAppName = null,
         string? boardModel = null,
-        string? panelType = null)
+        string? panelType = null,
+        string? lanIpAddress = null)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -66,6 +70,7 @@ internal static class DeviceRecordMutations
             ConfigState = source.ConfigState,
             FirmwareVersion = string.IsNullOrWhiteSpace(firmwareVersion) ? source.FirmwareVersion : firmwareVersion,
             LastKnownIp = string.IsNullOrWhiteSpace(ip) ? source.LastKnownIp : ip,
+            LanIpAddress = string.IsNullOrWhiteSpace(lanIpAddress) ? source.LanIpAddress : NormalizeOptional(lanIpAddress),
             LastKnownRssi = rssi ?? source.LastKnownRssi,
             UptimeSeconds = source.UptimeSeconds,
             LoopHealthyPercent = source.LoopHealthyPercent,
@@ -141,6 +146,7 @@ internal static class DeviceRecordMutations
             ConfigState = DeviceConfigState.KnownGood,
             FirmwareVersion = source.FirmwareVersion,
             LastKnownIp = source.LastKnownIp,
+            LanIpAddress = source.LanIpAddress,
             LastKnownRssi = source.LastKnownRssi,
             UptimeSeconds = source.UptimeSeconds,
             LoopHealthyPercent = source.LoopHealthyPercent,
@@ -242,7 +248,9 @@ internal static class DeviceRecordMutations
         bool? animatedWebpBatchSupported = null,
         bool? visualUdpSupported = null,
         int? visualUdpPort = null,
-        string? visualUdpMode = null)
+        string? visualUdpMode = null,
+        string? deviceMac = null,
+        string? lanIpAddress = null)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -252,7 +260,7 @@ internal static class DeviceRecordMutations
             Name = source.Name,
             Profile = source.Profile,
             Token = source.Token,
-            DeviceMac = source.DeviceMac,
+            DeviceMac = string.IsNullOrWhiteSpace(source.DeviceMac) ? NormalizeDeviceMac(deviceMac) : source.DeviceMac,
             IsRegistered = true,
             CreatedAtUtc = source.CreatedAtUtc,
             LastSeenUtc = now,
@@ -262,6 +270,7 @@ internal static class DeviceRecordMutations
             ConfigState = source.ConfigState,
             FirmwareVersion = string.IsNullOrWhiteSpace(firmwareVersion) ? source.FirmwareVersion : firmwareVersion,
             LastKnownIp = string.IsNullOrWhiteSpace(ip) ? source.LastKnownIp : ip,
+            LanIpAddress = string.IsNullOrWhiteSpace(lanIpAddress) ? source.LanIpAddress : NormalizeOptional(lanIpAddress),
             LastKnownRssi = rssi ?? source.LastKnownRssi,
             UptimeSeconds = uptimeSeconds,
             LoopHealthyPercent = loopHealthyPercent,
@@ -350,6 +359,7 @@ internal static class DeviceRecordMutations
             ConfigState = source.ConfigState,
             FirmwareVersion = source.FirmwareVersion,
             LastKnownIp = string.IsNullOrWhiteSpace(ip) ? source.LastKnownIp : ip,
+            LanIpAddress = source.LanIpAddress,
             LastKnownRssi = source.LastKnownRssi,
             UptimeSeconds = source.UptimeSeconds,
             LoopHealthyPercent = source.LoopHealthyPercent,
@@ -427,6 +437,7 @@ internal static class DeviceRecordMutations
             LastAuthUtc = source.LastAuthUtc,
             ConfigState = source.ConfigState,
             LastKnownIp = source.LastKnownIp,
+            LanIpAddress = source.LanIpAddress,
             LastKnownRssi = source.LastKnownRssi,
             UptimeSeconds = source.UptimeSeconds,
             LoopHealthyPercent = source.LoopHealthyPercent,
@@ -502,5 +513,5 @@ internal static class DeviceRecordMutations
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string? NormalizeDeviceMac(string? value)
-        => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim().Replace('-', ':').ToLowerInvariant();
 }

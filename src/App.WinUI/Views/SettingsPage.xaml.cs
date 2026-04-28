@@ -10,11 +10,13 @@ namespace App.WinUI.Views;
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
 // DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
     private readonly RemoteDeviceServerSecretStore remoteSecretStore;
+    private readonly RemoteDeviceServerConnectionTester remoteConnectionTester;
     private AppSettings currentSettings = new();
     private bool suppressMicaBackdropChanged;
     private ToggleSwitch micaBackdropToggle = null!;
@@ -29,11 +31,13 @@ public sealed partial class SettingsPage : Page
     internal SettingsPage(
         SettingsRepository settingsRepository,
         AppSettingsDomainService settingsDomainService,
-        RemoteDeviceServerSecretStore remoteSecretStore)
+        RemoteDeviceServerSecretStore remoteSecretStore,
+        RemoteDeviceServerConnectionTester remoteConnectionTester)
     {
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
         this.remoteSecretStore = remoteSecretStore;
+        this.remoteConnectionTester = remoteConnectionTester;
 
         InitializeComponent();
         Content = BuildLayout();
@@ -150,6 +154,23 @@ public sealed partial class SettingsPage : Page
             remoteServerBaseAddressBox.Text = previousSettings.RemoteServerBaseAddress;
             deviceServerStatusText.Text = "Nao foi possivel salvar as preferencias do servidor.";
             App.ReportError("SettingsPage.SaveDeviceServerSettings failed", ex);
+        }
+    }
+
+    private async void OnTestRemoteServerClicked(object sender, RoutedEventArgs e)
+    {
+        deviceServerStatusText.Text = "Testando servidor remoto...";
+        try
+        {
+            var result = await remoteConnectionTester.TestAsync(
+                remoteServerBaseAddressBox.Text,
+                remoteAdminTokenBox.Password);
+            deviceServerStatusText.Text = result.Message;
+        }
+        catch (Exception ex)
+        {
+            deviceServerStatusText.Text = "Nao foi possivel testar o servidor remoto.";
+            App.ReportError("SettingsPage.TestRemoteServer failed", ex);
         }
     }
 
@@ -320,6 +341,23 @@ public sealed partial class SettingsPage : Page
         };
         saveButton.Click += OnSaveDeviceServerSettingsClicked;
 
+        var testButton = new Button
+        {
+            Content = "Testar servidor remoto",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Style = Application.Current.Resources["AppChromeButtonStyle"] as Style,
+        };
+        testButton.Click += OnTestRemoteServerClicked;
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        actions.Children.Add(saveButton);
+        actions.Children.Add(testButton);
+
         deviceServerStatusText = new TextBlock
         {
             Opacity = 0.72,
@@ -333,7 +371,7 @@ public sealed partial class SettingsPage : Page
             deviceServerModeCombo,
             remoteServerBaseAddressBox,
             remoteAdminTokenBox,
-            saveButton,
+            actions,
             deviceServerStatusText);
     }
 

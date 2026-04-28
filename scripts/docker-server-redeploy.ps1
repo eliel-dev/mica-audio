@@ -1,5 +1,6 @@
 # DOCS: docs/wiki/modules/server-build-and-artifacts.md#server-standalone
 # DOCS: docs/handoffs/2026-04-28-docker-local-redeploy-script.md
+# DOCS: docs/handoffs/2026-04-28-docker-visual-ws-and-firmware-versioning.md
 [CmdletBinding()]
 param(
     [ValidateNotNullOrEmpty()]
@@ -31,6 +32,8 @@ param(
     [string]$StorageVolume = "mica-audio-server-data",
 
     [switch]$NoCache,
+
+    [switch]$PreferVisualUdp,
 
     [switch]$FollowLogs,
 
@@ -352,6 +355,7 @@ function Start-ServerContainer {
     )
 
     $httpBase = "http://${LanHost}:$HttpPort"
+    $preferVisualUdpValue = if ($PreferVisualUdp) { "true" } else { "false" }
     $arguments = @(
         "run",
         "-d",
@@ -364,7 +368,7 @@ function Start-ServerContainer {
         "-e", "MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=true",
         "-e", "MICA_SERVER__DISCOVERYUDPPORT=$DiscoveryUdpPort",
         "-e", "MICA_SERVER__MAXMEDIAUPLOADBYTES=20971520",
-        "-e", "MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true",
+        "-e", "MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=$preferVisualUdpValue",
         "-e", "MICA_SERVER__VISUALUDPPORT=$VisualUdpPort",
         "-e", "MICA_SERVER__MQTTPORT=$MqttPort",
         "-e", "MICA_SERVER__STARTUPPAIRCODETTLSECONDS=0",
@@ -372,11 +376,15 @@ function Start-ServerContainer {
         "-e", "MICA_SERVER__PUBLICHOST=$LanHost",
         "-p", "${HttpPort}:${ContainerHttpPort}",
         "-p", "${MqttPort}:${MqttPort}",
-        "-p", "${VisualUdpPort}:${VisualUdpPort}/udp",
         "-p", "${DiscoveryUdpPort}:${DiscoveryUdpPort}/udp",
-        "-v", "${VolumeName}:/data",
-        $Tag
+        "-v", "${VolumeName}:/data"
     )
+
+    if ($PreferVisualUdp) {
+        $arguments += @("-p", "${VisualUdpPort}:${VisualUdpPort}/udp")
+    }
+
+    $arguments += $Tag
 
     $displayArguments = @($arguments)
     for ($i = 0; $i -lt $displayArguments.Count; $i++) {
@@ -452,11 +460,14 @@ Write-Host "  Storage volume:  $StorageVolume -> /data"
 Write-Host "  Local health:    $localHealth"
 Write-Host "  LAN base:        $lanBase"
 Write-Host "  MQTT:            ${resolvedPublicHost}:$MqttPort"
-Write-Host "  Visual UDP:      ${resolvedPublicHost}:$VisualUdpPort/udp"
+Write-Host "  Visual transport: $(if ($PreferVisualUdp) { "UDP opt-in (${resolvedPublicHost}:$VisualUdpPort/udp)" } else { "WS" })"
 Write-Host "  Discovery UDP:   ${resolvedPublicHost}:$DiscoveryUdpPort/udp"
 Write-Host "  Logs:            docker logs -f $ContainerName"
 Write-Host ""
 Write-Host "No portal AP do ESP, use Servidor=$lanBase apenas como fallback tecnico."
+if (-not $PreferVisualUdp) {
+    Write-Host "UDP visual fica desligado por default no Docker local; use -PreferVisualUdp apenas para teste fisico especifico."
+}
 
 if ($FollowLogs) {
     if ($DryRun) {

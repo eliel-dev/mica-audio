@@ -1,9 +1,12 @@
+using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text.Json;
 using Device.Client.Remote;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
+using Device.Protocol.Stream;
 using Device.Server.Hosting;
 
 namespace Output.Tests;
@@ -231,6 +234,149 @@ public sealed class RemoteDeviceServerClientTests
         await CloseWebSocketQuietlyAsync(deviceWs);
     }
 
+    [Fact]
+    public async Task RemoteDeviceFrameTransport_ShouldSendBins128DirectlyToVisualUdpEndpoint()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+        var visualUdpPort = DeviceServerTestHarness.GetFreeUdpPort();
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+            AdminToken = AdminToken,
+        });
+
+        const string deviceToken = "direct-udp-device-token";
+        host.SeedDevices(
+        [
+            new DeviceRecord
+            {
+                DeviceId = "direct-udp-device",
+                Token = deviceToken,
+                Name = "Direct UDP",
+                LastSeenUtc = DateTimeOffset.UtcNow,
+                LanIpAddress = "127.0.0.1",
+                VisualUdpSupported = true,
+                VisualUdpPort = visualUdpPort,
+                VisualUdpMode = "bins128",
+            },
+        ]);
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            "direct-udp-device",
+            deviceToken);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, "direct-udp-device", "online");
+        var online = await DeviceServerTestHarness.WaitForConditionAsync(
+            () => DeviceServerTestHarness.GetDeviceStatus(host, "direct-udp-device") == DeviceStatus.Online,
+            TimeSpan.FromSeconds(5));
+        Assert.True(online, "Device seedado nao entrou em online pelo MQTT.");
+
+        using var udpListener = new UdpClient(new IPEndPoint(IPAddress.Loopback, visualUdpPort));
+        await using var transport = new RemoteDeviceFrameTransport(new RemoteDeviceServerClientOptions
+        {
+            BaseAddress = $"http://127.0.0.1:{port}",
+            AdminToken = AdminToken,
+            FrameQueueCapacity = 4,
+        });
+        await transport.StartAsync(CancellationToken.None);
+
+        var payload = CreateBinsPayload(sequence: 77);
+        transport.SendFrame("direct-udp-device", payload);
+
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var received = await udpListener.ReceiveAsync(timeoutCts.Token);
+        Assert.True(VisualUdpFrameV1.TryValidateDatagram(
+            received.Buffer,
+            deviceToken,
+            lastAcceptedSequence: null,
+            out var sequence,
+            out var payloadOffset,
+            out var payloadLength));
+        Assert.Equal(77u, sequence);
+        Assert.Equal(payload, received.Buffer.AsSpan(payloadOffset, payloadLength).ToArray());
+
+        var diagnostics = transport.GetDiagnosticsSnapshot();
+        Assert.True(diagnostics.DirectUdpFramesSent > 0);
+        Assert.Equal(0, diagnostics.WebSocketFallbackFramesQueued);
+    }
+
+    [Fact]
+    public async Task RemoteDeviceFrameTransport_ShouldFallbackToAdminWebSocketForFrame128x64()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
+        var visualUdpPort = DeviceServerTestHarness.GetFreeUdpPort();
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = mqttPort,
+            RestrictToPrivateNetworks = true,
+            AdminToken = AdminToken,
+        });
+
+        const string deviceToken = "full-frame-device-token";
+        host.SeedDevices(
+        [
+            new DeviceRecord
+            {
+                DeviceId = "full-frame-device",
+                Token = deviceToken,
+                Name = "Full frame",
+                LastSeenUtc = DateTimeOffset.UtcNow,
+                LanIpAddress = "127.0.0.1",
+                VisualUdpSupported = true,
+                VisualUdpPort = visualUdpPort,
+                VisualUdpMode = "bins128",
+            },
+        ]);
+
+        using var mqttClient = await DeviceServerTestHarness.ConnectMqttClientAsync(
+            "127.0.0.1",
+            mqttPort,
+            "full-frame-device",
+            deviceToken);
+        await DeviceServerTestHarness.PublishPresenceAsync(mqttClient, "full-frame-device", "online");
+
+        using var deviceWs = new ClientWebSocket();
+        deviceWs.Options.SetRequestHeader("X-Device-Id", "full-frame-device");
+        deviceWs.Options.SetRequestHeader("X-Device-Token", deviceToken);
+        await deviceWs.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/ws/v1/stream"), CancellationToken.None);
+
+        await using var transport = new RemoteDeviceFrameTransport(new RemoteDeviceServerClientOptions
+        {
+            BaseAddress = $"http://127.0.0.1:{port}",
+            AdminToken = AdminToken,
+            FrameQueueCapacity = 4,
+        });
+        await transport.StartAsync(CancellationToken.None);
+
+        var payload = StreamFrameV2.CreateFrame128x64Rgb565(
+            sequence: 88,
+            timestampQpc: 1234,
+            pixels128x64Rgb565: new ushort[StreamFrameV2.PixelCount128x64],
+            brightness0To255: 160);
+        transport.SendFrame("full-frame-device", payload);
+
+        Assert.Equal(payload, await ReceiveBinaryFrameAsync(deviceWs));
+
+        var diagnostics = transport.GetDiagnosticsSnapshot();
+        Assert.Equal(0, diagnostics.DirectUdpFramesSent);
+        Assert.True(diagnostics.WebSocketFallbackFramesQueued > 0);
+
+        await transport.StopAsync();
+        await CloseWebSocketQuietlyAsync(deviceWs);
+    }
+
     private static async Task<byte[]> ReceiveBinaryFrameAsync(ClientWebSocket ws)
     {
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -250,6 +396,22 @@ public sealed class RemoteDeviceServerClientTests
                 return ms.ToArray();
             }
         }
+    }
+
+    private static byte[] CreateBinsPayload(uint sequence)
+    {
+        Span<byte> bins = stackalloc byte[StreamFrameV2.BinCount128];
+        for (var index = 0; index < bins.Length; index++)
+        {
+            bins[index] = (byte)index;
+        }
+
+        return StreamFrameV2.CreateBins128(
+            sequence,
+            timestampQpc: 123,
+            level0To255: 200,
+            bins,
+            brightness0To255: 128);
     }
 
     private static async Task CloseWebSocketQuietlyAsync(ClientWebSocket ws)

@@ -12,6 +12,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan AdminPairingCodeDefaultTtl = TimeSpan.FromMinutes(10);
@@ -26,6 +27,57 @@ public sealed partial class DeviceServerHost
         return Results.Ok(new AdminDevicesResponse
         {
             Devices = GetDevicesSnapshot(),
+        });
+    }
+
+    private IResult HandleAdminVisualEndpoints(HttpContext ctx)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        DeviceVisualEndpointInfo[] endpoints;
+        lock (gate)
+        {
+            var snapshots = sessionStateStore
+                .CreateSnapshots(timeProvider.GetUtcNow(), runtimeConfig.DeviceOfflineTimeout)
+                .ToDictionary(snapshot => snapshot.DeviceId, StringComparer.OrdinalIgnoreCase);
+
+            endpoints = sessionStateStore
+                .CreateRecords()
+                .Where(record => snapshots.TryGetValue(record.DeviceId, out var snapshot)
+                    && snapshot.Status == DeviceStatus.Online
+                    && snapshot.ControlPlaneState == DeviceControlPlaneState.MqttOnline
+                    && record.VisualUdpSupported == true
+                    && string.Equals(record.VisualUdpMode, "bins128", StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(record.Token)
+                    && !string.IsNullOrWhiteSpace(record.LanIpAddress)
+                    && TryResolveVisualUdpEndpoint(record, runtimeConfig, out _, out _))
+                .Select(record =>
+                {
+                    var snapshot = snapshots[record.DeviceId];
+                    var port = record.VisualUdpPort is >= 1 and <= 65535
+                        ? record.VisualUdpPort.Value
+                        : runtimeConfig.VisualUdpPort;
+                    return new DeviceVisualEndpointInfo
+                    {
+                        DeviceId = record.DeviceId,
+                        LanIpAddress = record.LanIpAddress!,
+                        VisualUdpPort = port,
+                        VisualUdpMode = record.VisualUdpMode!,
+                        DeviceToken = record.Token,
+                        FirmwareVersion = record.FirmwareVersion,
+                        StreamSocketConnected = IsFrameSocketOpen(record.DeviceId),
+                        ControlPlaneState = snapshot.ControlPlaneState,
+                    };
+                })
+                .ToArray();
+        }
+
+        return Results.Ok(new AdminVisualEndpointsResponse
+        {
+            Devices = endpoints,
         });
     }
 
