@@ -44,6 +44,8 @@ Pontos principais do cutover HUB75 128x64:
 - [MicaAudioServerOptions](../../../src/MicaAudio.Server/MicaAudioServerOptions.cs#L1)
 - [MicaAudioServerRuntime](../../../src/MicaAudio.Server/MicaAudioServerRuntime.cs#L1)
 - [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1)
+- [StandalonePanelLibraryStore](../../../src/MicaAudio.Server/StandalonePanelLibraryStore.cs#L1)
+- [StandaloneMediaLibraryStore](../../../src/MicaAudio.Server/StandaloneMediaLibraryStore.cs#L1)
 - [MicaAudio.Server Dockerfile](../../../src/MicaAudio.Server/Dockerfile#L1)
 - [Render Blueprint](../../../render.yaml#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
@@ -54,6 +56,10 @@ Pontos principais do cutover HUB75 128x64:
 - [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1)
 - [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1)
 - [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
+- [IPanelLibraryStore](../../../src/Device.Server.Abstractions/Hosting/IPanelLibraryStore.cs#L1)
+- [IMediaLibraryStore](../../../src/Device.Server.Abstractions/Hosting/IMediaLibraryStore.cs#L1)
+- [InMemoryPanelLibraryStore](../../../src/Device.Server/Hosting/InMemoryPanelLibraryStore.cs#L1)
+- [InMemoryMediaLibraryStore](../../../src/Device.Server/Hosting/InMemoryMediaLibraryStore.cs#L1)
 - [IDevicePairingStore](../../../src/Device.Server.Abstractions/Hosting/IDevicePairingStore.cs#L1)
 - [InMemoryDevicePairingStore](../../../src/Device.Server/Hosting/InMemoryDevicePairingStore.cs#L1)
 - [ICommandStateStore](../../../src/Device.Server.Abstractions/Hosting/ICommandStateStore.cs#L1)
@@ -78,6 +84,10 @@ Pontos principais do cutover HUB75 128x64:
 - [DeviceOfficialFirmwareCatalog](../../../src/Device.Server.Abstractions/Hosting/DeviceOfficialFirmwareCatalog.cs#L1)
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1)
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1)
+- [MicaDiscoveryRequestV1](../../../src/Device.Protocol/Models/MicaDiscoveryRequestV1.cs#L1)
+- [MicaDiscoveryResponseV1](../../../src/Device.Protocol/Models/MicaDiscoveryResponseV1.cs#L1)
+- [PanelLibraryDocument](../../../src/Device.Protocol/Models/PanelLibraryDocument.cs#L1)
+- [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1)
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1)
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1)
 - [DeviceSessionShadowMessage](../../../src/Device.Protocol/Models/DeviceSessionShadowMessage.cs#L1)
@@ -93,7 +103,7 @@ Notas ativas:
 - Direcao oficial: `server = control plane`, `cliente = data plane LAN`, `ESP32 = runtime com ownership por device`.
 - `StreamFrameV2` continua como wire legado; `StreamFrameV3` adiciona `ownerEpoch` para stream direto session-aware.
 - O env oficial `esp32s3_devkitc1_dma_exp` agora usa board local N16R8 (`16MB + OPI PSRAM + 3MB APP / 9.9MB FATFS`) para evitar drift do board padrao `N8` do PlatformIO.
-- O portal AP do firmware voltou a expor `Servidor` editavel; aceita URL completa ou `host[:porta]` e preserva host salvo valido em erro manual.
+- O portal AP do firmware mantem `Servidor` editavel apenas como fallback tecnico; o caminho normal usa Wi-Fi salvo + UDP discovery LAN para auto-registro.
 
 Pontos de UI para operacao de devices:
 
@@ -156,8 +166,8 @@ Pontos de lifecycle leve de devices:
 Observacoes ativas:
 
 - A DevicesPage usa diff incremental para manter a lista estavel e evitar rebuild total em refresh normal.
-- A DevicesPage diferencia App ativo (online) de Ultimo app conhecido (offline), com acoes no card de resumo (`Testar LED` e `Remover`).
-- O botao `Remover` consolida o fluxo: online tenta revogar/reiniciar e remove local; offline remove apenas local.
+- A DevicesPage diferencia App ativo (online) de Ultimo app conhecido (offline), com acoes no card de resumo (`Testar LED` e `Reprovisionar Wi-Fi`).
+- `Reprovisionar Wi-Fi` envia `enter_provisioning`; `RemoveDevice` fica como limpeza tecnica/admin fora da acao principal da UX.
 - A DevicesPage usa apenas miniatura inline da lista para preview de app; o painel da direita nao tem preview maior.
 - A DevicesPage agora usa `WebView2` no painel direito e carrega o dashboard HTML local em `/dashboard`, mantendo a lista de devices e as acoes globais de firmware/pairing no shell WinUI nativo.
 - O dashboard HTML recebe selecao via `postMessage`, consome `WS /ws/device/{deviceId}` e preserva no host WinUI as acoes reais de brilho, teste de LED e remocao.
@@ -176,7 +186,8 @@ Observacoes ativas:
 
 - `MicaAudio.Server` agora fornece o primeiro host standalone/Docker para smoke local e Render, reaproveitando `DeviceServerHost` sem transformar ainda o WinUI em client remoto.
 - O standalone/Docker agora separa bind interno de endereco anunciado: `MICA_SERVER__PUBLICHTTPBASEADDRESS` preserva a porta publica HTTP e `MICA_SERVER__PUBLICHOST` anuncia o host MQTT local/legado.
-- Docker local pode publicar `5274/udp` para o visual LAN opt-in; Render/cloud permanecem em HTTP/WSS.
+- Docker local pode publicar `5274/udp` para visual LAN opt-in e `5275/udp` para discovery LAN; Render/cloud permanecem em HTTP/WSS.
+- O server standalone persiste `devices.json`, `panels/panels.json` e blobs/index de midia em `MICA_SERVER__STORAGEROOT`.
 - O WinUI agora tambem possui modo `Remote`, opt-in em `Configuracoes`, que usa `Device.Client.Remote` contra `MicaAudio.Server` com token admin DPAPI; `Embedded` permanece default.
 
 Pontos centrais do pipeline de analise e captura:
@@ -287,11 +298,15 @@ Pontos centrais da sessao de paineis HUB75:
 - [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1)
 - [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1)
 - [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
+- [PanelLibraryDocument](../../../src/Device.Protocol/Models/PanelLibraryDocument.cs#L1)
+- [PanelLibraryItem](../../../src/Device.Protocol/Models/PanelLibraryItem.cs#L1)
+- [PanelWidgetItem](../../../src/Device.Protocol/Models/PanelWidgetItem.cs#L1)
+- [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1)
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
 
 Observacoes ativas dos paineis:
 
-- O V1 de `Paineis` e desktop-streamed: o ESP32 recebe apenas o frame final, sem persistencia nem execucao autonoma do layout.
+- O V1 de `Paineis` continua client-composed no runtime: o ESP32 recebe frame/batch final, enquanto o server vira fonte unica de biblioteca e midias.
 - A sessao agora abre em galeria de cards com miniaturas HUB75 `128x64`, toggle `Ativo` por card e editor dedicado dentro da mesma `PanelsPage`.
 - O editor trabalha com um unico framebuffer `128x64` e sobreposicao por `ZIndex`; a biblioteca lateral e o ponto unico de descoberta/configuracao de widgets.
 - A biblioteca de `Paineis` usa busca + cards do catalogo compartilhado, reaproveita drafts `__local__|appId` como defaults de widget e desabilita itens ainda sem renderer HUB75.
@@ -299,7 +314,7 @@ Observacoes ativas dos paineis:
 - A galeria de `Paineis` agora e `static first`: abre com posters lazy, sem compor todos os cards no `Loaded` e sem preview animado local por default.
 - O editor entra com preview desligado; a animacao local so e criada quando o usuario ativa o toggle `Preview`.
 - `PanelsFrameComposer.CreatePosterAsync(...)` e `PanelsMediaCache` separam poster de playback e reutilizam decodificacao de midia para evitar churn de RAM/CPU.
-- `PanelsStore` agora recupera `panels.json` vazio/corrompido sem derrubar a app e grava com temp+replace para reduzir risco de arquivo truncado.
+- `PanelsStore` recupera `panels.json` vazio/corrompido sem derrubar a app, grava com temp+replace e migra automaticamente o cache local para a biblioteca do server quando o server esta vazio.
 - O runtime de painel em background usa `30 FPS` como teto de apresentacao, salva `lastSelectedPanelId` e separa estado de widget (`ConfigValues`) do draft local compartilhado de apps.
 - `gifhub75` agora resolve animacao por delays reais do arquivo e o cache animado guarda sequencia temporal (`frames + durationMs + totalDurationMs`).
 - O transporte HUB75 agora suporta `SendFrame(deviceId, payload)` em paralelo ao broadcast, e `Esp32S3LedOutput` escolhe o destino a partir de `LedOutputConfig.TargetDeviceId`.

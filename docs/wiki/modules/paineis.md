@@ -1,11 +1,12 @@
 # Modulo Paineis
 
-A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts HUB75 `128x64`, com persistencia local, composicao client-driven e carga direcionada por `deviceId`.
+A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts HUB75 `128x64`, com biblioteca server-first, composicao client-driven e carga direcionada por `deviceId`.
 
 ## Direcao oficial
 
 - `Paineis` passa a ser oficialmente `asset/config sync + cache no cliente + push local ao ESP`.
 - O server fica como fonte de verdade de assets, catalogo, manifests e metadata de device/ownership.
+- O server passa a ser a fonte de verdade dos paineis salvos e das midias enviadas; o arquivo local vira cache/migracao.
 - O cliente local continua compositor autoritativo e dono do envio ao device na LAN.
 
 ## Baseline atual / transicao
@@ -45,13 +46,24 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 
 ## Persistencia Do Layout
 
-- O estado local fica em `PanelsStore`, salvo em `%APPDATA%\\MicaAudio\\panels\\panels.json` via `MicaAudioOptions.PanelsFilePath`.
+- O estado autoritativo fica no server via Admin API de biblioteca:
+  - `GET /api/v1/admin/library/panels`
+  - `PUT /api/v1/admin/library/panels`
+  - `POST /api/v1/admin/library/media`
+  - `GET /api/v1/admin/library/media/{mediaId}`
+  - `DELETE /api/v1/admin/library/media/{mediaId}`
+- O estado local em `%APPDATA%\\MicaAudio\\panels\\panels.json` via `MicaAudioOptions.PanelsFilePath` permanece como cache e fonte de migracao.
 - Cada painel persiste `PanelId`, nome, dimensoes HUB75 e a lista de widgets, incluindo `ConfigValues` e `RuntimeState`.
 - `RuntimeState` existe para dados locais que nao cabem no contrato do catalogo; no V1 ele guarda o `sourcePath` do widget `gifhub75`.
 - A selecao mais recente da tela fica em `lastSelectedPanelId`, restaurada ao reabrir a sessao.
 - `PanelsStore` agora trata `panels.json` ausente, vazio ou corrompido como estado recuperavel: a sessao volta com documento vazio, a shell nao cai e `PanelsPage` recria `Painel 1` no fluxo normal.
 - Quando encontra JSON invalido nao-vazio, `PanelsStore` preserva evidencia em `panels.json.corrupt-<timestamp>.json` antes de continuar com documento vazio.
 - O save de `PanelsStore` passou a ser atomico com `panels.json.tmp` + replace/move, mantendo `panels.json.bak` simples para reduzir risco de truncamento em crash/interrupcao.
+- Ao carregar, `PanelsStore` tenta primeiro a biblioteca remota/embedded do `IDeviceServerClient`.
+- Se o server tiver paineis, o documento do server substitui o cache local.
+- Se o server estiver vazio e o cache local tiver paineis, o WinUI migra automaticamente o documento local para o server.
+- Se a chamada ao server falhar, o cache local continua permitindo abrir e editar a sessao.
+- Midias novas devem passar pela biblioteca de midia do server para deduplicacao por `SHA-256`; caminhos locais em `RuntimeState` ficam como compatibilidade do editor atual.
 
 ## Editor Compartilhado De Modifiers
 
@@ -140,7 +152,14 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [IDeviceServerHost](../../../src/Device.Server.Abstractions/Hosting/IDeviceServerHost.cs#L1)
 - [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1)
 - [EmbeddedDeviceServerClient](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L1)
+- [RemoteDeviceServerClient](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [PanelLibraryDocument](../../../src/Device.Protocol/Models/PanelLibraryDocument.cs#L1)
+- [PanelLibraryItem](../../../src/Device.Protocol/Models/PanelLibraryItem.cs#L1)
+- [PanelWidgetItem](../../../src/Device.Protocol/Models/PanelWidgetItem.cs#L1)
+- [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1)
+- [IPanelLibraryStore](../../../src/Device.Server.Abstractions/Hosting/IPanelLibraryStore.cs#L1)
+- [IMediaLibraryStore](../../../src/Device.Server.Abstractions/Hosting/IMediaLibraryStore.cs#L1)
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1)
 - [PanelsBatchRegistration](../../../src/Device.Client.Abstractions/PanelsBatchRegistration.cs#L1)
 - [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1)

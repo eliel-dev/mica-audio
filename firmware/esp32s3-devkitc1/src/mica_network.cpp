@@ -7,21 +7,28 @@
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 
 #include "mica_network.h"
 
 #include <esp_heap_caps.h>
 #include <math.h>
+#include <WiFiUdp.h>
 
 #include "mica_display.h"
 #include "mica_globals.h"
 #include "mica_ota.h"
 #include "mica_panels.h"
+#include "mica_prefs.h"
 #include "mica_session.h"
 #include "mica_visual_udp.h"
 
 #include "mica_commands.h"
 #include "mica_provisioning.h"
+
+static WiFiUDP gDiscoveryUdp;
+static bool gDiscoveryUdpStarted = false;
+static unsigned long gLastDiscoveryBroadcastMs = 0;
 
 // ===========================================================================
 // HTTP helpers
@@ -38,13 +45,17 @@ bool postJsonWithAuth(const String& path, JsonDocument& doc) {
     return false;
   }
 
+  http.setConnectTimeout(5000);
+  http.setTimeout(15000);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Device-Id", gDeviceId);
   http.addHeader("X-Device-Token", gToken);
 
   String body;
   serializeJson(doc, body);
+  resetTaskWatchdog();
   int code = http.POST(body);
+  resetTaskWatchdog();
   http.end();
 
   return code >= 200 && code < 300;
@@ -108,6 +119,189 @@ bool beginHttpWithDeviceAuthUrl(HTTPClient& http, const String& url) {
   static const char* kHeaderKeys[] = {"Content-Type"};
   http.collectHeaders(kHeaderKeys, 1);
   return true;
+}
+
+static bool parseServerBaseUrl(const String& rawBaseUrl, String& host, uint16_t& port) {
+  String normalized = rawBaseUrl;
+  normalized.trim();
+  if (normalized.length() == 0) {
+    return false;
+  }
+
+  if (normalized.startsWith("http://")) {
+    normalized = normalized.substring(7);
+  } else if (normalized.startsWith("https://")) {
+    normalized = normalized.substring(8);
+  }
+
+  const int slashIndex = normalized.indexOf('/');
+  if (slashIndex >= 0) {
+    normalized = normalized.substring(0, slashIndex);
+  }
+
+  const int colonIndex = normalized.lastIndexOf(':');
+  if (colonIndex >= 0) {
+    host = normalized.substring(0, colonIndex);
+    const int parsedPort = normalized.substring(colonIndex + 1).toInt();
+    if (parsedPort <= 0 || parsedPort > 65535) {
+      return false;
+    }
+
+    port = static_cast<uint16_t>(parsedPort);
+    return host.length() > 0;
+  }
+
+  host = normalized;
+  port = 5272;
+  return host.length() > 0;
+}
+
+static bool shouldRunLanDiscovery() {
+  return WiFi.status() == WL_CONNECTED
+      && (gDeviceId.isEmpty() || gToken.isEmpty())
+      && !gProvisioningPortalActive;
+}
+
+static void stopLanDiscovery() {
+  if (!gDiscoveryUdpStarted) {
+    return;
+  }
+
+  gDiscoveryUdp.stop();
+  gDiscoveryUdpStarted = false;
+}
+
+static bool ensureLanDiscoveryStarted() {
+  if (gDiscoveryUdpStarted) {
+    return true;
+  }
+
+  if (gDiscoveryUdp.begin(0) == 0) {
+    Serial.println("[discovery] falha ao abrir socket UDP.");
+    return false;
+  }
+
+  gDiscoveryUdpStarted = true;
+  Serial.printf("[discovery] UDP ativo; broadcast_port=%u\n", kDiscoveryUdpPort);
+  return true;
+}
+
+static void sendLanDiscoveryBroadcast(unsigned long now) {
+  if (gLastDiscoveryBroadcastMs != 0 && (now - gLastDiscoveryBroadcastMs) < kDiscoveryRetryMs) {
+    return;
+  }
+
+  if (!ensureLanDiscoveryStarted()) {
+    gLastDiscoveryBroadcastMs = now;
+    return;
+  }
+
+  JsonDocument request;
+  request["protocol"] = "mica.discovery.v1";
+  request["deviceMac"] = WiFi.macAddress();
+  request["deviceName"] = prefsGetStringOrDefault("name", String(kBoardDisplayName));
+  request["firmwareVersion"] = kFirmwareVersion;
+  request["boardModel"] = kBoardModel;
+  request["panelType"] = kPanelType;
+  request["profile"] = kFirmwareProfile;
+
+  String payload;
+  serializeJson(request, payload);
+  resetTaskWatchdog();
+  gDiscoveryUdp.beginPacket(IPAddress(255, 255, 255, 255), kDiscoveryUdpPort);
+  gDiscoveryUdp.write(reinterpret_cast<const uint8_t*>(payload.c_str()), payload.length());
+  gDiscoveryUdp.endPacket();
+  resetTaskWatchdog();
+  gLastDiscoveryBroadcastMs = now;
+  Serial.printf("[discovery] broadcast enviado bytes=%u\n", static_cast<unsigned>(payload.length()));
+}
+
+static void applyLanDiscoveryResponse(JsonDocument& response) {
+  String deviceId = response["deviceId"] | "";
+  String token = response["token"] | "";
+  String httpBase = response["httpBase"] | "";
+  String mqttHost = response["mqttHost"] | "";
+  int mqttPort = response["mqttPort"] | 0;
+  String mqttRootTopic = response["mqttRootTopic"] | "";
+
+  if (deviceId.isEmpty() || token.isEmpty()) {
+    Serial.println("[discovery] resposta sem credenciais.");
+    return;
+  }
+
+  String parsedHost;
+  uint16_t parsedPort = 0;
+  if (httpBase.length() > 0 && parseServerBaseUrl(httpBase, parsedHost, parsedPort)) {
+    gServerHost = parsedHost;
+    gServerPort = parsedPort;
+    gPrefs.putString("host", gServerHost);
+    gPrefs.putString("port", String(gServerPort));
+  }
+
+  gDeviceId = deviceId;
+  gToken = token;
+  gPrefs.putString("deviceId", gDeviceId);
+  gPrefs.putString("token", gToken);
+
+  gMqttHost = mqttHost.length() > 0 ? mqttHost : gServerHost;
+  gMqttPort = mqttPort > 0 ? static_cast<uint16_t>(mqttPort) : kDefaultMqttPort;
+  gMqttRootTopic = mqttRootTopic.length() > 0 ? mqttRootTopic : kDefaultMqttRootTopic;
+  persistMqttConfig();
+
+  stopLanDiscovery();
+  gMqttDisconnectedSinceMs = 0;
+  gWsDisconnectedSinceMs = 0;
+  setConnectivityState(kWifiStateConnected, "discovery_success", true);
+  Serial.printf("[discovery] registrado deviceId=%s http=%s:%u mqtt=%s:%u\n",
+      gDeviceId.c_str(),
+      gServerHost.c_str(),
+      gServerPort,
+      gMqttHost.c_str(),
+      gMqttPort);
+  connectMqtt();
+  connectWebSocket();
+}
+
+static void receiveLanDiscoveryResponse() {
+  if (!gDiscoveryUdpStarted) {
+    return;
+  }
+
+  const int packetSize = gDiscoveryUdp.parsePacket();
+  if (packetSize <= 0) {
+    return;
+  }
+
+  char buffer[kDiscoveryPacketMaxBytes + 1] = {};
+  const int bytesRead = gDiscoveryUdp.read(buffer, kDiscoveryPacketMaxBytes);
+  if (bytesRead <= 0) {
+    return;
+  }
+
+  buffer[bytesRead] = '\0';
+  JsonDocument response;
+  if (deserializeJson(response, buffer) != DeserializationError::Ok) {
+    Serial.println("[discovery] resposta JSON invalida.");
+    return;
+  }
+
+  String protocol = response["protocol"] | "";
+  if (!protocol.equalsIgnoreCase("mica.discovery.v1")) {
+    return;
+  }
+
+  applyLanDiscoveryResponse(response);
+}
+
+static void processLanDiscovery() {
+  if (!shouldRunLanDiscovery()) {
+    stopLanDiscovery();
+    return;
+  }
+
+  const unsigned long now = millis();
+  sendLanDiscoveryBroadcast(now);
+  receiveLanDiscoveryResponse();
 }
 
 // ===========================================================================
@@ -1000,9 +1194,12 @@ void connectWebSocket() {
   String path = "/ws/v1/stream";
   Serial.printf("[ws] conectando em ws://%s:%u%s\n", gServerHost.c_str(), gServerPort, path.c_str());
   setConnectivityState(kWifiStateConnected, "ws_connecting", true, false);
+  resetTaskWatchdog();
   gWs.begin(gServerHost.c_str(), gServerPort, path.c_str());
   gWs.onEvent(onWsEvent);
   gWs.setReconnectInterval(kWsAutoReconnectIntervalMs);
+  resetTaskWatchdog();
+  Serial.println("[ws] begin concluido.");
 }
 
 void connectMqtt() {
@@ -1022,11 +1219,13 @@ void connectMqtt() {
   gMqtt.setServer(gMqttHost.c_str(), gMqttPort);
   gMqtt.setCallback(onMqttMessage);
   gMqtt.setBufferSize(kMqttPacketBufferBytes);
+  gMqtt.setSocketTimeout(kMqttConnectSocketTimeoutSeconds);
 
   String presenceTopic = buildDeviceMqttTopic("presence");
   String offlinePayload = buildPresencePayload("offline");
   Serial.printf("[mqtt] conectando em mqtt://%s:%u (%s)\n", gMqttHost.c_str(), gMqttPort, gMqttRootTopic.c_str());
 
+  resetTaskWatchdog();
   const bool connected = gMqtt.connect(
       gDeviceId.c_str(),
       gDeviceId.c_str(),
@@ -1035,9 +1234,11 @@ void connectMqtt() {
       1,
       true,
       offlinePayload.c_str());
+  resetTaskWatchdog();
 
   if (!connected) {
     gMqttDisconnectedSinceMs = millis();
+    Serial.printf("[mqtt] falha ao conectar state=%d\n", gMqtt.state());
     return;
   }
 
@@ -1049,6 +1250,7 @@ void connectMqtt() {
   (void)publishClientSessionShadow(millis(), true);
   sendTelemetry(true);
   publishPendingOtaReportIfNeeded();
+  Serial.println("[mqtt] conectado.");
 }
 
 
@@ -1077,10 +1279,12 @@ void processNetworkPoll() {
   if (!wifiConnected) {
     stopVisualUdpReceiver();
     const bool provisioningIncomplete = isProvisioningIncomplete();
+    const bool savedWifiConfigured = prefsGetBoolOrDefault("wifiConfigured", false);
+    const bool canUseSavedWifi = !provisioningIncomplete || savedWifiConfigured;
     if (shouldRunNetworkStep(gWifiDisconnectedSinceMs == 0)) {
       gWifiDisconnectedSinceMs = millis();
-      gLastWifiReconnectAttemptMs = provisioningIncomplete ? 0 : gWifiDisconnectedSinceMs;
-      if (provisioningIncomplete) {
+      gLastWifiReconnectAttemptMs = canUseSavedWifi ? gWifiDisconnectedSinceMs : 0;
+      if (!canUseSavedWifi) {
         setConnectivityState(kWifiStateDisconnected, "wifi_disconnected", true);
         Serial.println("[wifi] desconectado, aguardando reconexao.");
       } else {
@@ -1091,7 +1295,7 @@ void processNetworkPoll() {
     }
 
     const bool shouldRetrySavedWifi =
-        !provisioningIncomplete
+        canUseSavedWifi
         && !gProvisioningPortalActive
         && !isProvisioningPortalLaunchPending()
         && gLastWifiReconnectAttemptMs != 0
@@ -1110,6 +1314,7 @@ void processNetworkPoll() {
 
     const bool shouldStartProvisioningFallback =
         provisioningIncomplete
+        && !savedWifiConfigured
         && !gProvisioningPortalActive
         && !isProvisioningPortalLaunchPending()
         && gWifiDisconnectedSinceMs != 0
@@ -1143,6 +1348,10 @@ void processNetworkPoll() {
       } else {
         setConnectivityState(kWifiStateConnected, "wifi_connected");
       }
+      finishNetworkStep();
+    }
+    if (shouldRunNetworkStep(true)) {
+      processLanDiscovery();
       finishNetworkStep();
     }
     if (shouldRunNetworkStep(true)) {

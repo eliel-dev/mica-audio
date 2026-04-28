@@ -12,6 +12,7 @@ namespace Device.Client.Remote;
 // DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/device-server-protocol.md#admin-api-remota
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDeviceServerClientRuntime
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -226,6 +227,75 @@ public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDev
 
         using var response = await httpClient.DeleteAsync(path, cancellationToken).ConfigureAwait(false);
         await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<PanelLibraryDocument> GetPanelLibraryAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync("/api/v1/admin/library/panels", cancellationToken).ConfigureAwait(false);
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return await ReadRequiredJsonAsync<PanelLibraryDocument>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        using var response = await httpClient.PutAsJsonAsync("/api/v1/admin/library/panels", document, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<MediaAssetInfo> UploadMediaAsync(
+        string fileName,
+        string contentType,
+        byte[] payload,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/admin/library/media?fileName={Uri.EscapeDataString(fileName.Trim())}")
+        {
+            Content = new ByteArrayContent(payload),
+        };
+        request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(NormalizeContentType(contentType));
+
+        using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return await ReadRequiredJsonAsync<MediaAssetInfo>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<byte[]?> DownloadMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(mediaId))
+        {
+            return null;
+        }
+
+        using var response = await httpClient.GetAsync($"/api/v1/admin/library/media/{Uri.EscapeDataString(mediaId.Trim())}", cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> DeleteMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(mediaId))
+        {
+            return false;
+        }
+
+        using var response = await httpClient.DeleteAsync($"/api/v1/admin/library/media/{Uri.EscapeDataString(mediaId.Trim())}", cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     private async Task RunEventsLoopAsync(CancellationToken cancellationToken)

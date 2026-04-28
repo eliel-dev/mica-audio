@@ -16,6 +16,7 @@ namespace App.WinUI.Views;
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
 // DOCS: docs/wiki/modules/app-winui.md
 // DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class DevicesPage : Page
 {
     private const string LocalDraftScope = "__local__";
@@ -278,9 +279,9 @@ public sealed partial class DevicesPage : Page
         await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
     }
 
-    private async void OnRemoveDeviceClicked(object sender, RoutedEventArgs e)
+    private async void OnReprovisionWifiClicked(object sender, RoutedEventArgs e)
     {
-        await ExecuteRemoveDeviceAsync().ConfigureAwait(false);
+        await ExecuteReprovisionWifiAsync().ConfigureAwait(false);
     }
 
     private void OnCopyHostClicked(object sender, RoutedEventArgs e)
@@ -470,6 +471,50 @@ public sealed partial class DevicesPage : Page
 
         ApplySelectionDetails();
         ApplyButtonState();
+    }
+
+    private async Task ExecuteReprovisionWifiAsync(string? requestedDeviceId = null)
+    {
+        var selected = ResolveCommandDevice(requestedDeviceId);
+        var ops = DeviceOps;
+        if (selected is null || ops is null)
+        {
+            return;
+        }
+
+        if (selected.Status != DeviceStatus.Online)
+        {
+            ShowInlineStatusMessage(InfoBarSeverity.Warning, "O dispositivo precisa estar online para abrir o portal Wi-Fi.");
+            AddLocalLog($"Reprovisionamento Wi-Fi ignorado: {selected.DeviceId} esta offline.");
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Reprovisionar Wi-Fi",
+            PrimaryButtonText = "Abrir portal",
+            CloseButtonText = "Cancelar",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+            Content = "O dispositivo vai abrir o portal/AP de configuracao de Wi-Fi. Depois de conectar na rede local, ele se registra automaticamente no servidor.",
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var result = await ops.RunCommandAsync(selected.DeviceId, DeviceCommandType.EnterProvisioning).ConfigureAwait(true);
+        if (result.Accepted && result.Completed && result.Success)
+        {
+            ShowInlineStatusMessage(InfoBarSeverity.Success, $"Portal Wi-Fi solicitado: {selected.DeviceId}");
+            AddLocalLog($"Portal Wi-Fi solicitado para {selected.DeviceId}.");
+            return;
+        }
+
+        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
+        ShowInlineStatusMessage(InfoBarSeverity.Error, "Falha ao solicitar reprovisionamento Wi-Fi.");
+        AddLocalLog($"Falha ao solicitar portal Wi-Fi em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
     }
 
     private sealed class DeviceListItem

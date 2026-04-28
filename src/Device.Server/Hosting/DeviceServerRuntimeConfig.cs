@@ -7,6 +7,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 internal sealed class DeviceServerRuntimeConfig
 {
     private DeviceServerRuntimeConfig(
@@ -22,6 +23,9 @@ internal sealed class DeviceServerRuntimeConfig
         bool restrictToPrivateNetworks,
         int visualUdpPort,
         bool preferLanUdpVisualTransport,
+        bool trustedLanAutoRegistration,
+        int discoveryUdpPort,
+        long maxMediaUploadBytes,
         IReadOnlyList<CidrRange> allowedCidrs,
         int configuredAllowedCidrsCount,
         int pairRequestsPerMinute,
@@ -46,6 +50,9 @@ internal sealed class DeviceServerRuntimeConfig
         RestrictToPrivateNetworks = restrictToPrivateNetworks;
         VisualUdpPort = visualUdpPort;
         PreferLanUdpVisualTransport = preferLanUdpVisualTransport;
+        TrustedLanAutoRegistration = trustedLanAutoRegistration;
+        DiscoveryUdpPort = discoveryUdpPort;
+        MaxMediaUploadBytes = maxMediaUploadBytes;
         AllowedCidrs = allowedCidrs;
         ConfiguredAllowedCidrsCount = configuredAllowedCidrsCount;
         PairRequestsPerMinute = pairRequestsPerMinute;
@@ -84,6 +91,12 @@ internal sealed class DeviceServerRuntimeConfig
     public int VisualUdpPort { get; }
 
     public bool PreferLanUdpVisualTransport { get; }
+
+    public bool TrustedLanAutoRegistration { get; }
+
+    public int DiscoveryUdpPort { get; }
+
+    public long MaxMediaUploadBytes { get; }
 
     public IReadOnlyList<CidrRange> AllowedCidrs { get; }
 
@@ -129,6 +142,9 @@ internal sealed class DeviceServerRuntimeConfig
             restrictToPrivateNetworks: config.RestrictToPrivateNetworks,
             visualUdpPort: NormalizePort(config.VisualUdpPort, 5274),
             preferLanUdpVisualTransport: config.PreferLanUdpVisualTransport,
+            trustedLanAutoRegistration: config.TrustedLanAutoRegistration,
+            discoveryUdpPort: NormalizePort(config.DiscoveryUdpPort, 5275),
+            maxMediaUploadBytes: Math.Clamp(config.MaxMediaUploadBytes, 1024L, 100L * 1024L * 1024L),
             allowedCidrs: allowedCidrs,
             configuredAllowedCidrsCount: configuredAllowedCidrsCount,
             pairRequestsPerMinute: Math.Max(1, config.PairRequestsPerMinute),

@@ -9,9 +9,11 @@ namespace Device.Client.Embedded;
 // DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
 // DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class EmbeddedDeviceServerClient : IDeviceServerClient, IEmbeddedDeviceServerClientRuntime
 {
     private static readonly TimeSpan RegistrySaveMinInterval = TimeSpan.FromSeconds(10);
+    private const long DefaultMaxMediaUploadBytes = 20L * 1024L * 1024L;
 
     private readonly IDeviceServerHost serverHost;
     private readonly IEmbeddedDeviceRegistryStore registryStore;
@@ -89,6 +91,9 @@ public sealed partial class EmbeddedDeviceServerClient : IDeviceServerClient, IE
             MqttRootTopic = options.MqttRootTopic,
             DeviceFreshThresholdSeconds = settings.DeviceFreshThresholdSeconds,
             AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
+            TrustedLanAutoRegistration = options.TrustedLanAutoRegistration,
+            DiscoveryUdpPort = options.DiscoveryUdpPort,
+            MaxMediaUploadBytes = options.MaxMediaUploadBytes,
         }, cancellationToken).ConfigureAwait(false);
 
         var baseAddress = GetServerBaseAddress();
@@ -174,6 +179,25 @@ public sealed partial class EmbeddedDeviceServerClient : IDeviceServerClient, IE
         ClearPanelsBatches(deviceId, panelsSessionId);
         return Task.CompletedTask;
     }
+
+    public Task<PanelLibraryDocument> GetPanelLibraryAsync(CancellationToken cancellationToken = default)
+        => serverHost.GetPanelLibraryAsync(cancellationToken);
+
+    public Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
+        => serverHost.SavePanelLibraryAsync(document, cancellationToken);
+
+    public Task<MediaAssetInfo> UploadMediaAsync(
+        string fileName,
+        string contentType,
+        byte[] payload,
+        CancellationToken cancellationToken = default)
+        => serverHost.UploadMediaAsync(fileName, contentType, payload, options.MaxMediaUploadBytes > 0 ? options.MaxMediaUploadBytes : DefaultMaxMediaUploadBytes, cancellationToken);
+
+    public Task<byte[]?> DownloadMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => serverHost.DownloadMediaAsync(mediaId, cancellationToken);
+
+    public Task<bool> DeleteMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => serverHost.DeleteMediaAsync(mediaId, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

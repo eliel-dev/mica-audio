@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,6 +29,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -53,6 +55,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly IDevicePairingStore pairingStore;
     private readonly ICommandStateStore commandStateStore;
     private readonly ISessionStateStore sessionStateStore;
+    private readonly IPanelLibraryStore panelLibraryStore;
+    private readonly IMediaLibraryStore mediaLibraryStore;
     private readonly IVisualUdpSender visualUdpSender;
     private readonly DeviceFrameConnectionRegistry frameConnections = new();
     private readonly object adminEventConnectionsGate = new();
@@ -62,6 +66,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private WebApplication? app;
     private MqttServer? mqttServer;
     private CancellationTokenSource? appCts;
+    private UdpClient? discoveryUdpClient;
+    private Task? discoveryUdpTask;
 
     public DeviceServerHost()
         : this(TimeProvider.System, firmwareCatalog: null)
@@ -84,7 +90,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         IPanelsBatchStore? panelsBatchStore = null,
         IDevicePairingStore? pairingStore = null,
         ICommandStateStore? commandStateStore = null,
-        ISessionStateStore? sessionStateStore = null)
+        ISessionStateStore? sessionStateStore = null,
+        IPanelLibraryStore? panelLibraryStore = null,
+        IMediaLibraryStore? mediaLibraryStore = null)
         : this(
             timeProvider,
             firmwareCatalog,
@@ -92,6 +100,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             pairingStore,
             commandStateStore,
             sessionStateStore,
+            panelLibraryStore,
+            mediaLibraryStore,
             visualUdpSender: null)
     {
     }
@@ -103,7 +113,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         IDevicePairingStore? pairingStore,
         ICommandStateStore? commandStateStore,
         ISessionStateStore? sessionStateStore,
-        IVisualUdpSender? visualUdpSender)
+        IPanelLibraryStore? panelLibraryStore = null,
+        IMediaLibraryStore? mediaLibraryStore = null,
+        IVisualUdpSender? visualUdpSender = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
@@ -112,6 +124,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         this.pairingStore = pairingStore ?? new InMemoryDevicePairingStore();
         this.commandStateStore = commandStateStore ?? new InMemoryCommandStateStore();
         this.sessionStateStore = sessionStateStore ?? new InMemorySessionStateStore();
+        this.panelLibraryStore = panelLibraryStore ?? new InMemoryPanelLibraryStore();
+        this.mediaLibraryStore = mediaLibraryStore ?? new InMemoryMediaLibraryStore();
         this.visualUdpSender = visualUdpSender ?? new SocketVisualUdpSender();
     }
 
@@ -145,7 +159,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         DeviceServerObservability.ConfigureOpenTelemetry(builder.Services);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
-            kestrel.Limits.MaxRequestBodySize = localRuntimeConfig.MaxJsonBodyBytes;
+            kestrel.Limits.MaxRequestBodySize = Math.Max(localRuntimeConfig.MaxJsonBodyBytes, localRuntimeConfig.MaxMediaUploadBytes);
         });
         builder.WebHost.UseUrls($"http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
         builder.Services.AddRateLimiter(options =>
@@ -233,6 +247,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             localMqttServer = CreateMqttServer(localRuntimeConfig);
             await localMqttServer.StartAsync().ConfigureAwait(false);
             await localApp.StartAsync(appCts!.Token).ConfigureAwait(false);
+            StartDiscoveryUdpListener(localRuntimeConfig, appCts.Token);
         }
         catch
         {
@@ -274,11 +289,108 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             : "UDP visual LAN desabilitado (PreferLanUdpVisualTransport=false).");
     }
 
+    private void StartDiscoveryUdpListener(DeviceServerRuntimeConfig config, CancellationToken cancellationToken)
+    {
+        if (!config.TrustedLanAutoRegistration)
+        {
+            return;
+        }
+
+        try
+        {
+            var udpClient = new UdpClient(AddressFamily.InterNetwork);
+            udpClient.EnableBroadcast = true;
+            udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, config.DiscoveryUdpPort));
+            lock (gate)
+            {
+                discoveryUdpClient = udpClient;
+                discoveryUdpTask = Task.Run(() => RunDiscoveryUdpLoopAsync(udpClient, cancellationToken), CancellationToken.None);
+            }
+
+            Log($"Discovery LAN habilitado: udp://0.0.0.0:{config.DiscoveryUdpPort}");
+        }
+        catch (SocketException ex)
+        {
+            Log($"Discovery LAN indisponivel na porta UDP {config.DiscoveryUdpPort}: {ex.Message}");
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private async Task RunDiscoveryUdpLoopAsync(UdpClient udpClient, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            UdpReceiveResult received;
+            try
+            {
+                received = await udpClient.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (SocketException ex)
+            {
+                Log($"Falha ao receber discovery LAN: {ex.Message}");
+                continue;
+            }
+
+            MicaDiscoveryRequestV1? request;
+            try
+            {
+                request = JsonSerializer.Deserialize<MicaDiscoveryRequestV1>(received.Buffer, JsonOptions);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            if (request is null
+                || !string.Equals(request.Protocol, "mica.discovery.v1", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var response = TryRegisterTrustedLanDevice(request, received.RemoteEndPoint.Address);
+            if (response is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                var payload = JsonSerializer.SerializeToUtf8Bytes(response, JsonOptions);
+                await udpClient.SendAsync(payload, received.RemoteEndPoint, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (SocketException ex)
+            {
+                Log($"Falha ao responder discovery LAN: {ex.Message}");
+            }
+        }
+    }
+
     public async Task StopAsync()
     {
         WebApplication? localApp;
         MqttServer? localMqttServer;
         CancellationTokenSource? localCts;
+        UdpClient? localDiscoveryUdpClient;
+        Task? localDiscoveryUdpTask;
         TrackedCommandState[] pendingToCancel;
         DeviceFrameConnection[] connectionsToDispose;
         AdminEventConnection[] adminConnectionsToDispose;
@@ -296,6 +408,10 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             localMqttServer = mqttServer;
             mqttServer = null;
             appCts = null;
+            localDiscoveryUdpClient = discoveryUdpClient;
+            localDiscoveryUdpTask = discoveryUdpTask;
+            discoveryUdpClient = null;
+            discoveryUdpTask = null;
             pendingToCancel = commandStateStore.Drain();
             sessionStateStore.Drain();
             connectionsToDispose = frameConnections.Drain();
@@ -326,10 +442,25 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         try
         {
             localCts?.Cancel();
+            localDiscoveryUdpClient?.Dispose();
             await localApp.StopAsync().ConfigureAwait(false);
             if (localMqttServer is not null)
             {
                 await StopMqttServerAsync(localMqttServer).ConfigureAwait(false);
+            }
+
+            if (localDiscoveryUdpTask is not null)
+            {
+                try
+                {
+                    await localDiscoveryUdpTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (ObjectDisposedException)
+                {
+                }
             }
         }
         catch
@@ -419,6 +550,107 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         NotifyDevicesChanged();
+    }
+
+    public Task<PanelLibraryDocument> GetPanelLibraryAsync(CancellationToken cancellationToken = default)
+        => panelLibraryStore.LoadAsync(cancellationToken);
+
+    public Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
+        => panelLibraryStore.SaveAsync(document, cancellationToken);
+
+    public Task<MediaAssetInfo> UploadMediaAsync(
+        string fileName,
+        string contentType,
+        byte[] payload,
+        long maxUploadBytes,
+        CancellationToken cancellationToken = default)
+        => mediaLibraryStore.SaveAsync(fileName, contentType, payload, maxUploadBytes, cancellationToken);
+
+    public Task<byte[]?> DownloadMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => mediaLibraryStore.ReadBytesAsync(mediaId, cancellationToken);
+
+    public Task<bool> DeleteMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => mediaLibraryStore.DeleteAsync(mediaId, cancellationToken);
+
+    internal MicaDiscoveryResponseV1? TryRegisterTrustedLanDevice(MicaDiscoveryRequestV1 request, IPAddress? remoteIp)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!runtimeConfig.TrustedLanAutoRegistration)
+        {
+            return null;
+        }
+
+        var deviceMac = NormalizeDeviceMac(request.DeviceMac);
+        if (string.IsNullOrWhiteSpace(deviceMac))
+        {
+            return null;
+        }
+
+        DeviceRecord record;
+        var created = false;
+        lock (gate)
+        {
+            var now = timeProvider.GetUtcNow();
+            var remoteIpValue = remoteIp?.ToString();
+            var existing = sessionStateStore
+                .CreateRecords()
+                .FirstOrDefault(candidate => string.Equals(
+                    NormalizeDeviceMac(candidate.DeviceMac),
+                    deviceMac,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                if (!sessionStateStore.TryGetValue(existing.DeviceId, out var existingState) || existingState is null)
+                {
+                    existingState = new DeviceSessionState(existing, SocketDetachGracePeriod);
+                    sessionStateStore.Upsert(existingState);
+                }
+
+                existingState.MarkSeen(
+                    now,
+                    remoteIpValue,
+                    existingState.Record.LastKnownRssi,
+                    request.FirmwareVersion,
+                    existingState.Record.ActiveAppId,
+                    existingState.Record.ActiveAppName,
+                    NormalizeOptional(request.BoardModel),
+                    NormalizeOptional(request.PanelType));
+                record = existingState.Record;
+            }
+            else
+            {
+                if (sessionStateStore.Count >= runtimeConfig.MaxDevices)
+                {
+                    return null;
+                }
+
+                record = DeviceRecordMutations.CreatePairedRecord(
+                    deviceId: $"mp-{Guid.NewGuid():N}",
+                    token: WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(24)),
+                    name: string.IsNullOrWhiteSpace(request.DeviceName)
+                        ? ResolveDefaultDeviceName(request.BoardModel)
+                        : request.DeviceName.Trim(),
+                    profile: NormalizeFirmwareProfile(request.Profile),
+                    firmwareVersion: request.FirmwareVersion,
+                    ip: remoteIpValue,
+                    boardModel: NormalizeOptional(request.BoardModel),
+                    panelType: NormalizeOptional(request.PanelType),
+                    now: now,
+                    deviceMac: deviceMac);
+
+                var state = new DeviceSessionState(record, SocketDetachGracePeriod);
+                sessionStateStore.Upsert(state);
+                created = true;
+            }
+        }
+
+        NotifyDevicesChanged();
+        Log(created
+            ? $"Device registrado por discovery LAN: {record.DeviceId} ({deviceMac})"
+            : $"Device reutilizado por discovery LAN: {record.DeviceId} ({deviceMac})");
+        return BuildDiscoveryResponse(record);
     }
 
     public async Task<bool> SendCommandAsync(string deviceId, DeviceCommandType commandType, CancellationToken cancellationToken = default)
@@ -997,6 +1229,24 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
+
+    private MicaDiscoveryResponseV1 BuildDiscoveryResponse(DeviceRecord record)
+    {
+        return new MicaDiscoveryResponseV1
+        {
+            DeviceId = record.DeviceId,
+            Token = record.Token,
+            HttpBase = ResolveAdvertisedHttpBaseAddress(runtimeConfig),
+            MqttHost = ResolveAdvertisedMqttHost(runtimeConfig),
+            MqttPort = runtimeConfig.MqttPort,
+            MqttRootTopic = runtimeConfig.MqttRootTopic,
+            WsPath = "/ws/v1/stream",
+            VisualUdpPort = runtimeConfig.VisualUdpPort,
+        };
+    }
+
+    private static string? NormalizeDeviceMac(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim().Replace('-', ':').ToLowerInvariant();
 
     private static string ResolveDefaultDeviceName(string? boardModel)
     {

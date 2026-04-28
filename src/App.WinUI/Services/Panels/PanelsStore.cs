@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using App.WinUI.Models.Panels;
+using Device.Client;
+using Device.Protocol.Models;
 using MicaAudio.Core.Config;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -8,6 +10,7 @@ using Microsoft.Extensions.Options;
 namespace App.WinUI.Services.Panels;
 
 // DOCS: docs/wiki/modules/paineis.md#persistencia-do-layout
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 internal sealed class PanelsStore : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -35,6 +38,7 @@ internal sealed class PanelsStore : IDisposable
         LoggerMessage.Define<string>(LogLevel.Debug, new EventId(1009, nameof(LogFailedDeleteTempFileDueToAccessRestrictions)), "Failed to delete temporary panels store file due to access restrictions. Path: {TempPath}");
 
     private readonly SemaphoreSlim ioGate = new(1, 1);
+    private readonly IDeviceServerClient? deviceServerClient;
     private readonly ILogger<PanelsStore> logger;
     private readonly string path;
     private readonly string tempPath;
@@ -42,11 +46,15 @@ internal sealed class PanelsStore : IDisposable
     private PanelsStoreDocument document = new();
     private bool loaded;
 
-    public PanelsStore(IOptions<MicaAudioOptions> options, ILogger<PanelsStore> logger)
+    public PanelsStore(
+        IOptions<MicaAudioOptions> options,
+        ILogger<PanelsStore> logger,
+        IDeviceServerClient? deviceServerClient = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
 
+        this.deviceServerClient = deviceServerClient;
         this.logger = logger;
         path = string.IsNullOrWhiteSpace(options.Value.PanelsFilePath)
             ? Path.Combine(options.Value.AppDataRoot, "panels", "panels.json")
@@ -62,7 +70,8 @@ internal sealed class PanelsStore : IDisposable
         {
             if (!loaded)
             {
-                document = await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
+                var localDocument = await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
+                document = await ResolveServerFirstDocumentAsync(localDocument, cancellationToken).ConfigureAwait(false);
                 loaded = true;
             }
 
@@ -104,6 +113,8 @@ internal sealed class PanelsStore : IDisposable
 
             document = normalized;
             loaded = true;
+
+            await TrySaveServerLibraryAsync(normalized, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -169,6 +180,110 @@ internal sealed class PanelsStore : IDisposable
         var emptyDocument = new PanelsStoreDocument();
         emptyDocument.Normalize();
         return emptyDocument;
+    }
+
+    private async Task<PanelsStoreDocument> ResolveServerFirstDocumentAsync(
+        PanelsStoreDocument localDocument,
+        CancellationToken cancellationToken)
+    {
+        if (deviceServerClient is null)
+        {
+            return localDocument;
+        }
+
+        try
+        {
+            var serverLibrary = await deviceServerClient.GetPanelLibraryAsync(cancellationToken).ConfigureAwait(false);
+            var serverDocument = FromPanelLibrary(serverLibrary);
+            if (serverDocument.Panels.Count > 0)
+            {
+                return serverDocument;
+            }
+
+            if (localDocument.Panels.Count > 0)
+            {
+                await deviceServerClient.SavePanelLibraryAsync(ToPanelLibrary(localDocument), cancellationToken).ConfigureAwait(false);
+            }
+
+            return localDocument;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            return localDocument;
+        }
+    }
+
+    private async Task TrySaveServerLibraryAsync(PanelsStoreDocument localDocument, CancellationToken cancellationToken)
+    {
+        if (deviceServerClient is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await deviceServerClient.SavePanelLibraryAsync(ToPanelLibrary(localDocument), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static PanelLibraryDocument ToPanelLibrary(PanelsStoreDocument source)
+    {
+        return new PanelLibraryDocument
+        {
+            SchemaVersion = source.SchemaVersion,
+            LastSelectedPanelId = source.LastSelectedPanelId,
+            Panels = source.Panels.Select(static panel => new PanelLibraryItem
+            {
+                PanelId = panel.PanelId,
+                Name = panel.Name,
+                Width = panel.Width,
+                Height = panel.Height,
+                IsEnabled = true,
+                Widgets = panel.Widgets.Select(static widget => new PanelWidgetItem
+                {
+                    WidgetId = widget.WidgetId,
+                    AppId = widget.AppId,
+                    X = widget.X,
+                    Y = widget.Y,
+                    Width = widget.Width,
+                    Height = widget.Height,
+                    ZIndex = widget.ZIndex,
+                    ConfigValues = new Dictionary<string, string>(widget.ConfigValues, StringComparer.OrdinalIgnoreCase),
+                }).ToArray(),
+            }).ToArray(),
+        };
+    }
+
+    private static PanelsStoreDocument FromPanelLibrary(PanelLibraryDocument source)
+    {
+        var document = new PanelsStoreDocument
+        {
+            SchemaVersion = source.SchemaVersion,
+            LastSelectedPanelId = source.LastSelectedPanelId,
+            Panels = source.Panels.Select(static panel => new PanelDefinition
+            {
+                PanelId = panel.PanelId,
+                Name = panel.Name,
+                Width = panel.Width,
+                Height = panel.Height,
+                Widgets = panel.Widgets.Select(static widget => new PanelWidgetDefinition
+                {
+                    WidgetId = widget.WidgetId,
+                    AppId = widget.AppId,
+                    X = widget.X,
+                    Y = widget.Y,
+                    Width = widget.Width,
+                    Height = widget.Height,
+                    ZIndex = widget.ZIndex,
+                    ConfigValues = new Dictionary<string, string>(widget.ConfigValues, StringComparer.OrdinalIgnoreCase),
+                }).ToList(),
+            }).ToList(),
+        };
+        document.Normalize();
+        return document;
     }
 
     private string? TryQuarantineCorruptFile()

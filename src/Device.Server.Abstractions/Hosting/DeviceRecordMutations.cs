@@ -5,6 +5,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 internal static class DeviceRecordMutations
 {
     public static DeviceRecord CreatePairedRecord(
@@ -16,12 +17,14 @@ internal static class DeviceRecordMutations
         string? ip,
         string? boardModel,
         string? panelType,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? deviceMac = null)
     {
         return new DeviceRecord
         {
             DeviceId = deviceId,
             Token = token,
+            DeviceMac = NormalizeDeviceMac(deviceMac),
             Name = name,
             Profile = profile,
             CreatedAtUtc = now,
@@ -53,6 +56,7 @@ internal static class DeviceRecordMutations
             Name = source.Name,
             Profile = source.Profile,
             Token = source.Token,
+            DeviceMac = source.DeviceMac,
             IsRegistered = source.IsRegistered,
             CreatedAtUtc = source.CreatedAtUtc,
             LastSeenUtc = now,
@@ -127,6 +131,7 @@ internal static class DeviceRecordMutations
             Name = source.Name,
             Profile = source.Profile,
             Token = source.Token,
+            DeviceMac = source.DeviceMac,
             IsRegistered = true,
             CreatedAtUtc = source.CreatedAtUtc,
             LastSeenUtc = source.LastSeenUtc,
@@ -247,6 +252,7 @@ internal static class DeviceRecordMutations
             Name = source.Name,
             Profile = source.Profile,
             Token = source.Token,
+            DeviceMac = source.DeviceMac,
             IsRegistered = true,
             CreatedAtUtc = source.CreatedAtUtc,
             LastSeenUtc = now,
@@ -334,6 +340,7 @@ internal static class DeviceRecordMutations
             Name = source.Name,
             Profile = source.Profile,
             Token = source.Token,
+            DeviceMac = source.DeviceMac,
             IsRegistered = source.IsRegistered,
             CreatedAtUtc = source.CreatedAtUtc,
             LastSeenUtc = now,
@@ -493,4 +500,7 @@ internal static class DeviceRecordMutations
 
     private static string? NormalizeOptional(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? NormalizeDeviceMac(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
 }

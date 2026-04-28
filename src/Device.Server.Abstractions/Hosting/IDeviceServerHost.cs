@@ -65,4 +65,24 @@ public interface IDeviceServerHost : IDeviceFrameTransport, IAsyncDisposable
         string contentType = "image/webp");
 
     void ClearPanelsBatches(string deviceId, string? panelsSessionId = null);
+
+    Task<PanelLibraryDocument> GetPanelLibraryAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new PanelLibraryDocument());
+
+    Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    Task<MediaAssetInfo> UploadMediaAsync(
+        string fileName,
+        string contentType,
+        byte[] payload,
+        long maxUploadBytes,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Media upload is not supported by this device server host.");
+
+    Task<byte[]?> DownloadMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => Task.FromResult<byte[]?>(null);
+
+    Task<bool> DeleteMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
 }

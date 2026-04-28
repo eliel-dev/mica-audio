@@ -2,6 +2,7 @@ namespace Device.Protocol.Models;
 
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#persistencia-local
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed class DeviceRecord
 {
     public string DeviceId { get; init; } = string.Empty;
@@ -11,6 +12,8 @@ public sealed class DeviceRecord
     public string Profile { get; init; } = "dma_exp";
 
     public string Token { get; init; } = string.Empty;
+
+    public string? DeviceMac { get; init; }
 
     public bool IsRegistered { get; init; } = true;
 

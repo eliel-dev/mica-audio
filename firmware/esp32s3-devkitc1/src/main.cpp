@@ -33,6 +33,7 @@
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-18-provisioned-boot-wifi-before-hub75.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 
 static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr) {
   gServerHost = prefsGetStringOrDefault("host", "", summary);
@@ -196,7 +197,8 @@ void setup() {
 
   bool bootWifiConnected = false;
   bool provisioningIncomplete = isProvisioningIncomplete();
-  if (provisioningIncomplete) {
+  const bool savedWifiConfigured = prefsGetBoolOrDefault("wifiConfigured", false);
+  if (provisioningIncomplete && !savedWifiConfigured) {
     logPrefsMissingSummary("boot_incomplete", provisioningPrefSummary);
     const char* bootReason = resolveProvisioningIncompleteReason();
     Serial.printf(
@@ -221,7 +223,7 @@ void setup() {
 
   loadLightRuntimeStateFromPrefs();
 
-  if (!provisioningIncomplete && !bootWifiConnected) {
+  if ((!provisioningIncomplete || savedWifiConfigured) && !bootWifiConnected) {
     logBootMemorySnapshot("before_saved_wifi_begin");
     WiFi.setAutoReconnect(true);
     WiFi.mode(WIFI_STA);

@@ -5,6 +5,7 @@ namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/app-winui.md
 // DOCS: docs/wiki/reference/device-observability-dashboard.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class DevicesPage
 {
     private static readonly JsonSerializerOptions DashboardBridgeJsonOptions = new(JsonSerializerDefaults.Web);
@@ -180,8 +181,9 @@ public sealed partial class DevicesPage
                 await ExecuteTestLedAsync(message.DeviceId).ConfigureAwait(true);
                 break;
 
+            case "reprovision-wifi":
             case "remove-device":
-                await ExecuteRemoveDeviceAsync(message.DeviceId).ConfigureAwait(true);
+                await ExecuteReprovisionWifiAsync(message.DeviceId).ConfigureAwait(true);
                 break;
 
             case "update-firmware":

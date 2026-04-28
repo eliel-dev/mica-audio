@@ -150,9 +150,9 @@ Status em 2026-04-22:
 
 - `src/MicaAudio.Server` foi criado como executavel standalone sem dependencia de `App.WinUI`.
 - `PORT` tem precedencia sobre a porta configurada e `MICA_SERVER__*` alimenta `ServerConfig`.
-- O startup gera pair code transitorio para smoke local quando `StartupPairCodeTtlSeconds > 0`.
+- O startup pair code fica desligado por default (`StartupPairCodeTtlSeconds=0`) e permanece apenas como compatibilidade tecnica.
 - A Admin API tokenizada e os WebSockets admin foram adicionados para o primeiro WinUI remoto (`MICA_SERVER__ADMINTOKEN`).
-- `Device.Client.Remote` permite listar devices, gerar pair code, remover device, enviar comandos tracked, registrar batches WebP e enviar frames HUB75 via server standalone.
+- `Device.Client.Remote` permite listar devices, gerar pair code legado, reprovisionar/remover device por comando/admin, enviar comandos tracked, registrar batches WebP, sincronizar biblioteca de paineis/midia e enviar frames HUB75 via server standalone.
 
 ### Fase 2 - Bootstrap Render
 
@@ -181,7 +181,7 @@ Status em 2026-04-22:
 
 - `.dockerignore`, `src/MicaAudio.Server/Dockerfile` e `render.yaml` foram adicionados.
 - `render.yaml` declara `MICA_SERVER__ADMINTOKEN` como secret `sync: false`.
-- Docker local agora deve anunciar `MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272` quando `PORT=8080` estiver mapeado para `5272`, deve publicar `5273` se o firmware atual usar MQTT local e pode publicar `5274/udp` quando `PreferLanUdpVisualTransport` estiver ativo para visual LAN.
+- Docker local agora deve anunciar `MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272` quando `PORT=8080` estiver mapeado para `5272`, deve publicar `5273` se o firmware atual usar MQTT local, pode publicar `5274/udp` quando `PreferLanUdpVisualTransport` estiver ativo para visual LAN e deve publicar `5275/udp` quando `TrustedLanAutoRegistration` estiver ativo para discovery LAN.
 - O smoke local valida `/api/v1/health` e `/api/v1/server/info`; deploy Render real ainda depende de publicar o repo e aplicar o Blueprint no Dashboard.
 
 ### Fase 3 - Persistencia cloud

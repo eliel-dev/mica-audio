@@ -6,6 +6,7 @@ namespace Device.Client;
 // DOCS: docs/wiki/modules/paineis.md#runtime-em-background
 // DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public interface IDeviceServerClient
 {
     event EventHandler? DevicesChanged;
@@ -91,4 +92,23 @@ public interface IDeviceServerClient
         ClearPanelsBatches(deviceId, panelsSessionId);
         return Task.CompletedTask;
     }
+
+    Task<PanelLibraryDocument> GetPanelLibraryAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new PanelLibraryDocument());
+
+    Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    Task<MediaAssetInfo> UploadMediaAsync(
+        string fileName,
+        string contentType,
+        byte[] payload,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Media upload is not supported by this device server client.");
+
+    Task<byte[]?> DownloadMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => Task.FromResult<byte[]?>(null);
+
+    Task<bool> DeleteMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
 }

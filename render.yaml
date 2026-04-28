@@ -13,11 +13,17 @@ services:
       - key: MICA_SERVER__RESTRICTTOPRIVATENETWORKS
         value: "false"
       - key: MICA_SERVER__STARTUPPAIRCODETTLSECONDS
-        value: "600"
+        value: "0"
       - key: MICA_SERVER__ADMINTOKEN
         sync: false
       - key: MICA_SERVER__ALLOWLEGACYWEBSOCKETQUERYTOKEN
         value: "false"
+      - key: MICA_SERVER__TRUSTEDLANAUTOREGISTRATION
+        value: "false"
+      - key: MICA_SERVER__DISCOVERYUDPPORT
+        value: "5275"
+      - key: MICA_SERVER__MAXMEDIAUPLOADBYTES
+        value: "20971520"
     disk:
       name: mica-audio-server-data
       mountPath: /data

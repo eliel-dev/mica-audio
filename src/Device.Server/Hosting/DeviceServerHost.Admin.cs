@@ -11,6 +11,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#admin-api-remota
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan AdminPairingCodeDefaultTtl = TimeSpan.FromMinutes(10);
@@ -93,6 +94,124 @@ public sealed partial class DeviceServerHost
             .ConfigureAwait(false);
 
         return Results.Ok(result);
+    }
+
+    private async Task<IResult> HandleAdminGetPanelLibraryAsync(HttpContext ctx)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        var document = await panelLibraryStore.LoadAsync(ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Ok(document);
+    }
+
+    private async Task<IResult> HandleAdminPutPanelLibraryAsync(HttpContext ctx)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        if (IsRequestBodyTooLarge(ctx))
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        PanelLibraryDocument document;
+        try
+        {
+            document = await JsonSerializer.DeserializeAsync<PanelLibraryDocument>(ctx.Request.Body, JsonOptions, ctx.RequestAborted).ConfigureAwait(false)
+                ?? new PanelLibraryDocument();
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid_json" });
+        }
+
+        await panelLibraryStore.SaveAsync(document, ctx.RequestAborted).ConfigureAwait(false);
+        return Results.NoContent();
+    }
+
+    private async Task<IResult> HandleAdminUploadMediaAsync(HttpContext ctx)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        if (ctx.Request.ContentLength > runtimeConfig.MaxMediaUploadBytes)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        await using var ms = new MemoryStream();
+        await ctx.Request.Body.CopyToAsync(ms, ctx.RequestAborted).ConfigureAwait(false);
+        if (ms.Length > runtimeConfig.MaxMediaUploadBytes)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        var payload = ms.ToArray();
+        if (payload.Length == 0)
+        {
+            return Results.BadRequest(new { error = "media_payload_empty" });
+        }
+
+        try
+        {
+            var info = await mediaLibraryStore.SaveAsync(
+                ctx.Request.Query["fileName"].ToString(),
+                NormalizeOptional(ctx.Request.ContentType) ?? "application/octet-stream",
+                payload,
+                runtimeConfig.MaxMediaUploadBytes,
+                ctx.RequestAborted).ConfigureAwait(false);
+
+            return Results.Ok(info);
+        }
+        catch (InvalidDataException ex) when (string.Equals(ex.Message, "media_payload_too_large", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+        catch (InvalidDataException ex) when (string.Equals(ex.Message, "media_payload_empty", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new { error = "media_payload_empty" });
+        }
+    }
+
+    private async Task<IResult> HandleAdminGetMediaAsync(HttpContext ctx, string mediaId)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        var payload = await mediaLibraryStore.ReadBytesAsync(mediaId, ctx.RequestAborted).ConfigureAwait(false);
+        if (payload is null)
+        {
+            return Results.NotFound(new { error = "media_not_found" });
+        }
+
+        var info = (await mediaLibraryStore.LoadIndexAsync(ctx.RequestAborted).ConfigureAwait(false))
+            .FirstOrDefault(candidate => string.Equals(candidate.MediaId, mediaId, StringComparison.OrdinalIgnoreCase));
+
+        return Results.File(
+            payload,
+            info?.ContentType ?? "application/octet-stream",
+            info?.FileName);
+    }
+
+    private async Task<IResult> HandleAdminDeleteMediaAsync(HttpContext ctx, string mediaId)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        return await mediaLibraryStore.DeleteAsync(mediaId, ctx.RequestAborted).ConfigureAwait(false)
+            ? Results.NoContent()
+            : Results.NotFound(new { error = "media_not_found" });
     }
 
     private async Task<IResult> HandleAdminPanelsBatchAsync(

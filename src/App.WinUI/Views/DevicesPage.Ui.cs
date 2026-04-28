@@ -6,6 +6,7 @@ namespace App.WinUI.Views;
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
 // DOCS: docs/wiki/reference/device-observability-dashboard.md
 // DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class DevicesPage
 {
     private const double PanelCornerRadius = 8d;
@@ -26,7 +27,7 @@ public sealed partial class DevicesPage
     private TextBlock SelectedDeviceSignalText = null!;
     private AppBarButton CopyDashboardLinkButton = null!;
     private AppBarButton TestLedButton = null!;
-    private AppBarButton RemoveDeviceButton = null!;
+    private AppBarButton ReprovisionWifiButton = null!;
 
     private TextBlock DashboardPlaceholderText = null!;
     private Grid DashboardMetricsGrid = null!;
@@ -114,7 +115,7 @@ public sealed partial class DevicesPage
 
         var pairingButton = new AppBarButton
         {
-            Label = "Parear",
+            Label = "Pareamento legado",
             Icon = new SymbolIcon(Symbol.Add),
         };
         pairingButton.Click += OnGeneratePairingCodeClicked;
@@ -142,10 +143,10 @@ public sealed partial class DevicesPage
         copyHostButton.Click += OnCopyHostClicked;
 
         commandBar.PrimaryCommands.Add(downloadFirmwareButton);
-        commandBar.PrimaryCommands.Add(pairingButton);
         commandBar.PrimaryCommands.Add(refreshButton);
         commandBar.PrimaryCommands.Add(CopyDashboardLinkButton);
         commandBar.PrimaryCommands.Add(copyHostButton);
+        commandBar.SecondaryCommands.Add(pairingButton);
 
         host.Child = commandBar;
         return host;
@@ -303,17 +304,17 @@ public sealed partial class DevicesPage
         };
         TestLedButton.Click += OnTestLedClicked;
 
-        RemoveDeviceButton = new AppBarButton
+        ReprovisionWifiButton = new AppBarButton
         {
-            Label = "Remover",
-            Icon = new SymbolIcon(Symbol.Delete),
+            Label = "Reprovisionar Wi-Fi",
+            Icon = new SymbolIcon(Symbol.Setting),
             MinWidth = 132,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        RemoveDeviceButton.Click += OnRemoveDeviceClicked;
+        ReprovisionWifiButton.Click += OnReprovisionWifiClicked;
 
         buttonsStack.Children.Add(TestLedButton);
-        buttonsStack.Children.Add(RemoveDeviceButton);
+        buttonsStack.Children.Add(ReprovisionWifiButton);
 
         actionStack.Children.Add(SelectedDeviceSignalText);
         actionStack.Children.Add(buttonsStack);

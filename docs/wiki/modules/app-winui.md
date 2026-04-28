@@ -441,13 +441,13 @@
 - O arquivo principal de cada pagina ficou restrito a estado, composicao, lifecycle e wiring central.
 - A experiencia visivel mudou no caso de `Paineis`: o catalogo continua existindo, mas a configuracao operacional passou a ser apenas por widget/painel.
 
-## Atualizacao 2026-03 - DevicesPage Offline e Remocao Local
+## Atualizacao 2026-03 - DevicesPage Offline e Reprovisionamento
 
 - Devices offline continuam visiveis, mas nao exibem preview visual do app.
 - O painel da direita mostra apenas informacoes textuais do app ativo/ultimo app conhecido.
-- As acoes de device ficam no card de resumo: `Testar LED` e `Remover`.
+- As acoes de device ficam no card de resumo: `Testar LED` e `Reprovisionar Wi-Fi`.
 - O slider de brilho (`30..160`) envia `set_brightness` no commit e atualiza o painel.
-- A acao `Remover` foi consolidada: online tenta `revogar/reiniciar` e depois remove do registro local; offline remove apenas localmente.
+- A acao normal `Reprovisionar Wi-Fi` envia `enter_provisioning` para abrir o portal/AP no firmware. Remocao de device fica como limpeza tecnica/admin fora do fluxo principal.
 
 ## Atualizacao 2026-03 - Dashboard seguro e logs por dispositivo
 
@@ -473,23 +473,23 @@
 
 - O card visual `Comandos:` foi removido da `DevicesPage` para liberar area util de diagnostico.
 - Chips redundantes (online/Wi-Fi/snapshot) e bloco de conectividade/eventos foram removidos do dashboard.
-- O `RSSI` foi movido para o topo do card de resumo, ao lado dos botoes `Testar LED` e `Remover`.
+- O `RSSI` foi movido para o topo do card de resumo, ao lado dos botoes `Testar LED` e `Reprovisionar Wi-Fi`.
 - O card `Logs do dispositivo` recebeu prioridade de espaco vertical para facilitar leitura operacional.
 - O botao `Testar LED` continua respeitando `testLedAvailable` (fallback para firmware legado):
   - quando indisponivel, fica desabilitado e mostra rotulo `LED indisponivel`.
 
-## Atualizacao 2026-04 - Pair code inline na DevicesPage
+## Atualizacao 2026-04 - Pair code legado na DevicesPage
 
-- O botao `Parear` emite um `pair code` visivel inline logo abaixo da barra global de comandos.
+- O botao `Pareamento legado` fica em comandos secundarios e emite um `pair code` visivel inline logo abaixo da barra global de comandos.
 - O banner inline permite copiar o codigo sem abrir fluxo USB.
 - O mesmo surface inline concentra avisos e sucessos operacionais da `DevicesPage`.
-- Esse fluxo permite usar ferramenta externa de flash/log e ainda assim gerar o `pair code` oficial no desktop.
+- Esse fluxo permanece para compatibilidade tecnica; o onboarding normal usa Wi-Fi + discovery LAN sem codigo.
 
 ## Atualizacao 2026-03 - Paridade visual com HTML canonico
 
 - A `DevicesPage` agora usa um dashboard HTML/JS servido localmente para seguir o contrato visual do arquivo aprovado em `C:\Users\eliels\Documents\nice\mica-dashboard.html`.
 - Estrutura fixa do detalhe:
-  - header do dispositivo com `RSSI` + acoes verticais (`Testar LED` e `Remover`);
+  - header do dispositivo com `RSSI` + acoes verticais (`Testar LED` e `Reprovisionar Wi-Fi`);
   - bloco de brilho (`30..160`);
   - grade de metricas (CPU/RAM/PSRAM);
   - cards auxiliares `FPS atual do HUB75` e `Sinal`;

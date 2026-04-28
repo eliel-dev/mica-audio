@@ -4,6 +4,7 @@
 // DOCS: docs/wiki/guides/setup-new-device.md#passos
 // DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 
 #include "mica_provisioning.h"
 
@@ -157,11 +158,15 @@ static bool tryApplyProvisioningPortalServer(
       return true;
     }
 
-    errorCode = "portal_server_missing";
-    errorMessage = "Campo Servidor vazio e sem configuracao salva.";
-    setConnectivityState(kWifiStateConnected, "portal_server_missing", true);
-    Serial.println("[provisioning] campo Servidor vazio e sem configuracao salva.");
-    return false;
+    gServerHost = "";
+    gServerPort = 5272;
+    gMqttHost = "";
+    gMqttPort = kDefaultMqttPort;
+    gMqttRootTopic = kDefaultMqttRootTopic;
+    persistMqttConfig();
+    setConnectivityState(kWifiStateConnected, "portal_server_empty_discovery", true);
+    Serial.println("[provisioning] campo Servidor vazio; discovery LAN tentara localizar o servidor.");
+    return true;
   }
 
   String parsedHost;
@@ -240,6 +245,8 @@ static bool pairWithServer(const String& pairingCode, const String& deviceName, 
     return false;
   }
 
+  http.setConnectTimeout(5000);
+  http.setTimeout(15000);
   http.addHeader("Content-Type", "application/json");
   JsonDocument req;
   req["pairingCode"] = pairingCode;
@@ -251,7 +258,9 @@ static bool pairWithServer(const String& pairingCode, const String& deviceName, 
 
   String body;
   serializeJson(req, body);
+  resetTaskWatchdog();
   int code = http.POST(body);
+  resetTaskWatchdog();
   if (code >= 200 && code < 300) {
     JsonDocument resp;
     if (deserializeJson(resp, http.getString()) != DeserializationError::Ok) {
@@ -445,11 +454,9 @@ bool startProvisioningPortal(const char* reason) {
   String savedDeviceName = prefsGetStringOrDefault("name", String(kBoardDisplayName));
 
   WiFiManagerParameter pServer("server", "Servidor", savedServerBaseUrl.c_str(), 96);
-  WiFiManagerParameter pPair("pair", "Codigo pareamento", "", 12);
   WiFiManagerParameter pName("name", "Nome dispositivo", savedDeviceName.c_str(), 32);
 
   wm.addParameter(&pServer);
-  wm.addParameter(&pPair);
   wm.addParameter(&pName);
 
   String apName = "MicaAudio-Setup-" + String((uint32_t)ESP.getEfuseMac(), HEX).substring(6);
@@ -467,6 +474,7 @@ bool startProvisioningPortal(const char* reason) {
   gWifiDisconnectedSinceMs = 0;
   gLastWifiReconnectAttemptMs = 0;
   setConnectivityState(kWifiStateConnected, "wifi_connected", true);
+  gPrefs.putBool("wifiConfigured", true);
 
   gPrefs.putString("name", pName.getValue());
 
@@ -479,13 +487,7 @@ bool startProvisioningPortal(const char* reason) {
     return false;
   }
 
-  String pairingCode = pPair.getValue();
-  String pairErrorCode;
-  String pairErrorMessage;
-  if (!pairWithServer(pairingCode, pName.getValue(), pairErrorCode, pairErrorMessage)) {
-    Serial.printf("[pair] falha no provisioning portal: %s (%s)\n", pairErrorMessage.c_str(), pairErrorCode.c_str());
-  }
-
+  Serial.println("[provisioning] Wi-Fi configurado; aguardando auto-registro via discovery LAN.");
   return true;
 }
 

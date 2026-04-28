@@ -9,11 +9,13 @@
 
 ## Fluxo de execucao
 
-1. conecta ao servidor local
-2. recebe `StreamFrameV2` tipo `1` (`bins128`) por WS ou UDP LAN opt-in, ou tipo `2` (`frame 128x64 RGB565`) por WS
-3. renderiza `drawBars`, `drawFrame128x64` ou o fallback local de conectividade
-4. conecta o control plane MQTT para `presence`, `status`, `stats`, `logs` e `commands`
-5. reporta `boardModel = esp32s3_devkitc1` e `panelType = hub75_p2_5_128x64_smd2121_scan32`
+1. sobe Wi-Fi salvo ou abre portal AP quando ainda nao ha Wi-Fi configurado
+2. descobre o `MicaAudio.Server` por UDP LAN e registra/reutiliza o device sem codigo de pareamento
+3. conecta HTTP/WS/MQTT usando `deviceId`, token e endpoints recebidos do discovery
+4. recebe `StreamFrameV2` tipo `1` (`bins128`) por WS ou UDP LAN opt-in, ou tipo `2` (`frame 128x64 RGB565`) por WS
+5. renderiza `drawBars`, `drawFrame128x64` ou o fallback local de conectividade
+6. conecta o control plane MQTT para `presence`, `status`, `stats`, `logs` e `commands`
+7. reporta `boardModel = esp32s3_devkitc1` e `panelType = hub75_p2_5_128x64_smd2121_scan32`
 
 ## Direcao oficial
 
@@ -27,6 +29,23 @@
 - `StreamFrameV2` continua aceito como wire legado.
 - `StreamFrameV3` entra como wire owner-bound para clientes session-aware.
 - O firmware continua aceitando o caminho legado enquanto nao houver owner ativo, para nao quebrar a transicao.
+
+## Atualizacao 2026-04 - Zero-Code LAN Onboarding
+
+- O portal AP fica responsavel por Wi-Fi, nome do dispositivo e campo `Servidor` opcional apenas para fallback tecnico.
+- O caminho normal nao pede mais codigo de pareamento: depois que o Wi-Fi conecta, o firmware envia broadcast UDP `mica.discovery.v1` na porta `5275`.
+- O payload discovery inclui `deviceMac`, `deviceName`, `firmwareVersion`, `boardModel`, `panelType` e `profile`.
+- A resposta `MicaDiscoveryResponseV1` persiste `deviceId`, `token`, `httpBase`, `mqttHost`, `mqttPort`, `mqttRootTopic`, `wsPath` e `visualUdpPort` em `Preferences`.
+- Com Wi-Fi salvo, ausencia de `deviceId/token/host` nao abre AP automaticamente; o device permanece vivo e tenta discovery com backoff.
+- O endpoint `/api/v1/pair` e o parser de pair code continuam no firmware apenas como compatibilidade tecnica.
+- `processNetworkPoll()` executa discovery, MQTT e WS de forma cooperativa; chamadas HTTP/MQTT receberam timeouts explicitos e pontos de `feedTaskWatchdog()` para evitar que `loopTask` ultrapasse o budget do TWDT.
+- Logs seriais curtos marcam os limites do boot/conexao:
+  - `discovery_started`
+  - `discovery_broadcast`
+  - `discovery_registered`
+  - `mqtt_connecting` / `mqtt_connected`
+  - `ws_begin` / `ws_begin_done`
+- A decisao preserva o task watchdog ativo, alinhada com a funcao do TWDT de detectar tarefas que deixam de ceder execucao por tempo prolongado.
 
 ## Ownership, shadow e lock lease
 
@@ -93,6 +112,7 @@
 
 ## Atualizacao 2026-04 - Rollback para AP-first estavel
 
+- Nota de evolucao: no fluxo zero-code LAN, essa regra fica restrita a Wi-Fi ausente ou entrada manual em provisioning. Faltar `deviceId/token/host` com Wi-Fi ja salvo aciona discovery LAN, nao AP automatico.
 - Quando faltam `host/porta/deviceId/token` no boot, o firmware volta a abrir o AP `MicaAudio-Setup-xxxx` imediatamente.
 - O `setup()` chama `startProvisioningPortal(...)` direto no boot incompleto e recarrega `Preferences` apos o portal fechar.
 - O hotfix de `startConfigPortal()` direto foi preservado:

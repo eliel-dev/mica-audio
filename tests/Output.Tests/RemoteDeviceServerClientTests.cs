@@ -136,6 +136,63 @@ public sealed class RemoteDeviceServerClientTests
     }
 
     [Fact]
+    public async Task RemoteDeviceServerClient_ShouldRoundTripPanelLibraryAndMedia()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        await using var host = new DeviceServerHost();
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = DeviceServerTestHarness.GetFreeTcpPort(),
+            RestrictToPrivateNetworks = true,
+            AdminToken = AdminToken,
+            MaxMediaUploadBytes = 1024,
+        });
+
+        using var httpClient = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        await using var remote = new RemoteDeviceServerClient(
+            httpClient,
+            new RemoteDeviceServerClientOptions
+            {
+                BaseAddress = $"http://127.0.0.1:{port}",
+                AdminToken = AdminToken,
+            });
+
+        var document = new PanelLibraryDocument
+        {
+            LastSelectedPanelId = "remote-panel",
+            Panels =
+            [
+                new PanelLibraryItem
+                {
+                    PanelId = "remote-panel",
+                    Name = "Remoto",
+                    Width = 128,
+                    Height = 64,
+                    IsEnabled = true,
+                },
+            ],
+        };
+
+        await remote.SavePanelLibraryAsync(document, CancellationToken.None);
+        var loaded = await remote.GetPanelLibraryAsync(CancellationToken.None);
+        Assert.Equal("remote-panel", loaded.LastSelectedPanelId);
+        Assert.Equal("Remoto", Assert.Single(loaded.Panels).Name);
+
+        var payload = "GIF89a-remote"u8.ToArray();
+        var media = await remote.UploadMediaAsync("remote.gif", "image/gif", payload, CancellationToken.None);
+        Assert.Equal(payload.LongLength, media.SizeBytes);
+
+        var downloaded = await remote.DownloadMediaAsync(media.MediaId, CancellationToken.None);
+        Assert.Equal(payload, downloaded);
+
+        Assert.True(await remote.DeleteMediaAsync(media.MediaId, CancellationToken.None));
+        Assert.Null(await remote.DownloadMediaAsync(media.MediaId, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task RemoteDeviceFrameTransport_ShouldForwardFramesThroughAdminWebSocket()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();

@@ -5,6 +5,7 @@ namespace MicaAudio.Server;
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed class MicaAudioServerOptions
 {
     public const string EnvironmentVariablePrefix = "MICA_SERVER__";
@@ -33,6 +34,12 @@ public sealed class MicaAudioServerOptions
 
     public bool PreferLanUdpVisualTransport { get; set; }
 
+    public bool TrustedLanAutoRegistration { get; set; }
+
+    public int DiscoveryUdpPort { get; set; } = 5275;
+
+    public long MaxMediaUploadBytes { get; set; } = 20L * 1024L * 1024L;
+
     public string[] AllowedCidrs { get; set; } = Array.Empty<string>();
 
     public int PairRequestsPerMinute { get; set; } = 20;
@@ -53,7 +60,7 @@ public sealed class MicaAudioServerOptions
 
     public int MaxWebSocketMessageBytes { get; set; } = 64 * 1024;
 
-    public int StartupPairCodeTtlSeconds { get; set; } = 600;
+    public int StartupPairCodeTtlSeconds { get; set; }
 
     public string StorageRoot { get; set; } = GetDefaultStorageRoot();
 

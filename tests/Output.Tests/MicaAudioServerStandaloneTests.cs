@@ -80,6 +80,9 @@ public sealed class MicaAudioServerStandaloneTests
                 ["RestrictToPrivateNetworks"] = "false",
                 ["VisualUdpPort"] = "5274",
                 ["PreferLanUdpVisualTransport"] = "true",
+                ["TrustedLanAutoRegistration"] = "true",
+                ["DiscoveryUdpPort"] = "5275",
+                ["MaxMediaUploadBytes"] = "20971520",
                 ["DeviceFreshThresholdSeconds"] = "21",
                 ["AllowLegacyWebSocketQueryToken"] = "true",
                 ["StartupPairCodeTtlSeconds"] = "0",
@@ -101,6 +104,9 @@ public sealed class MicaAudioServerStandaloneTests
         Assert.False(config.RestrictToPrivateNetworks);
         Assert.Equal(5274, config.VisualUdpPort);
         Assert.True(config.PreferLanUdpVisualTransport);
+        Assert.True(config.TrustedLanAutoRegistration);
+        Assert.Equal(5275, config.DiscoveryUdpPort);
+        Assert.Equal(20L * 1024L * 1024L, config.MaxMediaUploadBytes);
         Assert.Equal(21, config.DeviceFreshThresholdSeconds);
         Assert.True(config.AllowLegacyWebSocketQueryToken);
         Assert.Equal(0, options.StartupPairCodeTtlSeconds);
@@ -146,6 +152,10 @@ public sealed class MicaAudioServerStandaloneTests
         Assert.Contains("mountPath: /data", renderYaml);
         Assert.Contains("MICA_SERVER__STORAGEROOT", renderYaml);
         Assert.Contains("MICA_SERVER__RESTRICTTOPRIVATENETWORKS", renderYaml);
+        Assert.Contains("MICA_SERVER__TRUSTEDLANAUTOREGISTRATION", renderYaml);
+        Assert.Contains("MICA_SERVER__DISCOVERYUDPPORT", renderYaml);
+        Assert.Contains("MICA_SERVER__MAXMEDIAUPLOADBYTES", renderYaml);
+        Assert.Contains("value: \"0\"", renderYaml);
         Assert.Contains("MICA_SERVER__ADMINTOKEN", renderYaml);
         Assert.Contains("sync: false", renderYaml);
     }
@@ -165,7 +175,7 @@ public sealed class MicaAudioServerStandaloneTests
     {
         var dockerfile = File.ReadAllText(GetRepoPath("src", "MicaAudio.Server", "Dockerfile"));
 
-        Assert.Contains("EXPOSE 8080 5273 5274/udp", dockerfile);
+        Assert.Contains("EXPOSE 8080 5273 5274/udp 5275/udp", dockerfile);
     }
 
     [Theory]

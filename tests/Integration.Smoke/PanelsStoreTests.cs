@@ -1,5 +1,7 @@
 using App.WinUI.Models.Panels;
 using App.WinUI.Services.Panels;
+using Device.Client;
+using Device.Protocol.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
@@ -233,13 +235,73 @@ public sealed class PanelsStoreTests
         }
     }
 
-    private static PanelsStore CreateStore(string appDataRoot, string storePath)
+    [Fact]
+    public async Task LoadAsync_ShouldMigrateLocalPanelsToServer_WhenServerLibraryIsEmpty()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var storePath = Path.Combine(root, "panels", "panels.json");
+            using (var localWriter = CreateStore(root, storePath))
+            {
+                await localWriter.SaveAsync(new PanelsStoreDocument
+                {
+                    LastSelectedPanelId = "panel-local",
+                    Panels =
+                    [
+                        new PanelDefinition
+                        {
+                            PanelId = "panel-local",
+                            Name = "Local importado",
+                            Widgets =
+                            [
+                                new PanelWidgetDefinition
+                                {
+                                    WidgetId = "widget-local",
+                                    AppId = "gifhub75",
+                                    X = 3,
+                                    Y = 4,
+                                    Width = 32,
+                                    Height = 24,
+                                    ConfigValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                                    {
+                                        ["mediaId"] = "media-local",
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                });
+            }
+
+            var server = new CapturingDeviceServerClient(new PanelLibraryDocument());
+            using var store = CreateStore(root, storePath, server);
+
+            var loaded = await store.LoadAsync();
+
+            Assert.Equal("panel-local", loaded.LastSelectedPanelId);
+            Assert.NotNull(server.SavedDocument);
+            var saved = server.SavedDocument!;
+            Assert.Equal("panel-local", saved.LastSelectedPanelId);
+            var panel = Assert.Single(saved.Panels);
+            Assert.Equal("Local importado", panel.Name);
+            var widget = Assert.Single(panel.Widgets);
+            Assert.Equal("gifhub75", widget.AppId);
+            Assert.Equal("media-local", widget.ConfigValues["mediaId"]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static PanelsStore CreateStore(string appDataRoot, string storePath, IDeviceServerClient? deviceServerClient = null)
     {
         return new PanelsStore(Options.Create(new MicaAudioOptions
         {
             AppDataRoot = appDataRoot,
             PanelsFilePath = storePath,
-        }), NullLogger<PanelsStore>.Instance);
+        }), NullLogger<PanelsStore>.Instance, deviceServerClient);
     }
 
     private static string CreateTempDirectory()
@@ -247,5 +309,60 @@ public sealed class PanelsStoreTests
         var path = Path.Combine(Path.GetTempPath(), "mica-audio-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private sealed class CapturingDeviceServerClient : IDeviceServerClient
+    {
+        private readonly PanelLibraryDocument document;
+
+        public CapturingDeviceServerClient(PanelLibraryDocument document)
+        {
+            this.document = document;
+        }
+
+        public event EventHandler? DevicesChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<string>? LogMessage
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public PanelLibraryDocument? SavedDocument { get; private set; }
+
+        public string GetServerBaseAddress() => "http://127.0.0.1:5272";
+
+        public Task<CommandDispatchResult> SendCommandTrackedAsync(
+            string deviceId,
+            DeviceCommandType commandType,
+            IReadOnlyDictionary<string, string>? parameters,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+            => Task.FromResult(new CommandDispatchResult());
+
+        public Task<PanelLibraryDocument> GetPanelLibraryAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(document);
+
+        public Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
+        {
+            SavedDocument = document;
+            return Task.CompletedTask;
+        }
     }
 }

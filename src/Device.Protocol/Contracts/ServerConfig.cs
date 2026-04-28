@@ -4,6 +4,7 @@ namespace Device.Protocol.Contracts;
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed class ServerConfig
 {
     public string ListenHost { get; init; } = "0.0.0.0";
@@ -30,6 +31,12 @@ public sealed class ServerConfig
     public int VisualUdpPort { get; init; } = 5274;
 
     public bool PreferLanUdpVisualTransport { get; init; }
+
+    public bool TrustedLanAutoRegistration { get; init; }
+
+    public int DiscoveryUdpPort { get; init; } = 5275;
+
+    public long MaxMediaUploadBytes { get; init; } = 20L * 1024L * 1024L;
 
     public string[] AllowedCidrs { get; init; } = Array.Empty<string>();
 

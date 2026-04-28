@@ -7,6 +7,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class DeviceServerHost
 {
     private void MapRoutes(WebApplication localApp)
@@ -26,6 +27,11 @@ public sealed partial class DeviceServerHost
         admin.MapPost("/pairing-codes", (Delegate)HandleAdminCreatePairingCodeAsync);
         admin.MapDelete("/devices/{deviceId}", (Delegate)HandleAdminRemoveDevice);
         admin.MapPost("/devices/{deviceId}/commands/tracked", (Delegate)HandleAdminTrackedCommandAsync);
+        admin.MapGet("/library/panels", (Delegate)HandleAdminGetPanelLibraryAsync);
+        admin.MapPut("/library/panels", (Delegate)HandleAdminPutPanelLibraryAsync);
+        admin.MapPost("/library/media", (Delegate)HandleAdminUploadMediaAsync);
+        admin.MapGet("/library/media/{mediaId}", (Delegate)HandleAdminGetMediaAsync);
+        admin.MapDelete("/library/media/{mediaId}", (Delegate)HandleAdminDeleteMediaAsync);
         admin.MapPost("/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence:long}", (Delegate)HandleAdminPanelsBatchAsync);
         admin.MapDelete("/panels/batches/{deviceId}", (Delegate)HandleAdminClearPanelsBatches);
 

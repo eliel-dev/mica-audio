@@ -9,6 +9,7 @@
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 
 #include <Arduino.h>
 #include "firmware_version.h"
@@ -43,6 +44,7 @@ constexpr unsigned long kWifiDisconnectProvisioningFallbackMs = 20000;
 constexpr unsigned long kWifiBootConnectGraceMs = 5000;
 constexpr unsigned long kWifiReconnectRetryMs = 5000;
 constexpr unsigned long kMqttReconnectRetryMs = 5000;
+constexpr unsigned long kDiscoveryRetryMs = 3000;
 constexpr unsigned long kWsReconnectRetryMs = 60000;
 constexpr unsigned long kWsAutoReconnectIntervalMs = 2000;
 constexpr unsigned long kWsFlapReportWindowMs = 60000;
@@ -59,7 +61,10 @@ constexpr uint32_t kHealthyLoopThresholdUs = 25000;
 constexpr uint32_t kNetworkPollBudgetUs = 8000;
 constexpr unsigned long kOtaSelfTestWindowMs = 10000;
 constexpr uint16_t kDefaultMqttPort = 5273;
+constexpr uint16_t kDiscoveryUdpPort = 5275;
 constexpr uint16_t kVisualUdpPort = 5274;
+constexpr size_t kDiscoveryPacketMaxBytes = 1024;
+constexpr uint16_t kMqttConnectSocketTimeoutSeconds = 5;
 constexpr size_t kVisualUdpFrameHeaderSize = 12;
 constexpr size_t kVisualUdpFrameTagSize = 16;
 constexpr size_t kVisualUdpFrameMaxDatagramSize = kVisualUdpFrameHeaderSize + kStreamFrameSize + kVisualUdpFrameTagSize;

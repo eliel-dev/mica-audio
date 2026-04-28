@@ -2,12 +2,12 @@
 
 ## Objetivo
 
-Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemetria, assets e estado duravel dos dispositivos ESP32.
+Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, controle, telemetria, assets e estado duravel dos dispositivos ESP32.
 
 ## Direcao oficial
 
 - O `Device.Server` e o control plane oficial do sistema.
-- O server continua dono de pairing, catalogo, comandos tracked, snapshots, logs, assets e metadata de ownership/mode.
+- O server continua dono de auto-registro LAN, compatibilidade de pairing, catalogo, comandos tracked, snapshots, logs, assets e metadata de ownership/mode.
 - O server nao e mais a topologia oficial do hot path visual para `visualizador` e `Paineis`; nesses casos, o cliente local fala direto com o ESP na LAN.
 
 ## Baseline atual / transicao
@@ -19,10 +19,12 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
 ## Responsabilidades
 
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
+- UDP discovery LAN em `5275/udp` para registrar devices confiaveis sem codigo de pareamento.
 - Broker MQTT embutido para `commands`, `command-events`, `status`, `presence`, `stats` e `logs`.
 - WebSocket `/ws/v1/stream` exclusivamente para stream visual binario legado/de transicao.
 - UDP LAN opt-in para stream visual descartavel `Bins128`, com WS como fallback.
 - Admin API opt-in por token para clients remotos WinUI (`/api/v1/admin/*`).
+- Admin API de biblioteca para paineis e midias persistidos no `StorageRoot`.
 - WebSockets admin para eventos (`/ws/v1/admin/events`) e frames remotos (`/ws/v1/admin/frames`).
 - Dashboard local para `WebView2` via `GET /dashboard` + `WS /ws/device/{deviceId}` com DTO dedicado.
 - Sessao de comandos rastreados com timeout.
@@ -47,15 +49,16 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
 ## Fluxo de execucao
 
 1. `DeviceServerHost.StartAsync` sobe web app local.
-2. Dispositivo pareia via HTTP e recebe token + endpoint MQTT.
-3. `PairDeviceRequest` pode informar `BoardModel` e `PanelType`.
+2. Dispositivo com Wi-Fi envia broadcast UDP `mica.discovery.v1` com MAC, nome, firmware, board, painel e profile.
+3. Servidor com `TrustedLanAutoRegistration=true` registra ou reutiliza o device por `DeviceMac` e responde por UDP com `deviceId`, `token`, `httpBase`, MQTT, WS e UDP visual.
 4. Device autentica no broker MQTT com `clientId = username = deviceId` e `password = token`.
 5. `presence`, `status` e `stats` MQTT alimentam online/offline e o snapshot operacional do device.
 6. `ISessionStateStore` mantem o estado efemero de presenca e snapshot, sem expor WebSocket/frame stream.
 7. App envia comandos tracked (`SendCommandTrackedAsync`) via `mica/v1/devices/{deviceId}/commands`.
 8. `ICommandStateStore` e `TrackedCommandState` correlacionam `command-events` por `commandId`.
 9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
-10. `IDeviceFrameTransport.BroadcastFrame/SendFrame` continua existindo como baseline legado/de transicao; a direcao oficial para tempo real e cliente LAN direto no ESP.
+10. `/api/v1/pair` permanece disponivel apenas como compatibilidade/deprecado para fluxos tecnicos.
+11. `IDeviceFrameTransport.BroadcastFrame/SendFrame` continua existindo como baseline legado/de transicao; a direcao oficial para tempo real e cliente LAN direto no ESP.
 
 ## Ownership, shadow e lock lease
 
@@ -119,12 +122,37 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
 - O composition root da `App.WinUI` registra `ISessionStateStore -> InMemorySessionStateStore` junto do `DeviceServerHost` embedded.
 - Nao houve alteracao de endpoints, payloads, topicos MQTT, auth, firmware, portas, client remoto ou semantica de online/legacy/offline.
 
+## Atualizacao 2026-04 - Zero-Code LAN Onboarding + Biblioteca Server-First
+
+- Novos contratos compartilhados em `Device.Protocol`:
+  - `MicaDiscoveryRequestV1`
+  - `MicaDiscoveryResponseV1`
+  - `PanelLibraryDocument`
+  - `PanelLibraryItem`
+  - `PanelWidgetItem`
+  - `MediaAssetInfo`
+- `DeviceRecord.DeviceMac` passou a ser persistido. Re-registro LAN com o mesmo MAC reutiliza o registro/token existente em vez de criar device duplicado.
+- `DeviceServerHost` abre UDP discovery apenas quando `ServerConfig.TrustedLanAutoRegistration=true`.
+- A resposta discovery anuncia os mesmos endpoints operacionais que o firmware precisa no boot: HTTP, MQTT, root topic, WS path e porta UDP visual.
+- `MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=false` bloqueia auto-registro e deixa `/api/v1/pair` como compatibilidade temporaria.
+- `StartupPairCodeTtlSeconds` fica `0` por default no standalone para nao emitir pair code na UX normal.
+- `IPanelLibraryStore` e `IMediaLibraryStore` isolam persistencia de biblioteca:
+  - embedded usa stores in-memory;
+  - standalone usa `StorageRoot/panels/panels.json`, `StorageRoot/media/<sha256>.<ext>` e `StorageRoot/media/media-index.json`.
+- APIs admin/client novas:
+  - `GET /api/v1/admin/library/panels`
+  - `PUT /api/v1/admin/library/panels`
+  - `POST /api/v1/admin/library/media`
+  - `GET /api/v1/admin/library/media/{mediaId}`
+  - `DELETE /api/v1/admin/library/media/{mediaId}`
+- Upload de midia respeita `MaxMediaUploadBytes` (`MICA_SERVER__MAXMEDIAUPLOADBYTES`, default `20971520`) e deduplica blobs por `SHA-256`.
+
 ## Atualizacao 2026-04 - Server Standalone + Docker/Render Smoke
 
 - `MicaAudio.Server` e o primeiro executavel standalone do server e reutiliza `DeviceServerHost` como implementacao real de HTTP/WS/MQTT.
-- O host standalone registra os stores in-memory atuais, persiste `DeviceRecord` em JSON simples via `StandaloneDeviceRegistryStore` e aceita configuracao por `MICA_SERVER__*`.
+- O host standalone registra stores in-memory para estado efemero, persiste `DeviceRecord` em JSON simples via `StandaloneDeviceRegistryStore`, persiste biblioteca/midia em `StorageRoot` e aceita configuracao por `MICA_SERVER__*`.
 - A porta HTTP continua `5272` por default, mas o env `PORT` tem precedencia para Render; `render.yaml` configura `StorageRoot=/data` e `RestrictToPrivateNetworks=false`.
-- O startup pode gerar um pair code transitorio em log/console (`StartupPairCodeTtlSeconds`, default `600`, `0` desliga) para smoke local sem admin API.
+- O startup pode gerar um pair code transitorio em log/console (`StartupPairCodeTtlSeconds`, default `0`, valor maior que `0` liga) para compatibilidade tecnica.
 - O fluxo WinUI embedded permanece o default do app desktop; este corte nao cria client remoto nem muda firmware, endpoints, payloads, MQTT topics ou auth.
 
 ## Atualizacao 2026-04 - Admin API E WinUI Remote
@@ -138,6 +166,11 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
   - `POST /api/v1/admin/devices/{deviceId}/commands/tracked`
   - `POST /api/v1/admin/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence}`
   - `DELETE /api/v1/admin/panels/batches/{deviceId}`
+  - `GET /api/v1/admin/library/panels`
+  - `PUT /api/v1/admin/library/panels`
+  - `POST /api/v1/admin/library/media`
+  - `GET /api/v1/admin/library/media/{mediaId}`
+  - `DELETE /api/v1/admin/library/media/{mediaId}`
 - `WS /ws/v1/admin/events` publica JSON de `devices_changed`, `device_log`, `command_progress` e `heartbeat`.
 - `WS /ws/v1/admin/frames` recebe envelope binario admin -> server e chama `BroadcastFrame` ou `SendFrame` sem mudar `StreamFrameV2`.
 - `Device.Client.Remote` implementa `IDeviceServerClient` via HTTP Admin API e `IDeviceFrameTransport` via WebSocket admin, enquanto o firmware e os endpoints de device atuais continuam inalterados.
@@ -167,6 +200,7 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
 - allowlist CIDR opcional em `AllowedCidrs`.
 
 3. Autenticacao:
+- Discovery LAN: autenticacao inicial implicita por rede confiavel, gated por `TrustedLanAutoRegistration`; desabilitar em redes nao confiaveis.
 - HTTP (`/api/v1/*`): aceita somente `X-Device-Token` ou `Authorization: Bearer`.
 - `latest/download` de firmware reaproveitam a mesma autenticacao de device (`X-Device-Id` + `X-Device-Token` ou bearer).
 - WebSocket (`/ws/v1/stream`): aceita `X-Device-Id` + `X-Device-Token` (ou `Authorization: Bearer`).
@@ -177,6 +211,7 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
 
 4. Limites de payload:
 - body JSON limitado por `MaxJsonBodyBytes` (default 64KB).
+- upload de midia admin limitado por `MaxMediaUploadBytes` (default 20MB).
 - mensagem WS limitada por `MaxWebSocketMessageBytes` (default 64KB).
 - mensagens WS fragmentadas sao reagrupadas ate `EndOfMessage`.
 - UDP visual v1 e LAN-only, autenticado por HMAC truncado com token do device e restrito a `Bins128`.
@@ -323,6 +358,12 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
 - [PanelsBatchWrite](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchWrite.cs#L1) - assinatura: `public sealed record PanelsBatchWrite`
 - [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1) - assinatura: `public sealed record PanelsBatchEntry`
 - [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1) - assinatura: `public sealed class InMemoryPanelsBatchStore`
+- [IPanelLibraryStore](../../../src/Device.Server.Abstractions/Hosting/IPanelLibraryStore.cs#L1) - assinatura: `public interface IPanelLibraryStore`
+- [IMediaLibraryStore](../../../src/Device.Server.Abstractions/Hosting/IMediaLibraryStore.cs#L1) - assinatura: `public interface IMediaLibraryStore`
+- [InMemoryPanelLibraryStore](../../../src/Device.Server/Hosting/InMemoryPanelLibraryStore.cs#L1) - assinatura: `public sealed class InMemoryPanelLibraryStore`
+- [InMemoryMediaLibraryStore](../../../src/Device.Server/Hosting/InMemoryMediaLibraryStore.cs#L1) - assinatura: `public sealed class InMemoryMediaLibraryStore`
+- [StandalonePanelLibraryStore](../../../src/MicaAudio.Server/StandalonePanelLibraryStore.cs#L1) - assinatura: `public sealed class StandalonePanelLibraryStore`
+- [StandaloneMediaLibraryStore](../../../src/MicaAudio.Server/StandaloneMediaLibraryStore.cs#L1) - assinatura: `public sealed class StandaloneMediaLibraryStore`
 - [IDevicePairingStore](../../../src/Device.Server.Abstractions/Hosting/IDevicePairingStore.cs#L1) - assinatura: `public interface IDevicePairingStore`
 - [InMemoryDevicePairingStore](../../../src/Device.Server/Hosting/InMemoryDevicePairingStore.cs#L1) - assinatura: `public sealed class InMemoryDevicePairingStore`
 - [ICommandStateStore](../../../src/Device.Server.Abstractions/Hosting/ICommandStateStore.cs#L1) - assinatura: `public interface ICommandStateStore`
@@ -346,6 +387,12 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1) - assinatura: `internal static class DeviceMqttTopics`
 - [PairDeviceRequest](../../../src/Device.Protocol/Models/PairDeviceRequest.cs#L1) - assinatura: `public sealed class PairDeviceRequest`
 - [PairDeviceResponse](../../../src/Device.Protocol/Models/PairDeviceResponse.cs#L1) - assinatura: `public sealed class PairDeviceResponse`
+- [MicaDiscoveryRequestV1](../../../src/Device.Protocol/Models/MicaDiscoveryRequestV1.cs#L1) - assinatura: `public sealed class MicaDiscoveryRequestV1`
+- [MicaDiscoveryResponseV1](../../../src/Device.Protocol/Models/MicaDiscoveryResponseV1.cs#L1) - assinatura: `public sealed class MicaDiscoveryResponseV1`
+- [PanelLibraryDocument](../../../src/Device.Protocol/Models/PanelLibraryDocument.cs#L1) - assinatura: `public sealed class PanelLibraryDocument`
+- [PanelLibraryItem](../../../src/Device.Protocol/Models/PanelLibraryItem.cs#L1) - assinatura: `public sealed class PanelLibraryItem`
+- [PanelWidgetItem](../../../src/Device.Protocol/Models/PanelWidgetItem.cs#L1) - assinatura: `public sealed class PanelWidgetItem`
+- [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1) - assinatura: `public sealed class MediaAssetInfo`
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1) - assinatura: `public sealed class DevicePresenceMessage`
 - [DeviceTelemetryMessage](../../../src/Device.Protocol/Models/DeviceTelemetryMessage.cs#L1) - assinatura: `public sealed class DeviceTelemetryMessage`
@@ -392,11 +439,23 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
 - `src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.Routes.cs`
 - `src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs`
+- `src/Device.Server/Hosting/InMemoryPanelLibraryStore.cs`
+- `src/Device.Server/Hosting/InMemoryMediaLibraryStore.cs`
+- `src/Device.Server.Abstractions/Hosting/IPanelLibraryStore.cs`
+- `src/Device.Server.Abstractions/Hosting/IMediaLibraryStore.cs`
+- `src/MicaAudio.Server/StandalonePanelLibraryStore.cs`
+- `src/MicaAudio.Server/StandaloneMediaLibraryStore.cs`
 - `src/Device.Server/Hosting/DeviceMqttTopics.cs`
 - `src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs`
 - `src/Device.Client.Embedded/NetworkInterfaceEmbeddedDevicePublicHostResolver.cs`
 - `src/Device.Protocol/Models/PairDeviceRequest.cs`
 - `src/Device.Protocol/Models/PairDeviceResponse.cs`
+- `src/Device.Protocol/Models/MicaDiscoveryRequestV1.cs`
+- `src/Device.Protocol/Models/MicaDiscoveryResponseV1.cs`
+- `src/Device.Protocol/Models/PanelLibraryDocument.cs`
+- `src/Device.Protocol/Models/PanelLibraryItem.cs`
+- `src/Device.Protocol/Models/PanelWidgetItem.cs`
+- `src/Device.Protocol/Models/MediaAssetInfo.cs`
 - `src/Device.Protocol/Models/ServerInfoResponse.cs`
 - `src/Device.Protocol/Models/DevicePresenceMessage.cs`
 - `src/Device.Protocol/Models/DeviceTelemetryMessage.cs`
@@ -426,6 +485,7 @@ Fornecer o control plane HTTP/WS/MQTT do Mica para pareamento, controle, telemet
 - Em Docker local com `-p 5272:8080`, configurar `MICA_SERVER__PUBLICHTTPBASEADDRESS=http://<IP_DO_PC>:5272` evita que o firmware grave a porta interna `8080`.
 - MQTT continua legado/local nesta fase e precisa de publicacao explicita `-p 5273:5273` para o ESP conectar fora do container.
 - UDP visual LAN, quando habilitado, tambem precisa de publicacao explicita `-p 5274:5274/udp` no Docker local; nao e caminho Render/cloud.
+- UDP discovery LAN, quando habilitado, tambem precisa de publicacao explicita `-p 5275:5275/udp` no Docker local. Render/cloud permanecem sem auto-registro LAN.
 
 ## Atualizacao 2026-03 - Presenca Leve e Carimbos de Sessao
 
