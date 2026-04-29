@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Text;
 using System.Text.Json;
 using Device.Client.Remote;
 using Device.Protocol.Contracts;
@@ -166,6 +167,17 @@ public sealed class RemoteDeviceServerClientTests
         var document = new PanelLibraryDocument
         {
             LastSelectedPanelId = "remote-panel",
+            ActivePanels =
+            [
+                new PanelDeviceState
+                {
+                    DeviceId = "remote-device",
+                    ActivePanelId = "remote-panel",
+                    ActiveAppId = "panels-hub75",
+                    LastServerOwnedPanelId = "remote-panel",
+                    UpdatedAtUtc = new DateTimeOffset(2026, 4, 29, 14, 0, 0, TimeSpan.Zero),
+                },
+            ],
             Panels =
             [
                 new PanelLibraryItem
@@ -175,6 +187,15 @@ public sealed class RemoteDeviceServerClientTests
                     Width = 128,
                     Height = 64,
                     IsEnabled = true,
+                    Widgets =
+                    [
+                        new PanelWidgetItem
+                        {
+                            WidgetId = "visualizer-widget",
+                            AppId = "visualizer-hub75",
+                            DataSource = PanelWidgetDataSources.WindowsClient,
+                        },
+                    ],
                 },
             ],
         };
@@ -182,7 +203,10 @@ public sealed class RemoteDeviceServerClientTests
         await remote.SavePanelLibraryAsync(document, CancellationToken.None);
         var loaded = await remote.GetPanelLibraryAsync(CancellationToken.None);
         Assert.Equal("remote-panel", loaded.LastSelectedPanelId);
-        Assert.Equal("Remoto", Assert.Single(loaded.Panels).Name);
+        Assert.Equal("remote-device", Assert.Single(loaded.ActivePanels).DeviceId);
+        var loadedPanel = Assert.Single(loaded.Panels);
+        Assert.Equal("Remoto", loadedPanel.Name);
+        Assert.Equal(PanelWidgetDataSources.WindowsClient, Assert.Single(loadedPanel.Widgets).DataSource);
 
         var payload = "GIF89a-remote"u8.ToArray();
         var media = await remote.UploadMediaAsync("remote.gif", "image/gif", payload, CancellationToken.None);
@@ -305,6 +329,24 @@ public sealed class RemoteDeviceServerClientTests
         var diagnostics = transport.GetDiagnosticsSnapshot();
         Assert.True(diagnostics.DirectUdpFramesSent > 0);
         Assert.Equal(0, diagnostics.WebSocketFallbackFramesQueued);
+    }
+
+    [Fact]
+    public async Task RemoteDeviceFrameTransport_ShouldExplainMissingVisualEndpointsRoute()
+    {
+        using var legacyServer = new LegacyVisualEndpointServer();
+        await using var transport = new RemoteDeviceFrameTransport(new RemoteDeviceServerClientOptions
+        {
+            BaseAddress = legacyServer.BaseAddress,
+            AdminToken = AdminToken,
+            FrameQueueCapacity = 4,
+        });
+
+        await transport.RefreshVisualEndpointsAsync(CancellationToken.None);
+
+        var diagnostics = transport.GetDiagnosticsSnapshot();
+        Assert.Contains("visual-endpoints", diagnostics.LastEndpointRefreshError, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("servidor remoto", diagnostics.LastEndpointRefreshError, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -458,6 +500,79 @@ public sealed class RemoteDeviceServerClientTests
                     Message = "ok",
                 }),
             };
+        }
+    }
+
+    private sealed class LegacyVisualEndpointServer : IDisposable
+    {
+        private readonly TcpListener listener;
+        private readonly CancellationTokenSource cts = new();
+        private readonly Task worker;
+
+        public LegacyVisualEndpointServer()
+        {
+            listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            BaseAddress = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
+            worker = Task.Run(RunAsync);
+        }
+
+        public string BaseAddress { get; }
+
+        public void Dispose()
+        {
+            cts.Cancel();
+            listener.Stop();
+            try
+            {
+                worker.Wait(TimeSpan.FromSeconds(2));
+            }
+            catch
+            {
+            }
+
+            cts.Dispose();
+        }
+
+        private async Task RunAsync()
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                TcpClient client;
+                try
+                {
+                    client = await listener.AcceptTcpClientAsync(cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (SocketException) when (cts.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                _ = Task.Run(() => HandleClientAsync(client), CancellationToken.None);
+            }
+        }
+
+        private static async Task HandleClientAsync(TcpClient client)
+        {
+            using (client)
+            {
+                await using var stream = client.GetStream();
+                using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+                _ = await reader.ReadLineAsync().ConfigureAwait(false);
+                while (!string.IsNullOrEmpty(await reader.ReadLineAsync().ConfigureAwait(false)))
+                {
+                }
+
+                var payload = """{"error":"not_found"}"""u8.ToArray();
+                var header = Encoding.ASCII.GetBytes(
+                    $"HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
+                await stream.WriteAsync(header).ConfigureAwait(false);
+                await stream.WriteAsync(payload).ConfigureAwait(false);
+            }
         }
     }
 }

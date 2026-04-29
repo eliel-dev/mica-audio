@@ -22,6 +22,17 @@ public sealed class PanelsStoreTests
             var document = new PanelsStoreDocument
             {
                 LastSelectedPanelId = "panel-b",
+                ActivePanels =
+                [
+                    new PanelDeviceState
+                    {
+                        DeviceId = "device-panel",
+                        ActivePanelId = "panel-b",
+                        ActiveAppId = "panels-hub75",
+                        LastServerOwnedPanelId = "panel-b",
+                        UpdatedAtUtc = new DateTimeOffset(2026, 4, 29, 15, 0, 0, TimeSpan.Zero),
+                    },
+                ],
                 Panels =
                 [
                     new PanelDefinition
@@ -34,6 +45,7 @@ public sealed class PanelsStoreTests
                             {
                                 WidgetId = "gif-1",
                                 AppId = "gifhub75",
+                                DataSource = PanelWidgetDataSources.Server,
                                 X = 4,
                                 Y = 5,
                                 Width = 24,
@@ -52,6 +64,7 @@ public sealed class PanelsStoreTests
                             {
                                 WidgetId = "gif-2",
                                 AppId = "gifhub75",
+                                DataSource = PanelWidgetDataSources.WindowsClient,
                                 X = 30,
                                 Y = 10,
                                 Width = 20,
@@ -79,12 +92,18 @@ public sealed class PanelsStoreTests
 
             Assert.Equal(PanelsStoreDocument.CurrentSchemaVersion, loaded.SchemaVersion);
             Assert.Equal("panel-b", loaded.LastSelectedPanelId);
+            var activePanel = Assert.Single(loaded.ActivePanels);
+            Assert.Equal("device-panel", activePanel.DeviceId);
+            Assert.Equal("panel-b", activePanel.ActivePanelId);
+            Assert.Equal("panel-b", activePanel.LastServerOwnedPanelId);
             Assert.Equal(2, loaded.Panels.Count);
             Assert.Equal(["Painel A", "Painel B"], loaded.Panels.Select(static panel => panel.Name).ToArray());
 
             var selectedPanel = Assert.Single(loaded.Panels, static panel => panel.PanelId == "panel-b");
             Assert.Equal(2, selectedPanel.Widgets.Count);
             Assert.All(selectedPanel.Widgets, static widget => Assert.Equal("gifhub75", widget.AppId));
+            Assert.Equal(PanelWidgetDataSources.Server, selectedPanel.Widgets[0].DataSource);
+            Assert.Equal(PanelWidgetDataSources.WindowsClient, selectedPanel.Widgets[1].DataSource);
             Assert.Equal(@"C:\media\one.gif", selectedPanel.Widgets[0].RuntimeState["sourcePath"]);
             Assert.Equal(@"C:\media\two.gif", selectedPanel.Widgets[1].RuntimeState["sourcePath"]);
         }
@@ -247,6 +266,17 @@ public sealed class PanelsStoreTests
                 await localWriter.SaveAsync(new PanelsStoreDocument
                 {
                     LastSelectedPanelId = "panel-local",
+                    ActivePanels =
+                    [
+                        new PanelDeviceState
+                        {
+                            DeviceId = "device-local",
+                            ActivePanelId = "panel-local",
+                            ActiveAppId = "panels-hub75",
+                            LastServerOwnedPanelId = "panel-local",
+                            UpdatedAtUtc = new DateTimeOffset(2026, 4, 29, 16, 0, 0, TimeSpan.Zero),
+                        },
+                    ],
                     Panels =
                     [
                         new PanelDefinition
@@ -259,6 +289,7 @@ public sealed class PanelsStoreTests
                                 {
                                     WidgetId = "widget-local",
                                     AppId = "gifhub75",
+                                    DataSource = PanelWidgetDataSources.Server,
                                     X = 3,
                                     Y = 4,
                                     Width = 32,
@@ -283,10 +314,12 @@ public sealed class PanelsStoreTests
             Assert.NotNull(server.SavedDocument);
             var saved = server.SavedDocument!;
             Assert.Equal("panel-local", saved.LastSelectedPanelId);
+            Assert.Equal("device-local", Assert.Single(saved.ActivePanels).DeviceId);
             var panel = Assert.Single(saved.Panels);
             Assert.Equal("Local importado", panel.Name);
             var widget = Assert.Single(panel.Widgets);
             Assert.Equal("gifhub75", widget.AppId);
+            Assert.Equal(PanelWidgetDataSources.Server, widget.DataSource);
             Assert.Equal("media-local", widget.ConfigValues["mediaId"]);
         }
         finally

@@ -13,6 +13,17 @@ public sealed class StandaloneLibraryStoreTests
         var document = new PanelLibraryDocument
         {
             LastSelectedPanelId = "panel-a",
+            ActivePanels =
+            [
+                new PanelDeviceState
+                {
+                    DeviceId = "device-a",
+                    ActivePanelId = "panel-a",
+                    ActiveAppId = "panels-hub75",
+                    LastServerOwnedPanelId = "panel-a",
+                    UpdatedAtUtc = new DateTimeOffset(2026, 4, 29, 13, 0, 0, TimeSpan.Zero),
+                },
+            ],
             Panels =
             [
                 new PanelLibraryItem
@@ -22,6 +33,15 @@ public sealed class StandaloneLibraryStoreTests
                     Width = 128,
                     Height = 64,
                     IsEnabled = true,
+                    Widgets =
+                    [
+                        new PanelWidgetItem
+                        {
+                            WidgetId = "clock-a",
+                            AppId = "clockhub75",
+                            DataSource = PanelWidgetDataSources.Server,
+                        },
+                    ],
                 },
             ],
         };
@@ -30,11 +50,17 @@ public sealed class StandaloneLibraryStoreTests
 
         var loaded = await store.LoadAsync();
         Assert.Equal("panel-a", loaded.LastSelectedPanelId);
-        Assert.Equal("Persisted panel", Assert.Single(loaded.Panels).Name);
+        var activePanel = Assert.Single(loaded.ActivePanels);
+        Assert.Equal("device-a", activePanel.DeviceId);
+        Assert.Equal("panel-a", activePanel.ActivePanelId);
+        var loadedPanel = Assert.Single(loaded.Panels);
+        Assert.Equal("Persisted panel", loadedPanel.Name);
+        Assert.Equal(PanelWidgetDataSources.Server, Assert.Single(loadedPanel.Widgets).DataSource);
 
         await File.WriteAllTextAsync(Path.Combine(root, "panels", "panels.json"), "{ broken json");
         var recovered = await store.LoadAsync();
         Assert.Empty(recovered.Panels);
+        Assert.Empty(recovered.ActivePanels);
         Assert.Null(recovered.LastSelectedPanelId);
     }
 

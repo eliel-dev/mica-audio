@@ -211,6 +211,12 @@
 - O objetivo e suportar com margem payloads binarios grandes do stream `frame 128x64 RGB565` (`16400` bytes) sem queda de conexao por limite de frame no cliente WS.
 - O firmware agora valida isso em build via `static_assert` e registra no boot o limite WS efetivo ao lado do tamanho do payload `Frame128x64`.
 
+## Atualizacao 2026-04 - Higiene de warnings PlatformIO
+
+- O extra script `patch_websockets_max_data_size.py` tambem patcha a dependencia `WebSocketsClient.cpp` instalada em `.pio/libdeps` para trocar a chamada depreciada `NetworkClient::flush()` por `NetworkClient::clear()` no Arduino-ESP32 atual.
+- O aviso `Windows Long Path Support is disabled` vem do builder PlatformIO/pioarduino antes dos scripts do projeto rodarem e depende da chave global `HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled=1`.
+- O helper `scripts/enable-windows-long-paths.ps1` documenta e aplica essa chave quando executado em PowerShell como Administrador; sem privilegio administrativo o projeto nao consegue alterar essa configuracao do Windows.
+
 ## Atualizacao 2026-03 - HUB75 anti-flicker com double buffer
 
 - O firmware oficial do HUB75 passou a ativar `config.double_buff = true` no `MatrixPanel_I2S_DMA`.

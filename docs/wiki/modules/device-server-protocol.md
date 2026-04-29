@@ -131,8 +131,10 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
   - `MicaDiscoveryRequestV1`
   - `MicaDiscoveryResponseV1`
   - `PanelLibraryDocument`
+  - `PanelDeviceState`
   - `PanelLibraryItem`
   - `PanelWidgetItem`
+  - `PanelWidgetDataSources`
   - `MediaAssetInfo`
 - `DeviceRecord.DeviceMac` passou a ser persistido. Re-registro LAN com o mesmo MAC reutiliza o registro/token existente em vez de criar device duplicado.
 - `MicaDiscoveryRequestV1.DeviceIp` passou a carregar o IP LAN real do ESP para preencher `LanIpAddress`, sem depender do IP observado pelo socket HTTP/MQTT quando o servidor roda em Docker.
@@ -162,8 +164,18 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
   - `LastKnownIp` continua representando o IP observado pela conexao e pode ser `172.17.0.1` em Docker.
 - `GET /api/v1/admin/visual-endpoints` retorna somente devices online no control plane MQTT, UDP-capable, com token e `LanIpAddress` valido.
 - `Device.Client.Remote` usa esse endpoint para enviar `StreamFrameV2/3` tipo `Bins128` direto do WinUI para o ESP via `VisualUdpFrameV1` autenticado por HMAC com o token do device.
+- Se `/api/v1/admin/visual-endpoints` retornar `404`, a causa provavel e container/servidor antigo: o cliente nao descobriu endpoint LAN algum e deve orientar redeploy do `MicaAudio.Server`.
 - O fallback por `/ws/v1/admin/frames` continua para `Frame128x64`, payloads grandes, GIF/painel, endpoint ausente ou erro UDP.
 - O caminho Docker local padrao continua com UDP visual server->ESP desligado; o hot path remoto normal nao depende do container repassar frames visuais.
+
+## Atualizacao 2026-04 - Painel LAN Sempre Ligado + Estado Ativo
+
+- `PanelLibraryDocument` passou a carregar `ActivePanels`, uma lista por device com `DeviceId`, `ActivePanelId`, `ActiveAppId`, `LastServerOwnedPanelId` e `UpdatedAtUtc`.
+- `PanelWidgetItem.DataSource` formaliza a origem de dados do widget: `server`, `windows-client`, `android-client` ou `device`.
+- `server` e o caminho esperado para relogio, clima configurado no servidor, GIF/imagem e status simples que devem continuar conhecidos apos o cliente fechar.
+- `windows-client` e `android-client` representam fontes efemeras como audio ao vivo e metricas locais; quando o cliente dono desconectar, o painel deve voltar ao ultimo estado server-owned valido.
+- O WinUI Remote permanece cliente do control plane para descobrir/autenticar devices, mas o visualizador de audio usa UDP direto para `Bins128`; `/ws/v1/admin/frames` fica como fallback tecnico.
+- OTA continua no control plane existente: o app resolve o firmware oficial, envia `update_firmware` via servidor e acompanha progresso por `command-events`.
 
 ## Atualizacao 2026-04 - Server Standalone + Docker/Render Smoke
 
@@ -416,8 +428,10 @@ Esta secao ancora os DTOs e handlers admin remotos. O historico operacional deta
 - [MicaDiscoveryRequestV1](../../../src/Device.Protocol/Models/MicaDiscoveryRequestV1.cs#L1) - assinatura: `public sealed class MicaDiscoveryRequestV1`
 - [MicaDiscoveryResponseV1](../../../src/Device.Protocol/Models/MicaDiscoveryResponseV1.cs#L1) - assinatura: `public sealed class MicaDiscoveryResponseV1`
 - [PanelLibraryDocument](../../../src/Device.Protocol/Models/PanelLibraryDocument.cs#L1) - assinatura: `public sealed class PanelLibraryDocument`
+- [PanelDeviceState](../../../src/Device.Protocol/Models/PanelDeviceState.cs#L1) - assinatura: `public sealed class PanelDeviceState`
 - [PanelLibraryItem](../../../src/Device.Protocol/Models/PanelLibraryItem.cs#L1) - assinatura: `public sealed class PanelLibraryItem`
 - [PanelWidgetItem](../../../src/Device.Protocol/Models/PanelWidgetItem.cs#L1) - assinatura: `public sealed class PanelWidgetItem`
+- [PanelWidgetDataSources](../../../src/Device.Protocol/Models/PanelWidgetDataSources.cs#L1) - assinatura: `public static class PanelWidgetDataSources`
 - [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1) - assinatura: `public sealed class MediaAssetInfo`
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1) - assinatura: `public sealed class DevicePresenceMessage`
@@ -479,8 +493,10 @@ Esta secao ancora os DTOs e handlers admin remotos. O historico operacional deta
 - `src/Device.Protocol/Models/MicaDiscoveryRequestV1.cs`
 - `src/Device.Protocol/Models/MicaDiscoveryResponseV1.cs`
 - `src/Device.Protocol/Models/PanelLibraryDocument.cs`
+- `src/Device.Protocol/Models/PanelDeviceState.cs`
 - `src/Device.Protocol/Models/PanelLibraryItem.cs`
 - `src/Device.Protocol/Models/PanelWidgetItem.cs`
+- `src/Device.Protocol/Models/PanelWidgetDataSources.cs`
 - `src/Device.Protocol/Models/MediaAssetInfo.cs`
 - `src/Device.Protocol/Models/ServerInfoResponse.cs`
 - `src/Device.Protocol/Models/DevicePresenceMessage.cs`

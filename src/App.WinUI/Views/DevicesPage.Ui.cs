@@ -7,6 +7,7 @@ namespace App.WinUI.Views;
 // DOCS: docs/wiki/reference/device-observability-dashboard.md
 // DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-29-build-warning-cleanup-and-remove-device-button.md
 public sealed partial class DevicesPage
 {
     private const double PanelCornerRadius = 8d;
@@ -27,7 +28,7 @@ public sealed partial class DevicesPage
     private TextBlock SelectedDeviceSignalText = null!;
     private AppBarButton CopyDashboardLinkButton = null!;
     private AppBarButton TestLedButton = null!;
-    private AppBarButton ReprovisionWifiButton = null!;
+    private AppBarButton RemoveDeviceButton = null!;
 
     private TextBlock DashboardPlaceholderText = null!;
     private Grid DashboardMetricsGrid = null!;
@@ -304,17 +305,17 @@ public sealed partial class DevicesPage
         };
         TestLedButton.Click += OnTestLedClicked;
 
-        ReprovisionWifiButton = new AppBarButton
+        RemoveDeviceButton = new AppBarButton
         {
-            Label = "Reprovisionar Wi-Fi",
-            Icon = new SymbolIcon(Symbol.Setting),
+            Label = "Remover dispositivo",
+            Icon = new SymbolIcon(Symbol.Delete),
             MinWidth = 132,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        ReprovisionWifiButton.Click += OnReprovisionWifiClicked;
+        RemoveDeviceButton.Click += OnRemoveDeviceClicked;
 
         buttonsStack.Children.Add(TestLedButton);
-        buttonsStack.Children.Add(ReprovisionWifiButton);
+        buttonsStack.Children.Add(RemoveDeviceButton);
 
         actionStack.Children.Add(SelectedDeviceSignalText);
         actionStack.Children.Add(buttonsStack);

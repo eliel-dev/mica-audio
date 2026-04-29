@@ -2,11 +2,14 @@ namespace Device.Protocol.Models;
 
 // DOCS: docs/wiki/modules/paineis.md#server-first-library
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
 public sealed class PanelWidgetItem
 {
     public string WidgetId { get; init; } = string.Empty;
 
     public string AppId { get; init; } = string.Empty;
+
+    public string DataSource { get; init; } = PanelWidgetDataSources.Server;
 
     public int X { get; init; }
 

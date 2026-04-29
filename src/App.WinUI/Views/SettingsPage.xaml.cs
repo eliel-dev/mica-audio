@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using App.WinUI.Services;
 using App.WinUI.Services.Devices;
+using Device.Client.Remote;
 using MicaAudio.Core.Presets;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -11,12 +12,14 @@ namespace App.WinUI.Views;
 // DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
+// DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
     private readonly RemoteDeviceServerSecretStore remoteSecretStore;
     private readonly RemoteDeviceServerConnectionTester remoteConnectionTester;
+    private readonly RemoteDeviceFrameTransport remoteFrameTransport;
     private AppSettings currentSettings = new();
     private bool suppressMicaBackdropChanged;
     private ToggleSwitch micaBackdropToggle = null!;
@@ -25,6 +28,7 @@ public sealed partial class SettingsPage : Page
     private PasswordBox remoteAdminTokenBox = null!;
     private TextBlock micaBackdropStatusText = null!;
     private TextBlock deviceServerStatusText = null!;
+    private TextBlock remoteVisualTransportStatusText = null!;
     private TextBlock errorLogsPathText = null!;
     private TextBlock errorLogsStatusText = null!;
 
@@ -32,12 +36,14 @@ public sealed partial class SettingsPage : Page
         SettingsRepository settingsRepository,
         AppSettingsDomainService settingsDomainService,
         RemoteDeviceServerSecretStore remoteSecretStore,
-        RemoteDeviceServerConnectionTester remoteConnectionTester)
+        RemoteDeviceServerConnectionTester remoteConnectionTester,
+        RemoteDeviceFrameTransport remoteFrameTransport)
     {
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
         this.remoteSecretStore = remoteSecretStore;
         this.remoteConnectionTester = remoteConnectionTester;
+        this.remoteFrameTransport = remoteFrameTransport;
 
         InitializeComponent();
         Content = BuildLayout();
@@ -66,6 +72,7 @@ public sealed partial class SettingsPage : Page
                 currentSettings.UseMicaBackdrop,
                 App.MainWindow?.SystemBackdrop is MicaBackdrop);
             deviceServerStatusText.Text = BuildDeviceServerStatusText(currentSettings.DeviceServerMode, currentSettings.RemoteServerBaseAddress);
+            UpdateRemoteVisualDiagnosticsText();
         }
         catch (Exception ex)
         {
@@ -77,6 +84,7 @@ public sealed partial class SettingsPage : Page
             suppressMicaBackdropChanged = false;
             micaBackdropStatusText.Text = "Nao foi possivel carregar esta preferencia. O app manteve a aparencia atual.";
             deviceServerStatusText.Text = "Nao foi possivel carregar as preferencias do servidor.";
+            UpdateRemoteVisualDiagnosticsText();
             App.ReportError("SettingsPage.LoadGeneralSettingsAsync failed", ex);
         }
     }
@@ -146,6 +154,7 @@ public sealed partial class SettingsPage : Page
             currentSettings = updatedSettings;
             remoteServerBaseAddressBox.Text = updatedSettings.RemoteServerBaseAddress;
             deviceServerStatusText.Text = BuildDeviceServerStatusText(updatedSettings.DeviceServerMode, updatedSettings.RemoteServerBaseAddress);
+            UpdateRemoteVisualDiagnosticsText();
         }
         catch (Exception ex)
         {
@@ -153,6 +162,7 @@ public sealed partial class SettingsPage : Page
             deviceServerModeCombo.SelectedIndex = previousSettings.DeviceServerMode == DeviceServerMode.Remote ? 1 : 0;
             remoteServerBaseAddressBox.Text = previousSettings.RemoteServerBaseAddress;
             deviceServerStatusText.Text = "Nao foi possivel salvar as preferencias do servidor.";
+            UpdateRemoteVisualDiagnosticsText();
             App.ReportError("SettingsPage.SaveDeviceServerSettings failed", ex);
         }
     }
@@ -166,12 +176,22 @@ public sealed partial class SettingsPage : Page
                 remoteServerBaseAddressBox.Text,
                 remoteAdminTokenBox.Password);
             deviceServerStatusText.Text = result.Message;
+            UpdateRemoteVisualDiagnosticsText();
         }
         catch (Exception ex)
         {
             deviceServerStatusText.Text = "Nao foi possivel testar o servidor remoto.";
+            UpdateRemoteVisualDiagnosticsText();
             App.ReportError("SettingsPage.TestRemoteServer failed", ex);
         }
+    }
+
+    private void UpdateRemoteVisualDiagnosticsText()
+    {
+        remoteVisualTransportStatusText.Text = RemoteDeviceTransportDiagnosticsFormatter.Format(
+            currentSettings.DeviceServerMode == DeviceServerMode.Remote
+                ? remoteFrameTransport.GetDiagnosticsSnapshot()
+                : null);
     }
 
     private void UpdateErrorLogsInfo()
@@ -365,6 +385,14 @@ public sealed partial class SettingsPage : Page
             Text = "Carregando preferencias do servidor...",
         };
 
+        remoteVisualTransportStatusText = new TextBlock
+        {
+            Opacity = 0.72,
+            TextWrapping = TextWrapping.Wrap,
+            FontFamily = new FontFamily("Consolas"),
+            Text = "Diagnostico visual: carregando...",
+        };
+
         return CreateCard(
             "Servidor de dispositivos",
             "O modo remoto usa o MicaAudio.Server externo no proximo restart.",
@@ -372,7 +400,8 @@ public sealed partial class SettingsPage : Page
             remoteServerBaseAddressBox,
             remoteAdminTokenBox,
             actions,
-            deviceServerStatusText);
+            deviceServerStatusText,
+            remoteVisualTransportStatusText);
     }
 
     private static Border CreateCard(string title, string description, params UIElement[] content)

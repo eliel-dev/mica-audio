@@ -7,6 +7,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - `Paineis` passa a ser oficialmente `asset/config sync + cache no cliente + push local ao ESP`.
 - O server fica como fonte de verdade de assets, catalogo, manifests e metadata de device/ownership.
 - O server passa a ser a fonte de verdade dos paineis salvos e das midias enviadas; o arquivo local vira cache/migracao.
+- O server tambem guarda o estado ativo por device (`activePanelId`, `activeAppId`, `lastServerOwnedPanelId`) para que widgets server-owned continuem conhecidos apos fechar o WinUI.
 - O cliente local continua compositor autoritativo e dono do envio ao device na LAN.
 
 ## Baseline atual / transicao
@@ -53,9 +54,13 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
   - `GET /api/v1/admin/library/media/{mediaId}`
   - `DELETE /api/v1/admin/library/media/{mediaId}`
 - O estado local em `%APPDATA%\\MicaAudio\\panels\\panels.json` via `MicaAudioOptions.PanelsFilePath` permanece como cache e fonte de migracao.
-- Cada painel persiste `PanelId`, nome, dimensoes HUB75 e a lista de widgets, incluindo `ConfigValues` e `RuntimeState`.
+- Cada painel persiste `PanelId`, nome, dimensoes HUB75 e a lista de widgets, incluindo `dataSource`, `ConfigValues` e `RuntimeState`.
+- `dataSource` declara quem fornece os dados do widget: `server`, `windows-client`, `android-client` ou `device`.
+- Widgets `server` sao os candidatos a continuar apos o cliente fechar, desde que o firmware/app no device consiga executar o painel salvo; widgets `windows-client` e `android-client` sao efemeros e devem expirar quando o cliente dono desconectar.
 - `RuntimeState` existe para dados locais que nao cabem no contrato do catalogo; no V1 ele guarda o `sourcePath` do widget `gifhub75`.
 - A selecao mais recente da tela fica em `lastSelectedPanelId`, restaurada ao reabrir a sessao.
+- O estado ativo por device fica em `activePanels[]`; ao ativar um painel, o WinUI grava `activePanelId=panelId`, `activeAppId=panels-hub75` e atualiza `lastServerOwnedPanelId`.
+- Ao parar explicitamente o runtime, `activePanelId` e `activeAppId` sao limpos, mas `lastServerOwnedPanelId` permanece para diagnostico e retomada server-first futura.
 - `PanelsStore` agora trata `panels.json` ausente, vazio ou corrompido como estado recuperavel: a sessao volta com documento vazio, a shell nao cai e `PanelsPage` recria `Painel 1` no fluxo normal.
 - Quando encontra JSON invalido nao-vazio, `PanelsStore` preserva evidencia em `panels.json.corrupt-<timestamp>.json` antes de continuar com documento vazio.
 - O save de `PanelsStore` passou a ser atomico com `panels.json.tmp` + replace/move, mantendo `panels.json.bak` simples para reduzir risco de truncamento em crash/interrupcao.
@@ -88,6 +93,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 ## Runtime Em Background
 
 - `PanelsPlaybackService` mantem somente um painel ativo por vez, em background, enquanto o app desktop estiver aberto.
+- O servidor passa a conhecer o ultimo painel ativo/configurado por device, mas o compositor de `Paineis` ainda roda no WinUI nesta etapa.
 - O toggle `Ativo` da galeria usa snapshot salvo do painel; editar depois disso nao muda o device ate novo `Salvar` ou nova ativacao.
 - O scheduler padrao do painel e `30 FPS`, ancorado em relogio monotonic para reduzir drift do loop de reproducao.
 - O playback real de `gifhub75` usa `30 Hz` como teto de apresentacao, mas respeita os delays reais do GIF; frames repetidos continuam sendo deduplicados antes do envio.
@@ -155,6 +161,8 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [RemoteDeviceServerClient](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [PanelLibraryDocument](../../../src/Device.Protocol/Models/PanelLibraryDocument.cs#L1)
+- [PanelDeviceState](../../../src/Device.Protocol/Models/PanelDeviceState.cs#L1)
+- [PanelWidgetDataSources](../../../src/Device.Protocol/Models/PanelWidgetDataSources.cs#L1)
 - [PanelLibraryItem](../../../src/Device.Protocol/Models/PanelLibraryItem.cs#L1)
 - [PanelWidgetItem](../../../src/Device.Protocol/Models/PanelWidgetItem.cs#L1)
 - [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1)

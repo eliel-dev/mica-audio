@@ -16,8 +16,10 @@ namespace Device.Client.Remote;
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
+// DOCS: docs/handoffs/2026-04-29-remote-visual-endpoint-diagnostics.md
 public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceServerClientRuntime
 {
+    private const string VisualEndpointsPath = "/api/v1/admin/visual-endpoints";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true,
@@ -163,8 +165,23 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
         await endpointRefreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var response = await endpointHttpClient
-                .GetFromJsonAsync<AdminVisualEndpointsResponse>("/api/v1/admin/visual-endpoints", JsonOptions, cancellationToken)
+            using var httpResponse = await endpointHttpClient
+                .GetAsync(VisualEndpointsPath, cancellationToken)
+                .ConfigureAwait(false);
+            if (!httpResponse.IsSuccessStatusCode)
+            {
+                lock (endpointGate)
+                {
+                    visualEndpoints.Clear();
+                    endpointsLastRefreshUtc = DateTimeOffset.UtcNow;
+                }
+
+                Volatile.Write(ref lastEndpointRefreshError, BuildVisualEndpointsHttpError(httpResponse.StatusCode));
+                return;
+            }
+
+            var response = await httpResponse.Content
+                .ReadFromJsonAsync<AdminVisualEndpointsResponse>(JsonOptions, cancellationToken)
                 .ConfigureAwait(false);
 
             lock (endpointGate)
@@ -444,6 +461,17 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
 
         return uri;
     }
+
+    private static string BuildVisualEndpointsHttpError(HttpStatusCode statusCode)
+        => statusCode switch
+        {
+            HttpStatusCode.NotFound =>
+                $"Servidor remoto sem a rota {VisualEndpointsPath} (HTTP 404). Recrie o container com scripts/docker-server-redeploy.ps1 para publicar a versao atual.",
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
+                $"Admin token falhou em {VisualEndpointsPath}: HTTP {(int)statusCode}.",
+            _ =>
+                $"Endpoint {VisualEndpointsPath} falhou: HTTP {(int)statusCode}.",
+        };
 
     private static bool IsPrivateNetworkAddress(IPAddress address)
     {

@@ -38,6 +38,7 @@ namespace App.WinUI;
 // DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
+// DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
 public partial class App : Application
 {
     private static readonly JsonSerializerOptions StartupJsonOptions = new()
@@ -308,7 +309,8 @@ public partial class App : Application
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<RemoteDeviceServerSecretStore>(),
-            sp.GetRequiredService<RemoteDeviceServerConnectionTester>()));
+            sp.GetRequiredService<RemoteDeviceServerConnectionTester>(),
+            sp.GetRequiredService<RemoteDeviceFrameTransport>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>

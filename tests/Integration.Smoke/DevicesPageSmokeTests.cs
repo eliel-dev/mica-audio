@@ -16,7 +16,9 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetField("CopyDashboardLinkButton", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("PairingCodeText", flags));
         Assert.NotNull(typeof(DevicesPage).GetField("PairingCopyCodeButton", flags));
+        Assert.NotNull(typeof(DevicesPage).GetField("RemoveDeviceButton", flags));
 
+        Assert.Null(typeof(DevicesPage).GetField("ReprovisionWifiButton", flags));
         Assert.Null(typeof(DevicesPage).GetField("NewDeviceButton", flags));
         Assert.Null(typeof(DevicesPage).GetField("WizardOverlay", flags));
         Assert.Null(typeof(DevicesPage).GetField("WizardPortPanel", flags));
@@ -55,8 +57,10 @@ public sealed class DevicesPageSmokeTests
         Assert.NotNull(typeof(DevicesPage).GetMethod("BuildDashboardWebViewUri", staticFlags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("BuildDashboardShareUri", staticFlags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("OnCopyDashboardLinkClicked", flags));
+        Assert.NotNull(typeof(DevicesPage).GetMethod("OnRemoveDeviceClicked", flags));
         Assert.NotNull(typeof(DevicesPage).GetMethod("ApplySelectionDetails", flags));
 
+        Assert.Null(typeof(DevicesPage).GetMethod("OnReprovisionWifiClicked", flags));
         Assert.Null(typeof(DevicesPage).GetMethod("BuildDetailsTabHost", flags));
         Assert.Null(typeof(DevicesPage).GetMethod("ApplyStatisticsPanel", flags));
         Assert.Null(typeof(DevicesPage).GetMethod("UpdateStructuredDeviceLogs", flags));

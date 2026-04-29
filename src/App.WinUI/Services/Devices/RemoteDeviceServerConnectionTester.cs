@@ -8,8 +8,10 @@ namespace App.WinUI.Services.Devices;
 // DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/device-server-protocol.md#admin-api-remota
 // DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
+// DOCS: docs/handoffs/2026-04-29-remote-visual-endpoint-diagnostics.md
 public sealed class RemoteDeviceServerConnectionTester
 {
+    private const string VisualEndpointsPath = "/api/v1/admin/visual-endpoints";
     private readonly TimeSpan requestTimeout;
 
     public RemoteDeviceServerConnectionTester()
@@ -53,12 +55,12 @@ public sealed class RemoteDeviceServerConnectionTester
                 return RemoteDeviceServerConnectionTestResult.Fail($"Health falhou: HTTP {(int)health.StatusCode}.");
             }
 
-            using var endpointsResponse = await httpClient.GetAsync("/api/v1/admin/visual-endpoints", timeoutCts.Token).ConfigureAwait(false);
+            using var endpointsResponse = await httpClient.GetAsync(VisualEndpointsPath, timeoutCts.Token).ConfigureAwait(false);
             if (!endpointsResponse.IsSuccessStatusCode)
             {
                 return new RemoteDeviceServerConnectionTestResult(
                     Success: false,
-                    Message: $"Admin token falhou: HTTP {(int)endpointsResponse.StatusCode}.",
+                    Message: BuildVisualEndpointsFailureMessage(endpointsResponse.StatusCode),
                     HealthOk: true,
                     AdminOk: false,
                     FramesWebSocketOk: false,
@@ -124,6 +126,17 @@ public sealed class RemoteDeviceServerConnectionTester
             Query = string.Empty,
         }.Uri;
     }
+
+    private static string BuildVisualEndpointsFailureMessage(System.Net.HttpStatusCode statusCode)
+        => statusCode switch
+        {
+            System.Net.HttpStatusCode.NotFound =>
+                $"Servidor remoto sem a rota {VisualEndpointsPath} (HTTP 404). Recrie o container com scripts/docker-server-redeploy.ps1 para publicar a versao atual.",
+            System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden =>
+                $"Admin token falhou em {VisualEndpointsPath}: HTTP {(int)statusCode}.",
+            _ =>
+                $"Endpoint {VisualEndpointsPath} falhou: HTTP {(int)statusCode}.",
+        };
 
     private static bool TryNormalizeBaseAddress(string value, out Uri normalized)
     {

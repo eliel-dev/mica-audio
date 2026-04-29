@@ -28,6 +28,17 @@ public sealed class DeviceServerHostLibraryApiTests
         var document = new PanelLibraryDocument
         {
             LastSelectedPanelId = "panel-1",
+            ActivePanels =
+            [
+                new PanelDeviceState
+                {
+                    DeviceId = "device-1",
+                    ActivePanelId = "panel-1",
+                    ActiveAppId = "panels-hub75",
+                    LastServerOwnedPanelId = "panel-1",
+                    UpdatedAtUtc = new DateTimeOffset(2026, 4, 29, 12, 0, 0, TimeSpan.Zero),
+                },
+            ],
             Panels =
             [
                 new PanelLibraryItem
@@ -43,6 +54,7 @@ public sealed class DeviceServerHostLibraryApiTests
                         {
                             WidgetId = "widget-1",
                             AppId = "gifhub75",
+                            DataSource = PanelWidgetDataSources.Server,
                             X = 0,
                             Y = 0,
                             Width = 128,
@@ -70,10 +82,16 @@ public sealed class DeviceServerHostLibraryApiTests
 
         Assert.NotNull(loaded);
         Assert.Equal("panel-1", loaded!.LastSelectedPanelId);
+        var activePanel = Assert.Single(loaded.ActivePanels);
+        Assert.Equal("device-1", activePanel.DeviceId);
+        Assert.Equal("panel-1", activePanel.ActivePanelId);
+        Assert.Equal("panels-hub75", activePanel.ActiveAppId);
+        Assert.Equal("panel-1", activePanel.LastServerOwnedPanelId);
         var panel = Assert.Single(loaded.Panels);
         Assert.Equal("Bancada", panel.Name);
         var widget = Assert.Single(panel.Widgets);
         Assert.Equal("gifhub75", widget.AppId);
+        Assert.Equal(PanelWidgetDataSources.Server, widget.DataSource);
         Assert.Equal("media-1", widget.ConfigValues["mediaId"]);
     }
 

@@ -66,6 +66,17 @@
   - `RemoteDeviceServerClient + RemoteDeviceFrameTransport + RemoteDeviceServerRuntime` para o modo remoto.
 - `App.StartDeviceIntegrationAsync` agora usa `IDeviceServerClientRuntime`, preservando o lifecycle comum entre embedded e remote.
 - Trocar modo/URL/token exige restart nesta entrega.
+- `RemoteDeviceFrameTransport` e o caminho normal do visualizador remoto: `Bins128` direto do WinUI para o ESP por UDP LAN, usando `/api/v1/admin/visual-endpoints` apenas para descoberta/autorizacao.
+- `Frame128x64`, GIF/painel e endpoint LAN ausente permanecem no WebSocket admin como fallback tecnico.
+- `Configuracoes > Servidor de dispositivos` mostra diagnostico tecnico do transporte remoto: frames UDP diretos enviados, fallback WS, endpoints ausentes e ultimo erro.
+
+## Atualizacao 2026-04 - Painel LAN Sempre Ligado
+
+- O WinUI passa a ser controlador/fonte de dados, nao dono permanente do estado do painel.
+- Ao ativar um painel HUB75, `PanelsPage` salva no server o estado ativo por device (`activePanelId`, `activeAppId=panels-hub75`, `lastServerOwnedPanelId`).
+- Ao parar o painel explicitamente, o app limpa o estado ativo, mas preserva o ultimo painel server-owned para diagnostico e retomada futura.
+- Widgets agora carregam `dataSource` no contrato local/remoto; `server` e duravel, enquanto `windows-client` e `android-client` sao dados efemeros ligados ao cliente.
+- OTA continua como fluxo principal depois do primeiro flash manual: `DevicesPage` resolve o release oficial, envia `update_firmware` pelo server e mostra progresso tecnico detalhado.
 
 ## Atualizacao 2026-03 - Refresh automatico do release oficial de firmware
 
@@ -375,6 +386,7 @@
 - [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
 - [DevicesPage WebView dashboard](../../../src/App.WinUI/Views/DevicesPage.WebViewDashboard.cs#L1)
 - [SettingsPage](../../../src/App.WinUI/Views/SettingsPage.xaml.cs#L1)
+- [RemoteDeviceTransportDiagnosticsFormatter](../../../src/App.WinUI/Services/Devices/RemoteDeviceTransportDiagnosticsFormatter.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppCacheKeys](../../../src/App.WinUI/Infrastructure/Cache/AppCacheKeys.cs#L1)
 - [AppObservability](../../../src/App.WinUI/Infrastructure/Observability/AppObservability.cs#L1)
@@ -445,9 +457,10 @@
 
 - Devices offline continuam visiveis, mas nao exibem preview visual do app.
 - O painel da direita mostra apenas informacoes textuais do app ativo/ultimo app conhecido.
-- As acoes de device ficam no card de resumo: `Testar LED` e `Reprovisionar Wi-Fi`.
+- As acoes de device ficam no card de resumo: `Testar LED` e `Remover dispositivo`.
 - O slider de brilho (`30..160`) envia `set_brightness` no commit e atualiza o painel.
-- A acao normal `Reprovisionar Wi-Fi` envia `enter_provisioning` para abrir o portal/AP no firmware. Remocao de device fica como limpeza tecnica/admin fora do fluxo principal.
+- A acao `Remover dispositivo` volta a ficar visivel no cliente e continua usando confirmacao explicita; quando o device esta online, tenta `RevokeAndRestart` antes de remover o registro local.
+- `Reprovisionar Wi-Fi` fica fora da UI principal por enquanto; o comando `enter_provisioning` permanece apenas como operacao tecnica interna.
 
 ## Atualizacao 2026-03 - Dashboard seguro e logs por dispositivo
 
@@ -473,7 +486,7 @@
 
 - O card visual `Comandos:` foi removido da `DevicesPage` para liberar area util de diagnostico.
 - Chips redundantes (online/Wi-Fi/snapshot) e bloco de conectividade/eventos foram removidos do dashboard.
-- O `RSSI` foi movido para o topo do card de resumo, ao lado dos botoes `Testar LED` e `Reprovisionar Wi-Fi`.
+- O `RSSI` foi movido para o topo do card de resumo, ao lado dos botoes `Testar LED` e `Remover dispositivo`.
 - O card `Logs do dispositivo` recebeu prioridade de espaco vertical para facilitar leitura operacional.
 - O botao `Testar LED` continua respeitando `testLedAvailable` (fallback para firmware legado):
   - quando indisponivel, fica desabilitado e mostra rotulo `LED indisponivel`.
@@ -489,7 +502,7 @@
 
 - A `DevicesPage` agora usa um dashboard HTML/JS servido localmente para seguir o contrato visual do arquivo aprovado em `C:\Users\eliels\Documents\nice\mica-dashboard.html`.
 - Estrutura fixa do detalhe:
-  - header do dispositivo com `RSSI` + acoes verticais (`Testar LED` e `Reprovisionar Wi-Fi`);
+  - header do dispositivo com `RSSI` + acoes verticais (`Testar LED` e `Remover dispositivo`);
   - bloco de brilho (`30..160`);
   - grade de metricas (CPU/RAM/PSRAM);
   - cards auxiliares `FPS atual do HUB75` e `Sinal`;

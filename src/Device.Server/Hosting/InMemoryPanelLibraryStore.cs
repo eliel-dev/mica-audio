@@ -4,6 +4,7 @@ namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/paineis.md#server-first-library
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
 internal sealed class InMemoryPanelLibraryStore : IPanelLibraryStore
 {
     private readonly object gate = new();
@@ -37,6 +38,22 @@ internal sealed class InMemoryPanelLibraryStore : IPanelLibraryStore
         {
             SchemaVersion = source.SchemaVersion,
             LastSelectedPanelId = NormalizeOptional(source.LastSelectedPanelId),
+            ActivePanels = (source.ActivePanels ?? Array.Empty<PanelDeviceState>())
+                .Where(state => !string.IsNullOrWhiteSpace(state.DeviceId))
+                .GroupBy(state => state.DeviceId.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                {
+                    var state = group.Last();
+                    return new PanelDeviceState
+                    {
+                        DeviceId = state.DeviceId.Trim(),
+                        ActivePanelId = NormalizeOptional(state.ActivePanelId),
+                        ActiveAppId = NormalizeOptional(state.ActiveAppId),
+                        LastServerOwnedPanelId = NormalizeOptional(state.LastServerOwnedPanelId),
+                        UpdatedAtUtc = state.UpdatedAtUtc == default ? DateTimeOffset.UtcNow : state.UpdatedAtUtc,
+                    };
+                })
+                .ToArray(),
             Panels = source.Panels
                 .Where(panel => !string.IsNullOrWhiteSpace(panel.PanelId))
                 .Select(panel => new PanelLibraryItem
@@ -52,6 +69,7 @@ internal sealed class InMemoryPanelLibraryStore : IPanelLibraryStore
                         {
                             WidgetId = widget.WidgetId.Trim(),
                             AppId = NormalizeOptional(widget.AppId) ?? string.Empty,
+                            DataSource = PanelWidgetDataSources.Normalize(widget.DataSource),
                             X = widget.X,
                             Y = widget.Y,
                             Width = widget.Width,

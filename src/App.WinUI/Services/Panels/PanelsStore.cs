@@ -11,6 +11,7 @@ namespace App.WinUI.Services.Panels;
 
 // DOCS: docs/wiki/modules/paineis.md#persistencia-do-layout
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
 internal sealed class PanelsStore : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -235,6 +236,7 @@ internal sealed class PanelsStore : IDisposable
         {
             SchemaVersion = source.SchemaVersion,
             LastSelectedPanelId = source.LastSelectedPanelId,
+            ActivePanels = source.ActivePanels.Select(ClonePanelDeviceState).ToArray(),
             Panels = source.Panels.Select(static panel => new PanelLibraryItem
             {
                 PanelId = panel.PanelId,
@@ -246,6 +248,7 @@ internal sealed class PanelsStore : IDisposable
                 {
                     WidgetId = widget.WidgetId,
                     AppId = widget.AppId,
+                    DataSource = PanelWidgetDataSources.Normalize(widget.DataSource),
                     X = widget.X,
                     Y = widget.Y,
                     Width = widget.Width,
@@ -263,6 +266,7 @@ internal sealed class PanelsStore : IDisposable
         {
             SchemaVersion = source.SchemaVersion,
             LastSelectedPanelId = source.LastSelectedPanelId,
+            ActivePanels = (source.ActivePanels ?? Array.Empty<PanelDeviceState>()).Select(ClonePanelDeviceState).ToList(),
             Panels = source.Panels.Select(static panel => new PanelDefinition
             {
                 PanelId = panel.PanelId,
@@ -273,6 +277,7 @@ internal sealed class PanelsStore : IDisposable
                 {
                     WidgetId = widget.WidgetId,
                     AppId = widget.AppId,
+                    DataSource = PanelWidgetDataSources.Normalize(widget.DataSource),
                     X = widget.X,
                     Y = widget.Y,
                     Width = widget.Width,
@@ -284,6 +289,18 @@ internal sealed class PanelsStore : IDisposable
         };
         document.Normalize();
         return document;
+    }
+
+    private static PanelDeviceState ClonePanelDeviceState(PanelDeviceState state)
+    {
+        return new PanelDeviceState
+        {
+            DeviceId = state.DeviceId,
+            ActivePanelId = state.ActivePanelId,
+            ActiveAppId = state.ActiveAppId,
+            LastServerOwnedPanelId = state.LastServerOwnedPanelId,
+            UpdatedAtUtc = state.UpdatedAtUtc,
+        };
     }
 
     private string? TryQuarantineCorruptFile()

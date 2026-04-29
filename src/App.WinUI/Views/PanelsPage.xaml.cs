@@ -23,6 +23,7 @@ namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/paineis.md#editor-hub75
 // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-regra-global-de-scroll-canvas-first
+// DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
 public sealed partial class PanelsPage : Page, IDisposable
 {
     private static readonly RgbaColor[] EmptyFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
@@ -512,15 +513,31 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         await playbackService.StartAsync(panel.Clone(), deviceId);
+        var stateSaved = await TryPersistActivePanelStateAsync(
+            deviceId,
+            panel.PanelId,
+            PanelsDeviceSessionService.PanelsAppId,
+            panel.PanelId);
         UpdateGalleryCardStates();
-        SetStatus($"Painel '{panel.Name}' carregado em {deviceId}.");
+        SetStatus(stateSaved
+            ? $"Painel '{panel.Name}' carregado em {deviceId}."
+            : $"Painel '{panel.Name}' carregado em {deviceId}, mas o estado ativo nao foi salvo.");
     }
 
     private async Task StopPlaybackAsync()
     {
+        var targetDeviceId = playbackService.TargetDeviceId;
+        var activePanelId = playbackService.GetActivePanelSnapshot()?.PanelId;
         await playbackService.StopAsync();
+        var stateSaved = await TryPersistActivePanelStateAsync(
+            targetDeviceId,
+            activePanelId: null,
+            activeAppId: null,
+            lastServerOwnedPanelId: activePanelId);
         UpdateGalleryCardStates();
-        SetStatus("Runtime de painel interrompido.");
+        SetStatus(stateSaved
+            ? "Runtime de painel interrompido."
+            : "Runtime de painel interrompido, mas o estado ativo nao foi salvo.");
     }
 
     private void OnTargetDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -947,8 +964,69 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         await playbackService.StartAsync(currentPanel.Clone(), targetDeviceId);
+        _ = await TryPersistActivePanelStateAsync(
+            targetDeviceId,
+            currentPanel.PanelId,
+            PanelsDeviceSessionService.PanelsAppId,
+            currentPanel.PanelId);
         return true;
     }
+
+    private async Task<bool> TryPersistActivePanelStateAsync(
+        string? deviceId,
+        string? activePanelId,
+        string? activeAppId,
+        string? lastServerOwnedPanelId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return true;
+        }
+
+        try
+        {
+            var normalizedDeviceId = deviceId.Trim();
+            var previousState = storeDocument.ActivePanels.FirstOrDefault(state =>
+                string.Equals(state.DeviceId, normalizedDeviceId, StringComparison.OrdinalIgnoreCase));
+            var retainedServerOwnedPanelId = NormalizePanelReference(lastServerOwnedPanelId)
+                ?? NormalizePanelReference(previousState?.LastServerOwnedPanelId);
+
+            storeDocument.ActivePanels.RemoveAll(state =>
+                string.Equals(state.DeviceId, normalizedDeviceId, StringComparison.OrdinalIgnoreCase));
+            storeDocument.ActivePanels.Add(new PanelDeviceState
+            {
+                DeviceId = normalizedDeviceId,
+                ActivePanelId = NormalizePanelReference(activePanelId),
+                ActiveAppId = NormalizeOptional(activeAppId),
+                LastServerOwnedPanelId = retainedServerOwnedPanelId,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            storeDocument.Normalize();
+            await panelsStore.SaveAsync(storeDocument);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.ReportError("PanelsPage.TryPersistActivePanelStateAsync failed", ex);
+            return false;
+        }
+    }
+
+    private string? NormalizePanelReference(string? panelId)
+    {
+        if (string.IsNullOrWhiteSpace(panelId))
+        {
+            return null;
+        }
+
+        var trimmed = panelId.Trim();
+        return storeDocument.Panels.Any(panel => string.Equals(panel.PanelId, trimmed, StringComparison.OrdinalIgnoreCase))
+            ? trimmed
+            : null;
+    }
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private async Task RefreshPreviewSessionAsync()
     {

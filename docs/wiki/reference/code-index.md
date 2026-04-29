@@ -30,15 +30,18 @@ Pontos principais do cutover HUB75 128x64:
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
 - [RemoteDeviceServerSecretStore](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerSecretStore.cs#L1)
 - [RemoteDeviceServerConnectionTester](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerConnectionTester.cs#L1)
+- [RemoteDeviceTransportDiagnosticsFormatter](../../../src/App.WinUI/Services/Devices/RemoteDeviceTransportDiagnosticsFormatter.cs#L1)
 - [AppStartupDiagnostics](../../../src/App.WinUI/Infrastructure/AppStartupDiagnostics.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [Firmware session runtime](../../../firmware/esp32s3-devkitc1/src/mica_session.cpp#L1)
 - [Firmware visual UDP](../../../firmware/esp32s3-devkitc1/src/mica_visual_udp.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
+- [patch_websockets_max_data_size.py](../../../firmware/esp32s3-devkitc1/scripts/patch_websockets_max_data_size.py#L1)
 - [Board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)
 - [Particao local 3MB APP / 9.9MB FATFS](../../../firmware/esp32s3-devkitc1/partitions/mica_app3M_fat9M_16MB.csv#L1)
 - [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L1)
+- [enable-windows-long-paths.ps1](../../../scripts/enable-windows-long-paths.ps1#L1)
 - [MicaAudio.Server](../../../src/MicaAudio.Server/MicaAudio.Server.csproj#L1)
 - [MicaAudio.Server Program](../../../src/MicaAudio.Server/Program.cs#L1)
 - [MicaAudioServerBootstrap](../../../src/MicaAudio.Server/MicaAudioServerBootstrap.cs#L1)
@@ -89,6 +92,8 @@ Pontos principais do cutover HUB75 128x64:
 - [MicaDiscoveryRequestV1](../../../src/Device.Protocol/Models/MicaDiscoveryRequestV1.cs#L1)
 - [MicaDiscoveryResponseV1](../../../src/Device.Protocol/Models/MicaDiscoveryResponseV1.cs#L1)
 - [PanelLibraryDocument](../../../src/Device.Protocol/Models/PanelLibraryDocument.cs#L1)
+- [PanelDeviceState](../../../src/Device.Protocol/Models/PanelDeviceState.cs#L1)
+- [PanelWidgetDataSources](../../../src/Device.Protocol/Models/PanelWidgetDataSources.cs#L1)
 - [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1)
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1)
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1)
@@ -170,8 +175,8 @@ Pontos de lifecycle leve de devices:
 Observacoes ativas:
 
 - A DevicesPage usa diff incremental para manter a lista estavel e evitar rebuild total em refresh normal.
-- A DevicesPage diferencia App ativo (online) de Ultimo app conhecido (offline), com acoes no card de resumo (`Testar LED` e `Reprovisionar Wi-Fi`).
-- `Reprovisionar Wi-Fi` envia `enter_provisioning`; `RemoveDevice` fica como limpeza tecnica/admin fora da acao principal da UX.
+- A DevicesPage diferencia App ativo (online) de Ultimo app conhecido (offline), com acoes no card de resumo (`Testar LED` e `Remover dispositivo`).
+- `Remover dispositivo` fica visivel e continua confirmando antes de remover o registro local; `Reprovisionar Wi-Fi` saiu da UI principal por enquanto.
 - A DevicesPage usa apenas miniatura inline da lista para preview de app; o painel da direita nao tem preview maior.
 - A DevicesPage agora usa `WebView2` no painel direito e carrega o dashboard HTML local em `/dashboard`, mantendo a lista de devices e as acoes globais de firmware/pairing no shell WinUI nativo.
 - O dashboard HTML recebe selecao via `postMessage`, consome `WS /ws/device/{deviceId}` e preserva no host WinUI as acoes reais de brilho, teste de LED e remocao.
@@ -180,6 +185,8 @@ Observacoes ativas:
 - O online/offline oficial da UI agora vem do control plane MQTT; WS isolado nao basta mais para marcar device online.
 - O snapshot tambem diferencia `LegacyOnly` para firmware que ainda usa WS-texto/HTTP no control plane.
 - O hot path visual remoto para `Bins128` agora e `WinUI Remote -> /api/v1/admin/visual-endpoints -> UDP direto no ESP`; `Frame128x64`, paineis/GIFs e endpoints ausentes continuam no fallback `/ws/v1/admin/frames`.
+- `404` em `/api/v1/admin/visual-endpoints` indica servidor/container sem a rota atual; o WinUI reporta essa causa em vez de erro HTTP generico.
+- O WinUI exibe diagnostico tecnico do transporte remoto em `Configuracoes`, incluindo frames UDP diretos, fallback WS, endpoints ausentes e ultimo erro.
 - O hot path visual embedded continua em `Esp32S3LedOutput -> IDeviceFrameTransport -> DeviceServerHost.BroadcastFrame/SendFrame`; por default sai por `/ws/v1/stream`, com UDP server->ESP apenas quando o device anuncia capability e `PreferLanUdpVisualTransport=true`.
 - Os contratos consumidos por clients (`IDeviceServerClient`, `IDeviceFrameTransport`, `PanelsBatchRegistration`) vivem em `Device.Client.Abstractions`; `Device.Server.Abstractions` fica restrito ao host embedded/lifecycle.
 - A implementacao local desses contratos vive em `Device.Client.Embedded`; o WinUI registra `EmbeddedDeviceServerClient` como `IDeviceServerClient` e `IEmbeddedDeviceServerClientRuntime`, mantendo `DeviceServerHost` apenas no composition root.
@@ -194,6 +201,7 @@ Observacoes ativas:
 - Docker local usa `scripts/docker-server-redeploy.ps1` como caminho oficial para rebuild/redeploy, com visual por WS como default, `5274/udp` apenas com `-PreferVisualUdp` e `5275/udp` para discovery LAN; Render/cloud permanecem em HTTP/WSS.
 - O server standalone persiste `devices.json`, `panels/panels.json` e blobs/index de midia em `MICA_SERVER__STORAGEROOT`.
 - O WinUI agora tambem possui modo `Remote`, opt-in em `Configuracoes`, que usa `Device.Client.Remote` contra `MicaAudio.Server` com token admin DPAPI, botao `Testar servidor remoto` e descoberta de endpoints visuais LAN; `Embedded` permanece default.
+- O contrato server-first dos paineis agora inclui `ActivePanels` por device e `PanelWidgetItem.DataSource`, separando widgets duraveis `server` de fontes efemeras `windows-client`/`android-client`.
 
 Pontos centrais do pipeline de analise e captura:
 
@@ -304,8 +312,10 @@ Pontos centrais da sessao de paineis HUB75:
 - [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1)
 - [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
 - [PanelLibraryDocument](../../../src/Device.Protocol/Models/PanelLibraryDocument.cs#L1)
+- [PanelDeviceState](../../../src/Device.Protocol/Models/PanelDeviceState.cs#L1)
 - [PanelLibraryItem](../../../src/Device.Protocol/Models/PanelLibraryItem.cs#L1)
 - [PanelWidgetItem](../../../src/Device.Protocol/Models/PanelWidgetItem.cs#L1)
+- [PanelWidgetDataSources](../../../src/Device.Protocol/Models/PanelWidgetDataSources.cs#L1)
 - [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1)
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
 
@@ -320,7 +330,8 @@ Observacoes ativas dos paineis:
 - O editor entra com preview desligado; a animacao local so e criada quando o usuario ativa o toggle `Preview`.
 - `PanelsFrameComposer.CreatePosterAsync(...)` e `PanelsMediaCache` separam poster de playback e reutilizam decodificacao de midia para evitar churn de RAM/CPU.
 - `PanelsStore` recupera `panels.json` vazio/corrompido sem derrubar a app, grava com temp+replace e migra automaticamente o cache local para a biblioteca do server quando o server esta vazio.
-- O runtime de painel em background usa `30 FPS` como teto de apresentacao, salva `lastSelectedPanelId` e separa estado de widget (`ConfigValues`) do draft local compartilhado de apps.
+- O runtime de painel em background usa `30 FPS` como teto de apresentacao, salva `lastSelectedPanelId`, persiste o estado ativo por device no server e separa estado de widget (`ConfigValues`) do draft local compartilhado de apps.
+- Cada widget declara `dataSource` para diferenciar dados duraveis de servidor de dados efemeros de cliente Windows/Android.
 - `gifhub75` agora resolve animacao por delays reais do arquivo e o cache animado guarda sequencia temporal (`frames + durationMs + totalDurationMs`).
 - O transporte HUB75 agora suporta `SendFrame(deviceId, payload)` em paralelo ao broadcast, e `Esp32S3LedOutput` escolhe o destino a partir de `LedOutputConfig.TargetDeviceId`.
 - Se o device anunciar `animatedWebpBatchSupported`, `PanelsPlaybackService` passa a gerar lotes `WebP` animados de `1 s / 30 frames`, publicados via `queue_panels_batch` e baixados do `Device.Server` por HTTP autenticado.

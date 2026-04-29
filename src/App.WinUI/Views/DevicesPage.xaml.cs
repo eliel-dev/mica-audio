@@ -17,6 +17,7 @@ namespace App.WinUI.Views;
 // DOCS: docs/wiki/modules/app-winui.md
 // DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-29-build-warning-cleanup-and-remove-device-button.md
 public sealed partial class DevicesPage : Page
 {
     private const string LocalDraftScope = "__local__";
@@ -279,9 +280,9 @@ public sealed partial class DevicesPage : Page
         await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
     }
 
-    private async void OnReprovisionWifiClicked(object sender, RoutedEventArgs e)
+    private async void OnRemoveDeviceClicked(object sender, RoutedEventArgs e)
     {
-        await ExecuteReprovisionWifiAsync().ConfigureAwait(false);
+        await ExecuteRemoveDeviceAsync().ConfigureAwait(false);
     }
 
     private void OnCopyHostClicked(object sender, RoutedEventArgs e)

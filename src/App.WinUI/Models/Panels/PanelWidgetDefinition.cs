@@ -1,11 +1,16 @@
+using Device.Protocol.Models;
+
 namespace App.WinUI.Models.Panels;
 
 // DOCS: docs/wiki/modules/paineis.md#persistencia-do-layout
+// DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
 internal sealed class PanelWidgetDefinition
 {
     public string WidgetId { get; set; } = Guid.NewGuid().ToString("N");
 
     public string AppId { get; set; } = string.Empty;
+
+    public string DataSource { get; set; } = PanelWidgetDataSources.Server;
 
     public int X { get; set; }
 
@@ -27,6 +32,7 @@ internal sealed class PanelWidgetDefinition
         {
             WidgetId = WidgetId,
             AppId = AppId,
+            DataSource = DataSource,
             X = X,
             Y = Y,
             Width = Width,
@@ -41,6 +47,7 @@ internal sealed class PanelWidgetDefinition
     {
         WidgetId = string.IsNullOrWhiteSpace(WidgetId) ? Guid.NewGuid().ToString("N") : WidgetId.Trim();
         AppId = string.IsNullOrWhiteSpace(AppId) ? string.Empty : AppId.Trim();
+        DataSource = PanelWidgetDataSources.Normalize(DataSource);
         Width = Math.Clamp(Width <= 0 ? 64 : Width, 1, Math.Max(1, panelWidth));
         Height = Math.Clamp(Height <= 0 ? 32 : Height, 1, Math.Max(1, panelHeight));
         X = Math.Clamp(X, 0, Math.Max(0, panelWidth - Width));
