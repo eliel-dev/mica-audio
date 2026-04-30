@@ -2,6 +2,8 @@ using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
+// DOCS: docs/wiki/modules/device-operations-coordinator.md#render-estavel-na-devicespage
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 internal readonly record struct DeviceRefreshStateSnapshot(
     IReadOnlyList<DeviceSnapshot> Devices,
     DateTimeOffset LastRefreshUtc);
@@ -59,18 +61,115 @@ internal sealed class DeviceRefreshCoordinator
         lock (gate)
         {
             lastRefreshUtc = refreshedAtUtc;
-            var nonOnlinePresent = nextSnapshot.Any(static d => d.Status != DeviceStatus.Online);
+            var previousById = new Dictionary<string, DeviceSnapshot>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in devicesSnapshot)
+            {
+                if (!string.IsNullOrWhiteSpace(item.DeviceId))
+                {
+                    previousById[item.DeviceId] = item;
+                }
+            }
 
-            if (!forcePublish && !nonOnlinePresent && AreSnapshotsEquivalent(devicesSnapshot, nextSnapshot))
+            var normalizedSnapshot = NormalizeForUi(nextSnapshot, previousById);
+            var nonOnlinePresent = normalizedSnapshot.Any(static d => d.Status != DeviceStatus.Online);
+
+            if (!forcePublish && !nonOnlinePresent && AreSnapshotsEquivalent(devicesSnapshot, normalizedSnapshot))
             {
                 return new DeviceRefreshUpdate(false, Array.Empty<DeviceSnapshot>(), devicesSnapshot.ToArray());
             }
 
             var previousSnapshot = devicesSnapshot.ToArray();
             devicesSnapshot.Clear();
-            devicesSnapshot.AddRange(nextSnapshot);
+            devicesSnapshot.AddRange(normalizedSnapshot);
             return new DeviceRefreshUpdate(true, previousSnapshot, devicesSnapshot.ToArray());
         }
+    }
+
+    private static DeviceSnapshot[] NormalizeForUi(
+        DeviceSnapshot[] nextSnapshot,
+        Dictionary<string, DeviceSnapshot> previousById)
+    {
+        var normalized = new DeviceSnapshot[nextSnapshot.Length];
+        for (var i = 0; i < nextSnapshot.Length; i++)
+        {
+            var current = nextSnapshot[i];
+            previousById.TryGetValue(current.DeviceId, out var previousSnapshot);
+            var normalizedConnectivityEvent = DeviceConnectivityEventClassifier.NormalizeForUi(
+                current.LastWifiEvent,
+                previousSnapshot?.LastWifiEvent);
+
+            normalized[i] = string.Equals(normalizedConnectivityEvent, current.LastWifiEvent, StringComparison.OrdinalIgnoreCase)
+                ? current
+                : CloneWithConnectivityEvent(current, normalizedConnectivityEvent);
+        }
+
+        return normalized;
+    }
+
+    private static DeviceSnapshot CloneWithConnectivityEvent(DeviceSnapshot source, string? lastWifiEvent)
+    {
+        return new DeviceSnapshot
+        {
+            DeviceId = source.DeviceId,
+            Name = source.Name,
+            Profile = source.Profile,
+            Status = source.Status,
+            ControlPlaneState = source.ControlPlaneState,
+            IsRegistered = source.IsRegistered,
+            LastSeenUtc = source.LastSeenUtc,
+            FirstSeenUtc = source.FirstSeenUtc,
+            LastTelemetryUtc = source.LastTelemetryUtc,
+            LastAuthUtc = source.LastAuthUtc,
+            ConfigState = source.ConfigState,
+            LastKnownIp = source.LastKnownIp,
+            LastKnownRssi = source.LastKnownRssi,
+            UptimeSeconds = source.UptimeSeconds,
+            LoopHealthyPercent = source.LoopHealthyPercent,
+            LoopLoadPercent = source.LoopLoadPercent,
+            ChipTemperatureCelsius = source.ChipTemperatureCelsius,
+            FreeHeapBytes = source.FreeHeapBytes,
+            LargestHeapBlockBytes = source.LargestHeapBlockBytes,
+            PsramAvailable = source.PsramAvailable,
+            FreePsramBytes = source.FreePsramBytes,
+            LargestPsramBlockBytes = source.LargestPsramBlockBytes,
+            WifiConnected = source.WifiConnected,
+            WifiState = source.WifiState,
+            ProvisioningPortalActive = source.ProvisioningPortalActive,
+            AuxLedAvailable = source.AuxLedAvailable,
+            TestLedAvailable = source.TestLedAvailable,
+            LastWifiEvent = lastWifiEvent,
+            StreamLastSequence = source.StreamLastSequence,
+            StreamFramesReceived = source.StreamFramesReceived,
+            StreamFramesApplied = source.StreamFramesApplied,
+            Hub75PresentFrames = source.Hub75PresentFrames,
+            StreamSequenceGapCount = source.StreamSequenceGapCount,
+            StreamInvalidFrameCount = source.StreamInvalidFrameCount,
+            FirmwareVersion = source.FirmwareVersion,
+            TelemetrySequence = source.TelemetrySequence,
+            BrightnessCap = source.BrightnessCap,
+            BrightnessRequested = source.BrightnessRequested,
+            BrightnessApplied = source.BrightnessApplied,
+            TestLedEnabled = source.TestLedEnabled,
+            TestLedDuty = source.TestLedDuty,
+            ActiveAppId = source.ActiveAppId,
+            ActiveAppName = source.ActiveAppName,
+            BoardModel = source.BoardModel,
+            PanelType = source.PanelType,
+            AnimatedWebpBatchSupported = source.AnimatedWebpBatchSupported,
+            VisualUdpSupported = source.VisualUdpSupported,
+            VisualUdpPort = source.VisualUdpPort,
+            VisualUdpMode = source.VisualUdpMode,
+            ChipModel = source.ChipModel,
+            ChipRevision = source.ChipRevision,
+            ChipCores = source.ChipCores,
+            CpuFreqMHz = source.CpuFreqMHz,
+            SdkVersion = source.SdkVersion,
+            HeapTotalBytes = source.HeapTotalBytes,
+            PsramTotalBytes = source.PsramTotalBytes,
+            FlashTotalBytes = source.FlashTotalBytes,
+            SketchSizeBytes = source.SketchSizeBytes,
+            FreeSketchBytes = source.FreeSketchBytes,
+        };
     }
 
     private static bool AreSnapshotsEquivalent(List<DeviceSnapshot> current, DeviceSnapshot[] next)
@@ -92,7 +191,9 @@ internal sealed class DeviceRefreshCoordinator
                 || !string.Equals(a.LastKnownIp, b.LastKnownIp, StringComparison.OrdinalIgnoreCase)
                 || a.LastKnownRssi != b.LastKnownRssi
                 || a.UptimeSeconds != b.UptimeSeconds
+                || a.LoopHealthyPercent != b.LoopHealthyPercent
                 || a.LoopLoadPercent != b.LoopLoadPercent
+                || a.ChipTemperatureCelsius != b.ChipTemperatureCelsius
                 || a.FreeHeapBytes != b.FreeHeapBytes
                 || a.LargestHeapBlockBytes != b.LargestHeapBlockBytes
                 || a.PsramAvailable != b.PsramAvailable
@@ -104,6 +205,12 @@ internal sealed class DeviceRefreshCoordinator
                 || a.AuxLedAvailable != b.AuxLedAvailable
                 || a.TestLedAvailable != b.TestLedAvailable
                 || !string.Equals(a.LastWifiEvent, b.LastWifiEvent, StringComparison.OrdinalIgnoreCase)
+                || a.StreamLastSequence != b.StreamLastSequence
+                || a.StreamFramesReceived != b.StreamFramesReceived
+                || a.StreamFramesApplied != b.StreamFramesApplied
+                || a.Hub75PresentFrames != b.Hub75PresentFrames
+                || a.StreamSequenceGapCount != b.StreamSequenceGapCount
+                || a.StreamInvalidFrameCount != b.StreamInvalidFrameCount
                 || a.TelemetrySequence != b.TelemetrySequence
                 || a.BrightnessCap != b.BrightnessCap
                 || a.BrightnessRequested != b.BrightnessRequested
@@ -114,6 +221,20 @@ internal sealed class DeviceRefreshCoordinator
                 || !string.Equals(a.ActiveAppName, b.ActiveAppName, StringComparison.Ordinal)
                 || !string.Equals(a.BoardModel, b.BoardModel, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(a.PanelType, b.PanelType, StringComparison.OrdinalIgnoreCase)
+                || a.AnimatedWebpBatchSupported != b.AnimatedWebpBatchSupported
+                || a.VisualUdpSupported != b.VisualUdpSupported
+                || a.VisualUdpPort != b.VisualUdpPort
+                || !string.Equals(a.VisualUdpMode, b.VisualUdpMode, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(a.ChipModel, b.ChipModel, StringComparison.OrdinalIgnoreCase)
+                || a.ChipRevision != b.ChipRevision
+                || a.ChipCores != b.ChipCores
+                || a.CpuFreqMHz != b.CpuFreqMHz
+                || !string.Equals(a.SdkVersion, b.SdkVersion, StringComparison.OrdinalIgnoreCase)
+                || a.HeapTotalBytes != b.HeapTotalBytes
+                || a.PsramTotalBytes != b.PsramTotalBytes
+                || a.FlashTotalBytes != b.FlashTotalBytes
+                || a.SketchSizeBytes != b.SketchSizeBytes
+                || a.FreeSketchBytes != b.FreeSketchBytes
                 || a.IsRegistered != b.IsRegistered
                 || a.FirstSeenUtc != b.FirstSeenUtc
                 || a.LastTelemetryUtc != b.LastTelemetryUtc

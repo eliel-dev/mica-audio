@@ -2,14 +2,22 @@
 
 Documentacao tecnica versionada junto com o codigo para acelerar manutencao, onboarding e continuidade por humanos e IA.
 
+## Direcao oficial atual
+
+- `server` = control plane.
+- `cliente Windows` = edge client local / data plane LAN.
+- `ESP32` = runtime com ownership por device.
+- `visualizador` e `Paineis` sao oficialmente client-driven; a wiki continua marcando caminhos via server como `baseline atual / transicao` quando ainda existirem no codigo.
+
 ## Como usar esta wiki
 
 1. Comece por `architecture/01-system-overview.md` para entender o mapa geral.
 2. Leia o modulo alvo em `modules/`.
 3. Aplique um guia em `guides/`.
 4. Consulte `reference/code-index.md` para achar classes e metodos.
-5. Para fluxo solo com IA, leia `ai/agent-entrypoint.md`.
-6. Rode a validacao local:
+5. Se quiser leitura por capacidade e status, rode o Atlas em `site/docs-atlas`.
+6. Para fluxo solo com IA, leia `ai/agent-entrypoint.md`.
+7. Rode a validacao local:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\docs-validate.ps1
@@ -18,17 +26,26 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 
 ## Navegacao rapida por tarefa
 
+- Quero navegar a wiki por capacidade e status no Atlas: [site/docs-atlas/README.md](../../site/docs-atlas/README.md)
 - Quero mexer em captura/analise/render: [architecture/01-system-overview.md](architecture/01-system-overview.md)
+- Quero entender a arquitetura futura cloud-first e multi-panel: [architecture/07-cloud-first-multi-panel-future-architecture.md](architecture/07-cloud-first-multi-panel-future-architecture.md)
+- Quero planejar o deploy cloud-first no Render: [architecture/08-render-cloud-migration-plan.md](architecture/08-render-cloud-migration-plan.md)
+- Quero ver o mapa de gaps do control plane cloud-first: [reference/cloud-first-control-plane-gap-map.md](reference/cloud-first-control-plane-gap-map.md)
+- Quero avaliar GPIOViewer como diagnostico futuro: [future-implementations/gpio-viewer-diagnostic-viability-checklist.md](future-implementations/gpio-viewer-diagnostic-viability-checklist.md)
+- Quero avaliar ESPConnect como ferramenta externa de flash/USB: [future-implementations/espconnect-usb-tool-viability-checklist.md](future-implementations/espconnect-usb-tool-viability-checklist.md)
 - Quero operar dispositivos e setup de firmware: [modules/server-build-and-artifacts.md](modules/server-build-and-artifacts.md)
+- Quero entender o dashboard nativo de observabilidade por device: [reference/device-observability-dashboard.md](reference/device-observability-dashboard.md)
 - Quero configurar novo dispositivo: [guides/setup-new-device.md](guides/setup-new-device.md)
 - Quero baixar firmware pre-compilado: [guides/build-export-firmware.md](guides/build-export-firmware.md)
 - Quero debugar falha de download/salvamento de firmware: [guides/debug-ota-http-failure.md](guides/debug-ota-http-failure.md)
-- Quero adicionar app no catalogo: [guides/add-app-catalog-item.md](guides/add-app-catalog-item.md)
-- Quero configurar modificadores dinamicos de app: [guides/configure-app-modifiers.md](guides/configure-app-modifiers.md)
+- Quero adicionar item no catalogo de widgets: [guides/add-app-catalog-item.md](guides/add-app-catalog-item.md)
+- Quero configurar modificadores dinamicos de widget: [guides/configure-app-modifiers.md](guides/configure-app-modifiers.md)
+- Quero montar layouts HUB75 com widgets: [modules/paineis.md](modules/paineis.md)
 - Quero auditar codigo legado com Context7: [guides/context7-legacy-review.md](guides/context7-legacy-review.md)
 - Quero auditar criticidade do projeto com Context7: [guides/criticality-context7-audit.md](guides/criticality-context7-audit.md)
 - Quero resolver busca de cidade no clima: [guides/troubleshoot-city-autocomplete.md](guides/troubleshoot-city-autocomplete.md)
 - Quero ver status da documentacao: [reference/docs-health.md](reference/docs-health.md)
+- Quero auditar setup/startup/UX do desktop WinUI: [reference/app-winui-audit-2026-03-23.md](reference/app-winui-audit-2026-03-23.md)
 - Quero aplicar hardening security-first: [guides/security-quality-hardening.md](guides/security-quality-hardening.md)
 - Quero operar release 1.0 com setup assinado: [guides/release-1.0-installer.md](guides/release-1.0-installer.md)
 - Quero carregar GIF para HUB75 por URL/arquivo: [guides/load-gif-hub75.md](guides/load-gif-hub75.md)
@@ -44,6 +61,15 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [04 - Threading and concurrency](architecture/04-threading-concurrency.md)
 - [05 - Device session and reconnect](architecture/05-device-session-and-reconnect.md)
 - [06 - Errors, timeouts and recovery](architecture/06-errors-timeouts-and-recovery.md)
+- [07 - Cloud-first multi-panel future architecture](architecture/07-cloud-first-multi-panel-future-architecture.md)
+- [08 - Render cloud-first migration plan](architecture/08-render-cloud-migration-plan.md)
+
+### Futuras implementacoes
+- [Index de futuras implementacoes](future-implementations/README.md)
+- [Arquitetura futura cloud-first e multi-panel](architecture/07-cloud-first-multi-panel-future-architecture.md)
+- [Plano de migracao Render cloud-first](architecture/08-render-cloud-migration-plan.md)
+- [GPIOViewer como diagnostico local opcional](future-implementations/gpio-viewer-diagnostic-viability-checklist.md)
+- [ESPConnect como ferramenta externa de flash e USB](future-implementations/espconnect-usb-tool-viability-checklist.md)
 
 ### Modulos
 - [App.WinUI](modules/app-winui.md)
@@ -55,7 +81,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Firmware HUB75 128x64 (DevKitC-1)](modules/firmware-esp32s3-devkitc1.md)
 - [Settings + Presets + Persistencia](modules/settings-presets-persistence.md)
 - [DeviceOperationsCoordinator](modules/device-operations-coordinator.md)
-- [Apps catalog + deployment](modules/apps-catalog-deployment.md)
+- [Catalogo compartilhado de widgets](modules/apps-catalog-deployment.md)
+- [Paineis](modules/paineis.md)
 - [Server setup + firmware artifacts](modules/server-build-and-artifacts.md)
 
 ### Guias
@@ -67,8 +94,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Context7 para revisao de legado](guides/context7-legacy-review.md)
 - [Auditoria de criticidade + Context7](guides/criticality-context7-audit.md)
 - [Debug: visualizacao nao aparece](guides/debug-no-visualization.md)
-- [Adicionar item no catalogo de apps](guides/add-app-catalog-item.md)
-- [Configurar modificadores de apps](guides/configure-app-modifiers.md)
+- [Adicionar item no catalogo de widgets](guides/add-app-catalog-item.md)
+- [Configurar modificadores de widgets](guides/configure-app-modifiers.md)
 - [Troubleshoot autocomplete de cidade](guides/troubleshoot-city-autocomplete.md)
 - [Operar ciclo de vida de dispositivo](guides/operate-device-lifecycle.md)
 - [Debug de download/salvamento de firmware](guides/debug-ota-http-failure.md)
@@ -92,10 +119,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Code index](reference/code-index.md)
 - [Convencoes de links wiki<->codigo](reference/linking-conventions.md)
 - [HTTP API v1](reference/http-api-v1.md)
-- [WS protocol v1](reference/ws-protocol-v1.md)
 - [Device telemetry v2 fields](reference/device-telemetry-v2-fields.md)
+- [Cloud-first control plane gap map](reference/cloud-first-control-plane-gap-map.md)
+- [Dashboard nativo de observabilidade por device](reference/device-observability-dashboard.md)
 - [Troubleshooting matrix](reference/troubleshooting-matrix.md)
 - [Docs health](reference/docs-health.md)
+- [Auditoria desktop WinUI (2026-03-23)](reference/app-winui-audit-2026-03-23.md)
 - [Glossario](reference/glossary.md)
 - [AI contract (YAML)](reference/ai-contract.v1.yaml)
 - [AI contract schema](reference/ai-contract.schema.json)

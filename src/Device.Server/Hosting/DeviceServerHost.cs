@@ -1,6 +1,8 @@
+using System.Buffers;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -8,15 +10,26 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
+using Device.Protocol.Stream;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.FileProviders;
+using MQTTnet.Server;
 
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
+// DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
+// DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
+// DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -37,23 +50,83 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     private readonly object gate = new();
     private readonly TimeProvider timeProvider;
-    private readonly DeviceSessionRegistry devices = new();
-    private readonly DevicePairingState pairingState = new();
-    private readonly PendingTrackedCommandStore pendingTrackedCommands = new();
+    private readonly IDeviceOfficialFirmwareCatalog? firmwareCatalog;
+    private readonly IPanelsBatchStore panelsBatchStore;
+    private readonly IDevicePairingStore pairingStore;
+    private readonly ICommandStateStore commandStateStore;
+    private readonly ISessionStateStore sessionStateStore;
+    private readonly IPanelLibraryStore panelLibraryStore;
+    private readonly IMediaLibraryStore mediaLibraryStore;
+    private readonly IVisualUdpSender visualUdpSender;
+    private readonly DeviceFrameConnectionRegistry frameConnections = new();
+    private readonly object adminEventConnectionsGate = new();
+    private readonly List<AdminEventConnection> adminEventConnections = new();
 
     private DeviceServerRuntimeConfig runtimeConfig = DeviceServerRuntimeConfig.From(new ServerConfig());
     private WebApplication? app;
+    private MqttServer? mqttServer;
     private CancellationTokenSource? appCts;
+    private UdpClient? discoveryUdpClient;
+    private Task? discoveryUdpTask;
 
     public DeviceServerHost()
-        : this(TimeProvider.System)
+        : this(TimeProvider.System, firmwareCatalog: null)
     {
     }
 
     public DeviceServerHost(TimeProvider timeProvider)
+        : this(timeProvider, firmwareCatalog: null)
+    {
+    }
+
+    public DeviceServerHost(IDeviceOfficialFirmwareCatalog? firmwareCatalog)
+        : this(TimeProvider.System, firmwareCatalog)
+    {
+    }
+
+    public DeviceServerHost(
+        TimeProvider timeProvider,
+        IDeviceOfficialFirmwareCatalog? firmwareCatalog,
+        IPanelsBatchStore? panelsBatchStore = null,
+        IDevicePairingStore? pairingStore = null,
+        ICommandStateStore? commandStateStore = null,
+        ISessionStateStore? sessionStateStore = null,
+        IPanelLibraryStore? panelLibraryStore = null,
+        IMediaLibraryStore? mediaLibraryStore = null)
+        : this(
+            timeProvider,
+            firmwareCatalog,
+            panelsBatchStore,
+            pairingStore,
+            commandStateStore,
+            sessionStateStore,
+            panelLibraryStore,
+            mediaLibraryStore,
+            visualUdpSender: null)
+    {
+    }
+
+    internal DeviceServerHost(
+        TimeProvider timeProvider,
+        IDeviceOfficialFirmwareCatalog? firmwareCatalog,
+        IPanelsBatchStore? panelsBatchStore,
+        IDevicePairingStore? pairingStore,
+        ICommandStateStore? commandStateStore,
+        ISessionStateStore? sessionStateStore,
+        IPanelLibraryStore? panelLibraryStore = null,
+        IMediaLibraryStore? mediaLibraryStore = null,
+        IVisualUdpSender? visualUdpSender = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
+        this.firmwareCatalog = firmwareCatalog;
+        this.panelsBatchStore = panelsBatchStore ?? new InMemoryPanelsBatchStore();
+        this.pairingStore = pairingStore ?? new InMemoryDevicePairingStore();
+        this.commandStateStore = commandStateStore ?? new InMemoryCommandStateStore();
+        this.sessionStateStore = sessionStateStore ?? new InMemorySessionStateStore();
+        this.panelLibraryStore = panelLibraryStore ?? new InMemoryPanelLibraryStore();
+        this.mediaLibraryStore = mediaLibraryStore ?? new InMemoryMediaLibraryStore();
+        this.visualUdpSender = visualUdpSender ?? new SocketVisualUdpSender();
     }
 
     public event EventHandler? DevicesChanged;
@@ -61,6 +134,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     public event EventHandler<string>? LogMessage;
 
     public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
+
+    public event EventHandler<DeviceLogMessage>? DeviceLogReceived;
 
     public async Task StartAsync(ServerConfig config, CancellationToken cancellationToken = default)
     {
@@ -80,9 +155,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         var builder = WebApplication.CreateSlimBuilder();
+        DeviceServerObservability.ConfigureLogging(builder.Logging);
+        DeviceServerObservability.ConfigureOpenTelemetry(builder.Services);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
-            kestrel.Limits.MaxRequestBodySize = localRuntimeConfig.MaxJsonBodyBytes;
+            kestrel.Limits.MaxRequestBodySize = Math.Max(localRuntimeConfig.MaxJsonBodyBytes, localRuntimeConfig.MaxMediaUploadBytes);
         });
         builder.WebHost.UseUrls($"http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
         builder.Services.AddRateLimiter(options =>
@@ -145,13 +222,56 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
             await next().ConfigureAwait(false);
         });
+        localApp.Use(async (ctx, next) =>
+        {
+            if (ctx.Request.Path.Equals("/dashboard", StringComparison.OrdinalIgnoreCase)
+                || ctx.Request.Path.Equals("/dashboard/", StringComparison.OrdinalIgnoreCase))
+            {
+                await HandleDashboardAsync(ctx).ConfigureAwait(false);
+                return;
+            }
+
+            await next().ConfigureAwait(false);
+        });
+        localApp.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(Path.Combine(AppContext.BaseDirectory, "wwwroot")),
+            OnPrepareResponse = static context => context.Context.Response.Headers["Cache-Control"] = "no-store",
+        });
 
         MapRoutes(localApp);
 
-        await localApp.StartAsync(appCts!.Token).ConfigureAwait(false);
+        MqttServer? localMqttServer = null;
+        try
+        {
+            localMqttServer = CreateMqttServer(localRuntimeConfig);
+            await localMqttServer.StartAsync().ConfigureAwait(false);
+            await localApp.StartAsync(appCts!.Token).ConfigureAwait(false);
+            StartDiscoveryUdpListener(localRuntimeConfig, appCts.Token);
+        }
+        catch
+        {
+            if (localMqttServer is not null)
+            {
+                await StopMqttServerAsync(localMqttServer).ConfigureAwait(false);
+            }
+
+            try
+            {
+                await localApp.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore startup cleanup races
+            }
+
+            throw;
+        }
+
         lock (gate)
         {
             app = localApp;
+            mqttServer = localMqttServer;
         }
 
         await Task.Delay(30, cancellationToken).ConfigureAwait(false);
@@ -161,15 +281,119 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             Log("Servidor iniciado sem CIDR valido em AllowedCidrs; aplicando regra padrao de rede privada.");
         }
 
-        Log($"Servidor de dispositivos ativo em http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
+        Log($"HTTP bind interno: http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
+        Log($"HTTP anunciado: {ResolveAdvertisedHttpBaseAddress(localRuntimeConfig)}");
+        Log($"MQTT anunciado: mqtt://{ResolveAdvertisedMqttHost(localRuntimeConfig)}:{localRuntimeConfig.MqttPort} ({localRuntimeConfig.MqttRootTopic}/{{deviceId}})");
+        Log(localRuntimeConfig.PreferLanUdpVisualTransport
+            ? $"UDP visual LAN habilitado: udp://{ResolveAdvertisedMqttHost(localRuntimeConfig)}:{localRuntimeConfig.VisualUdpPort} (bins128)"
+            : "UDP visual LAN desabilitado (PreferLanUdpVisualTransport=false).");
+    }
+
+    private void StartDiscoveryUdpListener(DeviceServerRuntimeConfig config, CancellationToken cancellationToken)
+    {
+        if (!config.TrustedLanAutoRegistration)
+        {
+            return;
+        }
+
+        try
+        {
+            var udpClient = new UdpClient(AddressFamily.InterNetwork);
+            udpClient.EnableBroadcast = true;
+            udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, config.DiscoveryUdpPort));
+            lock (gate)
+            {
+                discoveryUdpClient = udpClient;
+                discoveryUdpTask = Task.Run(() => RunDiscoveryUdpLoopAsync(udpClient, cancellationToken), CancellationToken.None);
+            }
+
+            Log($"Discovery LAN habilitado: udp://0.0.0.0:{config.DiscoveryUdpPort}");
+        }
+        catch (SocketException ex)
+        {
+            Log($"Discovery LAN indisponivel na porta UDP {config.DiscoveryUdpPort}: {ex.Message}");
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private async Task RunDiscoveryUdpLoopAsync(UdpClient udpClient, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            UdpReceiveResult received;
+            try
+            {
+                received = await udpClient.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (SocketException ex)
+            {
+                Log($"Falha ao receber discovery LAN: {ex.Message}");
+                continue;
+            }
+
+            MicaDiscoveryRequestV1? request;
+            try
+            {
+                request = JsonSerializer.Deserialize<MicaDiscoveryRequestV1>(received.Buffer, JsonOptions);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            if (request is null
+                || !string.Equals(request.Protocol, "mica.discovery.v1", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var response = TryRegisterTrustedLanDevice(request, received.RemoteEndPoint.Address);
+            if (response is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                var payload = JsonSerializer.SerializeToUtf8Bytes(response, JsonOptions);
+                await udpClient.SendAsync(payload, received.RemoteEndPoint, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (SocketException ex)
+            {
+                Log($"Falha ao responder discovery LAN: {ex.Message}");
+            }
+        }
     }
 
     public async Task StopAsync()
     {
         WebApplication? localApp;
+        MqttServer? localMqttServer;
         CancellationTokenSource? localCts;
-        PendingTrackedCommand[] pendingToCancel;
-        DeviceSession[] sessionsToDispose;
+        UdpClient? localDiscoveryUdpClient;
+        Task? localDiscoveryUdpTask;
+        TrackedCommandState[] pendingToCancel;
+        DeviceFrameConnection[] connectionsToDispose;
+        AdminEventConnection[] adminConnectionsToDispose;
 
         lock (gate)
         {
@@ -181,8 +405,22 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
             localCts = appCts;
             app = null;
+            localMqttServer = mqttServer;
+            mqttServer = null;
             appCts = null;
-            pendingToCancel = pendingTrackedCommands.Drain();
+            localDiscoveryUdpClient = discoveryUdpClient;
+            localDiscoveryUdpTask = discoveryUdpTask;
+            discoveryUdpClient = null;
+            discoveryUdpTask = null;
+            pendingToCancel = commandStateStore.Drain();
+            sessionStateStore.Drain();
+            connectionsToDispose = frameConnections.Drain();
+        }
+
+        lock (adminEventConnectionsGate)
+        {
+            adminConnectionsToDispose = adminEventConnections.ToArray();
+            adminEventConnections.Clear();
         }
 
         foreach (var pending in pendingToCancel)
@@ -204,7 +442,26 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         try
         {
             localCts?.Cancel();
+            localDiscoveryUdpClient?.Dispose();
             await localApp.StopAsync().ConfigureAwait(false);
+            if (localMqttServer is not null)
+            {
+                await StopMqttServerAsync(localMqttServer).ConfigureAwait(false);
+            }
+
+            if (localDiscoveryUdpTask is not null)
+            {
+                try
+                {
+                    await localDiscoveryUdpTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
         }
         catch
         {
@@ -216,13 +473,17 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
             lock (gate)
             {
-                sessionsToDispose = devices.Drain();
-                pairingState.Clear();
+                pairingStore.Clear();
             }
 
-            foreach (var session in sessionsToDispose)
+            foreach (var connection in connectionsToDispose)
             {
-                session.Dispose();
+                connection.Dispose();
+            }
+
+            foreach (var connection in adminConnectionsToDispose)
+            {
+                connection.Dispose();
             }
 
             NotifyDevicesChanged();
@@ -238,7 +499,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         lock (gate)
         {
-            pairingCode = pairingState.CreateCode(code, ttl, timeProvider);
+            pairingCode = pairingStore.SaveCode(code, ttl, timeProvider.GetUtcNow());
         }
 
         Log($"Codigo de pareamento gerado (expira em {ttl.TotalSeconds:0}s).");
@@ -249,7 +510,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return devices.CreateSnapshots(runtimeConfig.DeviceOfflineTimeout);
+            return sessionStateStore.CreateSnapshots(timeProvider.GetUtcNow(), runtimeConfig.DeviceOfflineTimeout);
         }
     }
 
@@ -257,15 +518,19 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return devices.CreateRecords();
+            return sessionStateStore.CreateRecords();
         }
+    }
+
+    public string GetPublicHttpBaseAddress()
+    {
+        return ResolveAdvertisedHttpBaseAddress(runtimeConfig);
     }
 
     public void SeedDevices(IEnumerable<DeviceRecord> devices)
     {
         ArgumentNullException.ThrowIfNull(devices);
 
-        var replacedSessions = new List<DeviceSession>();
         lock (gate)
         {
             foreach (var record in devices)
@@ -275,26 +540,122 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                     continue;
                 }
 
-                var session = new DeviceSession(record, timeProvider, SocketDetachGracePeriod);
-                var replaced = this.devices.Set(session);
+                var session = new DeviceSessionState(record, SocketDetachGracePeriod);
+                var replaced = sessionStateStore.Upsert(session);
                 if (replaced is not null)
                 {
-                    replacedSessions.Add(replaced);
+                    frameConnections.RemoveAndDispose(record.DeviceId);
                 }
             }
-        }
-
-        foreach (var session in replacedSessions)
-        {
-            session.Dispose();
         }
 
         NotifyDevicesChanged();
     }
 
+    public Task<PanelLibraryDocument> GetPanelLibraryAsync(CancellationToken cancellationToken = default)
+        => panelLibraryStore.LoadAsync(cancellationToken);
+
+    public Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
+        => panelLibraryStore.SaveAsync(document, cancellationToken);
+
+    public Task<MediaAssetInfo> UploadMediaAsync(
+        string fileName,
+        string contentType,
+        byte[] payload,
+        long maxUploadBytes,
+        CancellationToken cancellationToken = default)
+        => mediaLibraryStore.SaveAsync(fileName, contentType, payload, maxUploadBytes, cancellationToken);
+
+    public Task<byte[]?> DownloadMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => mediaLibraryStore.ReadBytesAsync(mediaId, cancellationToken);
+
+    public Task<bool> DeleteMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+        => mediaLibraryStore.DeleteAsync(mediaId, cancellationToken);
+
+    internal MicaDiscoveryResponseV1? TryRegisterTrustedLanDevice(MicaDiscoveryRequestV1 request, IPAddress? remoteIp)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!runtimeConfig.TrustedLanAutoRegistration)
+        {
+            return null;
+        }
+
+        var deviceMac = NormalizeDeviceMac(request.DeviceMac);
+        if (string.IsNullOrWhiteSpace(deviceMac))
+        {
+            return null;
+        }
+
+        DeviceRecord record;
+        var created = false;
+        lock (gate)
+        {
+            var now = timeProvider.GetUtcNow();
+            var remoteIpValue = remoteIp?.ToString();
+            var existing = sessionStateStore
+                .CreateRecords()
+                .FirstOrDefault(candidate => string.Equals(
+                    NormalizeDeviceMac(candidate.DeviceMac),
+                    deviceMac,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                if (!sessionStateStore.TryGetValue(existing.DeviceId, out var existingState) || existingState is null)
+                {
+                    existingState = new DeviceSessionState(existing, SocketDetachGracePeriod);
+                    sessionStateStore.Upsert(existingState);
+                }
+
+                existingState.MarkSeen(
+                    now,
+                    remoteIpValue,
+                    existingState.Record.LastKnownRssi,
+                    request.FirmwareVersion,
+                    existingState.Record.ActiveAppId,
+                    existingState.Record.ActiveAppName,
+                    NormalizeOptional(request.BoardModel),
+                    NormalizeOptional(request.PanelType));
+                record = existingState.Record;
+            }
+            else
+            {
+                if (sessionStateStore.Count >= runtimeConfig.MaxDevices)
+                {
+                    return null;
+                }
+
+                record = DeviceRecordMutations.CreatePairedRecord(
+                    deviceId: $"mp-{Guid.NewGuid():N}",
+                    token: WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(24)),
+                    name: string.IsNullOrWhiteSpace(request.DeviceName)
+                        ? ResolveDefaultDeviceName(request.BoardModel)
+                        : request.DeviceName.Trim(),
+                    profile: NormalizeFirmwareProfile(request.Profile),
+                    firmwareVersion: request.FirmwareVersion,
+                    ip: remoteIpValue,
+                    boardModel: NormalizeOptional(request.BoardModel),
+                    panelType: NormalizeOptional(request.PanelType),
+                    now: now,
+                    deviceMac: deviceMac);
+
+                var state = new DeviceSessionState(record, SocketDetachGracePeriod);
+                sessionStateStore.Upsert(state);
+                created = true;
+            }
+        }
+
+        NotifyDevicesChanged();
+        Log(created
+            ? $"Device registrado por discovery LAN: {record.DeviceId} ({deviceMac})"
+            : $"Device reutilizado por discovery LAN: {record.DeviceId} ({deviceMac})");
+        return BuildDiscoveryResponse(record);
+    }
+
     public async Task<bool> SendCommandAsync(string deviceId, DeviceCommandType commandType, CancellationToken cancellationToken = default)
     {
-        var result = await SendTrackedCommandCoreAsync(deviceId, commandType, null, DefaultCommandTimeout, cancellationToken).ConfigureAwait(false);
+        var result = await SendTrackedCommandCoreAsync(deviceId, commandType, null, null, DefaultCommandTimeout, cancellationToken).ConfigureAwait(false);
         return result.Accepted;
     }
 
@@ -322,7 +683,25 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             effectiveTimeout = DefaultCommandTimeout;
         }
 
-        return SendTrackedCommandCoreAsync(deviceId, commandType, parameters, effectiveTimeout, cancellationToken);
+        return SendTrackedCommandCoreAsync(deviceId, commandType, parameters, null, effectiveTimeout, cancellationToken);
+    }
+
+    // DOCS: docs/wiki/modules/device-server-protocol.md#ownership-shadow-e-lock-lease
+    public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveTimeout = timeout.GetValueOrDefault(DefaultCommandTimeout);
+        if (effectiveTimeout <= TimeSpan.Zero)
+        {
+            effectiveTimeout = DefaultCommandTimeout;
+        }
+
+        return SendTrackedCommandCoreAsync(deviceId, commandType, parameters, sessionContext, effectiveTimeout, cancellationToken);
     }
 
     public bool RemoveDevice(string deviceId)
@@ -332,46 +711,171 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return false;
         }
 
-        DeviceSession? removedSession = null;
-        try
+        MqttServer? localMqttServer;
+        lock (gate)
         {
-            lock (gate)
+            if (!sessionStateStore.Remove(deviceId, out _))
             {
-                if (!devices.Remove(deviceId, out removedSession))
-                {
-                    return false;
-                }
+                return false;
             }
 
-            NotifyDevicesChanged();
-            Log($"Device removido: {deviceId}");
-            return true;
+            frameConnections.RemoveAndDispose(deviceId);
+            localMqttServer = mqttServer;
         }
-        finally
+
+        if (localMqttServer is not null)
         {
-            removedSession?.Dispose();
+            ScheduleRetainedDeviceStateCleanup(localMqttServer, deviceId);
         }
+
+        NotifyDevicesChanged();
+        Log($"Device removido: {deviceId}");
+        return true;
     }
 
     public void BroadcastFrame(byte[] framePayload)
     {
         ArgumentNullException.ThrowIfNull(framePayload);
 
-        DeviceSession[] targets;
+        (string DeviceId, DeviceFrameConnection Connection)[] targets;
+        Dictionary<string, DeviceRecord> recordsByDeviceId;
+        IReadOnlyList<DeviceSnapshot> snapshots;
         lock (gate)
         {
-            targets = devices.GetOpenSocketSessions();
+            targets = frameConnections.GetOpenConnectionEntries();
+            recordsByDeviceId = sessionStateStore
+                .CreateRecords()
+                .ToDictionary(record => record.DeviceId, StringComparer.OrdinalIgnoreCase);
+            snapshots = sessionStateStore.CreateSnapshots(timeProvider.GetUtcNow(), runtimeConfig.DeviceOfflineTimeout);
         }
 
-        foreach (var target in targets)
+        HashSet<string>? udpSentDeviceIds = null;
+        foreach (var snapshot in snapshots)
         {
-            target.QueueFrame(framePayload);
+            if (!recordsByDeviceId.TryGetValue(snapshot.DeviceId, out var record)
+                || !TrySendVisualFrameOverUdp(record, snapshot.ControlPlaneState == DeviceControlPlaneState.MqttOnline, framePayload))
+            {
+                continue;
+            }
+
+            udpSentDeviceIds ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            udpSentDeviceIds.Add(record.DeviceId);
         }
+
+        foreach (var (deviceId, connection) in targets)
+        {
+            if (udpSentDeviceIds?.Contains(deviceId) == true)
+            {
+                continue;
+            }
+
+            connection.QueueFrame(framePayload);
+        }
+    }
+
+    public void SendFrame(string deviceId, byte[] framePayload)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
+        ArgumentNullException.ThrowIfNull(framePayload);
+
+        DeviceFrameConnection? target;
+        DeviceSessionState? state;
+        lock (gate)
+        {
+            sessionStateStore.TryGetValue(deviceId.Trim(), out state);
+            frameConnections.TryGetValue(deviceId.Trim(), out target);
+        }
+
+        if (state is not null && TrySendVisualFrameOverUdp(state.Record, state.IsControlPlaneOnline, framePayload))
+        {
+            return;
+        }
+
+        if (target?.Socket is not { State: WebSocketState.Open })
+        {
+            return;
+        }
+
+        target.QueueFrame(framePayload);
+    }
+
+    private bool TrySendVisualFrameOverUdp(DeviceRecord record, bool isOnline, byte[] framePayload)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentNullException.ThrowIfNull(framePayload);
+
+        if (!runtimeConfig.PreferLanUdpVisualTransport
+            || !isOnline
+            || record.VisualUdpSupported != true
+            || !string.Equals(record.VisualUdpMode, "bins128", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(record.Token)
+            || !TryResolveVisualUdpEndpoint(record, runtimeConfig, out var endpointAddress, out var endpointPort)
+            || !VisualUdpFrameV1.IsSupportedPayload(framePayload))
+        {
+            return false;
+        }
+
+        var datagramLength = VisualUdpFrameV1.GetDatagramSize(framePayload.Length);
+        var rented = ArrayPool<byte>.Shared.Rent(datagramLength);
+        try
+        {
+            if (!VisualUdpFrameV1.TryWriteDatagram(rented.AsSpan(0, datagramLength), framePayload, record.Token, out var written))
+            {
+                return false;
+            }
+
+            return visualUdpSender.TrySend(endpointAddress, endpointPort, rented.AsSpan(0, written));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
+    private static bool TryResolveVisualUdpEndpoint(
+        DeviceRecord record,
+        DeviceServerRuntimeConfig config,
+        out IPAddress address,
+        out int port)
+    {
+        address = IPAddress.None;
+        port = 0;
+
+        if (string.IsNullOrWhiteSpace(record.LastKnownIp) || !IPAddress.TryParse(record.LastKnownIp, out var parsedAddress))
+        {
+            return false;
+        }
+
+        if (parsedAddress.IsIPv4MappedToIPv6)
+        {
+            parsedAddress = parsedAddress.MapToIPv4();
+        }
+
+        if (!IPAddress.IsLoopback(parsedAddress) && !IsPrivateNetworkAddress(parsedAddress))
+        {
+            return false;
+        }
+
+        var resolvedPort = record.VisualUdpPort is >= 1 and <= 65535
+            ? record.VisualUdpPort.Value
+            : config.VisualUdpPort;
+        if (resolvedPort is < 1 or > 65535)
+        {
+            return false;
+        }
+
+        address = parsedAddress;
+        port = resolvedPort;
+        return true;
     }
 
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
+        if (visualUdpSender is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
     }
 
     private async Task<IResult> HandlePairAsync(HttpContext ctx)
@@ -403,11 +907,10 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return Results.BadRequest(new { error = "invalid_or_expired_pairing_code" });
         }
 
-        DeviceSession state;
-        DeviceSession? replacedSession = null;
+        DeviceSessionState state;
         lock (gate)
         {
-            if (devices.Count >= runtimeConfig.MaxDevices)
+            if (sessionStateStore.Count >= runtimeConfig.MaxDevices)
             {
                 return Results.BadRequest(new { error = "max_devices_reached" });
             }
@@ -424,23 +927,30 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 panelType: NormalizeOptional(req.PanelType),
                 now: now);
 
-            state = new DeviceSession(record, timeProvider, SocketDetachGracePeriod);
-            replacedSession = devices.Set(state);
-            pairingState.ResetAttempts(remoteIpKey);
-        }
+            state = new DeviceSessionState(record, SocketDetachGracePeriod);
+            var replaced = sessionStateStore.Upsert(state);
+            if (replaced is not null)
+            {
+                frameConnections.RemoveAndDispose(record.DeviceId);
+            }
 
-        replacedSession?.Dispose();
+            pairingStore.ResetAttempts(remoteIpKey);
+        }
 
         NotifyDevicesChanged();
         Log($"Device pareado: {state.Record.DeviceId}");
 
-        var host = ResolveHost(ctx);
+        var httpBase = ResolveAdvertisedHttpBaseAddress(ctx);
+        var mqttHost = ResolveAdvertisedMqttHost(ctx);
         return Results.Ok(new PairDeviceResponse
         {
             DeviceId = state.Record.DeviceId,
             Token = state.Record.Token,
             WsPath = "/ws/v1/stream",
-            HttpBase = $"http://{host}:{runtimeConfig.Port}",
+            HttpBase = httpBase,
+            MqttHost = mqttHost,
+            MqttPort = runtimeConfig.MqttPort,
+            MqttRootTopic = runtimeConfig.MqttRootTopic,
             MdnsService = runtimeConfig.MdnsServiceName,
         });
     }
@@ -483,18 +993,40 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         var ws = await ctx.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-        state.MarkAuthenticated();
-        state.AttachSocket(ws, ctx.Connection.RemoteIpAddress?.ToString());
+        DeviceFrameConnection connection;
+        lock (gate)
+        {
+            var now = timeProvider.GetUtcNow();
+            var remoteIp = ctx.Connection.RemoteIpAddress?.ToString();
+            state.MarkAuthenticated(now);
+            state.MarkSeen(
+                now,
+                remoteIp,
+                state.Record.LastKnownRssi,
+                state.Record.FirmwareVersion,
+                state.Record.ActiveAppId,
+                state.Record.ActiveAppName,
+                state.Record.BoardModel,
+                state.Record.PanelType);
+            connection = frameConnections.GetOrCreate(state.Record.DeviceId);
+            connection.AttachSocket(ws);
+        }
+
+        if (!state.IsControlPlaneOnline)
+        {
+            Log($"Stream WS conectado sem control plane MQTT para {state.Record.DeviceId}; firmware legado nao suportado para comandos.");
+        }
+
         NotifyDevicesChanged();
 
-        var sendTask = Task.Run(() => SendLoopAsync(state, ws, state.SendToken));
+        var sendTask = Task.Run(() => SendLoopAsync(connection, ws, connection.SendToken));
         try
         {
             await ReceiveLoopAsync(state, ws, runtimeConfig.MaxWebSocketMessageBytes, ctx.RequestAborted).ConfigureAwait(false);
         }
         finally
         {
-            if (state.DetachSocket(ws))
+            if (connection.DetachSocket(ws))
             {
                 NotifyDevicesChanged();
             }
@@ -503,14 +1035,14 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    private static async Task SendLoopAsync(DeviceSession state, WebSocket ws, CancellationToken sendToken)
+    private static async Task SendLoopAsync(DeviceFrameConnection connection, WebSocket ws, CancellationToken sendToken)
     {
         while (true)
         {
             byte[] payload;
             try
             {
-                payload = await state.Outgoing.Reader.ReadAsync(sendToken).ConfigureAwait(false);
+                payload = await connection.Outgoing.Reader.ReadAsync(sendToken).ConfigureAwait(false);
             }
             catch
             {
@@ -533,7 +1065,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    private async Task ReceiveLoopAsync(DeviceSession state, WebSocket ws, int maxMessageSize, CancellationToken cancellationToken)
+    private async Task ReceiveLoopAsync(DeviceSessionState state, WebSocket ws, int maxMessageSize, CancellationToken cancellationToken)
     {
         var buffer = new byte[4096];
         while (!cancellationToken.IsCancellationRequested && ws.State == WebSocketState.Open)
@@ -601,7 +1133,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
     }
 
-    private bool TryAuthenticate(HttpContext ctx, AuthContext authContext, out DeviceSession state)
+    private bool TryAuthenticate(HttpContext ctx, AuthContext authContext, out DeviceSessionState state)
     {
         state = null!;
 
@@ -640,7 +1172,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
         lock (gate)
         {
-            if (!devices.TryGetValue(deviceId, out var foundState) || foundState is null)
+            if (!sessionStateStore.TryGetValue(deviceId, out var foundState) || foundState is null)
             {
                 return false;
             }
@@ -654,7 +1186,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return pairingState.TryConsume(code, timeProvider);
+            return pairingStore.TryConsumeCode(code, timeProvider.GetUtcNow());
         }
     }
 
@@ -662,7 +1194,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         lock (gate)
         {
-            return pairingState.TryRegisterAttempt(remoteIpKey, runtimeConfig, timeProvider, out retryAfterSeconds);
+            return pairingStore.TryRegisterAttempt(
+                remoteIpKey,
+                runtimeConfig.PairingAttemptsPerWindow,
+                runtimeConfig.PairingAttemptWindow,
+                timeProvider.GetUtcNow(),
+                out retryAfterSeconds);
         }
     }
 
@@ -692,6 +1229,24 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
+
+    private MicaDiscoveryResponseV1 BuildDiscoveryResponse(DeviceRecord record)
+    {
+        return new MicaDiscoveryResponseV1
+        {
+            DeviceId = record.DeviceId,
+            Token = record.Token,
+            HttpBase = ResolveAdvertisedHttpBaseAddress(runtimeConfig),
+            MqttHost = ResolveAdvertisedMqttHost(runtimeConfig),
+            MqttPort = runtimeConfig.MqttPort,
+            MqttRootTopic = runtimeConfig.MqttRootTopic,
+            WsPath = "/ws/v1/stream",
+            VisualUdpPort = runtimeConfig.VisualUdpPort,
+        };
+    }
+
+    private static string? NormalizeDeviceMac(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim().Replace('-', ':').ToLowerInvariant();
 
     private static string ResolveDefaultDeviceName(string? boardModel)
     {
@@ -786,31 +1341,105 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         return false;
     }
 
-    private string ResolveHost(HttpContext ctx)
+    private string ResolveAdvertisedHttpBaseAddress(HttpContext ctx)
+        => ResolveAdvertisedHttpBaseAddress(runtimeConfig, ctx);
+
+    private static string ResolveAdvertisedHttpBaseAddress(DeviceServerRuntimeConfig config, HttpContext? ctx = null)
     {
-        var requestHost = ctx.Request.Host.Host;
-        if (!string.IsNullOrWhiteSpace(requestHost)
-            && !string.Equals(requestHost, "0.0.0.0", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(requestHost, "localhost", StringComparison.OrdinalIgnoreCase))
+        ArgumentNullException.ThrowIfNull(config);
+
+        if (!string.IsNullOrWhiteSpace(config.PublicHttpBaseAddress))
+        {
+            return config.PublicHttpBaseAddress;
+        }
+
+        if (ctx is not null && TryGetRequestHost(ctx, out var requestHostValue, out _))
+        {
+            return $"{ResolveRequestScheme(ctx)}://{requestHostValue}";
+        }
+
+        var fallbackHost = string.IsNullOrWhiteSpace(config.PublicHost)
+            ? config.ListenHost
+            : config.PublicHost;
+        return $"http://{fallbackHost}:{config.Port}";
+    }
+
+    private string ResolveAdvertisedMqttHost(HttpContext ctx)
+        => ResolveAdvertisedMqttHost(runtimeConfig, ctx);
+
+    private static string ResolveAdvertisedMqttHost(DeviceServerRuntimeConfig config, HttpContext? ctx = null)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        if (!string.IsNullOrWhiteSpace(config.PublicHost))
+        {
+            return config.PublicHost;
+        }
+
+        if (!string.IsNullOrWhiteSpace(config.PublicHttpBaseAddress)
+            && Uri.TryCreate(config.PublicHttpBaseAddress, UriKind.Absolute, out var publicBase))
+        {
+            return publicBase.Host;
+        }
+
+        if (ctx is not null && TryGetRequestHost(ctx, out _, out var requestHost))
         {
             return requestHost;
         }
 
-        if (!string.IsNullOrWhiteSpace(runtimeConfig.PublicHost))
+        return config.ListenHost;
+    }
+
+    private static string ResolveRequestScheme(HttpContext ctx)
+    {
+        var forwardedProto = ctx.Request.Headers["X-Forwarded-Proto"].ToString()
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        var scheme = string.IsNullOrWhiteSpace(forwardedProto) ? ctx.Request.Scheme : forwardedProto;
+
+        return string.Equals(scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            ? Uri.UriSchemeHttps
+            : Uri.UriSchemeHttp;
+    }
+
+    private static bool TryGetRequestHost(HttpContext ctx, out string hostValue, out string host)
+    {
+        var forwardedHost = ctx.Request.Headers["X-Forwarded-Host"].ToString()
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        var requestHost = string.IsNullOrWhiteSpace(forwardedHost)
+            ? ctx.Request.Host
+            : HostString.FromUriComponent(forwardedHost);
+
+        hostValue = requestHost.Value ?? string.Empty;
+        host = requestHost.Host;
+
+        if (string.IsNullOrWhiteSpace(hostValue) || string.IsNullOrWhiteSpace(host))
         {
-            return runtimeConfig.PublicHost;
+            return false;
         }
 
-        return ctx.Connection.LocalIpAddress?.ToString() ?? "127.0.0.1";
+        return !string.Equals(host, "0.0.0.0", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(host, "::", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(host, "[::]", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(host, "*", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(host, "+", StringComparison.OrdinalIgnoreCase);
     }
 
     private void NotifyDevicesChanged()
     {
         DevicesChanged?.Invoke(this, EventArgs.Empty);
+        _ = BroadcastAdminEventAsync(new AdminEventMessage
+        {
+            Type = "devices_changed",
+            Devices = GetDevicesSnapshot(),
+            Utc = timeProvider.GetUtcNow(),
+        });
     }
 
     private void Log(string message)
     {
+        DeviceServerObservability.LogHostMessage(message);
         LogMessage?.Invoke(this, message);
     }
 }

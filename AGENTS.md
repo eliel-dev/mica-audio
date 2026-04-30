@@ -20,6 +20,10 @@ Padronizar execucao de tarefas para reduzir drift e erro em um fluxo solo com IA
 2. Para temas temporalmente instaveis, a IA deve consultar a data atual do ambiente antes de decidir padrao, recomendacao ou configuracao.
 3. Para .NET/C#, a IA deve se basear em documentacao oficial Microsoft/CommunityToolkit compativel com o SDK/TFM do repositorio, hoje `.NET 10` / `C# 14`.
 4. A IA nao deve introduzir `NoWarn` amplo, pacotes extras de analyzers ou supressoes locais sem justificativa tecnica objetiva e documentada.
+5. Para qualquer integracao do `ESP32-S3` neste repositorio, a IA deve consultar obrigatoriamente a documentacao oficial da Espressif compativel com `ESP-IDF v5.5.4` antes de decidir implementacao, configuracao ou recomendacao tecnica.
+6. Fontes primarias obrigatorias para `ESP32-S3`:
+   - `https://docs.espressif.com/projects/esp-idf/en/v5.5.4/esp32s3/index.html`
+   - `https://github.com/espressif/esp-idf/blob/v5.5.4/docs/en/index.rst`
 
 ## Acoes proibidas sem aprovacao explicita
 

@@ -34,6 +34,22 @@ public sealed class DeviceRefreshCoordinatorTests
     }
 
     [Fact]
+    public void Apply_ShouldIgnoreWebSocketConnectivityEventChurn()
+    {
+        var coordinator = new DeviceRefreshCoordinator();
+        var now = DateTimeOffset.UtcNow;
+        var stableSnapshot = CreateSnapshot("device-1", DeviceStatus.Online, now, lastWifiEvent: "wifi_connected");
+        var wsChurnSnapshot = CreateSnapshot("device-1", DeviceStatus.Online, now, lastWifiEvent: "ws_disconnected");
+
+        var first = coordinator.Apply([stableSnapshot], forcePublish: false, refreshedAtUtc: now);
+        var second = coordinator.Apply([wsChurnSnapshot], forcePublish: false, refreshedAtUtc: now.AddSeconds(1));
+
+        Assert.True(first.Changed);
+        Assert.False(second.Changed);
+        Assert.Equal("wifi_connected", second.CurrentSnapshot.Single().LastWifiEvent);
+    }
+
+    [Fact]
     public void TryEnterRefresh_ShouldRejectConcurrentRefresh()
     {
         var coordinator = new DeviceRefreshCoordinator();
@@ -47,7 +63,11 @@ public sealed class DeviceRefreshCoordinatorTests
         coordinator.ExitRefresh();
     }
 
-    private static DeviceSnapshot CreateSnapshot(string deviceId, DeviceStatus status, DateTimeOffset now)
+    private static DeviceSnapshot CreateSnapshot(
+        string deviceId,
+        DeviceStatus status,
+        DateTimeOffset now,
+        string? lastWifiEvent = null)
     {
         return new DeviceSnapshot
         {
@@ -59,6 +79,7 @@ public sealed class DeviceRefreshCoordinatorTests
             FirstSeenUtc = now.AddMinutes(-10),
             LastSeenUtc = now,
             LastTelemetryUtc = status == DeviceStatus.Online ? now : null,
+            LastWifiEvent = lastWifiEvent,
         };
     }
 }

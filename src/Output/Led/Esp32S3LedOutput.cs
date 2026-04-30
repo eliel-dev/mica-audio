@@ -1,6 +1,6 @@
 using System.Diagnostics;
+using Device.Client;
 using Device.Protocol.Stream;
-using Device.Server.Hosting;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 
@@ -8,12 +8,20 @@ namespace Output.Led;
 
 // DOCS: docs/wiki/modules/output-led.md#modulo-output-led
 // DOCS: docs/wiki/reference/ws-protocol-v2.md#estrutura-streamframev2
+// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 public sealed class Esp32S3LedOutput : ILedOutput
 {
-    private readonly IDeviceServerHost deviceServerHost;
+    private const string PanelsAppId = "panels-hub75";
+    private const string VisualizerMode = "visualizer";
+    private const string PanelsMode = "panels";
+
+    private readonly IDeviceFrameTransport frameTransport;
+    private readonly IDeviceClientSessionManager? sessionManager;
     private readonly object gate = new();
 
     private float brightness = LedDefaults.Brightness;
+    private string? targetDeviceId;
     private bool started;
     private uint sequence;
     private ushort[]? lastFrameRgb565;
@@ -21,9 +29,10 @@ public sealed class Esp32S3LedOutput : ILedOutput
     private byte lastFrameBrightness;
     private bool hasLastFrame;
 
-    public Esp32S3LedOutput(IDeviceServerHost deviceServerHost)
+    public Esp32S3LedOutput(IDeviceFrameTransport frameTransport, IDeviceClientSessionManager? sessionManager = null)
     {
-        this.deviceServerHost = deviceServerHost;
+        this.frameTransport = frameTransport;
+        this.sessionManager = sessionManager;
     }
 
     public bool IsAvailable => true;
@@ -34,6 +43,9 @@ public sealed class Esp32S3LedOutput : ILedOutput
         {
             started = true;
             brightness = Math.Clamp(config.Brightness, 0f, 1f);
+            targetDeviceId = string.IsNullOrWhiteSpace(config.TargetDeviceId)
+                ? null
+                : config.TargetDeviceId.Trim();
             hasLastFrame = false;
         }
     }
@@ -43,6 +55,7 @@ public sealed class Esp32S3LedOutput : ILedOutput
         lock (gate)
         {
             started = false;
+            targetDeviceId = null;
             hasLastFrame = false;
         }
     }
@@ -53,8 +66,11 @@ public sealed class Esp32S3LedOutput : ILedOutput
         RgbaColor[]? frame;
         float level;
         float localBrightness;
+        string? localTargetDeviceId;
         uint localSequence;
         byte localBrightnessByte;
+        byte localBinsFlags;
+        string localMode;
         ushort[]? encodedFrame;
 
         lock (gate)
@@ -68,7 +84,10 @@ public sealed class Esp32S3LedOutput : ILedOutput
             frame = payload.Frame128x64;
             level = payload.Level;
             localBrightness = brightness;
+            localTargetDeviceId = targetDeviceId;
             localBrightnessByte = ToByte01(localBrightness);
+            localBinsFlags = payload.BinsFlags;
+            localMode = ResolveSessionMode(payload);
             encodedFrame = null;
 
             if (frame is { Length: StreamFrameV2.PixelCount128x64 })
@@ -102,7 +121,12 @@ public sealed class Esp32S3LedOutput : ILedOutput
                 pixels128x64Rgb565: encodedFrame,
                 brightness0To255: localBrightnessByte);
 
-            deviceServerHost.BroadcastFrame(frameBytes);
+            SendFrame(frameBytes, localTargetDeviceId, localMode, (ownerEpoch) => StreamFrameV3.CreateFrame128x64Rgb565(
+                sequence: localSequence,
+                ownerEpoch: ownerEpoch,
+                timestampQpc: Stopwatch.GetTimestamp(),
+                pixels128x64Rgb565: encodedFrame!,
+                brightness0To255: localBrightnessByte));
             return;
         }
 
@@ -117,14 +141,23 @@ public sealed class Esp32S3LedOutput : ILedOutput
             binsBytes[i] = ToByte01(bins[i]);
         }
 
+        var ownerBinsBytes = binsBytes.ToArray();
         var bytes = StreamFrameV2.CreateBins128(
             sequence: localSequence,
             timestampQpc: Stopwatch.GetTimestamp(),
             level0To255: ToByte01(level),
             bins128: binsBytes,
-            brightness0To255: localBrightnessByte);
+            brightness0To255: localBrightnessByte,
+            flags: localBinsFlags);
 
-        deviceServerHost.BroadcastFrame(bytes);
+        SendFrame(bytes, localTargetDeviceId, localMode, (ownerEpoch) => StreamFrameV3.CreateBins128(
+            sequence: localSequence,
+            ownerEpoch: ownerEpoch,
+            timestampQpc: Stopwatch.GetTimestamp(),
+            level0To255: ToByte01(level),
+            bins128: ownerBinsBytes,
+            brightness0To255: localBrightnessByte,
+            flags: localBinsFlags));
     }
 
     private void EnsureFrameBuffersLocked()
@@ -152,6 +185,44 @@ public sealed class Esp32S3LedOutput : ILedOutput
     {
         return (byte)Math.Clamp((int)MathF.Round(Math.Clamp(value, 0f, 1f) * 255f), 0, 255);
     }
+
+    private void SendFrame(byte[] fallbackPayload, string? localTargetDeviceId, string mode, Func<uint, byte[]> createOwnerPayload)
+    {
+        if (string.IsNullOrWhiteSpace(localTargetDeviceId))
+        {
+            var ownerTargets = sessionManager?.GetFrameTargets(null, mode) ?? Array.Empty<DeviceClientFrameTarget>();
+            if (ownerTargets.Count > 0)
+            {
+                foreach (var target in ownerTargets)
+                {
+                    if (target.OwnerEpoch == 0 || string.IsNullOrWhiteSpace(target.DeviceId))
+                    {
+                        continue;
+                    }
+
+                    frameTransport.SendFrame(target.DeviceId, createOwnerPayload(target.OwnerEpoch));
+                }
+
+                return;
+            }
+
+            frameTransport.BroadcastFrame(fallbackPayload);
+            return;
+        }
+
+        if (sessionManager?.GetOwnerEpoch(localTargetDeviceId) is { } ownerEpoch and > 0)
+        {
+            frameTransport.SendFrame(localTargetDeviceId, createOwnerPayload(ownerEpoch));
+            return;
+        }
+
+        frameTransport.SendFrame(localTargetDeviceId, fallbackPayload);
+    }
+
+    private static string ResolveSessionMode(LedPayload payload)
+        => string.Equals(payload.PresetId, PanelsAppId, StringComparison.OrdinalIgnoreCase)
+            ? PanelsMode
+            : VisualizerMode;
 }
 
 

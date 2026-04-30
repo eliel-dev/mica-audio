@@ -1,0 +1,110 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import AtlasStatusChip from '../../components/AtlasStatusChip.astro';
+import { CAPABILITY_META, statusCards, toDocHref } from '../../data/atlas-data.mjs';
+
+// DOCS: ../../../../docs/wiki/README.md#navegacao-rapida-por-tarefa
+// DOCS: ../../../../docs/handoffs/2026-04-20-mica-atlas-structural-site.md
+
+export function getStaticPaths() {
+	return statusCards.map((statusCard) => ({
+		params: { slug: statusCard.slug },
+		props: { statusCard },
+	}));
+}
+
+const { statusCard } = Astro.props;
+const capabilityCounts = Object.entries(CAPABILITY_META)
+	.map(([slug, meta]) => ({
+		slug,
+		label: meta.label,
+		count: statusCard.entries.filter((entry) => entry.capability === slug).length,
+	}))
+	.filter((item) => item.count > 0);
+---
+
+<StarlightPage
+	frontmatter={{
+		title: statusCard.label,
+		description: `Itens curados do Atlas com status ${statusCard.label.toLowerCase()}.`,
+		editUrl: false,
+	}}
+>
+	<div class="atlas-shell atlas-status-page">
+		<section class="atlas-surface atlas-section-intro">
+			<div class="atlas-label">STATUS VIEW</div>
+			<p class="atlas-display-title">{statusCard.label}</p>
+			<p>
+				Esta pagina mostra todos os itens curados da v1 com status
+				{' '}
+				<strong>{statusCard.label.toLowerCase()}</strong>
+				, com acesso direto ao documento canonico e distribuicao por capacidade.
+			</p>
+		</section>
+
+		<section class="atlas-home-columns">
+			<div class="atlas-surface atlas-column-panel">
+				<div class="atlas-label">COUNT</div>
+				<h2>Resumo</h2>
+				<div class="atlas-kpi-inline">
+					<AtlasStatusChip status={statusCard.slug} />
+					<strong>{statusCard.count}</strong>
+					<span>itens curados</span>
+				</div>
+			</div>
+			<div class="atlas-surface atlas-column-panel">
+				<div class="atlas-label">CAPABILITIES</div>
+				<h2>Distribuicao</h2>
+				<div class="atlas-coverage-grid">
+					{
+						capabilityCounts.map((item) => (
+							<div>
+								<span>{item.label}</span>
+								<strong>{item.count}</strong>
+							</div>
+						))
+					}
+				</div>
+			</div>
+		</section>
+
+		<section class="atlas-doc-list">
+			{
+				statusCard.entries.map((entry) => (
+					<article class="atlas-surface atlas-doc-row">
+						<div class="atlas-doc-row-head">
+							<div>
+								<AtlasStatusChip status={entry.status} />
+								<h2>{entry.title}</h2>
+							</div>
+							<a class="atlas-inline-link" href={toDocHref(entry.sourcePath)}>
+								Ler documento
+							</a>
+						</div>
+						<p>{entry.summary}</p>
+						<div class="atlas-doc-row-tags">
+							<span class="atlas-meta-tag">{CAPABILITY_META[entry.capability].label}</span>
+							{entry.tags.map((tag) => <span class="atlas-meta-tag">{tag}</span>)}
+						</div>
+						{entry.gaps?.length ? (
+							<div class="atlas-inline-block">
+								<div class="atlas-label">GAPS</div>
+								<ul class="atlas-bullet-list">
+									{entry.gaps.map((item) => <li>{item}</li>)}
+								</ul>
+							</div>
+						) : null}
+						{entry.nextSteps?.length ? (
+							<div class="atlas-inline-block">
+								<div class="atlas-label">NEXT</div>
+								<ul class="atlas-bullet-list">
+									{entry.nextSteps.map((item) => <li>{item}</li>)}
+								</ul>
+							</div>
+						) : null}
+					</article>
+				))
+			}
+		</section>
+	</div>
+</StarlightPage>

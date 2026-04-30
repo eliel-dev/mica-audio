@@ -1,4 +1,5 @@
 using Analyzer.Dsp.Analysis;
+using App.WinUI.Services.Visualizer;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Led;
@@ -16,6 +17,7 @@ internal sealed class AudioPipelineFrameProcessor
     private IAnalyzer analyzer;
     private SpectrumFrame? latestFrame;
     private string currentPresetId = VisualizerRuntimeDefaults.DefaultPresetId;
+    private string currentRendererId = VisualizerRuntimeDefaults.DefaultRendererId;
     private RendererHubTransportMode hubTransportMode = RendererHubTransportMode.Bins128;
 
     public AudioPipelineFrameProcessor(AudioPipelineOutputRouter outputRouter, IAnalyzer initialAnalyzer)
@@ -45,11 +47,12 @@ internal sealed class AudioPipelineFrameProcessor
         }
     }
 
-    public void SetCurrentPreset(string presetId)
+    public void SetCurrentVisualizerIdentity(string presetId, string rendererId)
     {
         lock (stateGate)
         {
             currentPresetId = VisualizerRuntimeSettings.NormalizePresetId(presetId);
+            currentRendererId = VisualizerRuntimeSettings.NormalizeRendererId(rendererId);
         }
     }
 
@@ -75,17 +78,25 @@ internal sealed class AudioPipelineFrameProcessor
         outputRouter.Dispatch(LedPayloadFactory.CreateFramePayload(frame128x64, presetId), forceSimulator);
     }
 
+    public void SendHubBins(float[] bins128, float level = 0f, bool forceSimulator = false, string presetId = "hub75-bins")
+    {
+        ArgumentNullException.ThrowIfNull(bins128);
+        outputRouter.Dispatch(LedPayloadFactory.CreateBinsPayload(bins128, presetId, level), forceSimulator);
+    }
+
     public void Process(in PcmFrame pcmFrame)
     {
         IAnalyzer currentAnalyzer;
         RendererHubTransportMode activeTransportMode;
         string presetId;
+        string rendererId;
 
         lock (stateGate)
         {
             currentAnalyzer = analyzer;
             activeTransportMode = hubTransportMode;
             presetId = currentPresetId;
+            rendererId = currentRendererId;
         }
 
         var spectrum = currentAnalyzer.Process(in pcmFrame);
@@ -104,6 +115,7 @@ internal sealed class AudioPipelineFrameProcessor
             return;
         }
 
-        outputRouter.Dispatch(LedPayloadFactory.CreateSpectrumPayload(spectrum, presetId));
+        var binsFlags = Hub75BinsVisualIdentityResolver.ResolveFlags(presetId, rendererId);
+        outputRouter.Dispatch(LedPayloadFactory.CreateSpectrumPayload(spectrum, presetId, binsFlags));
     }
 }

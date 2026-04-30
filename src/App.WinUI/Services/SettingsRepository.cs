@@ -1,7 +1,7 @@
-﻿using System.Text.Json;
-using Microsoft.Extensions.Options;
+using System.Text.Json;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
+using Microsoft.Extensions.Options;
 
 namespace App.WinUI.Services;
 

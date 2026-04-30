@@ -1,43 +1,33 @@
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
 using Windows.UI;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/guides/setup-new-device.md#passos
+// DOCS: docs/wiki/reference/device-observability-dashboard.md
+// DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class DevicesPage
 {
     private const double PanelCornerRadius = 8d;
     private const double SectionCornerRadius = 8d;
-    private const double WizardCardWidth = 560d;
-    private const double WizardHorizontalMargin = 14d;
-    private const double WizardCornerRadius = 10d;
-    private const double WizardHeaderVerticalPadding = 14d;
-    private const double WizardHeaderHorizontalPadding = 16d;
-    private const double WizardBodyVerticalPadding = 14d;
-    private const double WizardBodyHorizontalPadding = 16d;
-    private const double WizardFooterVerticalPadding = 10d;
-    private const double WizardFooterHorizontalPadding = 16d;
-    private const double WizardStepHeight = 4d;
-    private const double WizardStepGap = 8d;
-    private const double WizardControlHeight = 34d;
+    private const double ToolbarControlHeight = 34d;
     private const double DetailHeaderPadding = 24d;
     private const double MetricsGridGap = 16d;
 
-    // DOCS: docs/wiki/guides/setup-new-device.md#passos
     private ListView DevicesList = null!;
-    private Button NewDeviceButton = null!;
     private ColumnDefinition DevicesDetailsColumn = null!;
     private Grid DeviceDetailsGrid = null!;
+    private WebView2 DeviceDashboardWebView = null!;
     private TextBlock SelectedDeviceTitleText = null!;
     private TextBlock SelectedDeviceSubtitleText = null!;
     private TextBlock SelectedDeviceRegistrationText = null!;
     private TextBlock SelectedDeviceAppText = null!;
     private TextBlock ServerInfoText = null!;
     private TextBlock SelectedDeviceSignalText = null!;
+    private AppBarButton CopyDashboardLinkButton = null!;
     private AppBarButton TestLedButton = null!;
-    private AppBarButton RemoveDeviceButton = null!;
+    private AppBarButton ReprovisionWifiButton = null!;
 
     private TextBlock DashboardPlaceholderText = null!;
     private Grid DashboardMetricsGrid = null!;
@@ -68,28 +58,11 @@ public sealed partial class DevicesPage
     private TextBlock StreamGapCountText = null!;
     private TextBlock StreamInvalidCountText = null!;
     private TextBlock StreamLastSequenceText = null!;
-
     private TextBox DeviceLogsTextBox = null!;
+    private ScrollViewer? DeviceLogsScrollViewer;
 
-    private Border PairingFooterBorder = null!;
-    private Ellipse PairingDot = null!;
-    private TextBlock PairingFooterText = null!;
     private InfoBar PairingCodeText = null!;
-
-    private Grid WizardOverlay = null!;
-    private Border WizardCardBorder = null!;
-    private Border WizardStepOneBar = null!;
-    private Border WizardStepTwoBar = null!;
-    private StackPanel WizardPortPanel = null!;
-    private ComboBox WizardPortComboBox = null!;
-    private Button WizardRefreshPortsButton = null!;
-    private TextBlock WizardSummaryNoteText = null!;
-    private TextBlock WizardStatusText = null!;
-    private Grid WizardFlashProgressHost = null!;
-    private ProgressBar WizardFlashProgressBar = null!;
-    private TextBlock WizardFlashPercentText = null!;
-    private Button WizardCloseButton = null!;
-    private Button WizardFinishButton = null!;
+    private Button PairingCopyCodeButton = null!;
 
     private void InitializeComponent()
     {
@@ -100,108 +73,125 @@ public sealed partial class DevicesPage
             Background = ResolveBrush("AppSurfaceBaseBrush", Color.FromArgb(255, 11, 15, 20)),
         };
 
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        root.Children.Add(BuildGlobalActionsBar());
+        root.Children.Add(BuildInlineStatusBanner());
 
         var shell = new Grid { ColumnSpacing = 8 };
         shell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(340) });
         DevicesDetailsColumn = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
         shell.ColumnDefinitions.Add(DevicesDetailsColumn);
-        Grid.SetRow(shell, 0);
+        Grid.SetRow(shell, 2);
 
         shell.Children.Add(BuildDeviceListPanel());
         shell.Children.Add(BuildDetailsPanel());
 
         root.Children.Add(shell);
-        root.Children.Add(BuildPairingFooter());
-        root.Children.Add(BuildWizardOverlay());
 
         Content = root;
+    }
+
+    // DOCS: docs/wiki/reference/device-observability-dashboard.md
+    private Border BuildGlobalActionsBar()
+    {
+        var host = CreatePanelBorder(new Thickness(4), cornerRadius: PanelCornerRadius, elevated: true);
+
+        var commandBar = new CommandBar
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+            DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
+            OverflowButtonVisibility = CommandBarOverflowButtonVisibility.Auto,
+        };
+
+        var downloadFirmwareButton = new AppBarButton
+        {
+            Label = "Baixar firmware",
+            Icon = new SymbolIcon(Symbol.Download),
+        };
+        downloadFirmwareButton.Click += OnDownloadFirmwareClicked;
+
+        var pairingButton = new AppBarButton
+        {
+            Label = "Pareamento legado",
+            Icon = new SymbolIcon(Symbol.Add),
+        };
+        pairingButton.Click += OnGeneratePairingCodeClicked;
+
+        var refreshButton = new AppBarButton
+        {
+            Label = "Atualizar",
+            Icon = new SymbolIcon(Symbol.Refresh),
+        };
+        refreshButton.Click += OnRefreshClicked;
+
+        CopyDashboardLinkButton = new AppBarButton
+        {
+            Label = "Copiar link do dashboard",
+            Icon = new SymbolIcon(Symbol.Copy),
+            IsEnabled = false,
+        };
+        CopyDashboardLinkButton.Click += OnCopyDashboardLinkClicked;
+
+        var copyHostButton = new AppBarButton
+        {
+            Label = "Copiar host",
+            Icon = new SymbolIcon(Symbol.Copy),
+        };
+        copyHostButton.Click += OnCopyHostClicked;
+
+        commandBar.PrimaryCommands.Add(downloadFirmwareButton);
+        commandBar.PrimaryCommands.Add(refreshButton);
+        commandBar.PrimaryCommands.Add(CopyDashboardLinkButton);
+        commandBar.PrimaryCommands.Add(copyHostButton);
+        commandBar.SecondaryCommands.Add(pairingButton);
+
+        host.Child = commandBar;
+        return host;
+    }
+
+    // DOCS: docs/wiki/modules/app-winui.md
+    // DOCS: docs/wiki/guides/setup-new-device.md#passos
+    private InfoBar BuildInlineStatusBanner()
+    {
+        PairingCopyCodeButton = new Button
+        {
+            Content = "Copiar codigo",
+            MinWidth = 132,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        PairingCopyCodeButton.Click += OnCopyPairingCodeClicked;
 
         PairingCodeText = new InfoBar
         {
             IsOpen = false,
             Visibility = Visibility.Collapsed,
-            IsClosable = false,
-            Message = "Pareamento: -",
+            IsClosable = true,
             Severity = InfoBarSeverity.Informational,
+            Message = "Pareamento: -",
+            Margin = new Thickness(0, 0, 0, 8),
         };
+        PairingCodeText.RegisterPropertyChangedCallback(InfoBar.IsOpenProperty, (_, _) =>
+        {
+            PairingCodeText.Visibility = PairingCodeText.IsOpen ? Visibility.Visible : Visibility.Collapsed;
+        });
 
-        PairingCodeText.RegisterPropertyChangedCallback(InfoBar.MessageProperty, (_, _) => SyncPairingFooter());
-        PairingCodeText.RegisterPropertyChangedCallback(InfoBar.SeverityProperty, (_, _) => SyncPairingFooter());
-        SyncPairingFooter();
+        Grid.SetRow(PairingCodeText, 1);
+        return PairingCodeText;
     }
 
     private Border BuildDeviceListPanel()
     {
         var leftCard = CreatePanelBorder(new Thickness(0), cornerRadius: PanelCornerRadius, elevated: false);
 
-        var leftGrid = new Grid();
-        leftGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        leftGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        leftGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
         DevicesList = new ListView
         {
-            Margin = new Thickness(8),
+            Margin = new Thickness(8, 14, 8, 8),
         };
         DevicesList.SelectionChanged += OnDeviceSelectionChanged;
-        Grid.SetRow(DevicesList, 0);
-        leftGrid.Children.Add(DevicesList);
-
-        var actionsHost = new Grid
-        {
-            Padding = new Thickness(10),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 1, 0, 0),
-        };
-
-        NewDeviceButton = new Button
-        {
-            Content = BuildButtonWithGlyph("\uE710", "Novo dispositivo"),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            MinHeight = 36,
-            Padding = new Thickness(12, 0, 12, 0),
-        };
-        NewDeviceButton.Click += OnNewDeviceClicked;
-        actionsHost.Children.Add(NewDeviceButton);
-
-        Grid.SetRow(actionsHost, 1);
-        leftGrid.Children.Add(actionsHost);
-
-        var panelFoot = new Grid
-        {
-            Padding = new Thickness(12, 8, 12, 8),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 1, 0, 0),
-            ColumnSpacing = 8,
-        };
-        panelFoot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        panelFoot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        PairingDot = new Ellipse
-        {
-            Width = 8,
-            Height = 8,
-            Fill = ResolveBrush("AppAccentBrush", Color.FromArgb(255, 96, 205, 255)),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        panelFoot.Children.Add(PairingDot);
-
-        PairingFooterText = new TextBlock
-        {
-            Text = "Pareamento: -",
-            Opacity = 0.88,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        Grid.SetColumn(PairingFooterText, 1);
-        panelFoot.Children.Add(PairingFooterText);
-
-        Grid.SetRow(panelFoot, 2);
-        leftGrid.Children.Add(panelFoot);
-
-        leftCard.Child = leftGrid;
+        leftCard.Child = DevicesList;
         return leftCard;
     }
     private Grid BuildDetailsPanel()
@@ -209,39 +199,45 @@ public sealed partial class DevicesPage
         DeviceDetailsGrid = new Grid
         {
             RowSpacing = 0,
+            Visibility = Visibility.Collapsed,
         };
-        DeviceDetailsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        DeviceDetailsGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         Grid.SetColumn(DeviceDetailsGrid, 1);
 
-        var detailsCard = CreatePanelBorder(new Thickness(0), cornerRadius: PanelCornerRadius, elevated: false);
+        DeviceDashboardWebView = new WebView2
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            DefaultBackgroundColor = Color.FromArgb(0, 0, 0, 0),
+        };
 
-        var detailsHost = new Grid();
-        detailsHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        detailsHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        var detailsHost = new Grid
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+        };
+        detailsHost.Children.Add(DeviceDashboardWebView);
 
-        detailsHost.Children.Add(BuildDetailsHeader());
+        DeviceDetailsGrid.Children.Add(detailsHost);
 
-        var scroll = new ScrollViewer
+        return DeviceDetailsGrid;
+    }
+
+    private ScrollViewer BuildDashboardDetailsHost()
+    {
+        var scrollViewer = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
-        Grid.SetRow(scroll, 1);
 
-        var contentStack = new StackPanel();
-        contentStack.Children.Add(BuildBrightnessSection());
+        var contentStack = new StackPanel
+        {
+            Padding = new Thickness(0, 0, 0, 16),
+        };
         contentStack.Children.Add(BuildMetricsSection());
         contentStack.Children.Add(BuildStatusSection());
-        contentStack.Children.Add(BuildLogsSection());
 
-        scroll.Content = contentStack;
-        detailsHost.Children.Add(scroll);
-
-        detailsCard.Child = detailsHost;
-        DeviceDetailsGrid.Children.Add(detailsCard);
-
-        return DeviceDetailsGrid;
+        scrollViewer.Content = contentStack;
+        return scrollViewer;
     }
 
     private Border BuildDetailsHeader()
@@ -308,17 +304,17 @@ public sealed partial class DevicesPage
         };
         TestLedButton.Click += OnTestLedClicked;
 
-        RemoveDeviceButton = new AppBarButton
+        ReprovisionWifiButton = new AppBarButton
         {
-            Label = "Remover",
-            Icon = new SymbolIcon(Symbol.Delete),
+            Label = "Reprovisionar Wi-Fi",
+            Icon = new SymbolIcon(Symbol.Setting),
             MinWidth = 132,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        RemoveDeviceButton.Click += OnRemoveDeviceClicked;
+        ReprovisionWifiButton.Click += OnReprovisionWifiClicked;
 
         buttonsStack.Children.Add(TestLedButton);
-        buttonsStack.Children.Add(RemoveDeviceButton);
+        buttonsStack.Children.Add(ReprovisionWifiButton);
 
         actionStack.Children.Add(SelectedDeviceSignalText);
         actionStack.Children.Add(buttonsStack);
@@ -368,7 +364,7 @@ public sealed partial class DevicesPage
             StepFrequency = 1,
             Value = 160,
             IsEnabled = false,
-            Height = WizardControlHeight,
+            Height = ToolbarControlHeight,
         };
         DashboardBrightnessSlider.ValueChanged += OnBrightnessSliderValueChanged;
         DashboardBrightnessSlider.PointerCaptureLost += OnBrightnessSliderPointerCaptureLost;
@@ -499,292 +495,46 @@ public sealed partial class DevicesPage
         return DashboardStatusSectionBorder;
     }
 
-    private Border BuildLogsSection()
+    private void ScrollDeviceLogsToOffset(bool scrollToEnd)
     {
-        var section = new Border
+        if (DeviceLogsTextBox is null)
         {
-            Padding = new Thickness(20, 12, 20, 12),
-            BorderThickness = new Thickness(0),
-            Background = ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32)),
-        };
+            return;
+        }
 
-        var stack = new StackPanel { Spacing = 8 };
-        stack.Children.Add(new TextBlock
+        _ = DispatcherQueue.TryEnqueue(() =>
         {
-            Text = "Historico de eventos",
-            FontSize = 13,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            DeviceLogsScrollViewer ??= FindDescendant<ScrollViewer>(DeviceLogsTextBox);
+            if (DeviceLogsScrollViewer is null)
+            {
+                return;
+            }
+
+            DeviceLogsScrollViewer.UpdateLayout();
+            var targetOffset = scrollToEnd ? DeviceLogsScrollViewer.ScrollableHeight : 0d;
+            DeviceLogsScrollViewer.ChangeView(null, targetOffset, null, true);
         });
-
-        DeviceLogsTextBox = new TextBox
-        {
-            AcceptsReturn = true,
-            IsReadOnly = true,
-            TextWrapping = TextWrapping.NoWrap,
-            FontFamily = new FontFamily("Consolas"),
-            FontSize = 11.5,
-            MinHeight = 260,
-            Text = "Selecione um dispositivo para ver o historico de eventos.",
-            BorderThickness = new Thickness(0),
-            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
-            Padding = new Thickness(0),
-        };
-        ScrollViewer.SetVerticalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Auto);
-        ScrollViewer.SetHorizontalScrollBarVisibility(DeviceLogsTextBox, ScrollBarVisibility.Disabled);
-
-        stack.Children.Add(DeviceLogsTextBox);
-        section.Child = stack;
-
-        return section;
     }
 
-    private Border BuildPairingFooter()
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
     {
-        PairingFooterBorder = new Border
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < count; index++)
         {
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(PanelCornerRadius),
-            Background = ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32)),
-            Padding = new Thickness(12, 6, 12, 6),
-            Margin = new Thickness(0),
-        };
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
 
-        var row = new Grid { ColumnSpacing = 8 };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var nested = FindDescendant<T>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
 
-        var dot = new Ellipse
-        {
-            Width = 8,
-            Height = 8,
-            Fill = ResolveBrush("AppAccentBrush", Color.FromArgb(255, 96, 205, 255)),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        row.Children.Add(dot);
-
-        var text = new TextBlock
-        {
-            Text = "Pareamento: -",
-            Opacity = 0.82,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        Grid.SetColumn(text, 1);
-        row.Children.Add(text);
-
-        PairingFooterBorder.Child = row;
-
-        Grid.SetRow(PairingFooterBorder, 1);
-        return PairingFooterBorder;
-    }
-    private Grid BuildWizardOverlay()
-    {
-        WizardOverlay = new Grid
-        {
-            Background = new SolidColorBrush(Color.FromArgb(115, 0, 0, 0)),
-            Visibility = Visibility.Collapsed,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            IsHitTestVisible = false,
-        };
-        Grid.SetRowSpan(WizardOverlay, 2);
-
-        WizardCardBorder = new Border
-        {
-            Width = WizardCardWidth,
-            MaxWidth = WizardCardWidth,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(WizardHorizontalMargin),
-            CornerRadius = new CornerRadius(WizardCornerRadius),
-            BorderThickness = new Thickness(1),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            Background = new SolidColorBrush(Color.FromArgb(255, 35, 38, 43)),
-        };
-
-        var cardGrid = new Grid();
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-        var header = new Grid
-        {
-            Padding = new Thickness(WizardHeaderHorizontalPadding, WizardHeaderVerticalPadding, WizardHeaderHorizontalPadding, WizardHeaderVerticalPadding),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 0, 0, 1),
-        };
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var title = new TextBlock
-        {
-            Text = "Novo dispositivo",
-            FontSize = 15,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        header.Children.Add(title);
-
-        WizardCloseButton = CreateToolbarButton(BuildButtonWithGlyph("\uE8BB", string.Empty));
-        WizardCloseButton.Width = 46;
-        WizardCloseButton.Height = WizardControlHeight;
-        WizardCloseButton.VerticalAlignment = VerticalAlignment.Center;
-        WizardCloseButton.Padding = new Thickness(0);
-        Grid.SetColumn(WizardCloseButton, 1);
-        header.Children.Add(WizardCloseButton);
-
-        cardGrid.Children.Add(header);
-
-        var body = new StackPanel
-        {
-            Spacing = 10,
-            Padding = new Thickness(WizardBodyHorizontalPadding, WizardBodyVerticalPadding, WizardBodyHorizontalPadding, WizardBodyVerticalPadding),
-        };
-        Grid.SetRow(body, 1);
-
-        var stepsGrid = new Grid
-        {
-            ColumnSpacing = WizardStepGap,
-            Margin = new Thickness(0, 0, 0, 4),
-        };
-        stepsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        stepsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        WizardStepOneBar = new Border
-        {
-            Height = WizardStepHeight,
-            CornerRadius = new CornerRadius(2),
-            Background = ResolveBrush("AppAccentBrush", Color.FromArgb(255, 96, 205, 255)),
-        };
-        stepsGrid.Children.Add(WizardStepOneBar);
-
-        WizardStepTwoBar = new Border
-        {
-            Height = WizardStepHeight,
-            CornerRadius = new CornerRadius(2),
-            Background = ResolveBrush("AppAccentBrush", Color.FromArgb(255, 96, 205, 255)),
-        };
-        Grid.SetColumn(WizardStepTwoBar, 1);
-        stepsGrid.Children.Add(WizardStepTwoBar);
-
-        body.Children.Add(stepsGrid);
-
-        WizardPortPanel = new StackPanel
-        {
-            Spacing = 10,
-        };
-        WizardPortPanel.Children.Add(new TextBlock
-        {
-            Text = "Dispositivo USB (Porta COM)",
-            FontSize = 12,
-            Opacity = 0.86,
-        });
-
-        var comRow = new Grid { ColumnSpacing = 8 };
-        comRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        comRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        WizardPortComboBox = new ComboBox
-        {
-            Height = WizardControlHeight,
-            MinWidth = 300,
-            DisplayMemberPath = "Label",
-            PlaceholderText = "Selecione uma porta COM",
-        };
-        WizardPortComboBox.BorderThickness = new Thickness(1);
-        WizardPortComboBox.BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81));
-        WizardPortComboBox.Background = new SolidColorBrush(Color.FromArgb(50, 0, 0, 0));
-        comRow.Children.Add(WizardPortComboBox);
-
-        WizardRefreshPortsButton = CreateToolbarButton(BuildButtonWithGlyph("\uE72C", "Atualizar portas"));
-        WizardRefreshPortsButton.Height = WizardControlHeight;
-        WizardRefreshPortsButton.Padding = new Thickness(12, 0, 12, 0);
-        Grid.SetColumn(WizardRefreshPortsButton, 1);
-        comRow.Children.Add(WizardRefreshPortsButton);
-
-        WizardPortPanel.Children.Add(comRow);
-
-        WizardSummaryNoteText = new TextBlock
-        {
-            Text = "Selecione a porta COM e clique em Concluir para gravar o firmware.",
-            Opacity = 0.72,
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        WizardPortPanel.Children.Add(WizardSummaryNoteText);
-
-        body.Children.Add(WizardPortPanel);
-
-        WizardStatusText = new TextBlock
-        {
-            Text = string.Empty,
-            Opacity = 0.85,
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        body.Children.Add(WizardStatusText);
-
-        WizardFlashProgressHost = new Grid
-        {
-            ColumnSpacing = 10,
-            Visibility = Visibility.Collapsed,
-        };
-        WizardFlashProgressHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        WizardFlashProgressHost.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        WizardFlashProgressBar = new ProgressBar
-        {
-            Minimum = 0,
-            Maximum = 100,
-            Value = 0,
-            Height = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        WizardFlashProgressHost.Children.Add(WizardFlashProgressBar);
-
-        WizardFlashPercentText = new TextBlock
-        {
-            Text = "0%",
-            Opacity = 0.9,
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        Grid.SetColumn(WizardFlashPercentText, 1);
-        WizardFlashProgressHost.Children.Add(WizardFlashPercentText);
-
-        body.Children.Add(WizardFlashProgressHost);
-
-        cardGrid.Children.Add(body);
-
-        var footer = new Grid
-        {
-            Padding = new Thickness(WizardFooterHorizontalPadding, WizardFooterVerticalPadding, WizardFooterHorizontalPadding, WizardFooterVerticalPadding),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 1, 0, 0),
-        };
-        Grid.SetRow(footer, 2);
-
-        var footerActions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = 8,
-        };
-
-        WizardFinishButton = CreateToolbarButton(BuildButtonWithGlyph("\uE73E", "Concluir"));
-        WizardFinishButton.MinWidth = 110;
-        WizardFinishButton.Height = WizardControlHeight;
-
-        footerActions.Children.Add(WizardFinishButton);
-        footer.Children.Add(footerActions);
-
-        cardGrid.Children.Add(footer);
-
-        WizardCardBorder.Child = cardGrid;
-        WizardOverlay.Children.Add(WizardCardBorder);
-
-        return WizardOverlay;
+        return null;
     }
 
     private static StackPanel BuildMetricCard(string title, out TextBlock valueText, out ProgressBar progressBar, out TextBlock subText)
@@ -998,27 +748,6 @@ public sealed partial class DevicesPage
             Child = content,
         };
     }
-
-    private void SyncPairingFooter()
-    {
-        if (PairingFooterText is null || PairingDot is null || PairingCodeText is null)
-        {
-            return;
-        }
-
-        PairingFooterText.Text = PairingCodeText.Message;
-
-        var dotColor = PairingCodeText.Severity switch
-        {
-            InfoBarSeverity.Success => Color.FromArgb(255, 108, 203, 95),
-            InfoBarSeverity.Warning => Color.FromArgb(255, 252, 225, 0),
-            InfoBarSeverity.Error => Color.FromArgb(255, 255, 99, 132),
-            _ => Color.FromArgb(255, 96, 205, 255),
-        };
-
-        PairingDot.Fill = new SolidColorBrush(dotColor);
-    }
-
     private static Brush ResolveBrush(string key, Color fallback)
     {
         return UiResourceResolver.ResolveBrush(key, fallback);

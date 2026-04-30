@@ -10,6 +10,7 @@ using WinRT.Interop;
 
 namespace App.WinUI.Views;
 
+// DOCS: docs/wiki/guides/configure-app-modifiers.md#apps-clima
 public sealed partial class AppsPage
 {
     private void SetRuntimeStatus(string status)
@@ -119,28 +120,10 @@ public sealed partial class AppsPage
             }
         }
 
-        return values;
+        return WeatherAppFixedLocation.NormalizeRawValues(item, values);
     }
 
-    private static bool ShouldAutoStartGifRuntime(IReadOnlyDictionary<string, string> values)
-    {
-        var sourceMode = values.TryGetValue("sourceMode", out var rawSource)
-            ? rawSource.Trim().ToLowerInvariant()
-            : "url";
-        if (sourceMode == "file")
-        {
-            return false;
-        }
-
-        if (!values.TryGetValue("gifUrl", out var rawUrl))
-        {
-            return false;
-        }
-
-        var url = rawUrl.Trim();
-        return Uri.TryCreate(url, UriKind.Absolute, out var uri)
-            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
-    }
+    private static bool ShouldAutoStartGifRuntime(IReadOnlyDictionary<string, string> values) => false;
 
     private void AttachRuntimeProviders()
     {
@@ -149,7 +132,8 @@ public sealed partial class AppsPage
             OpenFileButton = GifOpenFileButton,
             DispatcherQueue = DispatcherQueue,
             GifRuntimeService = gifRuntimeService,
-            PickGifFileAsync = PickGifFileAsync,
+            PickImageFileAsync = PickImageFileAsync,
+            PickImageFolderAsync = PickImageFolderAsync,
             ResolveScaleMode = () => selectedItem is null || !TryBuildConfigFromEditor(selectedItem, out _, out var values, out _)
                 ? GifScaleMode.Fit
                 : ParseGifScaleMode(values.TryGetValue("scaleMode", out var mode) ? mode : null),
@@ -174,14 +158,17 @@ public sealed partial class AppsPage
         };
     }
 
-    private static async Task<StorageFile?> PickGifFileAsync()
+    private static async Task<StorageFile?> PickImageFileAsync()
     {
         var picker = new FileOpenPicker
         {
             SuggestedStartLocation = PickerLocationId.PicturesLibrary,
         };
 
-        picker.FileTypeFilter.Add(".gif");
+        foreach (var ext in new[] { ".gif", ".png", ".jpg", ".jpeg", ".bmp" })
+        {
+            picker.FileTypeFilter.Add(ext);
+        }
 
         if (App.MainWindow is not null)
         {
@@ -192,38 +179,52 @@ public sealed partial class AppsPage
         return await picker.PickSingleFileAsync();
     }
 
+    private static async Task<Windows.Storage.StorageFolder?> PickImageFolderAsync()
+    {
+        var picker = new FolderPicker
+        {
+            SuggestedStartLocation = PickerLocationId.PicturesLibrary,
+        };
+
+        picker.FileTypeFilter.Add("*");
+
+        if (App.MainWindow is not null)
+        {
+            var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
+            InitializeWithWindow.Initialize(picker, hwnd);
+        }
+
+        return await picker.PickSingleFolderAsync();
+    }
+
     private void OnTargetDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateGifOpenFileButtonVisibility();
         UpdateActionButtonsEnabled();
     }
 
-    private void OnGifSourceModeSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        UpdateGifOpenFileButtonVisibility();
-    }
-
     private bool IsGifFileModeSelected()
     {
-        if (!string.Equals(selectedItem?.Id, GifAppId, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (!modifierBindings.TryGetValue("sourceMode", out var binding)
-            || binding.Control is not ComboBox combo
-            || combo.SelectedItem is not ComboBoxItem selected
-            || selected.Tag is not string mode)
-        {
-            return false;
-        }
-
-        return string.Equals(mode, "file", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(selectedItem?.Id, GifAppId, StringComparison.OrdinalIgnoreCase);
     }
 
     private void UpdateGifOpenFileButtonVisibility()
     {
         var visible = IsGifFileModeSelected();
         GifOpenFileButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (visible)
+        {
+            GifOpenFileButton.Content = IsSlideshow() ? "Selecionar Pasta" : "Selecionar Arquivo";
+        }
+    }
+
+    private bool IsSlideshow()
+    {
+        if (!modifierEditor.TryGetCurrentRawValue("sourceType", out var mode))
+        {
+            return false;
+        }
+
+        return string.Equals(mode, "slideshow", StringComparison.OrdinalIgnoreCase);
     }
 }

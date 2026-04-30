@@ -19,13 +19,13 @@ public sealed class DeviceOperationsCoordinatorDeviceLogsTests
         runtime.SetDevices([CreateSnapshot("device-1", DeviceStatus.Online, lastTelemetryUtc: DateTimeOffset.UtcNow)]);
 
         await WaitForConditionAsync(() =>
-            coordinator.GetDeviceLogs("device-1").Any(line => line.Contains("Primeira telemetria recebida apos reconexao.", StringComparison.Ordinal)),
+            coordinator.GetDeviceLogs("device-1").Any(entry => entry.Message.Contains("Primeira telemetria recebida apos reconexao.", StringComparison.Ordinal)),
             TimeSpan.FromSeconds(3));
 
         var logs = coordinator.GetDeviceLogs("device-1");
-        Assert.Contains(logs, line => line.Contains("Dispositivo autenticado e online.", StringComparison.Ordinal));
-        Assert.Contains(logs, line => line.Contains("Dispositivo voltou a aparecer apos ficar offline.", StringComparison.Ordinal));
-        Assert.Contains(logs, line => line.Contains("Primeira telemetria recebida apos reconexao.", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Dispositivo autenticado e online.", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Dispositivo voltou a aparecer apos ficar offline.", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Primeira telemetria recebida apos reconexao.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -72,10 +72,10 @@ public sealed class DeviceOperationsCoordinatorDeviceLogsTests
         await coordinator.RunCommandAsync("device-cmd", DeviceCommandType.TestLed);
 
         var logs = coordinator.GetDeviceLogs("device-cmd");
-        Assert.Contains(logs, line => line.Contains("Comando iniciado (controlar LED auxiliar).", StringComparison.Ordinal));
-        Assert.Contains(logs, line => line.Contains("Comando recebido no device.", StringComparison.Ordinal));
-        Assert.Contains(logs, line => line.Contains("Executando etapa principal.", StringComparison.Ordinal));
-        Assert.Contains(logs, line => line.Contains("Comando concluido com sucesso", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Comando iniciado (controlar LED auxiliar).", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Comando recebido no device.", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Executando etapa principal.", StringComparison.Ordinal));
+        Assert.Contains(logs, entry => entry.Message.Contains("Comando concluido com sucesso", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -122,10 +122,38 @@ public sealed class DeviceOperationsCoordinatorDeviceLogsTests
         var logsA = coordinator.GetDeviceLogs("device-a");
         var logsB = coordinator.GetDeviceLogs("device-b");
 
-        Assert.Contains(logsA, line => line.Contains("marker-A", StringComparison.Ordinal));
-        Assert.DoesNotContain(logsA, line => line.Contains("marker-B", StringComparison.Ordinal));
-        Assert.Contains(logsB, line => line.Contains("marker-B", StringComparison.Ordinal));
-        Assert.DoesNotContain(logsB, line => line.Contains("marker-A", StringComparison.Ordinal));
+        Assert.Contains(logsA, entry => entry.Message.Contains("marker-A", StringComparison.Ordinal));
+        Assert.DoesNotContain(logsA, entry => entry.Message.Contains("marker-B", StringComparison.Ordinal));
+        Assert.Contains(logsB, entry => entry.Message.Contains("marker-B", StringComparison.Ordinal));
+        Assert.DoesNotContain(logsB, entry => entry.Message.Contains("marker-A", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task PerDeviceLogs_ShouldMergeStructuredFirmwareLogs()
+    {
+        var runtime = new FakeDeviceOperationsRuntime();
+        runtime.SetDevices([CreateSnapshot("device-fw", DeviceStatus.Online, DateTimeOffset.UtcNow)]);
+
+        using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
+
+        runtime.EmitDeviceLog(new DeviceLogMessage
+        {
+            DeviceId = "device-fw",
+            Sequence = 3,
+            Level = "error",
+            Category = "mqtt",
+            EventCode = "mqtt_connect_failed",
+            Message = "Falha ao autenticar no broker.",
+        });
+
+        await WaitForConditionAsync(() =>
+            coordinator.GetDeviceLogs("device-fw").Any(entry => entry.Message.Contains("Falha ao autenticar no broker.", StringComparison.Ordinal)),
+            TimeSpan.FromSeconds(3));
+
+        var log = Assert.Single(coordinator.GetDeviceLogs("device-fw"), entry => entry.Source == DeviceLogSource.Device);
+        Assert.Equal(DeviceLogSeverity.Error, log.Severity);
+        Assert.Equal("mqtt", log.Category);
+        Assert.Equal("mqtt_connect_failed", log.Code);
     }
 
     private static DeviceSnapshot CreateSnapshot(string deviceId, DeviceStatus status, DateTimeOffset? lastTelemetryUtc)
@@ -166,6 +194,8 @@ public sealed class DeviceOperationsCoordinatorDeviceLogsTests
         public event EventHandler? DevicesChanged;
 
         public event EventHandler<string>? LogMessage;
+
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived;
 
         public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
 
@@ -224,6 +254,11 @@ public sealed class DeviceOperationsCoordinatorDeviceLogsTests
         public void EmitLog(string message)
         {
             LogMessage?.Invoke(this, message);
+        }
+
+        public void EmitDeviceLog(DeviceLogMessage message)
+        {
+            DeviceLogReceived?.Invoke(this, message);
         }
     }
 }

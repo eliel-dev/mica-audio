@@ -1,0 +1,21 @@
+{
+  "name": "libwebp-esp32",
+  "version": "1.6.0-tronbyt",
+  "build": {
+    "includeDir": ".",
+    "srcDir": "src",
+    "srcFilter": [
+      "+<dec/*.c>",
+      "+<demux/*.c>",
+      "+<dsp/*.c>",
+      "+<utils/*.c>",
+      "-<dsp/*_avx2.c>",
+      "-<dsp/*_sse2.c>",
+      "-<dsp/*_sse41.c>",
+      "-<dsp/*_msa.c>",
+      "-<dsp/*_mips32.c>",
+      "-<dsp/*_mips_dsp_r2.c>",
+      "-<dsp/*_neon.c>"
+    ]
+  }
+}

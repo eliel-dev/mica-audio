@@ -1,5 +1,11 @@
+# DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---versionamento-do-release-oficial
+# DOCS: docs/wiki/modules/server-build-and-artifacts.md#manifesto-oficial
+# DOCS: docs/wiki/reference/code-index.md
+# DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
+# DOCS: docs/handoffs/2026-04-14-versioning-semver-e-ota-stages.md
 param(
-    [switch]$SkipToolInstall
+    [switch]$SkipToolInstall,
+    [string]$OutputRoot
 )
 
 Set-StrictMode -Version Latest
@@ -7,9 +13,15 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $firmwareRoot = Join-Path $repoRoot 'firmware/esp32s3-devkitc1'
-$outputRoot = Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
+$resolvedOutputRoot = if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+    Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
+}
+else {
+    [System.IO.Path]::GetFullPath($OutputRoot)
+}
 $autoVersionHeaderPath = Join-Path $firmwareRoot 'src/firmware_version.auto.h'
-$target = [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin' }
+$target = [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin'; OtaFile = 'esp32s3-devkitc1-128x64-dma_exp_ota.bin' }
+$manifestPath = Join-Path $resolvedOutputRoot 'esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json'
 $platformIoCommand = @()
 
 function Invoke-External {
@@ -210,24 +222,64 @@ function Try-GetGitLine {
 }
 
 function Resolve-FirmwareVersion {
-    $utcDate = (Get-Date).ToUniversalTime().ToString('yyyy.MM.dd')
+    # SemVer via git describe: deterministic, same commit = same version.
+    # With tag at HEAD:        "v1.0.0"
+    # Without tag, N ahead:    "v1.0.0-14-gb116aea"
+    # No tags in repo:         "v0.0.0-0-g<sha>"
+    # Dirty working tree:      appends "-dirty" (scoped to firmware/ only)
 
-    $tag = Try-GetGitLine -Args @('-C', $repoRoot, 'tag', '--points-at', 'HEAD')
-    if ([string]::IsNullOrWhiteSpace($tag)) {
-        $tag = Try-GetGitLine -Args @('-C', $repoRoot, 'describe', '--tags', '--abbrev=0')
-    }
-    if ([string]::IsNullOrWhiteSpace($tag)) {
-        $tag = 'untagged'
+    $version = $null
+
+    $described = Try-GetGitLine -Args @('-C', $repoRoot, 'describe', '--tags', '--long', '--always')
+    if (-not [string]::IsNullOrWhiteSpace($described)) {
+        # git describe --tags --long outputs: <tag>-<N>-g<sha> (e.g. v1.0.0-0-gb116aea)
+        # --always without tags outputs just the short sha (e.g. b116aea)
+        if ($described -match '^(.+)-(\d+)-g([0-9a-f]+)$') {
+            $tag = $Matches[1]
+            $distance = [int]$Matches[2]
+            $sha = $Matches[3]
+            if ($distance -eq 0) {
+                $version = $tag
+            }
+            else {
+                $normalizedTag = Normalize-VersionToken -Value $tag
+                $version = "$normalizedTag-$distance-g$sha"
+            }
+        }
+        else {
+            # Fallback: no tags at all, git describe --always returns bare sha
+            $version = "v0.0.0-0-g$described"
+        }
     }
 
+    if ($null -eq $version) {
+        # Git unavailable or describe failed
+        $sha = Try-GetGitLine -Args @('-C', $repoRoot, 'rev-parse', '--short', 'HEAD')
+        if (-not [string]::IsNullOrWhiteSpace($sha)) {
+            $version = "v0.0.0-0-g$sha"
+        }
+        else {
+            $version = 'v0.0.0-0-gnocommit'
+        }
+    }
+
+    # Append -dirty when firmware/ has uncommitted changes (staged or unstaged).
+    # Scoped to firmware/ only — C#/docs changes don't affect firmware version.
+    $dirtyCheck = Try-GetGitLine -Args @('-C', $repoRoot, 'status', '--porcelain', '--', 'firmware/')
+    if (-not [string]::IsNullOrWhiteSpace($dirtyCheck)) {
+        $version = "$version-dirty"
+    }
+
+    return $version
+}
+
+function Resolve-GitSha {
     $commit = Try-GetGitLine -Args @('-C', $repoRoot, 'rev-parse', '--short', 'HEAD')
     if ([string]::IsNullOrWhiteSpace($commit)) {
-        $commit = 'nocommit'
+        return 'nocommit'
     }
 
-    $tagToken = Normalize-VersionToken -Value $tag
-    $commitToken = Normalize-VersionToken -Value $commit
-    return "v$utcDate-$tagToken-$commitToken"
+    return $commit
 }
 
 function Write-AutoFirmwareVersionHeader {
@@ -246,8 +298,48 @@ function Write-AutoFirmwareVersionHeader {
 
     Set-Content -Path $HeaderPath -Value $content -Encoding ascii
 }
-$destinationPath = Join-Path $outputRoot $target.OutputFile
+
+function Write-FirmwareManifest {
+    param(
+        [Parameter(Mandatory)][string]$DestinationPath,
+        [Parameter(Mandatory)][string]$FirmwarePath,
+        [Parameter(Mandatory)][string]$FirmwareVersion,
+        [Parameter(Mandatory)][string]$GitSha,
+        [string]$OtaFilePath = ''
+    )
+
+    $sha256 = (Get-FileHash -Path $FirmwarePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $fileSizeBytes = (Get-Item $FirmwarePath).Length
+
+    $manifest = [ordered]@{
+        schemaVersion   = 3
+        firmwareVersion = $FirmwareVersion
+        gitSha          = $GitSha
+        profile         = 'dma_exp'
+        boardModel      = 'esp32s3_devkitc1'
+        panelType       = 'hub75_p2_5_128x64_smd2121_scan32'
+        controlPlane    = 'mqtt'
+        builtAtUtc      = (Get-Date).ToUniversalTime().ToString('o')
+        sha256          = $sha256
+        fileSizeBytes   = $fileSizeBytes
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($OtaFilePath) -and (Test-Path $OtaFilePath)) {
+        $otaSha256 = (Get-FileHash -Path $OtaFilePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $otaFileSizeBytes = (Get-Item $OtaFilePath).Length
+        $manifest['otaFileName'] = [System.IO.Path]::GetFileName($OtaFilePath)
+        $manifest['otaSha256'] = $otaSha256
+        $manifest['otaFileSizeBytes'] = $otaFileSizeBytes
+    }
+
+    $json = $manifest | ConvertTo-Json
+    Set-Content -Path $DestinationPath -Value $json -Encoding utf8
+    Write-Host "[build-precompiled-firmware] Manifesto atualizado: $DestinationPath"
+}
+
+$destinationPath = Join-Path $resolvedOutputRoot $target.OutputFile
 $firmwareVersion = Resolve-FirmwareVersion
+$gitSha = Resolve-GitSha
 
 try {
     if (-not (Test-Path $firmwareRoot)) {
@@ -262,12 +354,28 @@ try {
     Write-Host "[build-precompiled-firmware] PlatformIO: $($platformIoCommand -join ' ')"
     Invoke-Pio -Args @('--version') -ErrorMessage 'Falha ao consultar versao do PlatformIO'
 
-    if (-not (Test-Path $outputRoot)) {
-        New-Item -Path $outputRoot -ItemType Directory | Out-Null
+    if (-not (Test-Path $resolvedOutputRoot)) {
+        New-Item -Path $resolvedOutputRoot -ItemType Directory | Out-Null
     }
 
     Invoke-PioBuild -Env $target.Env
     Merge-Firmware -Env $target.Env -DestinationPath $destinationPath
+
+    $otaSourcePath = Join-Path $firmwareRoot ".pio/build/$($target.Env)/firmware.bin"
+    $otaDestinationPath = Join-Path $resolvedOutputRoot $target.OtaFile
+    if (Test-Path $otaSourcePath) {
+        Copy-Item -Path $otaSourcePath -Destination $otaDestinationPath -Force
+        $otaSize = (Get-Item $otaDestinationPath).Length
+        if ($otaSize -le 0) {
+            throw "Binario OTA invalido (tamanho zero): $otaDestinationPath"
+        }
+        Write-Host "[build-precompiled-firmware] OTA binary: $otaDestinationPath ($otaSize bytes)"
+    } else {
+        Write-Host "[build-precompiled-firmware] AVISO: firmware.bin nao encontrado para OTA; manifesto sera gerado sem campos OTA."
+        $otaDestinationPath = ''
+    }
+
+    Write-FirmwareManifest -DestinationPath $manifestPath -FirmwarePath $destinationPath -FirmwareVersion $firmwareVersion -GitSha $gitSha -OtaFilePath $otaDestinationPath
 
     Write-Host '[build-precompiled-firmware] Concluido com sucesso.'
     $size = (Get-Item $destinationPath).Length

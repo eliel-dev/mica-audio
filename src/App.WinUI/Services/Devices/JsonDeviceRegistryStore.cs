@@ -1,14 +1,17 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Device.Client.Embedded;
 using Device.Protocol.Models;
-using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
+using Microsoft.Extensions.Options;
 
 namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#tokens-de-dispositivo-em-repouso
-internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
+// DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+internal sealed class JsonDeviceRegistryStore : IEmbeddedDeviceRegistryStore
 {
     private const string TokenCipherPrefix = "dpapi:v1:";
 
@@ -98,7 +101,9 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
             UptimeSeconds = record.UptimeSeconds,
+            LoopHealthyPercent = record.LoopHealthyPercent,
             LoopLoadPercent = record.LoopLoadPercent,
+            ChipTemperatureCelsius = record.ChipTemperatureCelsius,
             FreeHeapBytes = record.FreeHeapBytes,
             LargestHeapBlockBytes = record.LargestHeapBlockBytes,
             PsramAvailable = record.PsramAvailable,
@@ -110,6 +115,12 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             AuxLedAvailable = record.AuxLedAvailable,
             TestLedAvailable = record.TestLedAvailable,
             LastWifiEvent = record.LastWifiEvent,
+            StreamFramesReceived = record.StreamFramesReceived,
+            StreamFramesApplied = record.StreamFramesApplied,
+            Hub75PresentFrames = record.Hub75PresentFrames,
+            StreamSequenceGapCount = record.StreamSequenceGapCount,
+            StreamInvalidFrameCount = record.StreamInvalidFrameCount,
+            StreamLastSequence = record.StreamLastSequence,
             TelemetrySequence = record.TelemetrySequence,
             BrightnessCap = record.BrightnessCap,
             BrightnessRequested = record.BrightnessRequested,
@@ -120,6 +131,20 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
             PanelType = record.PanelType,
+            AnimatedWebpBatchSupported = record.AnimatedWebpBatchSupported,
+            VisualUdpSupported = record.VisualUdpSupported,
+            VisualUdpPort = record.VisualUdpPort,
+            VisualUdpMode = record.VisualUdpMode,
+            ChipModel = record.ChipModel,
+            ChipRevision = record.ChipRevision,
+            ChipCores = record.ChipCores,
+            CpuFreqMHz = record.CpuFreqMHz,
+            SdkVersion = record.SdkVersion,
+            HeapTotalBytes = record.HeapTotalBytes,
+            PsramTotalBytes = record.PsramTotalBytes,
+            FlashTotalBytes = record.FlashTotalBytes,
+            SketchSizeBytes = record.SketchSizeBytes,
+            FreeSketchBytes = record.FreeSketchBytes,
         };
     }
 
@@ -143,7 +168,9 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             LastKnownIp = record.LastKnownIp,
             LastKnownRssi = record.LastKnownRssi,
             UptimeSeconds = record.UptimeSeconds,
+            LoopHealthyPercent = record.LoopHealthyPercent,
             LoopLoadPercent = record.LoopLoadPercent,
+            ChipTemperatureCelsius = record.ChipTemperatureCelsius,
             FreeHeapBytes = record.FreeHeapBytes,
             LargestHeapBlockBytes = record.LargestHeapBlockBytes,
             PsramAvailable = record.PsramAvailable,
@@ -155,6 +182,12 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             AuxLedAvailable = record.AuxLedAvailable,
             TestLedAvailable = record.TestLedAvailable,
             LastWifiEvent = record.LastWifiEvent,
+            StreamFramesReceived = record.StreamFramesReceived,
+            StreamFramesApplied = record.StreamFramesApplied,
+            Hub75PresentFrames = record.Hub75PresentFrames,
+            StreamSequenceGapCount = record.StreamSequenceGapCount,
+            StreamInvalidFrameCount = record.StreamInvalidFrameCount,
+            StreamLastSequence = record.StreamLastSequence,
             TelemetrySequence = record.TelemetrySequence,
             BrightnessCap = record.BrightnessCap,
             BrightnessRequested = record.BrightnessRequested,
@@ -165,6 +198,20 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
             ActiveAppName = record.ActiveAppName,
             BoardModel = record.BoardModel,
             PanelType = record.PanelType,
+            AnimatedWebpBatchSupported = record.AnimatedWebpBatchSupported,
+            VisualUdpSupported = record.VisualUdpSupported,
+            VisualUdpPort = record.VisualUdpPort,
+            VisualUdpMode = record.VisualUdpMode,
+            ChipModel = record.ChipModel,
+            ChipRevision = record.ChipRevision,
+            ChipCores = record.ChipCores,
+            CpuFreqMHz = record.CpuFreqMHz,
+            SdkVersion = record.SdkVersion,
+            HeapTotalBytes = record.HeapTotalBytes,
+            PsramTotalBytes = record.PsramTotalBytes,
+            FlashTotalBytes = record.FlashTotalBytes,
+            SketchSizeBytes = record.SketchSizeBytes,
+            FreeSketchBytes = record.FreeSketchBytes,
         };
     }
 
@@ -262,7 +309,11 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
 
         public int? UptimeSeconds { get; init; }
 
+        public int? LoopHealthyPercent { get; init; }
+
         public int? LoopLoadPercent { get; init; }
+
+        public double? ChipTemperatureCelsius { get; init; }
 
         public long? FreeHeapBytes { get; init; }
 
@@ -286,6 +337,18 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
 
         public string? LastWifiEvent { get; init; }
 
+        public uint? StreamLastSequence { get; init; }
+
+        public uint? StreamFramesReceived { get; init; }
+
+        public uint? StreamFramesApplied { get; init; }
+
+        public uint? Hub75PresentFrames { get; init; }
+
+        public uint? StreamSequenceGapCount { get; init; }
+
+        public uint? StreamInvalidFrameCount { get; init; }
+
         public uint? TelemetrySequence { get; init; }
 
         public int? BrightnessCap { get; init; }
@@ -305,5 +368,33 @@ internal sealed class JsonDeviceRegistryStore : IDeviceRegistryStore
         public string? BoardModel { get; init; }
 
         public string? PanelType { get; init; }
+
+        public bool? AnimatedWebpBatchSupported { get; init; }
+
+        public bool? VisualUdpSupported { get; init; }
+
+        public int? VisualUdpPort { get; init; }
+
+        public string? VisualUdpMode { get; init; }
+
+        public string? ChipModel { get; init; }
+
+        public int? ChipRevision { get; init; }
+
+        public int? ChipCores { get; init; }
+
+        public int? CpuFreqMHz { get; init; }
+
+        public string? SdkVersion { get; init; }
+
+        public long? HeapTotalBytes { get; init; }
+
+        public long? PsramTotalBytes { get; init; }
+
+        public long? FlashTotalBytes { get; init; }
+
+        public long? SketchSizeBytes { get; init; }
+
+        public long? FreeSketchBytes { get; init; }
     }
 }

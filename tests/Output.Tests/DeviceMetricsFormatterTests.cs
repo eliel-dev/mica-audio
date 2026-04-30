@@ -72,6 +72,27 @@ public sealed class DeviceMetricsFormatterTests
     }
 
     [Fact]
+    public void Build_ShouldExposeLegacyControlPlaneStatus()
+    {
+        var snapshot = new DeviceSnapshot
+        {
+            DeviceId = "device-legacy",
+            Name = "Legacy",
+            Status = DeviceStatus.Offline,
+            ControlPlaneState = DeviceControlPlaneState.LegacyOnly,
+            IsRegistered = true,
+            LastSeenUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+            WifiState = "connected",
+        };
+
+        var result = DeviceMetricsFormatter.Build(snapshot);
+
+        Assert.Equal("Firmware legado (sem MQTT)", result.StatusLabel);
+        Assert.Equal("Control plane legado: WS-texto/HTTP | state connected", result.NetworkLabel);
+        Assert.True(result.IsOfflineSnapshot);
+    }
+
+    [Fact]
     public void Build_ShouldNotShowRssi_WhenSnapshotIsOffline()
     {
         var snapshot = new DeviceSnapshot

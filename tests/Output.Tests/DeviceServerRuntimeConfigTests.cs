@@ -18,6 +18,7 @@ public class DeviceServerRuntimeConfigTests
             PairingAttemptsPerWindow = 0,
             PairingAttemptWindowSeconds = 3,
             DeviceFreshThresholdSeconds = 999,
+            VisualUdpPort = 70000,
             MaxJsonBodyBytes = 32,
             MaxWebSocketMessageBytes = 16,
         });
@@ -28,11 +29,30 @@ public class DeviceServerRuntimeConfigTests
         Assert.Equal(1, config.PairingAttemptsPerWindow);
         Assert.Equal(TimeSpan.FromSeconds(10), config.PairingAttemptWindow);
         Assert.Equal(TimeSpan.FromSeconds(120), config.DeviceOfflineTimeout);
+        Assert.Equal(5274, config.VisualUdpPort);
+        Assert.False(config.PreferLanUdpVisualTransport);
         Assert.Equal(1024L, config.MaxJsonBodyBytes);
         Assert.Equal(1024, config.MaxWebSocketMessageBytes);
         Assert.True(config.HasConfiguredAllowedCidrs);
         Assert.Single(config.AllowedCidrs);
         Assert.True(config.AllowedCidrs[0].Contains(IPAddress.Parse("192.168.10.42")));
         Assert.False(config.AllowedCidrs[0].Contains(IPAddress.Parse("10.0.0.42")));
+    }
+
+    [Theory]
+    [InlineData("http://192.168.15.10:5272/", "http://192.168.15.10:5272")]
+    [InlineData("https://mica-audio.example.test/", "https://mica-audio.example.test")]
+    [InlineData("", "")]
+    [InlineData("   ", "")]
+    [InlineData("ftp://192.168.15.10:5272", "")]
+    [InlineData("http://192.168.15.10:5272/api/v1", "")]
+    public void From_ShouldNormalizePublicHttpBaseAddress(string rawValue, string expected)
+    {
+        var config = DeviceServerRuntimeConfig.From(new ServerConfig
+        {
+            PublicHttpBaseAddress = rawValue,
+        });
+
+        Assert.Equal(expected, config.PublicHttpBaseAddress);
     }
 }

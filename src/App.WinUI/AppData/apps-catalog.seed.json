@@ -2,62 +2,15 @@
   "schemaVersion": 2,
   "apps": [
     {
-      "id": "accuweather",
-      "name": "Clima",
-      "summary": "Previsão do tempo",
-      "description": "Mostra cidade, temperatura e condição atual em formato HUB75.",
-      "author": "Mica Audio",
-      "packageName": "accuweather",
-      "fileName": "accuweather.star",
-      "recommendedIntervalMinutes": 5,
-      "category": "clima",
-      "preview": {
-        "kind": "weather",
-        "speed": 1
-      },
-      "modifiers": [
-        {
-          "key": "city",
-          "label": "Cidade",
-          "type": "CityAutocomplete",
-          "description": "Cidade usada para consulta no Open-Meteo.",
-          "placeholder": "Ex.: São Paulo",
-          "defaultValue": "São Paulo, São Paulo, Brasil|-23.5505|-46.6333",
-          "required": true
-        },
-        {
-          "key": "units",
-          "label": "Unidades",
-          "type": "Select",
-          "description": "Sistema de unidades de temperatura.",
-          "defaultValue": "metric",
-          "required": true,
-          "options": [
-            {
-              "label": "Métrico (°C)",
-              "value": "metric"
-            },
-            {
-              "label": "Imperial (°F)",
-              "value": "imperial"
-            }
-          ]
-        }
-      ],
-      "runtime": {
-        "kind": "none"
-      }
-    },
-    {
       "id": "analogclock",
-      "name": "Relógio",
-      "summary": "Relógio digital HUB75",
-      "description": "Exibe a hora de Brasília com watchfaces inspiradas em mostradores de smartwatch.",
+      "name": "Relogio",
+      "summary": "Relogio digital HUB75",
+      "description": "Exibe a hora de Brasilia com watchfaces inspiradas em mostradores de smartwatch.",
       "author": "Mica Audio",
       "packageName": "analogclock",
       "fileName": "analogclock.star",
       "recommendedIntervalMinutes": 0,
-      "category": "relógio",
+      "category": "relogio",
       "preview": {
         "kind": "clock",
         "speed": 1
@@ -75,7 +28,7 @@
           "key": "watchfaceStyle",
           "label": "Estilo da watchface",
           "type": "Select",
-          "description": "Define o estilo visual dos dígitos.",
+          "description": "Define o estilo visual dos digitos.",
           "defaultValue": "pixel",
           "required": true,
           "options": [
@@ -97,7 +50,7 @@
           "key": "fontColor",
           "label": "Cor da fonte",
           "type": "Select",
-          "description": "Paleta pronta para os dígitos no painel.",
+          "description": "Paleta pronta para os digitos no painel.",
           "defaultValue": "cyan",
           "required": true,
           "options": [
@@ -134,8 +87,8 @@
     },
     {
       "id": "gifhub75",
-      "name": "GIF HUB75",
-      "summary": "GIF por URL ou arquivo local",
+      "name": "GIF",
+      "summary": "GIF por arquivo local",
       "description": "Executa GIF no desktop com stream HUB75 128x64 para devices conectados (12 FPS fixos).",
       "author": "Mica Audio",
       "packageName": "gifhub75",
@@ -148,53 +101,68 @@
       },
       "modifiers": [
         {
-          "key": "sourceMode",
-          "label": "Fonte",
+          "key": "sourceType",
+          "label": "Tipo",
           "type": "Select",
-          "description": "Escolhe entre URL direta e arquivo local.",
-          "defaultValue": "url",
+          "description": "Arquivo unico ou apresentacao de slides.",
+          "defaultValue": "file",
           "required": true,
           "options": [
             {
-              "label": "URL direta",
-              "value": "url"
+              "label": "Arquivo unico",
+              "value": "file"
             },
             {
-              "label": "Arquivo local",
-              "value": "file"
+              "label": "Apresentacao de slides",
+              "value": "slideshow"
             }
           ]
         },
         {
-          "key": "gifUrl",
-          "label": "URL do GIF",
-          "type": "Text",
-          "description": "URL direta do GIF (http/https).",
-          "placeholder": "https://exemplo.com/animacao.gif",
-          "defaultValue": "",
-          "required": false
-        },
-        {
           "key": "scaleMode",
-          "label": "Escala",
+          "label": "Ajuste de imagem",
           "type": "Select",
-          "description": "Ajuste do frame para HUB75 128x64.",
+          "description": "Como a imagem e redimensionada para os 128x64 pixels do painel.",
           "defaultValue": "fit",
           "required": true,
           "options": [
             {
-              "label": "Fit",
+              "label": "Proporcional (barras pretas)",
               "value": "fit"
             },
             {
-              "label": "Fill",
+              "label": "Preencher (cortar bordas)",
               "value": "fill"
             },
             {
-              "label": "Stretch",
+              "label": "Esticar (distorce)",
               "value": "stretch"
             }
           ]
+        },
+        {
+          "key": "slideshowInterval",
+          "label": "Intervalo",
+          "type": "Select",
+          "description": "Tempo antes de trocar para a proxima imagem.",
+          "defaultValue": "10s",
+          "required": false,
+          "options": [
+            { "label": "5 segundos",  "value": "5s"    },
+            { "label": "10 segundos", "value": "10s"   },
+            { "label": "30 segundos", "value": "30s"   },
+            { "label": "1 minuto",    "value": "1min"  },
+            { "label": "5 minutos",   "value": "5min"  },
+            { "label": "10 minutos",  "value": "10min" }
+          ]
+        },
+        {
+          "key": "slideshowShuffle",
+          "label": "Embaralhar",
+          "type": "Toggle",
+          "description": "Alterna a ordem das imagens aleatoriamente.",
+          "defaultValue": "false",
+          "required": false
         }
       ],
       "runtime": {
@@ -203,4 +171,3 @@
     }
   ]
 }
-

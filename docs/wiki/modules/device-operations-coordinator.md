@@ -11,7 +11,8 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
 - Controlar timer de refresh e diff de lista.
 - Executar comandos tracked com timeout.
 - Permitir concorrencia por dispositivo: 1 comando por device, em paralelo entre devices diferentes.
-- Armazenar logs de operacao com limite.
+- Armazenar logs estruturados por device com limite e merge `app + firmware`.
+- Manter historico curto em memoria por device para `RSSI`, `LoopLoadPercent`, `FreeHeapBytes` e `FreePsramBytes`.
 
 ## Fluxo de execucao
 
@@ -21,7 +22,9 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
 2. `RefreshDevicesAsync` coleta snapshot e publica eventos.
 3. `RunCommandAsync` valida o device e reserva slot por `deviceId`.
 4. Progresso chega por evento do host e atualiza `CommandByDevice`.
-5. Conclusao remove o slot do device e publica estado final.
+5. `DeviceLogReceived` do host alimenta `DeviceLogBook`.
+6. `RefreshDevicesAsync` deduplica snapshots por `TelemetrySequence` no `DeviceTelemetryHistoryBook`.
+7. Conclusao remove o slot do device e publica estado final.
 
 ## Pontos de alteracao frequente
 
@@ -48,6 +51,8 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1) - assinatura: `internal sealed class DeviceOperationsCoordinator : IDisposable`
 - [DeviceOperationsState](../../../src/App.WinUI/Services/Devices/DeviceOperationsState.cs#L1) - assinatura: `internal sealed class DeviceOperationsState`
 - [DeviceCommandExecutionState](../../../src/App.WinUI/Services/Devices/DeviceCommandExecutionState.cs#L1) - assinatura: `internal sealed class DeviceCommandExecutionState`
+- [DeviceLogEntry](../../../src/App.WinUI/Services/Devices/DeviceLogEntry.cs#L1) - assinatura: `internal sealed class DeviceLogEntry`
+- [DeviceTelemetryHistoryBook](../../../src/App.WinUI/Services/Devices/DeviceTelemetryHistoryBook.cs#L1) - assinatura: `internal sealed class DeviceTelemetryHistoryBook`
 - [RunCommandAsync](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L88) - assinatura: `public Task<CommandDispatchResult> RunCommandAsync(...)`
 - [RefreshDevicesAsync](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L301) - assinatura: `private async Task RefreshDevicesAsync(bool forcePublish)`
 
@@ -74,6 +79,9 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
 - `DeviceListChanged` e a fonte principal do refresh da lista na `DevicesPage` apos a carga inicial.
 - `StateChanged` continua atualizando estado geral, mas nao deve disparar rebuild da lista de devices.
 - A UI reaproveita a arvore visual existente e aplica diff incremental para reduzir flicker.
+- O hotfix de conectividade trata `ws_*` como diagnostico de stream, nao como evento principal de conectividade:
+  - logs por device continuam mostrando apenas transicoes de `Wi-Fi/provisioning`;
+  - churn de refresh causado por `ws_connected/ws_disconnected` legado deixa de repintar a lista.
 
 ## Atualizacao 2026-03 - Fase 9 Wave 1, coordenador decomposto
 
@@ -89,3 +97,25 @@ Centralizar estado operacional da aba `Dispositivos`: refresh continuo, comandos
   - cap de logs;
   - fallback lazy de thresholds.
 - O shape de `DeviceOperationsState`, os textos operacionais e o wire com `Device.Server` permaneceram inalterados.
+
+## Atualizacao 2026-03 - Dashboard nativo de observabilidade
+
+- O coordinator continua sendo a unica fachada de estado da `DevicesPage`.
+- `GetDeviceLogs(deviceId)` agora devolve `DeviceLogEntry` tipado, e nao mais strings soltas.
+- `GetDeviceTelemetryHistory(deviceId)` expone um snapshot de historico em memoria para a aba `Estatisticas`.
+- `DeviceLogBook` passou a aceitar `DeviceLogMessage` do firmware e manter merge ordenado com eventos locais do app.
+- A referencia de UI/contrato desta entrega esta em [device-observability-dashboard](../reference/device-observability-dashboard.md#objetivo).
+
+## Observabilidade tecnica
+
+- `RunCommandCoreAsync` agora abre o span raiz de operacao de device no lado app (`AppObservability.DeviceIntegrationComponent`).
+- O coordinator replica no scope estruturado as mesmas chaves de correlacao usadas no span:
+  - `deviceId`
+  - `commandId`
+  - `appId` quando o comando carrega esse parametro
+  - `commandType`
+- O objetivo e deixar o path `acao de UI -> coordinator -> host embutido -> ACK` navegavel por correlacao, sem depender apenas do texto livre dos logs.
+- O comportamento funcional do coordinator nao mudou:
+  - continua 1 comando por device;
+  - continua permitindo paralelismo entre devices distintos;
+  - continua usando `DeviceCommandTracker` para refletir progresso na UI.

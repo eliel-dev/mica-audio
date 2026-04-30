@@ -1,5 +1,7 @@
 namespace Device.Protocol.Models;
 
+// DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#persistencia-local
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 public sealed class DeviceSnapshot
 {
     public string DeviceId { get; init; } = string.Empty;
@@ -9,6 +11,8 @@ public sealed class DeviceSnapshot
     public string Profile { get; init; } = "dma_exp";
 
     public DeviceStatus Status { get; init; }
+
+    public DeviceControlPlaneState ControlPlaneState { get; init; }
 
     public bool IsRegistered { get; init; }
 
@@ -28,7 +32,11 @@ public sealed class DeviceSnapshot
 
     public int? UptimeSeconds { get; init; }
 
+    public int? LoopHealthyPercent { get; init; }
+
     public int? LoopLoadPercent { get; init; }
+
+    public double? ChipTemperatureCelsius { get; init; }
 
     public long? FreeHeapBytes { get; init; }
 
@@ -58,9 +66,23 @@ public sealed class DeviceSnapshot
 
     public uint? StreamFramesApplied { get; init; }
 
+    public uint? Hub75PresentFrames { get; init; }
+
     public uint? StreamSequenceGapCount { get; init; }
 
     public uint? StreamInvalidFrameCount { get; init; }
+
+    public string? ResetReason { get; init; }
+
+    public uint? ControlQueueDepth { get; init; }
+
+    public string? ControlWorkerState { get; init; }
+
+    public string? PanelsWorkerState { get; init; }
+
+    public string? LastSlowCommand { get; init; }
+
+    public long? LastSlowCommandDurationMs { get; init; }
 
     public string? FirmwareVersion { get; init; }
 
@@ -84,5 +106,51 @@ public sealed class DeviceSnapshot
 
     public string? PanelType { get; init; }
 
-    public bool IsConnected => Status == DeviceStatus.Online;
+    public bool? AnimatedWebpBatchSupported { get; init; }
+
+    public bool? VisualUdpSupported { get; init; }
+
+    public int? VisualUdpPort { get; init; }
+
+    public string? VisualUdpMode { get; init; }
+
+    public string? SessionMode { get; init; }
+
+    public string? SessionActiveClientId { get; init; }
+
+    public uint? SessionActiveOwnerEpoch { get; init; }
+
+    public int? SessionOwnerLeaseRemainingMs { get; init; }
+
+    public bool? SessionLockHeld { get; init; }
+
+    public string? SessionLockClientId { get; init; }
+
+    public string? SessionLockReason { get; init; }
+
+    public int? SessionLockLeaseRemainingMs { get; init; }
+
+    public string? SessionFallbackState { get; init; }
+
+    public string? ChipModel { get; init; }
+
+    public int? ChipRevision { get; init; }
+
+    public int? ChipCores { get; init; }
+
+    public int? CpuFreqMHz { get; init; }
+
+    public string? SdkVersion { get; init; }
+
+    public long? HeapTotalBytes { get; init; }
+
+    public long? PsramTotalBytes { get; init; }
+
+    public long? FlashTotalBytes { get; init; }
+
+    public long? SketchSizeBytes { get; init; }
+
+    public long? FreeSketchBytes { get; init; }
+
+    public bool IsConnected => ControlPlaneState == DeviceControlPlaneState.MqttOnline;
 }

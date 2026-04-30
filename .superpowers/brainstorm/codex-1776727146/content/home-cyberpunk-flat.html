@@ -1,0 +1,444 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mica Atlas - Flat Cyberpunk</title>
+  <style>
+    :root {
+      --bg: #060b12;
+      --bg-2: #0a111a;
+      --panel: #0c1622;
+      --panel-2: #0e1a29;
+      --line: rgba(90, 232, 255, 0.18);
+      --line-2: rgba(255, 255, 255, 0.06);
+      --cyan: #5ae8ff;
+      --magenta: #ff62b4;
+      --amber: #ffb84d;
+      --green: #74ffb8;
+      --text: #eaf7ff;
+      --muted: #89a3b6;
+      --muted-2: #6f8597;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(rgba(90,232,255,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(90,232,255,.03) 1px, transparent 1px);
+      background-size: 28px 28px;
+      opacity: .35;
+      pointer-events: none;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      min-height: 100vh;
+      position: relative;
+      z-index: 1;
+    }
+
+    .rail {
+      background: #08111a;
+      border-right: 1px solid var(--line);
+      padding: 26px 22px;
+    }
+
+    .brand {
+      font: 700 28px/1 "Consolas", monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin-bottom: 8px;
+    }
+
+    .tag {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 28px;
+      max-width: 220px;
+    }
+
+    .rail-section { margin-bottom: 24px; }
+    .rail-label,
+    .section-label {
+      font: 600 11px/1.3 "Consolas", monospace;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin-bottom: 12px;
+    }
+
+    .nav-list { display: grid; gap: 10px; }
+    .nav-item {
+      padding: 12px 14px;
+      border: 1px solid var(--line-2);
+      border-radius: 12px;
+      background: var(--panel);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .nav-item.active {
+      border-color: var(--cyan);
+      background: #0d1b29;
+      box-shadow: inset 0 0 0 1px rgba(90,232,255,.12);
+    }
+
+    .rail-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line-2);
+      font: 600 11px/1 "Consolas", monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #b8d6e5;
+      background: #0b1520;
+    }
+
+    .main { padding: 28px 32px 40px; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.45fr .75fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .block {
+      background: var(--panel);
+      border: 1px solid var(--line-2);
+      border-radius: 20px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
+    }
+
+    .hero-main { padding: 24px 26px; }
+    .hero-side { padding: 20px 22px; }
+
+    .hero-title {
+      font: 700 46px/.98 Georgia, serif;
+      letter-spacing: -.03em;
+      margin: 8px 0 10px;
+      max-width: 760px;
+    }
+
+    .hero-copy {
+      color: var(--muted);
+      max-width: 760px;
+      line-height: 1.6;
+      font-size: 15px;
+    }
+
+    .hero-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+
+    .hero-chip {
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: #0b1520;
+      border: 1px solid var(--line-2);
+      font: 600 11px/1 "Consolas", monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--cyan);
+    }
+
+    .search-box {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: #0a131d;
+      border: 1px solid var(--line-2);
+      color: #dff5ff;
+      font-size: 15px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .stat {
+      padding: 18px;
+      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line-2);
+    }
+
+    .stat .k {
+      font: 600 11px/1.2 "Consolas", monospace;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #95c7d2;
+    }
+
+    .stat .v {
+      font-size: 36px;
+      font-weight: 800;
+      margin: 10px 0 6px;
+      line-height: 1;
+    }
+
+    .stat .d {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .stat.cyan { border-left: 3px solid var(--cyan); }
+    .stat.amber { border-left: 3px solid var(--amber); }
+    .stat.magenta { border-left: 3px solid var(--magenta); }
+    .stat.green { border-left: 3px solid var(--green); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.25fr .8fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .panel { padding: 22px; }
+
+    .cap-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .cap-card,
+    .radar-item,
+    .doc-card {
+      padding: 16px;
+      border-radius: 16px;
+      background: var(--panel-2);
+      border: 1px solid var(--line-2);
+    }
+
+    .cap-title,
+    .doc-name { font-size: 17px; font-weight: 700; color: var(--text); }
+    .cap-copy,
+    .doc-meta,
+    .radar-item span {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .cap-state,
+    .doc-state {
+      margin-top: 12px;
+      font: 600 11px/1.2 "Consolas", monospace;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .state-ok { color: var(--green); }
+    .state-warn { color: var(--amber); }
+    .state-future { color: var(--magenta); }
+
+    .radar-list,
+    .docs-grid { display: grid; gap: 12px; margin-top: 16px; }
+    .docs-grid { grid-template-columns: repeat(3, 1fr); }
+
+    .doc-kind {
+      font: 600 11px/1.2 "Consolas", monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #95c7d2;
+    }
+
+    .footer-note {
+      margin-top: 14px;
+      color: var(--muted-2);
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 1200px) {
+      .shell, .hero, .layout { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .cap-grid, .docs-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <div class="brand">Mica Atlas</div>
+      <div class="tag">Documentação organizada por capacidade, status e prioridade.</div>
+
+      <div class="rail-section">
+        <div class="rail-label">Capacidades</div>
+        <div class="nav-list">
+          <div class="nav-item active">Panorama</div>
+          <div class="nav-item">Firmware e Boards</div>
+          <div class="nav-item">Onboarding e Pairing</div>
+          <div class="nav-item">Paineis e Widgets</div>
+          <div class="nav-item">Observabilidade</div>
+          <div class="nav-item">Cloud futuro</div>
+        </div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-label">Filtros</div>
+        <div class="rail-pills">
+          <div class="pill">Implementado</div>
+          <div class="pill">Parcial</div>
+          <div class="pill">Futuro</div>
+          <div class="pill">Checklist</div>
+          <div class="pill">Arquitetura</div>
+        </div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-label">Modo</div>
+        <div style="color:var(--muted);font-size:13px;line-height:1.6">
+          Tema escuro, contraste alto, sem superfícies em degrade e sem linguagem promocional.
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="hero">
+        <div class="block hero-main">
+          <div class="section-label">Panorama</div>
+          <div class="hero-title">Estado do projeto, áreas do produto e trilha futura.</div>
+          <div class="hero-copy">
+            A home prioriza status, lacunas e links para os documentos canônicos. A leitura entra por capacidade do produto, não por pasta da wiki.
+          </div>
+          <div class="hero-meta">
+            <div class="hero-chip">status-first</div>
+            <div class="hero-chip">capacidades-first</div>
+            <div class="hero-chip">catalogo manual</div>
+            <div class="hero-chip">somente leitura</div>
+          </div>
+        </div>
+
+        <div class="block hero-side">
+          <div class="section-label">Busca</div>
+          <div style="font-size:24px;font-weight:700;max-width:280px">Entradas por tema, fluxo e iniciativa.</div>
+          <div class="search-box">firmware / AP-first / ESPConnect / widgets / cloud</div>
+          <div class="footer-note">toda página aponta para o markdown canônico</div>
+        </div>
+      </section>
+
+      <section class="stats">
+        <article class="stat cyan">
+          <div class="k">Implementado</div>
+          <div class="v">37</div>
+          <div class="d">Fluxos, módulos e comportamentos consolidados.</div>
+        </article>
+        <article class="stat amber">
+          <div class="k">Parcial</div>
+          <div class="v">12</div>
+          <div class="d">Áreas com gaps, rollout incompleto ou refino pendente.</div>
+        </article>
+        <article class="stat magenta">
+          <div class="k">Futuro</div>
+          <div class="v">09</div>
+          <div class="d">Arquiteturas alvo, spikes e futuras implementações.</div>
+        </article>
+        <article class="stat green">
+          <div class="k">Checklist</div>
+          <div class="v">24</div>
+          <div class="d">Itens rastreáveis por iniciativa e bancada.</div>
+        </article>
+      </section>
+
+      <section class="layout">
+        <article class="block panel">
+          <div class="section-label">Capacidades</div>
+          <div style="font-size:28px;font-weight:700;max-width:720px">Resumo por área do produto.</div>
+          <div class="cap-grid">
+            <div class="cap-card">
+              <div class="cap-title">Firmware e Boards</div>
+              <div class="cap-copy">DevKitC-1 maduro, Matrix Portal S3 planejado, perfis por painel e backend.</div>
+              <div class="cap-state state-ok">Majoritariamente implementado</div>
+            </div>
+            <div class="cap-card">
+              <div class="cap-title">Onboarding e Pairing</div>
+              <div class="cap-copy">Wizard USB, pair code inline, AP portal estável e release oficial fresco.</div>
+              <div class="cap-state state-ok">Implementado</div>
+            </div>
+            <div class="cap-card">
+              <div class="cap-title">Paineis e Widgets</div>
+              <div class="cap-copy">Canvas composto, widgets sobrepostos, GIF/WebP e pipeline de mídia.</div>
+              <div class="cap-state state-warn">Implementado com expansão</div>
+            </div>
+            <div class="cap-card">
+              <div class="cap-title">Cloud futuro</div>
+              <div class="cap-copy">Server desacoplado, catálogo multi-board, Android client e integração HA.</div>
+              <div class="cap-state state-future">Target-state</div>
+            </div>
+          </div>
+        </article>
+
+        <aside class="block panel">
+          <div class="section-label">Futuras implementações</div>
+          <div style="font-size:28px;font-weight:700;max-width:320px">Itens em acompanhamento.</div>
+          <div class="radar-list">
+            <div class="radar-item">
+              <b>ESPConnect</b>
+              <span>Ferramenta externa viável para flash e USB.</span>
+            </div>
+            <div class="radar-item">
+              <b>GPIOViewer</b>
+              <span>Diagnóstico opcional de bancada. Não entra como baseline.</span>
+            </div>
+            <div class="radar-item">
+              <b>Cloud-first multi-panel</b>
+              <span>Documento canônico do target-state arquitetural.</span>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="block panel">
+        <div class="section-label">Documentos</div>
+        <div style="font-size:28px;font-weight:700;max-width:760px">Objetos com papel claro, status e ponto de entrada.</div>
+        <div class="docs-grid">
+          <div class="doc-card">
+            <div class="doc-kind">Guia</div>
+            <div class="doc-name">setup-new-device.md</div>
+            <div class="doc-meta">Fluxo oficial atual de onboarding, flash, pair code e AP portal.</div>
+            <div class="doc-state state-ok">Implementado</div>
+          </div>
+          <div class="doc-card">
+            <div class="doc-kind">Arquitetura</div>
+            <div class="doc-name">07-cloud-first-…</div>
+            <div class="doc-meta">Target-state de cloud, multi-board e multi-panel.</div>
+            <div class="doc-state state-future">Futuro</div>
+          </div>
+          <div class="doc-card">
+            <div class="doc-kind">Módulo</div>
+            <div class="doc-name">firmware-esp32s3-…</div>
+            <div class="doc-meta">Base viva do firmware com histórico de atualizações e pontos frequentes de alteração.</div>
+            <div class="doc-state state-warn">Implementado com roadmap</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

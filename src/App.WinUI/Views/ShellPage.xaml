@@ -27,13 +27,26 @@
                     <SymbolIcon Symbol="AllApps" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Tag="apps" Content="Apps">
+            <NavigationViewItem Tag="panels" Content="Paineis">
                 <NavigationViewItem.Icon>
-                    <SymbolIcon Symbol="Shop" />
+                    <SymbolIcon Symbol="AlignCenter" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Tag="monitoring" Content="Monitoramento">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="View" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
 
         </NavigationView.MenuItems>
+
+        <NavigationView.FooterMenuItems>
+            <NavigationViewItem Tag="settings" Content="Configurações">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Setting" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+        </NavigationView.FooterMenuItems>
 
         <NavigationView.PaneFooter>
             <TextBlock

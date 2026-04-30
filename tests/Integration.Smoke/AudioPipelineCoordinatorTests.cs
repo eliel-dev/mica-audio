@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using Analyzer.Dsp.Analysis;
 using App.WinUI.Services;
 using Audio.Loopback.Capture;
+using Device.Protocol.Stream;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
@@ -14,7 +15,7 @@ namespace Integration.Smoke;
 public sealed class AudioPipelineCoordinatorTests
 {
     [Fact]
-    public async Task StartAsync_ShouldStartCaptureOnceAndDispatchSpectrumPayloads()
+    public async Task StartAsync_ShouldStartCaptureOnceAndDispatchSpectrumPayloads_WhenHub75ModeIsEnabled()
     {
         await using var capture = new FakeLoopbackCapture();
         var simulator = new RecordingLedOutput();
@@ -23,7 +24,12 @@ public sealed class AudioPipelineCoordinatorTests
         var analyzer = new FakeAnalyzer(CreateSpectrumFrame(0.4f));
         var coordinator = new AudioPipelineCoordinator(capture, simulator, matrix, sink, analyzer);
 
-        await coordinator.StartAsync(hubPreviewEnabled: true, brightness: 0.6f, presetId: "preset");
+        await coordinator.StartAsync(
+            enableSimulator: true,
+            enableHub75DeviceOutput: true,
+            brightness: 0.6f,
+            presetId: "audiomotion-clone",
+            rendererId: RendererIds.AudioMotionClone);
         await capture.PublishAsync(new PcmFrame([1f, 2f, 3f], 42));
         await WaitForAsync(() => matrix.Payloads.Count == 1);
 
@@ -37,6 +43,39 @@ public sealed class AudioPipelineCoordinatorTests
         Assert.Single(simulator.Payloads);
         Assert.Empty(sink.Payloads);
         Assert.Equal(LedDefaults.MatrixWidth, matrix.Payloads[0].Bins128!.Length);
+        Assert.Equal(
+            Bins128VisualFlags.Create(Bins128VisualStyle.MirrorLines, Bins128PaletteFamily.Rainbow),
+            matrix.Payloads[0].BinsFlags);
+
+        await coordinator.StopAsync();
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenHub75ModeIsDisabled_ShouldNotDispatchSpectrumPayloadsToMatrix()
+    {
+        await using var capture = new FakeLoopbackCapture();
+        var simulator = new RecordingLedOutput();
+        var matrix = new RecordingLedOutput();
+        var sink = new RecordingLedOutput();
+        var coordinator = new AudioPipelineCoordinator(
+            capture,
+            simulator,
+            matrix,
+            sink,
+            new FakeAnalyzer(CreateSpectrumFrame(0.35f)));
+
+        await coordinator.StartAsync(
+            enableSimulator: false,
+            enableHub75DeviceOutput: false,
+            brightness: 0.6f,
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
+        await capture.PublishAsync(new PcmFrame([1f, 2f, 3f], 42));
+        await WaitForAsync(() => sink.Payloads.Count == 1);
+
+        Assert.Empty(matrix.Payloads);
+        Assert.Empty(simulator.Payloads);
+        Assert.Single(sink.Payloads);
 
         await coordinator.StopAsync();
     }
@@ -48,8 +87,18 @@ public sealed class AudioPipelineCoordinatorTests
         var analyzer = new FakeAnalyzer(CreateSpectrumFrame(0.2f));
         var coordinator = new AudioPipelineCoordinator(capture, new RecordingLedOutput(), new RecordingLedOutput(), new RecordingLedOutput(), analyzer);
 
-        await coordinator.StartAsync(hubPreviewEnabled: false, brightness: 0.4f, presetId: "preset");
-        await coordinator.StartAsync(hubPreviewEnabled: false, brightness: 0.8f, presetId: "preset");
+        await coordinator.StartAsync(
+            enableSimulator: false,
+            enableHub75DeviceOutput: false,
+            brightness: 0.4f,
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
+        await coordinator.StartAsync(
+            enableSimulator: true,
+            enableHub75DeviceOutput: true,
+            brightness: 0.8f,
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
         await coordinator.StopAsync();
         await coordinator.StopAsync();
 
@@ -69,7 +118,12 @@ public sealed class AudioPipelineCoordinatorTests
             new RecordingLedOutput(),
             new FakeAnalyzer(CreateSpectrumFrame(0.1f)));
 
-        await coordinator.StartAsync(hubPreviewEnabled: false, brightness: 1f, presetId: "preset");
+        await coordinator.StartAsync(
+            enableSimulator: false,
+            enableHub75DeviceOutput: true,
+            brightness: 1f,
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
         await capture.PublishAsync(new PcmFrame([1f], 1));
         await WaitForAsync(() => matrix.Payloads.Count == 1);
 
@@ -96,7 +150,12 @@ public sealed class AudioPipelineCoordinatorTests
             new FakeAnalyzer(CreateSpectrumFrame(0.5f)));
 
         coordinator.SetHubTransportMode(RendererHubTransportMode.Frame128x64);
-        await coordinator.StartAsync(hubPreviewEnabled: false, brightness: 1f, presetId: "preset");
+        await coordinator.StartAsync(
+            enableSimulator: false,
+            enableHub75DeviceOutput: true,
+            brightness: 1f,
+            presetId: "preset",
+            rendererId: RendererIds.Bars);
         await capture.PublishAsync(new PcmFrame([1f], 1));
         await Task.Delay(50);
 
@@ -115,12 +174,32 @@ public sealed class AudioPipelineCoordinatorTests
         var sink = new RecordingLedOutput();
         var coordinator = new AudioPipelineCoordinator(capture, simulator, matrix, sink, new FakeAnalyzer(CreateSpectrumFrame(0.5f)));
 
-        coordinator.ConfigureHubOutputs(enableSimulator: false, brightness: 0.5f);
+        coordinator.ConfigureHubOutputs(enableSimulator: false, enableHub75DeviceOutput: false, brightness: 0.5f);
         coordinator.SendHubFrame(Enumerable.Repeat(new RgbaColor(1, 2, 3, 4), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray(), forceSimulator: true);
 
-        Assert.Single(matrix.Payloads);
+        Assert.Empty(matrix.Payloads);
         Assert.Single(simulator.Payloads);
         Assert.Empty(sink.Payloads);
+    }
+
+    [Fact]
+    public async Task SendHubBins_ShouldDispatchType1Payload_WhenHub75ModeIsEnabled()
+    {
+        await using var capture = new FakeLoopbackCapture();
+        var matrix = new RecordingLedOutput();
+        var coordinator = new AudioPipelineCoordinator(
+            capture,
+            new RecordingLedOutput(),
+            matrix,
+            new RecordingLedOutput(),
+            new FakeAnalyzer(CreateSpectrumFrame(0.5f)));
+
+        coordinator.ConfigureHubOutputs(enableSimulator: false, enableHub75DeviceOutput: true, brightness: 0.5f);
+        coordinator.SendHubBins(Enumerable.Repeat(0.25f, LedDefaults.MatrixWidth).ToArray(), level: 0f);
+
+        Assert.Single(matrix.Payloads);
+        Assert.NotNull(matrix.Payloads[0].Bins128);
+        Assert.Null(matrix.Payloads[0].Frame128x64);
     }
 
     private static SpectrumFrame CreateSpectrumFrame(float level)

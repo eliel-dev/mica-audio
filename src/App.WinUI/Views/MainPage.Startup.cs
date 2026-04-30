@@ -146,13 +146,13 @@ public partial class MainPage
         UpdateGifControlsVisibility();
         UpdateGifTransportState();
         UpdateGifLoadingState(false);
-        UpdateGifLoadUrlButtonState();
+        UpdateSettingsPaneVisualState();
 
         viewModel.CurrentPresetId = currentPresetId;
         viewModel.SelectedRendererId = selectedRendererId;
 
-        hubPreviewEnabled = appSettings.Hub75PreviewEnabled;
-        Hub75Toggle.IsOn = hubPreviewEnabled;
+        hub75ModeEnabled = appSettings.Hub75PreviewEnabled;
+        Hub75Toggle.IsOn = hub75ModeEnabled;
         UpdateHubPreviewVisibility();
 
         lastCloneViewportWidth = GetAnalyzerViewportWidth();

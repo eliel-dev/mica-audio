@@ -1,31 +1,49 @@
-using System.Text;
-using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Infrastructure;
+using App.WinUI.Infrastructure.Http;
+using App.WinUI.Infrastructure.Observability;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
-using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
-using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
+using App.WinUI.Services.Logging;
+using App.WinUI.Services.Monitoring;
+using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
-using App.WinUI.Views;
 using Audio.Loopback.Capture;
+using Device.Client;
+using Device.Client.Embedded;
+using Device.Client.Remote;
 using Device.Server.Hosting;
+using MicaAudio.Core.Config;
+using MicaAudio.Core.Presets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
-using MicaAudio.Core.Config;
 using Output.Led;
+using System.Text.Json;
 
 namespace App.WinUI;
 
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
+// DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
+// DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
+// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
+// DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
+// DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
+// DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
+// DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
+// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 public partial class App : Application
 {
+    private static readonly JsonSerializerOptions StartupJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public static Window? MainWindow { get; private set; }
 
     internal static IServiceProvider? Services { get; private set; }
@@ -64,12 +82,12 @@ public partial class App : Application
         MainWindow.Closed -= OnMainWindowClosed;
         MainWindow.Closed += OnMainWindowClosed;
 
-        ApplySystemBackdrop(rootFrame);
-
         try
         {
             RecordStartupBreadcrumb("BuildServiceProvider");
             EnsureServicesInitialized();
+            var startupSettings = LoadStartupSettings(Services!);
+            ApplyBackdropPreference(rootFrame, startupSettings.UseMicaBackdrop);
             _ = StartDeviceIntegrationAsync(Services!);
 
             if (rootFrame.Content is null)
@@ -94,6 +112,7 @@ public partial class App : Application
         var localRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var appDataRoot = Path.Combine(roamingRoot, "MicaAudio");
         var localAppDataRoot = Path.Combine(localRoot, "MicaAudio");
+        var workspaceRoot = ResolveWorkspaceRoot();
 
         var options = new MicaAudioOptions
         {
@@ -103,16 +122,31 @@ public partial class App : Application
             PresetsDirectory = Path.Combine(appDataRoot, "presets"),
             AppsCatalogPath = Path.Combine(appDataRoot, "apps", "catalog.json"),
             AppsModifierStatePath = Path.Combine(appDataRoot, "apps", "modifiers.json"),
+            PanelsFilePath = Path.Combine(appDataRoot, "panels", "panels.json"),
+            RemoteDeviceServerSecretsFilePath = Path.Combine(appDataRoot, "remote-server-secrets.json"),
             CrashLogPath = Path.Combine(localAppDataRoot, "crash.log"),
             PrecompiledFirmwareDirectory = Path.Combine(AppContext.BaseDirectory, "AppData", "Firmware"),
+            WorkspaceRoot = workspaceRoot,
         };
 
-        var services = new ServiceCollection();
+        return BuildServiceProvider(options);
+    }
 
-        services.AddLogging(builder =>
-        {
-            builder.AddDebug();
-        });
+    internal static IServiceProvider BuildServiceProvider(MicaAudioOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var observability = AppObservability.ConfigureGlobalLogger(options);
+        var services = new ServiceCollection();
+        var startupDeviceServerSettings = LoadStartupDeviceServerSettings(options);
+
+        services.AddLogging(AppObservability.ConfigureLogging);
+        // DOCS: docs/wiki/modules/app-winui.md#observabilidade-tecnica
+        AppObservability.ConfigureOpenTelemetry(services, observability);
+        // DOCS: docs/wiki/modules/app-winui.md#cache-compartilhado
+        services.AddHybridCache();
+        // DOCS: docs/wiki/modules/app-winui.md#integracoes-http-externas
+        services.AddExternalHttpClients();
 
         services.Configure<MicaAudioOptions>(configured =>
         {
@@ -122,34 +156,88 @@ public partial class App : Application
             configured.PresetsDirectory = options.PresetsDirectory;
             configured.AppsCatalogPath = options.AppsCatalogPath;
             configured.AppsModifierStatePath = options.AppsModifierStatePath;
+            configured.PanelsFilePath = options.PanelsFilePath;
+            configured.RemoteDeviceServerSecretsFilePath = options.RemoteDeviceServerSecretsFilePath;
             configured.CrashLogPath = options.CrashLogPath;
             configured.PrecompiledFirmwareDirectory = options.PrecompiledFirmwareDirectory;
+            configured.WorkspaceRoot = options.WorkspaceRoot;
         });
 
-        services.AddSingleton<IDeviceRegistryStore, JsonDeviceRegistryStore>();
-        services.AddSingleton<DeviceServerHost>();
+        services.AddSingleton<PrecompiledFirmwareService>();
+        services.AddSingleton<IDeviceOfficialFirmwareCatalog, PrecompiledFirmwareCatalogAdapter>();
+        services.AddSingleton<IEmbeddedDeviceRegistryStore, JsonDeviceRegistryStore>();
+        services.AddSingleton<IEmbeddedDeviceServerSettingsProvider, AppEmbeddedDeviceServerSettingsProvider>();
+        services.AddSingleton<IEmbeddedDevicePublicHostResolver, NetworkInterfaceEmbeddedDevicePublicHostResolver>();
+        services.AddSingleton<IPanelsBatchStore, InMemoryPanelsBatchStore>();
+        services.AddSingleton<IDevicePairingStore, InMemoryDevicePairingStore>();
+        services.AddSingleton<ICommandStateStore, InMemoryCommandStateStore>();
+        services.AddSingleton<ISessionStateStore, InMemorySessionStateStore>();
+        services.AddSingleton<RemoteDeviceServerSecretStore>();
+        services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
+            TimeProvider.System,
+            sp.GetService<IDeviceOfficialFirmwareCatalog>(),
+            sp.GetRequiredService<IPanelsBatchStore>(),
+            sp.GetRequiredService<IDevicePairingStore>(),
+            sp.GetRequiredService<ICommandStateStore>(),
+            sp.GetRequiredService<ISessionStateStore>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
-        services.AddSingleton(sp => new DeviceIntegrationService(
+        services.AddSingleton(sp => new EmbeddedDeviceServerClient(
             sp.GetRequiredService<IDeviceServerHost>(),
-            sp.GetRequiredService<IDeviceRegistryStore>(),
-            sp.GetRequiredService<SettingsRepository>(),
-            sp.GetRequiredService<AppSettingsDomainService>(),
-            sp.GetRequiredService<ILogger<DeviceIntegrationService>>()));
-        services.AddSingleton<DeviceOperationsCoordinator>();
-        services.AddSingleton<Hub75VisualizerSessionService>();
-        services.AddSingleton<ISerialPortCatalogService, SerialPortCatalogService>();
-        services.AddSingleton<ISerialProvisioningClient, SerialProvisioningClient>();
-        services.AddSingleton<IEspToolFlashService, EspToolFlashService>();
-        services.AddSingleton<IDeviceUsbOnboardingService, DeviceUsbOnboardingService>();
+            sp.GetRequiredService<IEmbeddedDeviceRegistryStore>(),
+            sp.GetRequiredService<IEmbeddedDeviceServerSettingsProvider>(),
+            sp.GetRequiredService<IEmbeddedDevicePublicHostResolver>(),
+            sp.GetRequiredService<ILogger<EmbeddedDeviceServerClient>>()));
+        services.AddSingleton<IEmbeddedDeviceServerClientRuntime>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
+        services.AddSingleton(sp => CreateRemoteDeviceServerClientOptions(options, startupDeviceServerSettings));
+        services.AddSingleton(sp => new RemoteDeviceServerClient(
+            new HttpClient(),
+            sp.GetRequiredService<RemoteDeviceServerClientOptions>(),
+            sp.GetRequiredService<ILogger<RemoteDeviceServerClient>>(),
+            ownsHttpClient: true));
+        services.AddSingleton<RemoteDeviceFrameTransport>();
+        if (startupDeviceServerSettings.Mode == DeviceServerMode.Remote)
+        {
+            services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<RemoteDeviceServerClient>());
+            services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<RemoteDeviceFrameTransport>());
+            services.AddSingleton<IDeviceServerClientRuntime>(sp => new RemoteDeviceServerRuntime(
+                sp.GetRequiredService<RemoteDeviceServerClient>(),
+                sp.GetRequiredService<RemoteDeviceFrameTransport>()));
+        }
+        else
+        {
+            services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
+            services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<IDeviceServerHost>());
+            services.AddSingleton<IDeviceServerClientRuntime>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
+        }
+
+        services.AddSingleton<IDeviceClientSessionManager, WindowsDeviceClientSessionManager>();
+        services.AddSingleton<DeviceOperationsCoordinator>(sp =>
+        {
+            var coordinator = new DeviceOperationsCoordinator(
+                sp.GetRequiredService<IDeviceServerClient>(),
+                sp.GetRequiredService<SettingsRepository>(),
+                sp.GetRequiredService<AppSettingsDomainService>(),
+                sp.GetRequiredService<ILogger<DeviceOperationsCoordinator>>(),
+                sp.GetRequiredService<IDeviceClientSessionManager>());
+            coordinator.CentralLogStore = sp.GetRequiredService<AppLogStore>();
+            return coordinator;
+        });
+        services.AddSingleton(sp => new Hub75VisualizerSessionService(
+            sp.GetRequiredService<DeviceOperationsCoordinator>(),
+            sp.GetRequiredService<IDeviceClientSessionManager>()));
 
         services.AddSingleton<IAppCatalogService, AppCatalogService>();
         services.AddSingleton<IAppModifierStateStore, AppModifierStateStore>();
-        services.AddSingleton<CityAutocompleteService>();
-        services.AddSingleton<IAppDeploymentService, AppDeploymentService>();
-        services.AddSingleton<AppConfigValidationUseCase>();
-        services.AddSingleton<SaveAppConfigUseCase>();
-        services.AddSingleton<DeployAppUseCase>();
-        services.AddSingleton<PrecompiledFirmwareService>();
+        services.AddSingleton<PanelsStore>();
+        services.AddSingleton<PanelsFrameComposer>();
+        services.AddSingleton(sp => new CityAutocompleteService(
+            sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetRequiredService<ILogger<CityAutocompleteService>>()));
+        services.AddSingleton<WeatherPreviewDataService.IWeatherForecastClient, OpenMeteoForecastClient>();
+        services.AddSingleton<WeatherPreviewDataService>();
+        services.AddSingleton<AppLogStore>();
+        services.AddSingleton<WindowsMemoryFallbackProvider>();
+        services.AddSingleton<HwinfoSharedMemorySource>();
 
         services.AddSingleton<PresetRepository>();
         services.AddSingleton<SettingsRepository>();
@@ -157,11 +245,25 @@ public partial class App : Application
         services.AddSingleton<ILoopbackCapture, WasapiLoopbackCaptureService>();
         services.AddSingleton<SimulatorLedOutput>();
         services.AddSingleton<NullLedOutput>();
-        services.AddSingleton(sp => new Esp32S3LedOutput(sp.GetRequiredService<DeviceServerHost>()));
+        services.AddSingleton(sp => new Esp32S3LedOutput(
+            sp.GetRequiredService<IDeviceFrameTransport>(),
+            sp.GetRequiredService<IDeviceClientSessionManager>()));
+        services.AddSingleton(sp => new PanelsDeviceSessionService(
+            sp.GetRequiredService<DeviceOperationsCoordinator>(),
+            sp.GetRequiredService<IDeviceClientSessionManager>()));
+        services.AddSingleton(sp => new PanelsPlaybackService(
+            sp.GetRequiredService<IDeviceServerClient>(),
+            sp.GetRequiredService<IDeviceFrameTransport>(),
+            sp.GetRequiredService<PanelsFrameComposer>(),
+            sp.GetRequiredService<PanelsDeviceSessionService>(),
+            sp.GetRequiredService<Hub75VisualizerSessionService>(),
+            enableMatrixTransport: true,
+            sessionManager: sp.GetRequiredService<IDeviceClientSessionManager>()));
 
         services.AddTransient<MainPageViewModel>();
         services.AddTransient<DevicesPageViewModel>();
-        services.AddTransient<AppsPageViewModel>();
+        services.AddTransient<PanelsPageViewModel>();
+        services.AddTransient<MonitoringPageViewModel>();
         services.AddTransient<ShellPageViewModel>();
         services.AddTransient<MainPage>(sp => new MainPage(
             sp.GetRequiredService<MainPageViewModel>(),
@@ -171,29 +273,39 @@ public partial class App : Application
             sp.GetRequiredService<ILoopbackCapture>(),
             sp.GetRequiredService<SimulatorLedOutput>(),
             sp.GetRequiredService<NullLedOutput>(),
-            sp.GetRequiredService<Esp32S3LedOutput>()));
+            sp.GetRequiredService<Esp32S3LedOutput>(),
+            sp.GetRequiredService<Hub75VisualizerSessionService>(),
+            sp.GetRequiredService<PanelsPlaybackService>()));
 
         services.AddTransient<DevicesPage>(sp => new DevicesPage(
             sp.GetRequiredService<DevicesPageViewModel>(),
             sp.GetRequiredService<DeviceOperationsCoordinator>(),
             sp.GetRequiredService<PrecompiledFirmwareService>(),
-            sp.GetRequiredService<ISerialPortCatalogService>(),
-            sp.GetRequiredService<IDeviceUsbOnboardingService>(),
             sp.GetRequiredService<IAppCatalogService>(),
+            sp.GetRequiredService<IAppModifierStateStore>(),
             sp.GetRequiredService<SettingsRepository>(),
             sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<SimulatorLedOutput>()));
 
-        services.AddTransient<AppsPage>(sp => new AppsPage(
-            sp.GetRequiredService<AppsPageViewModel>(),
+        services.AddTransient<MonitoringPage>(sp => new MonitoringPage(
+            sp.GetRequiredService<MonitoringPageViewModel>(),
+            sp.GetRequiredService<HwinfoSharedMemorySource>()));
+
+        services.AddTransient<PanelsPage>(sp => new PanelsPage(
+            sp.GetRequiredService<PanelsPageViewModel>(),
             sp.GetRequiredService<DeviceOperationsCoordinator>(),
             sp.GetRequiredService<IAppCatalogService>(),
             sp.GetRequiredService<IAppModifierStateStore>(),
-            sp.GetRequiredService<CityAutocompleteService>(),
-            sp.GetRequiredService<SaveAppConfigUseCase>(),
-            sp.GetRequiredService<DeployAppUseCase>(),
-            sp.GetRequiredService<AppConfigValidationUseCase>(),
-            sp.GetRequiredService<DeviceIntegrationService>()));
+            sp.GetRequiredService<PanelsStore>(),
+            sp.GetRequiredService<PanelsFrameComposer>(),
+            sp.GetRequiredService<PanelsPlaybackService>(),
+            sp.GetRequiredService<Hub75VisualizerSessionService>(),
+            sp.GetRequiredService<CityAutocompleteService>()));
+
+        services.AddTransient<SettingsPage>(sp => new SettingsPage(
+            sp.GetRequiredService<SettingsRepository>(),
+            sp.GetRequiredService<AppSettingsDomainService>(),
+            sp.GetRequiredService<RemoteDeviceServerSecretStore>()));
 
         services.AddTransient(sp => new ShellPageContentFactory(
             () =>
@@ -202,7 +314,9 @@ public partial class App : Application
                 return sp.GetRequiredService<MainPage>();
             },
             () => sp.GetRequiredService<DevicesPage>(),
-            () => sp.GetRequiredService<AppsPage>()));
+            () => sp.GetRequiredService<PanelsPage>(),
+            () => sp.GetRequiredService<MonitoringPage>(),
+            () => sp.GetRequiredService<SettingsPage>()));
 
         services.AddTransient<ShellPage>(sp => new ShellPage(
             sp.GetRequiredService<ShellPageViewModel>(),
@@ -219,15 +333,17 @@ public partial class App : Application
 
     private static async Task StartDeviceIntegrationAsync(IServiceProvider services)
     {
-        var deviceIntegration = services.GetService<DeviceIntegrationService>();
-        if (deviceIntegration is null)
+        var deviceRuntime = services.GetService<IDeviceServerClientRuntime>();
+        if (deviceRuntime is null)
         {
             return;
         }
 
         try
         {
-            await deviceIntegration.StartAsync().ConfigureAwait(false);
+            await deviceRuntime.StartAsync().ConfigureAwait(false);
+
+            _ = WarmUpOfficialFirmwareAsync(services);
 
             var deviceOps = services.GetService<DeviceOperationsCoordinator>();
             deviceOps?.RequestRefresh();
@@ -259,10 +375,10 @@ public partial class App : Application
                 var deviceOps = Services.GetService<DeviceOperationsCoordinator>();
                 deviceOps?.Dispose();
 
-                var deviceIntegration = Services.GetService<DeviceIntegrationService>();
-                if (deviceIntegration is not null)
+                var deviceRuntime = Services.GetService<IDeviceServerClientRuntime>();
+                if (deviceRuntime is not null)
                 {
-                    await deviceIntegration.DisposeAsync().ConfigureAwait(false);
+                    await deviceRuntime.DisposeAsync().ConfigureAwait(false);
                 }
             }
 
@@ -275,6 +391,7 @@ public partial class App : Application
                 disposable.Dispose();
             }
 
+            Serilog.Log.CloseAndFlush();
             Services = null;
         }
         catch (Exception ex)
@@ -311,39 +428,202 @@ public partial class App : Application
         }
     }
 
-    private void ApplySystemBackdrop(Frame rootFrame)
+    internal static BackdropPreferenceResult ApplyBackdropPreference(bool useMica)
     {
+        if (MainWindow?.Content is not Frame rootFrame)
+        {
+            return new BackdropPreferenceResult(useMica, MicaApplied: false, "Janela principal indisponivel para aplicar backdrop.");
+        }
+
+        return ApplyBackdropPreference(rootFrame, useMica);
+    }
+
+    internal static BackdropPreferenceResult ApplyBackdropPreference(Frame rootFrame, bool useMica)
+    {
+        ArgumentNullException.ThrowIfNull(rootFrame);
+
         if (MainWindow is null)
+        {
+            return new BackdropPreferenceResult(useMica, MicaApplied: false, "Janela principal indisponivel para aplicar backdrop.");
+        }
+
+        if (!useMica)
+        {
+            MainWindow.SystemBackdrop = null;
+            ApplyFallbackBackground(rootFrame);
+            return new BackdropPreferenceResult(useMica, MicaApplied: false, "Mica desativado. Usando superficie solida.");
+        }
+
+        try
+        {
+            MainWindow.SystemBackdrop = new MicaBackdrop();
+            rootFrame.Background = null;
+            return new BackdropPreferenceResult(useMica, MicaApplied: true, "Mica ativo.");
+        }
+        catch (Exception ex)
+        {
+            MainWindow.SystemBackdrop = null;
+            ApplyFallbackBackground(rootFrame);
+            LogBackdropPreferenceIssue("Mica backdrop unavailable. Using solid fallback.", ex);
+            return new BackdropPreferenceResult(useMica, MicaApplied: false, "Mica indisponivel neste ambiente. Usando superficie solida.");
+        }
+    }
+
+    private static async Task WarmUpOfficialFirmwareAsync(IServiceProvider services)
+    {
+        var firmwareService = services.GetService<PrecompiledFirmwareService>();
+        if (firmwareService is null)
         {
             return;
         }
 
         try
         {
-            MainWindow.SystemBackdrop = new MicaBackdrop();
+            var requestRefresh = false;
+            foreach (var option in firmwareService.GetOptions())
+            {
+                var result = await firmwareService.EnsureOfficialFirmwareFreshAsync(option.Id).ConfigureAwait(false);
+                requestRefresh |= result.WasRegenerated;
+            }
+
+            if (requestRefresh)
+            {
+                services.GetService<DeviceOperationsCoordinator>()?.RequestRefresh();
+            }
         }
         catch (Exception ex)
         {
-            WriteCrashLog("Mica backdrop unavailable. Using solid fallback.", ex);
-            MainWindow.SystemBackdrop = null;
-            if (TryResolveFallbackBrush(out var brush))
-            {
-                rootFrame.Background = brush;
-            }
+            services.GetService<AppLogStore>()?.Append(LogCategory.System, LogSeverity.Warning, $"Official firmware warm-up failed: {ex.Message}");
         }
     }
 
-    private bool TryResolveFallbackBrush(out Brush? brush)
+    private static AppSettings LoadStartupSettings(IServiceProvider services)
+    {
+        try
+        {
+            var repository = services.GetRequiredService<SettingsRepository>();
+            var settingsDomainService = services.GetRequiredService<AppSettingsDomainService>();
+            var settings = repository.LoadAsync().GetAwaiter().GetResult();
+            return settingsDomainService.Migrate(settings);
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog("Load startup settings failed. Using defaults.", ex);
+            return new AppSettings();
+        }
+    }
+
+    private static StartupDeviceServerSettings LoadStartupDeviceServerSettings(MicaAudioOptions options)
+    {
+        try
+        {
+            if (!File.Exists(options.SettingsFilePath))
+            {
+                return StartupDeviceServerSettings.Default;
+            }
+
+            using var stream = File.OpenRead(options.SettingsFilePath);
+            var settings = JsonSerializer.Deserialize<AppSettings>(stream, StartupJsonOptions) ?? new AppSettings();
+            var migrated = new AppSettingsDomainService().Migrate(settings);
+            return new StartupDeviceServerSettings(migrated.DeviceServerMode, migrated.RemoteServerBaseAddress);
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog("Load startup device server mode failed. Using embedded mode.", ex);
+            return StartupDeviceServerSettings.Default;
+        }
+    }
+
+    private static RemoteDeviceServerClientOptions CreateRemoteDeviceServerClientOptions(
+        MicaAudioOptions options,
+        StartupDeviceServerSettings startupSettings)
+    {
+        var secretPath = RemoteDeviceServerSecretStore.ResolvePath(options);
+        return new RemoteDeviceServerClientOptions
+        {
+            BaseAddress = startupSettings.RemoteServerBaseAddress,
+            AdminToken = RemoteDeviceServerSecretStore.LoadAdminToken(secretPath),
+        };
+    }
+
+    private readonly record struct StartupDeviceServerSettings(DeviceServerMode Mode, string RemoteServerBaseAddress)
+    {
+        public static StartupDeviceServerSettings Default { get; } = new(DeviceServerMode.Embedded, "http://127.0.0.1:5272");
+    }
+
+    private static string ResolveWorkspaceRoot()
+    {
+        var candidates = new[]
+        {
+            AppContext.BaseDirectory,
+            Environment.CurrentDirectory,
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var resolved = TryResolveWorkspaceRootFrom(candidate);
+            if (!string.IsNullOrWhiteSpace(resolved))
+            {
+                return resolved;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string? TryResolveWorkspaceRootFrom(string? startPath)
+    {
+        if (string.IsNullOrWhiteSpace(startPath))
+        {
+            return null;
+        }
+
+        var current = new DirectoryInfo(Path.GetFullPath(startPath));
+        if (!current.Exists && current.Parent is not null)
+        {
+            current = current.Parent;
+        }
+
+        while (current is not null)
+        {
+            var solutionPath = Path.Combine(current.FullName, "MicaAudio.sln");
+            var scriptPath = Path.Combine(current.FullName, "scripts", "build-precompiled-firmware.ps1");
+            var firmwareRoot = Path.Combine(current.FullName, "firmware", "esp32s3-devkitc1");
+            if (File.Exists(solutionPath)
+                && File.Exists(scriptPath)
+                && Directory.Exists(firmwareRoot))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
+    }
+
+    private static void ApplyFallbackBackground(Frame rootFrame)
+    {
+        if (TryResolveFallbackBrush(out var brush))
+        {
+            rootFrame.Background = brush;
+            return;
+        }
+
+        rootFrame.Background = null;
+    }
+
+    private static bool TryResolveFallbackBrush(out Brush? brush)
     {
         brush = null;
 
-        if (Resources.TryGetValue("AppSurfaceBaseBrush", out var primary) && primary is Brush primaryBrush)
+        if (Current?.Resources.TryGetValue("AppSurfaceBaseBrush", out var primary) == true && primary is Brush primaryBrush)
         {
             brush = primaryBrush;
             return true;
         }
 
-        if (Resources.TryGetValue("AppFallbackSurfaceBaseBrush", out var fallback) && fallback is Brush fallbackBrush)
+        if (Current?.Resources.TryGetValue("AppFallbackSurfaceBaseBrush", out var fallback) == true && fallback is Brush fallbackBrush)
         {
             brush = fallbackBrush;
             return true;
@@ -354,12 +634,31 @@ public partial class App : Application
 
     private static void WriteCrashLog(string header, Exception ex)
     {
+        var activity = AppObservability.StartActivity("ui.error", AppObservability.AppComponent);
+        AppObservability.RecordUiError(header);
+        if (activity is not null)
+        {
+            activity.SetTag("error.header", header);
+            AppObservability.SetException(activity, ex);
+        }
+
         var logger = Services?.GetService<ILogger<App>>();
+        using var scope = AppObservability.BeginScope(
+            logger,
+            activity,
+            (AppObservability.ComponentKey, AppObservability.AppComponent),
+            (AppObservability.MicaComponentKey, AppObservability.AppComponent),
+            (AppObservability.OperationKey, "ui.error"),
+            ("error.header", header));
         AppStartupDiagnostics.WriteCrashLog(
             GetCrashLogPath(),
             header,
             ex,
             logger is null ? null : (capturedHeader, capturedException) => LogUnhandledAppFailure(logger, capturedException, capturedHeader));
+
+        var centralLog = Services?.GetService<AppLogStore>();
+        centralLog?.Append(LogCategory.System, LogSeverity.Error, $"{header}: {ex.Message}");
+        activity?.Dispose();
     }
 
     private static string GetCrashLogPath()
@@ -382,15 +681,38 @@ public partial class App : Application
             GetCrashLogPath());
 
     internal static void RecordStartupBreadcrumb(string stage)
-        => AppStartupDiagnostics.RecordBreadcrumb(stage);
+    {
+        AppStartupDiagnostics.RecordBreadcrumb(stage);
+        var centralLog = Services?.GetService<AppLogStore>();
+        centralLog?.Append(LogCategory.System, LogSeverity.Info, $"Startup: {stage}");
+    }
 
     internal static void ReportStartupFailure(string header, Exception ex)
         => WriteCrashLog(header, ex);
 
+    internal static void ReportError(string header, Exception ex)
+        => WriteCrashLog(header, ex);
+
     internal static string CurrentCrashLogPath => GetCrashLogPath();
+
+    private static void LogBackdropPreferenceIssue(string message, Exception ex)
+    {
+        var logger = Services?.GetService<ILogger<App>>();
+        if (logger is not null)
+        {
+            LogBackdropPreferenceWarning(logger, ex, message);
+        }
+
+        Services?.GetService<AppLogStore>()?.Append(LogCategory.System, LogSeverity.Warning, $"{message}: {ex.Message}");
+    }
 
     [LoggerMessage(EventId = 1001, Level = LogLevel.Critical, Message = "Unhandled app failure: {Header}")]
     private static partial void LogUnhandledAppFailure(ILogger logger, Exception exception, string header);
+
+    [LoggerMessage(EventId = 1002, Level = LogLevel.Warning, Message = "{Message}")]
+    private static partial void LogBackdropPreferenceWarning(ILogger logger, Exception exception, string message);
+
+    internal readonly record struct BackdropPreferenceResult(bool UseMicaRequested, bool MicaApplied, string StatusMessage);
 }
 
 

@@ -32,12 +32,14 @@ internal sealed class DeviceCommandDispatcher
         string deviceId,
         DeviceCommandType commandType,
         IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan? timeoutOverride,
         CancellationToken cancellationToken)
     {
         try
         {
             return await runtime
-                .SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken)
+                .SendCommandTrackedAsync(deviceId, commandType, parameters, sessionContext, timeoutOverride.GetValueOrDefault(timeout), cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)

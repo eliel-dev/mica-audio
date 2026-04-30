@@ -1,12 +1,14 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using App.WinUI.Infrastructure.Cache;
 using App.WinUI.Models.Apps;
-using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Options;
 
 namespace App.WinUI.Services.Apps;
 
-// DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md
 internal sealed class AppCatalogService : IAppCatalogService
 {
     private const int CurrentSchemaVersion = 2;
@@ -19,10 +21,12 @@ internal sealed class AppCatalogService : IAppCatalogService
     };
 
     private readonly MicaAudioOptions options;
+    private readonly HybridCache cache;
 
-    public AppCatalogService(IOptions<MicaAudioOptions> options)
+    public AppCatalogService(IOptions<MicaAudioOptions> options, HybridCache cache)
     {
         this.options = options.Value;
+        this.cache = cache;
     }
 
     public string CatalogPath
@@ -32,6 +36,19 @@ internal sealed class AppCatalogService : IAppCatalogService
 
     // DOCS: docs/wiki/guides/add-app-catalog-item.md#passos
     public async Task<IReadOnlyList<AppCatalogItem>> LoadCatalogAsync(CancellationToken cancellationToken = default)
+        => await cache.GetOrCreateAsync(
+            AppCacheKeys.AppCatalog,
+            async cancel => await LoadCatalogCoreAsync(cancel).ConfigureAwait(false),
+            AppCacheKeys.AppCatalogOptions,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<AppCatalogItem>> ReloadCatalogAsync(CancellationToken cancellationToken = default)
+    {
+        await cache.RemoveAsync(AppCacheKeys.AppCatalog, cancellationToken).ConfigureAwait(false);
+        return await LoadCatalogAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyList<AppCatalogItem>> LoadCatalogCoreAsync(CancellationToken cancellationToken)
     {
         var seed = await LoadSeedDocumentAsync(cancellationToken).ConfigureAwait(false);
         await EnsureCatalogSeededAsync(seed, cancellationToken).ConfigureAwait(false);
@@ -155,6 +172,7 @@ internal sealed class AppCatalogService : IAppCatalogService
         Directory.CreateDirectory(Path.GetDirectoryName(CatalogPath)!);
         await using var target = File.Create(CatalogPath);
         await JsonSerializer.SerializeAsync(target, document, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await cache.RemoveAsync(AppCacheKeys.AppCatalog, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<AppCatalogDocument?> TryLoadDocumentAsync(string path, CancellationToken cancellationToken)
@@ -201,13 +219,19 @@ internal sealed class AppCatalogService : IAppCatalogService
             throw new InvalidDataException("Catalogo seed nao possui apps validos.");
         }
 
+        var validApps = seed.Apps
+            .Where(static app => app is not null && app.IsValid())
+            .ToArray();
+
+        if (validApps.Length == 0)
+        {
+            throw new InvalidDataException("Catalogo seed nao possui apps validos apos filtragem.");
+        }
+
         return new AppCatalogDocument
         {
             SchemaVersion = CurrentSchemaVersion,
-            Apps = seed.Apps
-                .Where(static app => app is not null && app.IsValid())
-                .Select(static app => app)
-                .ToArray(),
+            Apps = validApps,
         };
     }
 

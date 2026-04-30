@@ -1,8 +1,15 @@
 # Mica Audio
 
-Visualizador de audio para Windows (WinUI 3 + Win2D) com captura WASAPI loopback em tempo real, foco em visual "bonito na tela" e caminho pronto para output LED futuro sem refatoracao grande.
+Visualizador de audio para Windows (WinUI 3 + Win2D) com captura WASAPI loopback em tempo real, foco em visual "bonito na tela" e arquitetura em transicao para `server + firmware + clients`.
 
-Escopo atual: Windows-only, pipeline modular (`PCM -> FFT/bandas -> render -> output opcional`), preset padrao `AudioMotion Clone`, e preview HUB75 via simulador interno.
+Escopo atual: Windows-first, pipeline modular (`PCM -> FFT/bandas -> render -> output opcional`), preset padrao `AudioMotion Clone`, preview HUB75 via simulador interno e control plane separado via `MicaAudio.Server`.
+
+## Direcao oficial
+
+- `server` = control plane + storage + catalogo + estado duravel.
+- `cliente Windows` = primeiro edge client oficial e dono do data plane LAN.
+- `ESP32` = runtime de execucao/render com ownership explicito por device.
+- `visualizador` e `Paineis` passam a ser oficialmente client-driven; o servidor deixa de ser o hot path visual alvo.
 
 ## Status atual
 

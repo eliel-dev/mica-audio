@@ -13,7 +13,9 @@ internal sealed class AppRuntimeHost
 
     public required GifCatalogAppRuntimeService GifRuntimeService { get; init; }
 
-    public required Func<Task<Windows.Storage.StorageFile?>> PickGifFileAsync { get; init; }
+    public required Func<Task<Windows.Storage.StorageFile?>> PickImageFileAsync { get; init; }
+
+    public required Func<Task<Windows.Storage.StorageFolder?>> PickImageFolderAsync { get; init; }
 
     public required Func<GifScaleMode?> ResolveScaleMode { get; init; }
 

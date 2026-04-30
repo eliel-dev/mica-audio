@@ -18,7 +18,9 @@ public sealed class DeviceTelemetryMessageTests
               "deviceId": "mp-01",
               "rssi": -56,
               "uptimeSeconds": 7200,
+              "loopHealthyPercent": 92,
               "loopLoadPercent": 47,
+              "chipTemperatureCelsius": 48.5,
               "freeHeapBytes": 195584,
               "largestHeapBlockBytes": 120320,
               "psramAvailable": true,
@@ -30,12 +32,29 @@ public sealed class DeviceTelemetryMessageTests
               "auxLedAvailable": true,
               "testLedAvailable": true,
               "lastWifiEvent": "ws_connected",
+              "hub75PresentFrames": 480,
+              "resetReason": "RTC_SW_SYS_RESET",
+              "controlQueueDepth": 2,
+              "controlWorkerState": "awaiting_ota_result",
+              "panelsWorkerState": "idle",
+              "lastSlowCommand": "queue_panels_batch",
+              "lastSlowCommandDurationMs": 812,
               "telemetrySequence": 42,
               "brightnessCap": 120,
               "brightnessRequested": 180,
               "brightnessApplied": 120,
               "testLedEnabled": true,
               "testLedDuty": 120,
+              "animatedWebpBatchSupported": true,
+              "sessionMode": "visualizer",
+              "sessionActiveClientId": "win-eliel",
+              "sessionActiveOwnerEpoch": 4,
+              "sessionOwnerLeaseRemainingMs": 4200,
+              "sessionLockHeld": true,
+              "sessionLockClientId": "win-eliel",
+              "sessionLockReason": "settings",
+              "sessionLockLeaseRemainingMs": 11000,
+              "sessionFallbackState": "none",
               "firmwareVersion": "v1.2.3",
               "ipAddress": "192.168.1.23"
             }
@@ -47,7 +66,9 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Equal("mp-01", telemetry!.DeviceId);
         Assert.Equal(-56, telemetry.Rssi);
         Assert.Equal(7200, telemetry.UptimeSeconds);
+        Assert.Equal(92, telemetry.LoopHealthyPercent);
         Assert.Equal(47, telemetry.LoopLoadPercent);
+        Assert.Equal(48.5d, telemetry.ChipTemperatureCelsius);
         Assert.Equal(195584L, telemetry.FreeHeapBytes);
         Assert.Equal(120320L, telemetry.LargestHeapBlockBytes);
         Assert.True(telemetry.PsramAvailable);
@@ -59,12 +80,29 @@ public sealed class DeviceTelemetryMessageTests
         Assert.True(telemetry.AuxLedAvailable);
         Assert.True(telemetry.TestLedAvailable);
         Assert.Equal("ws_connected", telemetry.LastWifiEvent);
+        Assert.Equal(480u, telemetry.Hub75PresentFrames);
+        Assert.Equal("RTC_SW_SYS_RESET", telemetry.ResetReason);
+        Assert.Equal(2u, telemetry.ControlQueueDepth);
+        Assert.Equal("awaiting_ota_result", telemetry.ControlWorkerState);
+        Assert.Equal("idle", telemetry.PanelsWorkerState);
+        Assert.Equal("queue_panels_batch", telemetry.LastSlowCommand);
+        Assert.Equal(812L, telemetry.LastSlowCommandDurationMs);
         Assert.Equal(42u, telemetry.TelemetrySequence);
         Assert.Equal(120, telemetry.BrightnessCap);
         Assert.Equal(180, telemetry.BrightnessRequested);
         Assert.Equal(120, telemetry.BrightnessApplied);
         Assert.True(telemetry.TestLedEnabled);
         Assert.Equal(120, telemetry.TestLedDuty);
+        Assert.True(telemetry.AnimatedWebpBatchSupported);
+        Assert.Equal("visualizer", telemetry.SessionMode);
+        Assert.Equal("win-eliel", telemetry.SessionActiveClientId);
+        Assert.Equal(4u, telemetry.SessionActiveOwnerEpoch);
+        Assert.Equal(4200, telemetry.SessionOwnerLeaseRemainingMs);
+        Assert.True(telemetry.SessionLockHeld);
+        Assert.Equal("win-eliel", telemetry.SessionLockClientId);
+        Assert.Equal("settings", telemetry.SessionLockReason);
+        Assert.Equal(11000, telemetry.SessionLockLeaseRemainingMs);
+        Assert.Equal("none", telemetry.SessionFallbackState);
         Assert.Equal("v1.2.3", telemetry.FirmwareVersion);
         Assert.Equal("192.168.1.23", telemetry.IpAddress);
     }
@@ -87,7 +125,9 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Equal("mp-legacy", telemetry!.DeviceId);
         Assert.Equal(-62, telemetry.Rssi);
         Assert.Null(telemetry.UptimeSeconds);
+        Assert.Null(telemetry.LoopHealthyPercent);
         Assert.Null(telemetry.LoopLoadPercent);
+        Assert.Null(telemetry.ChipTemperatureCelsius);
         Assert.Null(telemetry.FreeHeapBytes);
         Assert.Null(telemetry.LargestHeapBlockBytes);
         Assert.Null(telemetry.PsramAvailable);
@@ -99,12 +139,29 @@ public sealed class DeviceTelemetryMessageTests
         Assert.Null(telemetry.AuxLedAvailable);
         Assert.Null(telemetry.TestLedAvailable);
         Assert.Null(telemetry.LastWifiEvent);
+        Assert.Null(telemetry.ResetReason);
+        Assert.Null(telemetry.ControlQueueDepth);
+        Assert.Null(telemetry.ControlWorkerState);
+        Assert.Null(telemetry.PanelsWorkerState);
+        Assert.Null(telemetry.LastSlowCommand);
+        Assert.Null(telemetry.LastSlowCommandDurationMs);
+        Assert.Null(telemetry.Hub75PresentFrames);
         Assert.Null(telemetry.TelemetrySequence);
         Assert.Null(telemetry.BrightnessCap);
         Assert.Null(telemetry.BrightnessRequested);
         Assert.Null(telemetry.BrightnessApplied);
         Assert.Null(telemetry.TestLedEnabled);
         Assert.Null(telemetry.TestLedDuty);
+        Assert.Null(telemetry.AnimatedWebpBatchSupported);
+        Assert.Null(telemetry.SessionMode);
+        Assert.Null(telemetry.SessionActiveClientId);
+        Assert.Null(telemetry.SessionActiveOwnerEpoch);
+        Assert.Null(telemetry.SessionOwnerLeaseRemainingMs);
+        Assert.Null(telemetry.SessionLockHeld);
+        Assert.Null(telemetry.SessionLockClientId);
+        Assert.Null(telemetry.SessionLockReason);
+        Assert.Null(telemetry.SessionLockLeaseRemainingMs);
+        Assert.Null(telemetry.SessionFallbackState);
     }
 
     [Fact]

@@ -1,5 +1,7 @@
 using Device.Protocol.Models;
 
+// DOCS: docs/handoffs/2026-04-14-versioning-semver-e-ota-stages.md
+
 namespace App.WinUI.Services.Devices;
 
 internal static class DeviceOperationsText
@@ -14,7 +16,14 @@ internal static class DeviceOperationsText
     {
         if (result.Success)
         {
-            return "Comandos: concluido";
+            return string.Equals(result.Stage, "validated", StringComparison.OrdinalIgnoreCase)
+                ? "Comandos: firmware validado"
+                : "Comandos: concluido";
+        }
+
+        if (string.Equals(result.Stage, "rolled-back", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Comandos: rollback do firmware";
         }
 
         return result.ErrorCode switch
@@ -51,6 +60,8 @@ internal static class DeviceOperationsText
             DeviceCommandType.ActivateApp => "ativar app",
             DeviceCommandType.SetAppConfig => "configurar app",
             DeviceCommandType.SetBrightness => "ajustar brilho do painel",
+            DeviceCommandType.UpdateFirmware => "atualizar firmware",
+            DeviceCommandType.QueuePanelsBatch => "enfileirar lote WebP de paineis",
             _ => "comando",
         };
 
@@ -61,6 +72,19 @@ internal static class DeviceOperationsText
             return "processando";
         }
 
-        return stage;
+        return stage.Trim().ToLowerInvariant() switch
+        {
+            "queued" => "na fila",
+            "sent" => "enviado",
+            "received" => "recebido",
+            "metadata" => "validando pacote",
+            "downloading" => "baixando firmware",
+            "flashing" => "gravando firmware",
+            "rebooting" => "reiniciando",
+            "pending-verify" => "validando primeiro boot",
+            "validated" => "firmware validado",
+            "rolled-back" => "rollback automatico",
+            _ => stage,
+        };
     }
 }

@@ -1,5 +1,8 @@
 namespace Device.Protocol.Models;
 
+// DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#persistencia-local
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed class DeviceRecord
 {
     public string DeviceId { get; init; } = string.Empty;
@@ -9,6 +12,8 @@ public sealed class DeviceRecord
     public string Profile { get; init; } = "dma_exp";
 
     public string Token { get; init; } = string.Empty;
+
+    public string? DeviceMac { get; init; }
 
     public bool IsRegistered { get; init; } = true;
 
@@ -32,7 +37,11 @@ public sealed class DeviceRecord
 
     public int? UptimeSeconds { get; init; }
 
+    public int? LoopHealthyPercent { get; init; }
+
     public int? LoopLoadPercent { get; init; }
+
+    public double? ChipTemperatureCelsius { get; init; }
 
     public long? FreeHeapBytes { get; init; }
 
@@ -62,9 +71,23 @@ public sealed class DeviceRecord
 
     public uint? StreamFramesApplied { get; init; }
 
+    public uint? Hub75PresentFrames { get; init; }
+
     public uint? StreamSequenceGapCount { get; init; }
 
     public uint? StreamInvalidFrameCount { get; init; }
+
+    public string? ResetReason { get; init; }
+
+    public uint? ControlQueueDepth { get; init; }
+
+    public string? ControlWorkerState { get; init; }
+
+    public string? PanelsWorkerState { get; init; }
+
+    public string? LastSlowCommand { get; init; }
+
+    public long? LastSlowCommandDurationMs { get; init; }
 
     public uint? TelemetrySequence { get; init; }
 
@@ -85,4 +108,32 @@ public sealed class DeviceRecord
     public string? BoardModel { get; init; }
 
     public string? PanelType { get; init; }
+
+    public bool? AnimatedWebpBatchSupported { get; init; }
+
+    public bool? VisualUdpSupported { get; init; }
+
+    public int? VisualUdpPort { get; init; }
+
+    public string? VisualUdpMode { get; init; }
+
+    public string? ChipModel { get; init; }
+
+    public int? ChipRevision { get; init; }
+
+    public int? ChipCores { get; init; }
+
+    public int? CpuFreqMHz { get; init; }
+
+    public string? SdkVersion { get; init; }
+
+    public long? HeapTotalBytes { get; init; }
+
+    public long? PsramTotalBytes { get; init; }
+
+    public long? FlashTotalBytes { get; init; }
+
+    public long? SketchSizeBytes { get; init; }
+
+    public long? FreeSketchBytes { get; init; }
 }

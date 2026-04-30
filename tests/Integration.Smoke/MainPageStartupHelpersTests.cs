@@ -1,4 +1,5 @@
 using App.WinUI.Views;
+using App.WinUI.Services.Gif;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 using Visual.Win2D.Engine;
@@ -119,5 +120,32 @@ public sealed class MainPageStartupHelpersTests
 
         Assert.False(state.ShouldApply());
         Assert.True(VisualizerRuntimeApplyState.AreEquivalent(state.Pending, state.Applied));
+    }
+
+    [Theory]
+    [InlineData(0, 0, false)]
+    [InlineData(0, 3, true)]
+    [InlineData(1, 0, true)]
+    public void ShouldShowContentModeSetting_ShouldReflectGifContext(
+        int modeValue,
+        int loadedGifFrameCount,
+        bool expected)
+    {
+        var mode = (GifContentSourceMode)modeValue;
+        var result = MainPage.ShouldShowContentModeSetting(mode, loadedGifFrameCount);
+
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData(true, "O preset AudioMotion Clone usa o renderizador nativo e mantém esta opção fixa.")]
+    [InlineData(false, "Escolhe como o visualizador é desenhado no canvas principal.")]
+    public void ResolveRendererSelectionHint_ShouldExposeSettingsSpecificMessage(
+        bool usesFixedRenderer,
+        string expected)
+    {
+        var hint = MainPage.ResolveRendererSelectionHint(usesFixedRenderer);
+
+        Assert.Equal(expected, hint);
     }
 }

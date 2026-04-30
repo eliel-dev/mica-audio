@@ -1,15 +1,11 @@
-using App.WinUI.Infrastructure.Serial;
 using App.WinUI.Models.Apps;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
 using App.WinUI.Services.Devices;
-using App.WinUI.Services.Devices.Onboarding;
 using App.WinUI.Services.Firmware;
 using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Output.Led;
@@ -18,9 +14,12 @@ using Windows.ApplicationModel.DataTransfer;
 namespace App.WinUI.Views;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
-// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03---fase-9-wave-2-e-wave-3-monolitos-do-app-decompostos
+// DOCS: docs/wiki/modules/app-winui.md
+// DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class DevicesPage : Page
 {
+    private const string LocalDraftScope = "__local__";
     private readonly List<DeviceListItem> allItems = new();
     private readonly List<DeviceListItem> visibleItems = new();
     private readonly Dictionary<string, DeviceListVisualItem> renderedItemsByDeviceId = new(StringComparer.OrdinalIgnoreCase);
@@ -29,9 +28,8 @@ public sealed partial class DevicesPage : Page
     private readonly DevicesPageViewModel viewModel;
     private readonly DeviceOperationsCoordinator deviceOps;
     private readonly PrecompiledFirmwareService firmwareService;
-    private readonly ISerialPortCatalogService serialPortCatalogService;
-    private readonly IDeviceUsbOnboardingService onboardingService;
     private readonly IAppCatalogService appCatalogService;
+    private readonly IAppModifierStateStore modifierStore;
     private readonly SettingsRepository settingsRepository;
     private readonly AppSettingsDomainService settingsDomainService;
     private readonly SimulatorLedOutput simulatorLedOutput;
@@ -59,16 +57,20 @@ public sealed partial class DevicesPage : Page
     private bool suppressBrightnessSliderEvents;
     private bool suppressDeviceSelectionChanged;
     private bool brightnessCommitPending;
-    private bool wizardBindingsInitialized;
-    private bool wizardOperationInFlight;
+    private string? lastAppliedPreviewConfigSignature;
+    private int previewConfigRefreshVersion;
+    private bool dashboardWebViewInitialized;
+    private bool dashboardWebViewReady;
+    private bool dashboardWebViewEventsHooked;
+    private Uri? dashboardWebViewUri;
+    private string? lastDashboardPostedDeviceId;
 
     internal DevicesPage(
         DevicesPageViewModel viewModel,
         DeviceOperationsCoordinator deviceOps,
         PrecompiledFirmwareService firmwareService,
-        ISerialPortCatalogService serialPortCatalogService,
-        IDeviceUsbOnboardingService onboardingService,
         IAppCatalogService appCatalogService,
+        IAppModifierStateStore modifierStore,
         SettingsRepository settingsRepository,
         AppSettingsDomainService settingsDomainService,
         SimulatorLedOutput simulatorLedOutput)
@@ -76,9 +78,8 @@ public sealed partial class DevicesPage : Page
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
         this.firmwareService = firmwareService;
-        this.serialPortCatalogService = serialPortCatalogService;
-        this.onboardingService = onboardingService;
         this.appCatalogService = appCatalogService;
+        this.modifierStore = modifierStore;
         this.settingsRepository = settingsRepository;
         this.settingsDomainService = settingsDomainService;
         this.simulatorLedOutput = simulatorLedOutput;
@@ -96,18 +97,13 @@ public sealed partial class DevicesPage : Page
 
     private PrecompiledFirmwareService? FirmwareService => firmwareService;
 
-    private ISerialPortCatalogService? SerialPortCatalogService => serialPortCatalogService;
-
-    private IDeviceUsbOnboardingService? OnboardingService => onboardingService;
-
     private IAppCatalogService? AppCatalogService => appCatalogService;
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (DeviceOps is null)
         {
-            ApplyDashboard(selectionDeviceId: null, hasSelection: false, snapshot: null, DeviceMetricsFormatter.Build(null));
-            UpdateDeviceLogs(deviceId: null, entries: Array.Empty<string>(), placeholder: "Servico de dispositivos indisponivel.");
+            SetDetailsPaneVisible(false);
             return;
         }
 
@@ -122,6 +118,7 @@ public sealed partial class DevicesPage : Page
         var initialState = DeviceOps.GetStateSnapshot();
         ApplyDevices(initialState.DeviceListSnapshot);
         ApplyState(initialState);
+        await RefreshVisiblePreviewConfigsAsync(force: true).ConfigureAwait(true);
 
         StartPreviewPump();
     }
@@ -147,7 +144,12 @@ public sealed partial class DevicesPage : Page
         suppressBrightnessSliderEvents = false;
         suppressDeviceSelectionChanged = false;
         brightnessCommitPending = false;
-        HideNewDeviceWizard();
+        dashboardWebViewReady = false;
+        lastDashboardPostedDeviceId = null;
+        dashboardWebViewUri = null;
+        lastAppliedPreviewConfigSignature = null;
+        previewConfigRefreshVersion++;
+        DetachDashboardWebViewBridge();
         ClearRenderedItems();
     }
 
@@ -229,22 +231,137 @@ public sealed partial class DevicesPage : Page
         viewModel.GeneratePairingCommand.Execute(null);
     }
 
-    private void GeneratePairingCodeCore()
+    private async void GeneratePairingCodeCore()
     {
         if (DeviceOps is null)
         {
             return;
         }
 
-        var code = DeviceOps.CreatePairingCode(TimeSpan.FromMinutes(10));
-        PairingCodeText.Severity = InfoBarSeverity.Informational;
-        PairingCodeText.Message = $"Pareamento: {code.Code} (expira {code.ExpiresAtUtc:HH:mm:ss} UTC)";
-        AddLocalLog($"Codigo de pareamento gerado: {code.Code}.");
+        try
+        {
+            var code = await DeviceOps.CreatePairingCodeAsync(TimeSpan.FromMinutes(10)).ConfigureAwait(true);
+            ShowPairingCodeNotice(code.Code, code.ExpiresAtUtc);
+            AddLocalLog($"Codigo de pareamento gerado: {code.Code}.");
+        }
+        catch (Exception ex)
+        {
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Falha ao gerar codigo de pareamento.");
+            AddLocalLog($"Falha ao gerar codigo de pareamento: {ex.Message}");
+        }
     }
 
     private async void OnTestLedClicked(object sender, RoutedEventArgs e)
     {
+        await ExecuteTestLedAsync().ConfigureAwait(false);
+    }
+
+    private void OnBrightnessSliderValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (suppressBrightnessSliderEvents)
+        {
+            return;
+        }
+
+        var normalized = Math.Clamp((int)Math.Round(e.NewValue), SafeBrightnessMin, SafeBrightnessMax);
+        var percentage = Math.Round((double)normalized / SafeBrightnessMax * 100.0);
+        DashboardBrightnessValueText.Text = $"{percentage:F0}%";
+        brightnessCommitPending = true;
+    }
+
+    private async void OnBrightnessSliderPointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
+    }
+
+    private async void OnBrightnessSliderLostFocus(object sender, RoutedEventArgs e)
+    {
+        await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
+    }
+
+    private async void OnReprovisionWifiClicked(object sender, RoutedEventArgs e)
+    {
+        await ExecuteReprovisionWifiAsync().ConfigureAwait(false);
+    }
+
+    private void OnCopyHostClicked(object sender, RoutedEventArgs e)
+    {
+        var data = new DataPackage();
+        data.SetText(currentState.ServerBaseAddress);
+        Clipboard.SetContent(data);
+    }
+
+    private void OnCopyDashboardLinkClicked(object sender, RoutedEventArgs e)
+    {
+        var selectedDeviceId = GetSelectedDeviceId();
+        if (string.IsNullOrWhiteSpace(selectedDeviceId))
+        {
+            ShowInlineStatusMessage(InfoBarSeverity.Warning, "Selecione um dispositivo para copiar o link do dashboard.");
+            AddLocalLog("Nao foi possivel copiar o link do dashboard: nenhum dispositivo selecionado.");
+            return;
+        }
+
+        var dashboardUri = BuildDashboardShareUri(currentState.ServerBaseAddress, selectedDeviceId);
+        if (dashboardUri is null)
+        {
+            ShowInlineStatusMessage(InfoBarSeverity.Warning, "Servidor local ainda nao esta acessivel na rede.");
+            AddLocalLog("Nao foi possivel copiar o link do dashboard: URL local nao compartilhavel.");
+            return;
+        }
+
+        var data = new DataPackage();
+        data.SetText(dashboardUri.ToString());
+        Clipboard.SetContent(data);
+
+        ShowInlineStatusMessage(InfoBarSeverity.Success, $"Link do dashboard copiado: {dashboardUri}");
+        AddLocalLog($"Link do dashboard copiado: {dashboardUri}");
+    }
+
+    private async Task RunSelectedCommandAsync(DeviceCommandType commandType)
+    {
         var selected = GetSelectedDeviceItem();
+        if (selected is null || DeviceOps is null)
+        {
+            return;
+        }
+
+        await DeviceOps.RunCommandAsync(selected.DeviceId, commandType).ConfigureAwait(false);
+    }
+
+    private async Task CommitBrightnessIfPendingAsync()
+    {
+        if (!brightnessCommitPending || suppressBrightnessSliderEvents || DashboardBrightnessSlider is null)
+        {
+            return;
+        }
+
+        brightnessCommitPending = false;
+        await ExecuteSetBrightnessAsync(Math.Clamp((int)Math.Round(DashboardBrightnessSlider.Value), SafeBrightnessMin, SafeBrightnessMax))
+            .ConfigureAwait(false);
+    }
+
+    private DeviceListItem? ResolveCommandDevice(string? requestedDeviceId = null)
+    {
+        var selected = GetSelectedDeviceItem();
+        if (selected is not null
+            && (string.IsNullOrWhiteSpace(requestedDeviceId)
+                || string.Equals(selected.DeviceId, requestedDeviceId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return selected;
+        }
+
+        if (string.IsNullOrWhiteSpace(requestedDeviceId))
+        {
+            return null;
+        }
+
+        return allItems.FirstOrDefault(item =>
+            string.Equals(item.DeviceId, requestedDeviceId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task ExecuteTestLedAsync(string? requestedDeviceId = null)
+    {
+        var selected = ResolveCommandDevice(requestedDeviceId);
         var ops = DeviceOps;
         if (selected is null || ops is null)
         {
@@ -261,31 +378,28 @@ public sealed partial class DevicesPage : Page
         AddLocalLog($"Falha ao acionar teste de LED em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
     }
 
-    private void OnBrightnessSliderValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    private async Task ExecuteSetBrightnessAsync(int brightness, string? requestedDeviceId = null)
     {
-        if (suppressBrightnessSliderEvents)
+        var selected = ResolveCommandDevice(requestedDeviceId);
+        var ops = DeviceOps;
+        if (selected is null || ops is null || selected.Status != DeviceStatus.Online)
         {
             return;
         }
 
-        var normalized = Math.Clamp((int)Math.Round(e.NewValue), SafeBrightnessMin, SafeBrightnessMax);
-        DashboardBrightnessValueText.Text = $"{normalized}/160";
-        brightnessCommitPending = true;
+        var result = await ops.SetBrightnessAsync(selected.DeviceId, Math.Clamp(brightness, SafeBrightnessMin, SafeBrightnessMax)).ConfigureAwait(false);
+        if (result.Accepted && result.Completed && result.Success)
+        {
+            return;
+        }
+
+        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
+        AddLocalLog($"Falha ao ajustar brilho em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
     }
 
-    private async void OnBrightnessSliderPointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    private async Task ExecuteRemoveDeviceAsync(string? requestedDeviceId = null)
     {
-        await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
-    }
-
-    private async void OnBrightnessSliderLostFocus(object sender, RoutedEventArgs e)
-    {
-        await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
-    }
-
-    private async void OnRemoveDeviceClicked(object sender, RoutedEventArgs e)
-    {
-        var selected = GetSelectedDeviceItem();
+        var selected = ResolveCommandDevice(requestedDeviceId);
         var ops = DeviceOps;
         if (selected is null || ops is null)
         {
@@ -326,86 +440,81 @@ public sealed partial class DevicesPage : Page
             }
         }
 
-        if (ops.RemoveDevice(selected.DeviceId))
+        if (!await ops.RemoveDeviceAsync(selected.DeviceId).ConfigureAwait(true))
         {
-            selectedDeviceId = null;
-            SetListSelectedItem(null);
+            ShowInlineStatusMessage(InfoBarSeverity.Error, "Falha ao remover dispositivo.");
+            AddLocalLog($"Falha ao remover dispositivo: {selected.DeviceId}");
+            return;
+        }
 
-            if (isOnline)
+        selectedDeviceId = null;
+        SetListSelectedItem(null);
+
+        if (isOnline)
+        {
+            if (revokeSucceeded)
             {
-                if (revokeSucceeded)
-                {
-                    PairingCodeText.Severity = InfoBarSeverity.Success;
-                    PairingCodeText.Message = $"Dispositivo revogado e removido: {selected.DeviceId}";
-                    AddLocalLog($"Dispositivo revogado e removido localmente: {selected.DeviceId}");
-                }
-                else
-                {
-                    PairingCodeText.Severity = InfoBarSeverity.Warning;
-                    PairingCodeText.Message = $"Dispositivo removido localmente; revogacao nao concluida: {selected.DeviceId}";
-                    AddLocalLog($"Dispositivo removido localmente, mas revogacao falhou: {selected.DeviceId} ({revokeFailureMessage ?? "erro desconhecido"})");
-                }
+                ShowInlineStatusMessage(InfoBarSeverity.Success, $"Dispositivo revogado e removido: {selected.DeviceId}");
+                AddLocalLog($"Dispositivo revogado e removido localmente: {selected.DeviceId}");
             }
             else
             {
-                PairingCodeText.Severity = InfoBarSeverity.Success;
-                PairingCodeText.Message = $"Dispositivo removido: {selected.DeviceId}";
-                AddLocalLog($"Dispositivo removido localmente: {selected.DeviceId}");
+                ShowInlineStatusMessage(InfoBarSeverity.Warning, $"Dispositivo removido localmente; revogacao nao concluida: {selected.DeviceId}");
+                AddLocalLog($"Dispositivo removido localmente, mas revogacao falhou: {selected.DeviceId} ({revokeFailureMessage ?? "erro desconhecido"})");
             }
-
-            ApplySelectionDetails();
-            ApplyButtonState();
-            return;
         }
-
-        PairingCodeText.Severity = InfoBarSeverity.Error;
-        PairingCodeText.Message = "Falha ao remover dispositivo.";
-        AddLocalLog($"Falha ao remover dispositivo: {selected.DeviceId}");
-    }
-
-    private void OnCopyHostClicked(object sender, RoutedEventArgs e)
-    {
-        var data = new DataPackage();
-        data.SetText(currentState.ServerBaseAddress);
-        Clipboard.SetContent(data);
-    }
-
-    private async Task RunSelectedCommandAsync(DeviceCommandType commandType)
-    {
-        var selected = GetSelectedDeviceItem();
-        if (selected is null || DeviceOps is null)
+        else
         {
-            return;
+            ShowInlineStatusMessage(InfoBarSeverity.Success, $"Dispositivo removido: {selected.DeviceId}");
+            AddLocalLog($"Dispositivo removido localmente: {selected.DeviceId}");
         }
 
-        await DeviceOps.RunCommandAsync(selected.DeviceId, commandType).ConfigureAwait(false);
+        ApplySelectionDetails();
+        ApplyButtonState();
     }
 
-    private async Task CommitBrightnessIfPendingAsync()
+    private async Task ExecuteReprovisionWifiAsync(string? requestedDeviceId = null)
     {
-        if (!brightnessCommitPending || suppressBrightnessSliderEvents)
-        {
-            return;
-        }
-
-        var selected = GetSelectedDeviceItem();
+        var selected = ResolveCommandDevice(requestedDeviceId);
         var ops = DeviceOps;
-        if (selected is null || ops is null || selected.Status != DeviceStatus.Online)
+        if (selected is null || ops is null)
         {
-            brightnessCommitPending = false;
             return;
         }
 
-        brightnessCommitPending = false;
-        var brightness = Math.Clamp((int)Math.Round(DashboardBrightnessSlider.Value), SafeBrightnessMin, SafeBrightnessMax);
-        var result = await ops.SetBrightnessAsync(selected.DeviceId, brightness).ConfigureAwait(false);
+        if (selected.Status != DeviceStatus.Online)
+        {
+            ShowInlineStatusMessage(InfoBarSeverity.Warning, "O dispositivo precisa estar online para abrir o portal Wi-Fi.");
+            AddLocalLog($"Reprovisionamento Wi-Fi ignorado: {selected.DeviceId} esta offline.");
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Reprovisionar Wi-Fi",
+            PrimaryButtonText = "Abrir portal",
+            CloseButtonText = "Cancelar",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+            Content = "O dispositivo vai abrir o portal/AP de configuracao de Wi-Fi. Depois de conectar na rede local, ele se registra automaticamente no servidor.",
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var result = await ops.RunCommandAsync(selected.DeviceId, DeviceCommandType.EnterProvisioning).ConfigureAwait(true);
         if (result.Accepted && result.Completed && result.Success)
         {
+            ShowInlineStatusMessage(InfoBarSeverity.Success, $"Portal Wi-Fi solicitado: {selected.DeviceId}");
+            AddLocalLog($"Portal Wi-Fi solicitado para {selected.DeviceId}.");
             return;
         }
 
         var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
-        AddLocalLog($"Falha ao ajustar brilho em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
+        ShowInlineStatusMessage(InfoBarSeverity.Error, "Falha ao solicitar reprovisionamento Wi-Fi.");
+        AddLocalLog($"Falha ao solicitar portal Wi-Fi em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
     }
 
     private sealed class DeviceListItem
@@ -435,7 +544,7 @@ public sealed partial class DevicesPage : Page
             {
                 Tag = this,
             };
-            RowControl.Bind(source.Name, source.DeviceId, source.StatusLine, source.Presence, previewItem, previewPlaceholderText);
+            RowControl.Bind(source.Name, previewItem, previewPlaceholderText);
         }
 
         public DeviceListItem Source { get; private set; }
@@ -450,7 +559,7 @@ public sealed partial class DevicesPage : Page
         {
             Source = source;
             PreviewItem = previewItem;
-            RowControl.Bind(source.Name, source.DeviceId, source.StatusLine, source.Presence, previewItem, previewPlaceholderText);
+            RowControl.Bind(source.Name, previewItem, previewPlaceholderText);
         }
 
         public void SetSelectedVisual(bool selected)
@@ -466,6 +575,11 @@ public sealed partial class DevicesPage : Page
         public void SetRuntimeFrame(MicaAudio.Core.Presets.RgbaColor[]? frame)
         {
             RowControl.SetRuntimeFrame(frame);
+        }
+
+        public void SetPreviewConfig(IReadOnlyDictionary<string, string>? values)
+        {
+            RowControl.SetPreviewConfig(values);
         }
     }
 }

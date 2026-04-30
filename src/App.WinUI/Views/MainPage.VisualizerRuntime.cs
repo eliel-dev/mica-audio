@@ -147,12 +147,7 @@ public partial class MainPage
         {
             SyncHubTransportMode();
             PumpHubFrameOutput(force: true);
-            MainCanvas.Invalidate();
-
-            if (ShouldShowHubPreview())
-            {
-                InvalidateHubPreviews();
-            }
+            RefreshVisibleCanvases();
         }
 
         if (persistSettings && outcome == AnalyzerRebuildOutcome.TargetApplied)

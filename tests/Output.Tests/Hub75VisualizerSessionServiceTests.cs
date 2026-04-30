@@ -1,4 +1,5 @@
 using App.WinUI.Services.Devices;
+using Device.Client;
 using Device.Protocol.Models;
 using System.Diagnostics;
 
@@ -31,7 +32,42 @@ public sealed class Hub75VisualizerSessionServiceTests
     }
 
     [Fact]
-    public async Task Disable_ShouldRestorePreviousApp_WhenDeviceIsOnline()
+    public async Task Enable_ShouldAssumeOwnershipAndStartVisualizerHeartbeat()
+    {
+        var runtime = new FakeDeviceOperationsRuntime();
+        using var sessionManager = new FakeDeviceClientSessionManager();
+        using var coordinator = new DeviceOperationsCoordinator(
+            runtime,
+            settingsRepository: null,
+            settingsDomainService: null,
+            logger: null,
+            sessionManager);
+        using var service = new Hub75VisualizerSessionService(coordinator, sessionManager);
+
+        runtime.SetDevices([
+            CreateSnapshot("device-1", DeviceStatus.Online, "analogclock", "Relogio"),
+        ]);
+
+        await WaitForConditionAsync(
+            () => coordinator.GetStateSnapshot().DeviceListSnapshot.Any(static d =>
+                string.Equals(d.DeviceId, "device-1", StringComparison.OrdinalIgnoreCase)
+                && d.Status == DeviceStatus.Online),
+            TimeSpan.FromSeconds(3));
+
+        await service.SetHub75ModeAsync(enabled: true);
+
+        await WaitForConditionAsync(
+            () => sessionManager.StartedHeartbeats.Any(item =>
+                string.Equals(item.DeviceId, "device-1", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.Mode, "visualizer", StringComparison.OrdinalIgnoreCase)),
+            TimeSpan.FromSeconds(3));
+        Assert.Contains(sessionManager.AssumedOwners, item =>
+            string.Equals(item.DeviceId, "device-1", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(item.Mode, "visualizer", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Disable_ShouldNotDispatchRestore_WhenHub75ModeTurnsOff()
     {
         var runtime = new FakeDeviceOperationsRuntime();
         using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
@@ -64,14 +100,13 @@ public sealed class Hub75VisualizerSessionServiceTests
             TimeSpan.FromSeconds(3));
 
         await service.SetHub75ModeAsync(enabled: false);
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
 
-        await WaitForConditionAsync(
-            () => runtime.HasActivateCommand("device-1", "analogclock"),
-            TimeSpan.FromSeconds(3));
+        Assert.False(runtime.HasActivateCommand("device-1", "analogclock"));
     }
 
     [Fact]
-    public async Task Disable_ShouldRestoreAfterReconnect_WhenDeviceReturnsOnline()
+    public async Task Enable_ShouldReactivateVisualizer_WhenDeviceReturnsOnlineWhileModeIsEnabled()
     {
         var runtime = new FakeDeviceOperationsRuntime();
         using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
@@ -107,21 +142,17 @@ public sealed class Hub75VisualizerSessionServiceTests
             CreateSnapshot("device-1", DeviceStatus.Offline, Hub75VisualizerSessionService.VisualizerAppId, Hub75VisualizerSessionService.VisualizerAppName),
         ]);
 
-        await service.SetHub75ModeAsync(enabled: false);
-
-        Assert.False(runtime.HasActivateCommand("device-1", "analogclock"));
-
         runtime.SetDevices([
-            CreateSnapshot("device-1", DeviceStatus.Online, Hub75VisualizerSessionService.VisualizerAppId, Hub75VisualizerSessionService.VisualizerAppName),
+            CreateSnapshot("device-1", DeviceStatus.Online, "analogclock", "Relogio"),
         ]);
 
         await WaitForConditionAsync(
-            () => runtime.HasActivateCommand("device-1", "analogclock"),
+            () => runtime.CountActivateCommands("device-1", Hub75VisualizerSessionService.VisualizerAppId) >= 2,
             TimeSpan.FromSeconds(3));
     }
 
     [Fact]
-    public async Task Disable_ShouldRetryRestore_AfterCooldown_WithoutNewDeviceEvent()
+    public async Task Enable_ShouldRetryActivation_AfterCooldown_WithoutNewDeviceEvent()
     {
         var runtime = new FakeDeviceOperationsRuntime();
         using var coordinator = new DeviceOperationsCoordinator(runtime, settingsRepository: null, settingsDomainService: null);
@@ -137,23 +168,7 @@ public sealed class Hub75VisualizerSessionServiceTests
                 && d.Status == DeviceStatus.Online),
             TimeSpan.FromSeconds(3));
 
-        await service.SetHub75ModeAsync(enabled: true);
-
-        await WaitForConditionAsync(
-            () => runtime.HasActivateCommand("device-1", Hub75VisualizerSessionService.VisualizerAppId),
-            TimeSpan.FromSeconds(3));
-
-        runtime.SetDevices([
-            CreateSnapshot("device-1", DeviceStatus.Online, Hub75VisualizerSessionService.VisualizerAppId, Hub75VisualizerSessionService.VisualizerAppName),
-        ]);
-
-        await WaitForConditionAsync(
-            () => coordinator.GetStateSnapshot().DeviceListSnapshot.Any(static d =>
-                string.Equals(d.DeviceId, "device-1", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(d.ActiveAppId, Hub75VisualizerSessionService.VisualizerAppId, StringComparison.OrdinalIgnoreCase)),
-            TimeSpan.FromSeconds(3));
-
-        runtime.EnqueueActivateResult("analogclock",
+        runtime.EnqueueActivateResult(Hub75VisualizerSessionService.VisualizerAppId,
             new CommandDispatchResult
             {
                 Accepted = false,
@@ -175,14 +190,14 @@ public sealed class Hub75VisualizerSessionServiceTests
             });
 
         var stopwatch = Stopwatch.StartNew();
-        await service.SetHub75ModeAsync(enabled: false);
+        await service.SetHub75ModeAsync(enabled: true);
         stopwatch.Stop();
 
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(300), $"Restore inicial demorou {stopwatch.ElapsedMilliseconds}ms.");
-        Assert.Equal(1, runtime.CountActivateCommands("device-1", "analogclock"));
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(300), $"Ativacao inicial demorou {stopwatch.ElapsedMilliseconds}ms.");
+        Assert.Equal(1, runtime.CountActivateCommands("device-1", Hub75VisualizerSessionService.VisualizerAppId));
 
         await WaitForConditionAsync(
-            () => runtime.CountActivateCommands("device-1", "analogclock") >= 2,
+            () => runtime.CountActivateCommands("device-1", Hub75VisualizerSessionService.VisualizerAppId) >= 2,
             TimeSpan.FromSeconds(3));
     }
 
@@ -229,6 +244,12 @@ public sealed class Hub75VisualizerSessionServiceTests
         public event EventHandler? DevicesChanged;
 
         public event EventHandler<string>? LogMessage
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<DeviceLogMessage>? DeviceLogReceived
         {
             add { }
             remove { }
@@ -375,5 +396,53 @@ public sealed class Hub75VisualizerSessionServiceTests
         }
 
         private sealed record CommandRecord(string DeviceId, DeviceCommandType CommandType, string? AppId, string? DisplayName);
+    }
+
+    private sealed class FakeDeviceClientSessionManager : IDeviceClientSessionManager
+    {
+        public string ClientId => "win-test";
+
+        public List<(string DeviceId, string Mode)> AssumedOwners { get; } = new();
+
+        public List<(string DeviceId, string Mode)> StartedHeartbeats { get; } = new();
+
+        public uint? GetOwnerEpoch(string deviceId) => 1;
+
+        public IReadOnlyList<DeviceClientFrameTarget> GetFrameTargets(string? deviceId, string mode)
+            => Array.Empty<DeviceClientFrameTarget>();
+
+        public DeviceCommandSessionContext? CreateCommandContext(string deviceId)
+            => new(ClientId, 1, null);
+
+        public Task<DeviceCommandSessionContext> AssumeOwnerAsync(string deviceId, string mode, CancellationToken cancellationToken = default)
+        {
+            AssumedOwners.Add((deviceId, mode));
+            return Task.FromResult(new DeviceCommandSessionContext(ClientId, 1, null));
+        }
+
+        public void ObserveDevices(IReadOnlyList<DeviceSnapshot> devices)
+        {
+        }
+
+        public void StartHeartbeat(string deviceId, string mode)
+            => StartedHeartbeats.Add((deviceId, mode));
+
+        public void StopHeartbeat(string deviceId)
+        {
+        }
+
+        public Task<DeviceClientLockLease> AcquireLockAsync(
+            string deviceId,
+            string reason,
+            TimeSpan ttl,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new DeviceClientLockLease(deviceId, "lock", reason));
+
+        public Task ReleaseLockAsync(string deviceId, string lockToken, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
     }
 }

@@ -1,6 +1,5 @@
-using Device.Protocol.Models;
-using System.Collections.Generic;
 using System.Globalization;
+using Device.Protocol.Models;
 
 // DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
 namespace App.WinUI.Services.Devices;
@@ -66,6 +65,11 @@ internal static class DeviceMetricsFormatter
 
     private static string ResolveStatusLabel(DeviceSnapshot snapshot, bool hasMetrics)
     {
+        if (snapshot.ControlPlaneState == DeviceControlPlaneState.LegacyOnly)
+        {
+            return "Firmware legado (sem MQTT)";
+        }
+
         if (snapshot.Status != DeviceStatus.Online)
         {
             return "Offline (ultimo snapshot)";
@@ -132,6 +136,11 @@ internal static class DeviceMetricsFormatter
 
         if (snapshot.Status != DeviceStatus.Online)
         {
+            if (snapshot.ControlPlaneState == DeviceControlPlaneState.LegacyOnly)
+            {
+                return AppendConnectivityDetails("Control plane legado: WS-texto/HTTP", wifiStateLabel, portalLabel, testLedLabel);
+            }
+
             var offlineLabel = snapshot.WifiConnected == false
                 ? "Wi-Fi: sem conexao"
                 : "Wi-Fi: indisponivel (offline)";

@@ -2,24 +2,40 @@
 
 ## Objetivo
 
-Descrever o fluxo ativo de GIF HUB75 nativo em `128x64`.
+Descrever o fluxo ativo de GIF HUB75 no modelo atual, onde o GIF entra como widget `gifhub75` dentro de `Paineis`.
+
+## Premissas Do V1
+
+- A entrada preferencial e imagem/GIF ja preformatado externamente para `128x64`.
+- O compositor desktop continua sendo a origem do `Frame128x64` enviado ao ESP32.
+- O playback usa `30 Hz` como teto de apresentacao.
+- GIF animado respeita os delays reais do arquivo; o loop nao usa mais um indice global fixo de tick.
+- GIF animado e decodificado em frames coalescidos/full-frame, respeitando transparencia e disposal para evitar rastro no preview e no device.
+- Sob carga, o pipeline prioriza o frame mais novo (`newest-wins`) na fila WebSocket do device.
 
 ## Passos
 
-1. carregar GIF por URL direta ou arquivo local
-2. formatar para HUB75 `128x64`
-3. reproduzir em `12 FPS`
-4. enviar frame RGB565 via `StreamFrameV2` tipo `2`
-5. firmware renderiza `drawFrame128x64` ou `drawBars`
+1. Abra o editor de um painel em `Paineis`.
+2. Adicione um widget `gifhub75` ao canvas.
+3. Selecione o widget e defina a fonte do GIF no inspetor.
+4. Prefira GIF/imagem ja tratado para `128x64` antes de salvar o painel.
+5. Salve o painel e ative-o para um device.
+6. O runtime desktop compoe o frame `128x64` final, resolve o frame ativo por timeline da midia sobre frames GIF ja coalescidos e o envia ao ESP32.
 
 ## Referencias de codigo
 
+- [PanelsPage](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L1)
+- [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
+- [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [Hub75FrameFormatter](../../../src/App.WinUI/Services/Gif/Hub75FrameFormatter.cs#L1)
-- [GifCatalogAppRuntimeService](../../../src/App.WinUI/Services/Apps/GifCatalogAppRuntimeService.cs#L1)
 - [StreamFrameV2](../reference/ws-protocol-v2.md)
 
 ## Checklist rapido
 
-- GIF chega ao preview HUB75 local.
-- Device recebe `Frame128x64`.
-- Nao ha upscale derivado de `64x32` no fluxo ativo.
+- [ ] O widget GIF aceita arquivo ou pasta.
+- [ ] O preview do painel mostra o poster frame ou a animacao quando ativo.
+- [ ] GIF animado respeita os delays reais do arquivo.
+- [ ] GIF animado nao deixa rastro de quadros anteriores quando a midia usa transparencia/disposal.
+- [ ] O runtime apresenta ate `30 FPS`.
+- [ ] O device recebe `Frame128x64`.
+- [ ] Nao existe mais dependencia da antiga sessao `Apps` para executar GIF HUB75.

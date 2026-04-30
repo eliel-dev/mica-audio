@@ -1,5 +1,6 @@
 // DOCS: docs/wiki/reference/code-index.md#estado-de-device
 namespace App.WinUI.Services.Devices;
+
 internal enum DeviceLifecycleIcon
 {
     Help = 0,

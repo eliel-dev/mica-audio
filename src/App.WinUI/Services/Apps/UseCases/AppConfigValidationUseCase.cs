@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
 using App.WinUI.Models.Apps;
+using App.WinUI.Services.Apps;
 
 namespace App.WinUI.Services.Apps.UseCases;
 
@@ -11,10 +12,11 @@ internal sealed class AppConfigValidationUseCase
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Mantido como use case por instancia para preservar o fluxo atual de DI e permitir evolucao futura sem churn de construtor e chamadas.")]
     public bool TryBuildPayload(AppCatalogItem item, IReadOnlyDictionary<string, string> rawValues, out string configJson, out string error)
     {
+        var normalizedRawValues = WeatherAppFixedLocation.NormalizeRawValues(item, rawValues);
         var data = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var modifier in item.Modifiers.Where(static m => m.IsValid()))
         {
-            rawValues.TryGetValue(modifier.Key, out var rawValue);
+            normalizedRawValues.TryGetValue(modifier.Key, out var rawValue);
             if (!TryParseRawValue(modifier, rawValue, out var typedValue, out error))
             {
                 configJson = string.Empty;
@@ -24,6 +26,7 @@ internal sealed class AppConfigValidationUseCase
             data[modifier.Key] = typedValue;
         }
 
+        WeatherAppFixedLocation.NormalizePayloadInPlace(item, data);
         configJson = JsonSerializer.Serialize(data);
         error = string.Empty;
         return true;
@@ -45,7 +48,7 @@ internal sealed class AppConfigValidationUseCase
                 if (!bool.TryParse(value, out var boolValue))
                 {
                     typedValue = null;
-                    error = $"Valor invÃ¡lido para '{modifier.Label}'.";
+                    error = $"Valor inválido para '{modifier.Label}'.";
                     return false;
                 }
 
@@ -56,7 +59,7 @@ internal sealed class AppConfigValidationUseCase
                 if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var numberValue))
                 {
                     typedValue = null;
-                    error = $"Valor numÃ©rico invÃ¡lido para '{modifier.Label}'.";
+                    error = $"Valor numérico inválido para '{modifier.Label}'.";
                     return false;
                 }
 

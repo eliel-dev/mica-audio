@@ -1,0 +1,163 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mica Atlas - Multi-page</title>
+  <style>
+    :root {
+      --bg: #060b12;
+      --panel: #0c1622;
+      --panel2: #0f1b2a;
+      --line: rgba(94,234,255,.16);
+      --line2: rgba(255,255,255,.06);
+      --cyan: #5eeaff;
+      --magenta: #ff64b4;
+      --amber: #ffb84d;
+      --green: #74ffbb;
+      --text: #edf8ff;
+      --muted: #88a3b8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body { background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; }
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .3;
+      background: linear-gradient(rgba(94,234,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(94,234,255,.03) 1px, transparent 1px);
+      background-size: 26px 26px;
+    }
+    .page { position: relative; z-index: 1; padding: 28px 30px 40px; }
+    .title { font: 700 34px/1 Silkscreen, Consolas, monospace; color: var(--cyan); letter-spacing: .06em; text-transform: uppercase; }
+    .subtitle { color: var(--muted); margin-top: 10px; max-width: 860px; line-height: 1.6; }
+    .topline { margin-bottom: 22px; }
+    .grid { display: grid; grid-template-columns: 1.05fr 1.05fr 0.9fr; gap: 16px; align-items: start; }
+    .card { background: var(--panel); border: 1px solid var(--line2); border-radius: 20px; padding: 18px; }
+    .label { font: 400 10px/1.3 Silkscreen, Consolas, monospace; text-transform: uppercase; color: var(--cyan); letter-spacing: .14em; margin-bottom: 12px; }
+    .mock { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: #0a131d; }
+    .mock-head { display:flex; justify-content:space-between; align-items:center; padding: 12px 14px; border-bottom:1px solid var(--line2); background:#09111a; }
+    .mock-title { font: 400 10px/1.2 Silkscreen, Consolas, monospace; text-transform: uppercase; letter-spacing: .12em; color: #b8dce8; }
+    .mock-body { padding: 14px; }
+    .row { display: grid; gap: 10px; }
+    .hero { padding: 14px; border-radius: 14px; border:1px solid var(--line2); background:#0d1825; }
+    .hero h3 { margin: 0 0 8px; font-size: 26px; line-height: 1.05; }
+    .hero p, .text, .mini { color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .stats { display:grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .stat { padding: 12px; border-radius: 14px; background: var(--panel2); border:1px solid var(--line2); }
+    .stat b { display:block; font-size: 22px; margin-top: 8px; }
+    .stat .k { font: 400 10px/1.2 Silkscreen, Consolas, monospace; color:#a0d2dc; text-transform: uppercase; letter-spacing: .1em; }
+    .cap-list, .doc-list, .future-list { display:grid; gap: 10px; }
+    .item { padding: 12px; border-radius: 14px; border:1px solid var(--line2); background: var(--panel2); }
+    .item b { display:block; font-size: 15px; }
+    .status { margin-top: 8px; font: 400 10px/1.2 Silkscreen, Consolas, monospace; letter-spacing: .1em; text-transform: uppercase; }
+    .ok { color: var(--green); }
+    .warn { color: var(--amber); }
+    .future { color: var(--magenta); }
+    .flow { margin-top: 18px; display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .step { padding: 14px; border-radius: 14px; background: var(--panel); border:1px solid var(--line2); }
+    .step .n { font: 400 10px/1.2 Silkscreen, Consolas, monospace; color: var(--cyan); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
+    .step b { display:block; font-size: 16px; }
+    .note { margin-top: 18px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    @media (max-width: 1200px) { .grid, .flow { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topline">
+      <div class="title">Mica Atlas</div>
+      <div class="subtitle">Opção 1 refinada para múltiplas páginas. A home mostra só o panorama. As capacidades absorvem o detalhe. Futuras implementações ficam em uma área própria.</div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <div class="label">Página 1</div>
+        <div class="mock">
+          <div class="mock-head">
+            <div class="mock-title">Home / Panorama</div>
+            <div class="mock-title">status-first</div>
+          </div>
+          <div class="mock-body row">
+            <div class="hero">
+              <h3>Estado do projeto, áreas e prioridades.</h3>
+              <p>Home enxuta. Mostra o panorama, o mapa das capacidades e os atalhos corretos.</p>
+            </div>
+            <div class="stats">
+              <div class="stat"><div class="k">Implementado</div><b>37</b></div>
+              <div class="stat"><div class="k">Parcial</div><b>12</b></div>
+              <div class="stat"><div class="k">Futuro</div><b>09</b></div>
+              <div class="stat"><div class="k">Checklist</div><b>24</b></div>
+            </div>
+            <div class="cap-list">
+              <div class="item"><b>Firmware e Boards</b><div class="mini">Entrar pela capacidade e não pela pasta.</div></div>
+              <div class="item"><b>Onboarding e Pairing</b><div class="mini">Fluxos oficiais e ferramentas externas relacionadas.</div></div>
+              <div class="item"><b>Paineis e Widgets</b><div class="mini">Canvas, mídia, composição e widgets sobrepostos.</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="label">Página 2</div>
+        <div class="mock">
+          <div class="mock-head">
+            <div class="mock-title">Capacidade / Firmware e Boards</div>
+            <div class="mock-title">detalhe</div>
+          </div>
+          <div class="mock-body row">
+            <div class="hero">
+              <h3>Uma capacidade por página.</h3>
+              <p>Cada área mostra o que existe, o que está parcial, o que falta e os documentos canônicos relacionados.</p>
+            </div>
+            <div class="doc-list">
+              <div class="item">
+                <b>firmware-esp32s3-devkitc1.md</b>
+                <div class="text">Documento principal do runtime atual.</div>
+                <div class="status ok">implementado com updates</div>
+              </div>
+              <div class="item">
+                <b>07-cloud-first-multi-panel...</b>
+                <div class="text">Arquitetura futura ligada a boards e painéis.</div>
+                <div class="status future">target-state</div>
+              </div>
+              <div class="item">
+                <b>lacunas desta capacidade</b>
+                <div class="text">64x64 / 64x32 / matrix portal s3 / catálogo futuro.</div>
+                <div class="status warn">parcial ou faltando</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="label">Página 3</div>
+        <div class="mock">
+          <div class="mock-head">
+            <div class="mock-title">Futuro / Checklists</div>
+            <div class="mock-title">separado</div>
+          </div>
+          <div class="mock-body row">
+            <div class="hero">
+              <h3>Futuras implementações.</h3>
+              <p>Área própria para viabilidade, target-state e checklists prospectivos.</p>
+            </div>
+            <div class="future-list">
+              <div class="item"><b>ESPConnect</b><div class="status future">viável como ferramenta externa</div></div>
+              <div class="item"><b>GPIOViewer</b><div class="status future">debug opcional de bancada</div></div>
+              <div class="item"><b>Cloud-first multi-panel</b><div class="status future">arquitetura futura</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="flow">
+      <div class="step"><div class="n">01</div><b>Markdown</b><div class="mini">Conteúdo técnico continua nos arquivos atuais.</div></div>
+      <div class="step"><div class="n">02</div><b>Catálogo manual</b><div class="mini">Status, capacidade, tipo e prioridade ficam explícitos.</div></div>
+      <div class="step"><div class="n">03</div><b>Site estático</b><div class="mini">A home mostra o panorama. O detalhe vai para páginas dedicadas.</div></div>
+      <div class="step"><div class="n">04</div><b>Drill-down</b><div class="mini">Cada item abre leitura no site e aponta para o markdown canônico.</div></div>
+    </div>
+
+    <div class="note">Se essa direção estiver certa, o próximo passo é eu fechar a especificação da arquitetura do site: páginas, catálogo manual, modelo de status, render de markdown, busca, filtros e o stack recomendado para a v1.</div>
+  </div>
+</body>
+</html>

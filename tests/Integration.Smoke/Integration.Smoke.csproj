@@ -8,6 +8,7 @@
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="8.0.0" />
@@ -24,6 +25,9 @@
     <ProjectReference Include="..\..\src\Visual.Win2D\Visual.Win2D.csproj" />
     <ProjectReference Include="..\..\src\Output\Output.csproj" />
     <ProjectReference Include="..\..\src\MicaAudio.Core\MicaAudio.Core.csproj" />
+    <ProjectReference Include="..\..\src\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Device.Client.Embedded\Device.Client.Embedded.csproj" />
+    <ProjectReference Include="..\..\src\Device.Client.Remote\Device.Client.Remote.csproj" />
     <ProjectReference Include="..\..\src\App.WinUI\App.WinUI.csproj" />
   </ItemGroup>
 </Project>

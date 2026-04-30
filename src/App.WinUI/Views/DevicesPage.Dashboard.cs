@@ -1,9 +1,9 @@
+using System.Globalization;
 using App.WinUI.Services.Devices;
 using Device.Protocol.Models;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using System.Globalization;
 using Windows.UI;
+
+// DOCS: docs/handoffs/2026-04-14-fix-slider-brilho-sempre-100.md
 
 namespace App.WinUI.Views;
 
@@ -11,6 +11,11 @@ public sealed partial class DevicesPage
 {
     private void UpdateDeviceLogs(string? deviceId, IReadOnlyList<string> entries, string placeholder)
     {
+        if (DeviceLogsTextBox is null)
+        {
+            return;
+        }
+
         var header = string.IsNullOrWhiteSpace(deviceId)
             ? "Logs do dispositivo"
             : $"Logs do dispositivo Â· {deviceId}";
@@ -32,6 +37,7 @@ public sealed partial class DevicesPage
         DeviceLogsTextBox.Text = count == 0
             ? normalizedPlaceholder
             : string.Join("\r\n", entries) + "\r\n";
+        ScrollDeviceLogsToOffset(scrollToEnd: count > 0);
 
         lastRenderedDeviceLogsDeviceId = deviceId;
         lastRenderedDeviceLogCount = count;
@@ -97,9 +103,11 @@ public sealed partial class DevicesPage
             DashboardBrightnessStatusText.Text = brightnessStatusLabel;
             DashboardTelemetryHeartbeatText.Text = heartbeatLabel;
 
-            var sliderValue = snapshot?.BrightnessCap is int brightnessCap
-                ? Math.Clamp(brightnessCap, SafeBrightnessMin, SafeBrightnessMax)
-                : SafeBrightnessMax;
+            var sliderValue = snapshot?.BrightnessApplied is int appliedValue
+                ? Math.Clamp(appliedValue, SafeBrightnessMin, SafeBrightnessMax)
+                : (snapshot?.BrightnessCap is int brightnessCap
+                    ? Math.Clamp(brightnessCap, SafeBrightnessMin, SafeBrightnessMax)
+                    : SafeBrightnessMax);
             suppressBrightnessSliderEvents = true;
             DashboardBrightnessSlider.Value = sliderValue;
             suppressBrightnessSliderEvents = false;
@@ -263,9 +271,11 @@ public sealed partial class DevicesPage
         DashboardBrightnessStatusText.Text = BuildBrightnessStatusLabel(snapshot);
         DashboardTelemetryHeartbeatText.Text = BuildHeartbeatLabel(snapshot);
 
-        var sliderValue = snapshot?.BrightnessCap is int brightnessCap
-            ? Math.Clamp(brightnessCap, SafeBrightnessMin, SafeBrightnessMax)
-            : SafeBrightnessMax;
+        var sliderValue = snapshot?.BrightnessApplied is int appliedValue
+            ? Math.Clamp(appliedValue, SafeBrightnessMin, SafeBrightnessMax)
+            : (snapshot?.BrightnessCap is int brightnessCap
+                ? Math.Clamp(brightnessCap, SafeBrightnessMin, SafeBrightnessMax)
+                : SafeBrightnessMax);
         suppressBrightnessSliderEvents = true;
         DashboardBrightnessSlider.Value = sliderValue;
         suppressBrightnessSliderEvents = false;
@@ -488,8 +498,13 @@ public sealed partial class DevicesPage
     {
         var cap = snapshot?.BrightnessCap is int capValue
             ? Math.Clamp(capValue, SafeBrightnessMin, SafeBrightnessMax)
-            : SafeBrightnessMax;
-        return $"{cap}/160";
+            : (int?)null;
+        if (cap.HasValue)
+        {
+            var percentage = Math.Round((double)cap.Value / SafeBrightnessMax * 100.0);
+            return $"{percentage:F0}%";
+        }
+        return "-%";
     }
 
     private static string BuildBrightnessStatusLabel(DeviceSnapshot? snapshot)

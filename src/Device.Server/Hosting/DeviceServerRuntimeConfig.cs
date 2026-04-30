@@ -4,15 +4,28 @@ using Device.Protocol.Contracts;
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
+// DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 internal sealed class DeviceServerRuntimeConfig
 {
     private DeviceServerRuntimeConfig(
         string listenHost,
         int port,
+        int mqttPort,
         int maxDevices,
         string mdnsServiceName,
         string publicHost,
+        string publicHttpBaseAddress,
+        string mqttRootTopic,
+        string adminToken,
         bool restrictToPrivateNetworks,
+        int visualUdpPort,
+        bool preferLanUdpVisualTransport,
+        bool trustedLanAutoRegistration,
+        int discoveryUdpPort,
+        long maxMediaUploadBytes,
         IReadOnlyList<CidrRange> allowedCidrs,
         int configuredAllowedCidrsCount,
         int pairRequestsPerMinute,
@@ -27,10 +40,19 @@ internal sealed class DeviceServerRuntimeConfig
     {
         ListenHost = listenHost;
         Port = port;
+        MqttPort = mqttPort;
         MaxDevices = maxDevices;
         MdnsServiceName = mdnsServiceName;
         PublicHost = publicHost;
+        PublicHttpBaseAddress = publicHttpBaseAddress;
+        MqttRootTopic = mqttRootTopic;
+        AdminToken = adminToken;
         RestrictToPrivateNetworks = restrictToPrivateNetworks;
+        VisualUdpPort = visualUdpPort;
+        PreferLanUdpVisualTransport = preferLanUdpVisualTransport;
+        TrustedLanAutoRegistration = trustedLanAutoRegistration;
+        DiscoveryUdpPort = discoveryUdpPort;
+        MaxMediaUploadBytes = maxMediaUploadBytes;
         AllowedCidrs = allowedCidrs;
         ConfiguredAllowedCidrsCount = configuredAllowedCidrsCount;
         PairRequestsPerMinute = pairRequestsPerMinute;
@@ -48,13 +70,33 @@ internal sealed class DeviceServerRuntimeConfig
 
     public int Port { get; }
 
+    public int MqttPort { get; }
+
     public int MaxDevices { get; }
 
     public string MdnsServiceName { get; }
 
     public string PublicHost { get; }
 
+    public string PublicHttpBaseAddress { get; }
+
+    public string MqttRootTopic { get; }
+
+    public string AdminToken { get; }
+
+    public bool IsAdminApiEnabled => !string.IsNullOrWhiteSpace(AdminToken);
+
     public bool RestrictToPrivateNetworks { get; }
+
+    public int VisualUdpPort { get; }
+
+    public bool PreferLanUdpVisualTransport { get; }
+
+    public bool TrustedLanAutoRegistration { get; }
+
+    public int DiscoveryUdpPort { get; }
+
+    public long MaxMediaUploadBytes { get; }
 
     public IReadOnlyList<CidrRange> AllowedCidrs { get; }
 
@@ -90,10 +132,19 @@ internal sealed class DeviceServerRuntimeConfig
         return new DeviceServerRuntimeConfig(
             listenHost: config.ListenHost,
             port: config.Port,
+            mqttPort: Math.Clamp(config.MqttPort, 1, 65535),
             maxDevices: config.MaxDevices,
             mdnsServiceName: config.MdnsServiceName,
-            publicHost: config.PublicHost,
+            publicHost: config.PublicHost?.Trim() ?? string.Empty,
+            publicHttpBaseAddress: NormalizePublicHttpBaseAddress(config.PublicHttpBaseAddress),
+            mqttRootTopic: NormalizeRootTopic(config.MqttRootTopic),
+            adminToken: config.AdminToken?.Trim() ?? string.Empty,
             restrictToPrivateNetworks: config.RestrictToPrivateNetworks,
+            visualUdpPort: NormalizePort(config.VisualUdpPort, 5274),
+            preferLanUdpVisualTransport: config.PreferLanUdpVisualTransport,
+            trustedLanAutoRegistration: config.TrustedLanAutoRegistration,
+            discoveryUdpPort: NormalizePort(config.DiscoveryUdpPort, 5275),
+            maxMediaUploadBytes: Math.Clamp(config.MaxMediaUploadBytes, 1024L, 100L * 1024L * 1024L),
             allowedCidrs: allowedCidrs,
             configuredAllowedCidrsCount: configuredAllowedCidrsCount,
             pairRequestsPerMinute: Math.Max(1, config.PairRequestsPerMinute),
@@ -105,6 +156,37 @@ internal sealed class DeviceServerRuntimeConfig
             allowLegacyWebSocketQueryToken: config.AllowLegacyWebSocketQueryToken,
             maxJsonBodyBytes: Math.Clamp(config.MaxJsonBodyBytes, 1024L, 1024L * 1024L),
             maxWebSocketMessageBytes: Math.Clamp(config.MaxWebSocketMessageBytes, 1024, 1024 * 1024));
+    }
+
+    private static string NormalizeRootTopic(string? rawRootTopic)
+    {
+        if (string.IsNullOrWhiteSpace(rawRootTopic))
+        {
+            return "mica/v1/devices";
+        }
+
+        var normalized = rawRootTopic.Trim().Trim('/');
+        return string.IsNullOrWhiteSpace(normalized)
+            ? "mica/v1/devices"
+            : normalized;
+    }
+
+    private static int NormalizePort(int port, int fallback)
+        => port is >= 1 and <= 65535 ? port : fallback;
+
+    private static string NormalizePublicHttpBaseAddress(string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue)
+            || !Uri.TryCreate(rawValue.Trim(), UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            || (!string.IsNullOrEmpty(uri.AbsolutePath) && uri.AbsolutePath != "/")
+            || !string.IsNullOrEmpty(uri.Query)
+            || !string.IsNullOrEmpty(uri.Fragment))
+        {
+            return string.Empty;
+        }
+
+        return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
     }
 
     private static IReadOnlyList<CidrRange> ParseAllowedCidrs(IEnumerable<string>? cidrValues)

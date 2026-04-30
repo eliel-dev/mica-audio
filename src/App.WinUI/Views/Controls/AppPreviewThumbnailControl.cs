@@ -1,17 +1,16 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using App.WinUI.Models.Apps;
-using App.WinUI.Views;
+using MicaAudio.Core.Presets;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using MicaAudio.Core.Presets;
 using Windows.UI;
 
 namespace App.WinUI.Views.Controls;
 
+// DOCS: docs/wiki/modules/app-winui.md#modulo-appwinui
 internal sealed class AppPreviewThumbnailControl : Grid
 {
+    private static readonly IReadOnlyDictionary<string, string> EmptyConfigValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     private readonly CanvasControl canvas;
     private readonly DispatcherQueueTimer timer;
     private readonly Stopwatch stopwatch = Stopwatch.StartNew();
@@ -25,9 +24,6 @@ internal sealed class AppPreviewThumbnailControl : Grid
 
     public AppPreviewThumbnailControl()
     {
-        Width = 232;
-        Height = 116;
-
         var border = new Border
         {
             CornerRadius = new CornerRadius(10),
@@ -69,10 +65,8 @@ internal sealed class AppPreviewThumbnailControl : Grid
     {
         item = appItem;
         renderer = AppPreviewRendererRegistry.Resolve(appItem);
-        if (!string.Equals(renderer.Kind, "gif", StringComparison.OrdinalIgnoreCase))
-        {
-            runtimeFrame = null;
-        }
+        configValues = EmptyConfigValues;
+        runtimeFrame = null;
 
         canvas.Invalidate();
     }
@@ -86,7 +80,7 @@ internal sealed class AppPreviewThumbnailControl : Grid
     public void SetConfig(IReadOnlyDictionary<string, string>? values)
     {
         configValues = values is null
-            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            ? EmptyConfigValues
             : new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase);
 
         canvas.Invalidate();

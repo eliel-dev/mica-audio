@@ -3,8 +3,10 @@ using App.WinUI.Services.Apps;
 using App.WinUI.Services.Apps.UseCases;
 using App.WinUI.Services.Devices;
 using App.WinUI.Services.Gif;
+using App.WinUI.Services.Logging;
 using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
+using Device.Client;
 using Device.Protocol.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -14,8 +16,8 @@ using Output.Led;
 
 namespace App.WinUI.Views;
 
-// DOCS: docs/wiki/modules/apps-catalog-deployment.md#modulo-apps-catalog-and-deployment
-// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03---fase-9-wave-2-e-wave-3-monolitos-do-app-decompostos
+// DOCS: docs/wiki/modules/apps-catalog-deployment.md
+// DOCS: docs/wiki/modules/app-winui.md
 public sealed partial class AppsPage : Page, IDisposable
 {
     private const string LocalDraftScope = "__local__";
@@ -23,9 +25,6 @@ public sealed partial class AppsPage : Page, IDisposable
     private readonly List<AppCatalogItem> filteredItems = new();
     private readonly List<AppCatalogCardControl> catalogCards = new();
     private readonly HashSet<AppCatalogCardControl> activePreviewCards = new();
-    private readonly Dictionary<string, ModifierControlBinding> modifierBindings = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<AutoSuggestBox, CancellationTokenSource> citySuggestCts = new();
-    private readonly Dictionary<AutoSuggestBox, Dictionary<string, CitySuggestion>> citySuggestionLookup = new();
     private readonly AppsPageViewModel viewModel;
     private readonly GifCatalogAppRuntimeService gifRuntimeService;
     private readonly DeviceOperationsCoordinator deviceOps;
@@ -35,6 +34,7 @@ public sealed partial class AppsPage : Page, IDisposable
     private readonly SaveAppConfigUseCase saveAppConfigUseCase;
     private readonly DeployAppUseCase deployAppUseCase;
     private readonly AppConfigValidationUseCase appConfigValidationUseCase;
+    private readonly AppLogStore appLogStore;
 
     private AppCatalogItem? selectedItem;
     private DeviceOperationsState currentState = new();
@@ -45,6 +45,7 @@ public sealed partial class AppsPage : Page, IDisposable
     private RgbaColor[]? latestGifRuntimeFrame;
     private readonly GifHub75RuntimeProvider gifRuntimeProvider;
     private readonly AppRuntimeProviderRegistry runtimeProviderRegistry;
+    private readonly AppModifierEditorHost modifierEditor;
     private IAppRuntimeProvider? activeRuntimeProvider;
 
     internal AppsPage(
@@ -56,7 +57,8 @@ public sealed partial class AppsPage : Page, IDisposable
         SaveAppConfigUseCase saveAppConfigUseCase,
         DeployAppUseCase deployAppUseCase,
         AppConfigValidationUseCase appConfigValidationUseCase,
-        DeviceIntegrationService deviceIntegration)
+        IDeviceFrameTransport frameTransport,
+        AppLogStore appLogStore)
     {
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
@@ -66,14 +68,18 @@ public sealed partial class AppsPage : Page, IDisposable
         this.saveAppConfigUseCase = saveAppConfigUseCase;
         this.deployAppUseCase = deployAppUseCase;
         this.appConfigValidationUseCase = appConfigValidationUseCase;
+        this.appLogStore = appLogStore;
+        modifierEditor = new AppModifierEditorHost(
+            cityService,
+            message => RecordCityAutocompleteEvent(message, LogSeverity.Warning));
 
-        var host = deviceIntegration.Host;
         gifRuntimeService = new GifCatalogAppRuntimeService(
-            matrixOutput: new Esp32S3LedOutput(host),
+            matrixOutput: new Esp32S3LedOutput(frameTransport),
             simulatorOutput: new SimulatorLedOutput(),
             decoder: new Hub75GifDecoder(Hub75GifDecoder.DefaultMaxGifFrames),
             formatter: new Hub75FrameFormatter(),
-            player: new Hub75GifPlayer(TimeSpan.FromMilliseconds(1000d / GifCatalogAppRuntimeService.TargetFps)));
+            player: new Hub75GifPlayer(TimeSpan.FromMilliseconds(1000d / GifCatalogAppRuntimeService.TargetFps)),
+            enableMatrixTransport: false);
         gifRuntimeProvider = new GifHub75RuntimeProvider();
         runtimeProviderRegistry = new AppRuntimeProviderRegistry([gifRuntimeProvider]);
 
@@ -109,14 +115,7 @@ public sealed partial class AppsPage : Page, IDisposable
             catalogScrollViewer.ViewChanged -= OnCatalogScrollViewChanged;
         }
 
-        foreach (var pending in citySuggestCts.Values)
-        {
-            pending.Cancel();
-            pending.Dispose();
-        }
-
-        citySuggestCts.Clear();
-        citySuggestionLookup.Clear();
+        modifierEditor.Cleanup();
         foreach (var card in catalogCards)
         {
             card.Preview.Stop();
@@ -128,19 +127,8 @@ public sealed partial class AppsPage : Page, IDisposable
 
     public void Dispose()
     {
+        modifierEditor.Dispose();
         runtimeProviderRegistry.Dispose();
         gifRuntimeService.Dispose();
-    }
-
-    private sealed class ModifierControlBinding
-    {
-        public ModifierControlBinding(AppModifierDefinition definition, FrameworkElement control)
-        {
-            Definition = definition;
-            Control = control;
-        }
-
-        public AppModifierDefinition Definition { get; }
-        public FrameworkElement Control { get; }
     }
 }

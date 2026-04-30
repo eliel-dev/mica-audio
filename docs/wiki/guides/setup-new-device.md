@@ -1,98 +1,76 @@
-# Guia - Setup New Device (USB + AP)
+# Guia - Setup New Device
 
 ## Objetivo
 
-Documentar o fluxo oficial e estavel de onboarding:
+Documentar o fluxo oficial atual de onboarding do Mica sem flash USB interno no desktop.
 
-1. selecionar porta COM no wizard
-2. gravar firmware
-3. exibir codigo de pareamento
-4. configurar Wi-Fi no portal AP do ESP32
+Fluxo oficial:
+
+1. Baixar o firmware oficial no app.
+2. Gravar o BIN com ferramenta externa.
+3. Gerar `pair code` no desktop com `Parear`.
+4. Copiar o host LAN com `Copiar host`.
+5. Concluir o provisioning no AP `MicaAudio-Setup-xxxx`.
 
 ## Passos
 
 1. Abrir `Dispositivos`.
-2. Clicar em `Novo dispositivo` no rodape da lista.
-3. Selecionar a porta COM do ESP32 (`Atualizar portas` quando necessario).
-4. Clicar em `Concluir` para gravar o firmware.
-5. Anotar o codigo de pareamento exibido ao fim do flash.
-6. Conectar no AP `MicaAudio-Setup-xxxx`.
-7. No portal do ESP32, informar Wi-Fi/servidor e o codigo de pareamento.
+2. Clicar em `Baixar firmware`.
+3. Salvar o BIN oficial sugerido pelo app.
+4. Gravar o arquivo com a ferramenta externa de sua escolha.
+5. Voltar ao app e clicar em `Parear`.
+6. Copiar o `pair code` exibido no banner inline.
+7. Clicar em `Copiar host`.
+8. No celular, conectar ao Wi-Fi `MicaAudio-Setup-xxxx`.
+9. Abrir o portal do ESP32 e preencher:
+   - `Servidor`
+   - `Codigo pareamento`
+   - `Nome dispositivo` opcional
+10. Confirmar que o device aparece na `DevicesPage`.
 
-## Contrato visual do wizard
+## Fonte do firmware mais atual
 
-1. Fonte canonica: `C:\Users\eliels\Pictures\nice\mica-dashboard.html`.
-2. Especificacao aplicada na WinUI:
-   - card `560px` (margem lateral `14px`);
-   - head/body/footer com paddings `14/16`, `14/16`, `10/16`;
-   - barra de etapas com altura `4px` e gap `8px`;
-   - controles com altura `34px`;
-   - botao `Concluir` no rodape a direita.
-3. O wizard da WinUI e um overlay custom e nao depende de `ContentDialog`.
+1. O desktop continua tratando `PrecompiledFirmwareService` como fonte unica do "ultimo firmware".
+2. Em workspace/dev, o app valida se o pacote oficial local ficou stale em relacao aos fontes do firmware e tenta regenerar o artefato oficial.
+3. Fora do workspace/dev, vale o pacote oficial embarcado no app.
+4. O app nao consulta manifesto remoto nem release externo para decidir `Ultimo release`.
 
-## Tela Dispositivos
+## O que mudou
 
-### Pipeline executado pelo app
+1. O botao `Novo dispositivo` foi removido.
+2. O desktop nao executa mais `esptool`, wizard USB, recaptura de boot ou logs seriais de onboarding.
+3. O banner inline de `Parear` virou a superficie oficial para obter o `pair code`.
+4. `Copiar host` virou o apoio oficial para preencher o portal AP manualmente.
 
-1. Resolve firmware oficial `esp32s3-devkitc1-128x64-dma_exp_merged.bin`.
-2. Flasha o ESP32-S3 via `esptool`.
-3. Gera `pair code` e mostra em modal.
-4. Finaliza wizard e orienta provisioning via AP.
-5. O device fica online no dashboard apos configuracao no portal.
+## OTA e dashboard
 
-## Perfil oficial do comando de flash
-
-Comando canonico usado no onboarding (bundle local ou fallback `python -m esptool`):
-
-```powershell
-python -m esptool --chip esp32s3 --port COMx --baud 115200 --before default_reset --after hard_reset write_flash --no-compress 0x0 firmware.bin
-```
-
-Regras fechadas:
-
-1. Usa `--before default_reset` e `--after hard_reset`.
-2. Usa `--no-compress` (nao usa `-z`).
-3. Nao executa `erase_flash` automatico.
-
-## Progresso de flash no wizard
-
-1. Durante `Flashing`, o wizard exibe barra `0..100` + `%`.
-2. O percentual exibido vem da saida do `esptool` (`NN%` ou `NN %`).
-3. Em falha, o ultimo percentual permanece visivel junto da mensagem de erro.
-
-## Contrato serial `mica.serial.v1` (compatibilidade)
-
-1. O protocolo serial permanece no firmware e no app para compatibilidade/futuro.
-2. O onboarding oficial nao depende mais de handshake serial para concluir o fluxo.
-
-## Politica de seguranca para credenciais
-
-1. Senha Wi-Fi e efemera.
-2. Nao persistir senha em `settings.json`.
-3. Nao gravar senha em logs/handoffs.
-
-## Fallback operacional
-
-Se onboarding USB falhar:
-
-1. Validar porta COM e cabo.
-2. Atualizar lista de portas.
-3. Repetir onboarding.
-4. Provisionar manualmente pelo AP e repetir somente pareamento.
+1. O dashboard continua mostrando `Firmware atual` e `Ultimo release` mesmo para device offline.
+2. O CTA `Atualizar firmware` existe apenas quando:
+   - ha pacote oficial compativel;
+   - a versao atual difere do ultimo release;
+   - o device esta online para OTA agora.
+3. Device offline nao oferece reflash pelo desktop; o caminho oficial passa a ser download manual + ferramenta externa.
 
 ## Checklist rapido
 
-1. Botao `Novo dispositivo` visivel no rodape da lista.
-2. Wizard abre com selecao de porta COM + progresso de flash.
-3. Porta COM detectada automaticamente (ou via `Atualizar portas`).
-4. Ao fim do flash, app mostra codigo de pareamento.
-5. Device entra online apos provisioning via AP.
+1. `Baixar firmware` salva um BIN oficial.
+2. O nome sugerido inclui a versao do manifesto oficial.
+3. `Parear` exibe um `pair code` no banner inline.
+4. `Copiar host` entrega um endereco LAN valido, nao loopback.
+5. O portal AP aceita `Servidor` + `Codigo pareamento`.
+6. O device aparece no dashboard depois do pareamento.
+
+## Troubleshooting rapido
+
+1. Se `Baixar firmware` falhar, validar os arquivos em `src/App.WinUI/AppData/Firmware/` e o estado do `PrecompiledFirmwareService`.
+2. Se o device continuar offline depois do flash manual, confirmar no portal AP se o `Servidor` aponta para `http://<IP-do-PC>:5272`.
+3. Se o device nao anunciar `Ultimo release`, o app nao conseguiu provar que o pacote oficial local esta fresco.
 
 ## Referencias de codigo
 
-- [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
 - [DevicesPage code-behind](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)
-- [DeviceUsbOnboardingService](../../../src/App.WinUI/Services/Devices/Onboarding/DeviceUsbOnboardingService.cs#L1)
-- [SerialPortCatalogService](../../../src/App.WinUI/Infrastructure/Serial/SerialPortCatalogService.cs#L1)
-- [EspToolFlashService](../../../src/App.WinUI/Services/Devices/Onboarding/EspToolFlashService.cs#L1)
+- [DevicesPage download/pairing](../../../src/App.WinUI/Views/DevicesPage.Onboarding.cs#L1)
+- [DevicesPage OTA](../../../src/App.WinUI/Views/DevicesPage.FirmwareUpdate.cs#L1)
+- [DevicesPage UI](../../../src/App.WinUI/Views/DevicesPage.Ui.cs#L1)
+- [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)

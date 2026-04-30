@@ -187,7 +187,7 @@ $expectedWikiFiles = @(
     'docs/wiki/reference/code-index.md',
     'docs/wiki/reference/linking-conventions.md',
     'docs/wiki/reference/http-api-v1.md',
-    'docs/wiki/reference/ws-protocol-v1.md',
+    'docs/wiki/reference/ws-protocol-v2.md',
     'docs/wiki/reference/troubleshooting-matrix.md',
     'docs/wiki/reference/docs-health.md',
     'docs/wiki/reference/glossary.md',
@@ -491,7 +491,7 @@ $docsCoverageTargets = @(
     'src/Device.Server/Hosting/DeviceServerHost.cs',
     'src/Device.Server/Hosting/DeviceServerHost.Advanced.cs',
     'firmware/esp32s3-devkitc1/src/main.cpp',
-    'src/App.WinUI/Services/Devices/DeviceIntegrationService.cs',
+    'src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs',
     'src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs',
     'src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs',
     'src/App.WinUI/Services/Apps/AppCatalogService.cs',
@@ -500,7 +500,6 @@ $docsCoverageTargets = @(
     'src/App.WinUI/Views/AppsPage.xaml.cs',
     'src/App.WinUI/Views/ServerPage.xaml.cs',
     'src/App.WinUI/Services/AppSettingsDomainService.cs',
-    'src/Device.Protocol/Stream/StreamFrameV1.cs',
     'src/Device.Protocol/Models/DeviceCommandRequest.cs',
     'src/Device.Protocol/Models/DeviceCommandProgressMessage.cs'
 )

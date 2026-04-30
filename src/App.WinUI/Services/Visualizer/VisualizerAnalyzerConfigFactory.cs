@@ -1,7 +1,6 @@
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
-using Visual.Win2D.Engine;
 
 namespace App.WinUI.Services.Visualizer;
 

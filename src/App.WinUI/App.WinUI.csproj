@@ -49,13 +49,24 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.3" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.3.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
+    <PackageReference Include="Serilog" Version="4.3.1" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+    <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0" />
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.3.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260209005" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3800.47" />
-    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.12.0" />
     <PackageReference Include="System.Management" Version="10.0.0" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
@@ -75,6 +86,10 @@
     <ProjectReference Include="..\Visual.Win2D\Visual.Win2D.csproj" />
     <ProjectReference Include="..\Output\Output.csproj" />
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
+    <ProjectReference Include="..\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
+    <ProjectReference Include="..\Device.Client.Embedded\Device.Client.Embedded.csproj" />
+    <ProjectReference Include="..\Device.Client.Remote\Device.Client.Remote.csproj" />
+    <ProjectReference Include="..\Device.Server.Abstractions\Device.Server.Abstractions.csproj" />
     <ProjectReference Include="..\Device.Server\Device.Server.csproj" />
   </ItemGroup>
 
@@ -87,6 +102,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>
+    <Content Include="AppData\Firmware\*.manifest.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
     <Content Include="..\..\tools\esptool\win-x64\**\*">
       <Link>tools\esptool\win-x64\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -95,6 +114,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="ViewModels\AppsPageViewModel.cs" />
+    <Compile Remove="Views\AppsPage*.cs" />
+    <Compile Remove="Services\Apps\AppDeploymentService.cs" />
+    <Compile Remove="Services\Apps\IAppDeploymentService.cs" />
+    <Compile Remove="Services\Apps\AppRuntimeHost.cs" />
+    <Compile Remove="Services\Apps\AppRuntimeProviderRegistry.cs" />
+    <Compile Remove="Services\Apps\GifCatalogAppRuntimeService.cs" />
+    <Compile Remove="Services\Apps\GifHub75RuntimeProvider.cs" />
+    <Compile Remove="Services\Apps\IAppRuntimeProvider.cs" />
+    <Compile Remove="Services\Apps\UseCases\AppConfigValidationUseCase.cs" />
+    <Compile Remove="Services\Apps\UseCases\DeployAppUseCase.cs" />
+    <Compile Remove="Services\Apps\UseCases\SaveAppConfigUseCase.cs" />
+    <Compile Remove="Services\Apps\UseCases\StartLocalRuntimeUseCase.cs" />
     <Page Remove="Views\DevicesPage.xaml" />
     <Page Remove="Views\AppsPage.xaml" />
     <Page Remove="Views\ServerPage.xaml" />

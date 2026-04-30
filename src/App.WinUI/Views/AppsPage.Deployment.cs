@@ -1,4 +1,5 @@
 using App.WinUI.Models.Apps;
+using App.WinUI.Services.Logging;
 using Device.Protocol.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -71,7 +72,7 @@ public sealed partial class AppsPage
         _ = DispatcherQueue.TryEnqueue(() =>
         {
             ApplyPreviewDraftToCard(item.Id, saveResult.RawValues ?? rawValues);
-            AppendLog($"ModificaÃ§Ãµes salvas localmente para {item.Name}.");
+            AppendLog($"Modificações salvas localmente para {item.Name}.");
         });
     }
 
@@ -181,12 +182,17 @@ public sealed partial class AppsPage
             return;
         }
 
-        viewModel.OperationStatus = $"OperaÃ§Ãµes: {message}";
-        OperationStatusText.Text = viewModel.OperationStatus;
+        viewModel.OperationStatus = message;
+        ShowOperationNotification(viewModel.OperationStatus, currentState.CommandInProgress);
         if (!currentState.CommandInProgress)
         {
             viewModel.OperationPercent = 0;
-            OperationPercentText.Text = "0%";
         }
+
+        var severity = message.Contains("erro", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("falh", StringComparison.OrdinalIgnoreCase)
+            ? LogSeverity.Error
+            : LogSeverity.Info;
+        appLogStore.Append(LogCategory.App, severity, message, selectedItem?.Id);
     }
 }

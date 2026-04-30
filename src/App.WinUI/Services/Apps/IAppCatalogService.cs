@@ -6,6 +6,8 @@ namespace App.WinUI.Services.Apps;
 internal interface IAppCatalogService
 {
     Task<IReadOnlyList<AppCatalogItem>> LoadCatalogAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AppCatalogItem>> ReloadCatalogAsync(CancellationToken cancellationToken = default);
 }
 
 

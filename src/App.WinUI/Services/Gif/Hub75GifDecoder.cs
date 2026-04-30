@@ -1,21 +1,14 @@
-using DrawingBitmap = System.Drawing.Bitmap;
-using DrawingColor = System.Drawing.Color;
-using DrawingGraphics = System.Drawing.Graphics;
-using DrawingImage = System.Drawing.Image;
-using FrameDimension = System.Drawing.Imaging.FrameDimension;
-using ImageLockMode = System.Drawing.Imaging.ImageLockMode;
-using PixelFormat = System.Drawing.Imaging.PixelFormat;
-using Rectangle = System.Drawing.Rectangle;
-using System.Runtime.Versioning;
+using ImageMagick;
 using MicaAudio.Core.Presets;
 
 namespace App.WinUI.Services.Gif;
 
 // DOCS: docs/wiki/guides/load-gif-hub75.md#passos
-[SupportedOSPlatform("windows")]
+// DOCS: docs/wiki/modules/paineis.md#renderizacao-e-preview-local
 internal sealed class Hub75GifDecoder
 {
     public const int DefaultMaxGifFrames = 720;
+    public const int DefaultFrameDurationMs = 100;
 
     private readonly int maxGifFrames;
 
@@ -26,104 +19,100 @@ internal sealed class Hub75GifDecoder
 
     public IReadOnlyList<DecodedGifFrame> Decode(byte[] gifBytes, CancellationToken cancellationToken = default)
     {
-        if (!LooksLikeGif(gifBytes))
-        {
-            throw new InvalidDataException("Arquivo invalido: esperado GIF87a/GIF89a.");
-        }
-
-        using var input = new MemoryStream(gifBytes, writable: false);
-        using var image = DrawingImage.FromStream(input, useEmbeddedColorManagement: false, validateImageData: true);
-
-        var frameDimension = ResolveFrameDimension(image);
-        var frameCount = Math.Min(image.GetFrameCount(frameDimension), maxGifFrames);
-        if (frameCount <= 0)
-        {
-            throw new InvalidDataException("GIF sem frames decodificaveis.");
-        }
-
-        using var canvas = new DrawingBitmap(image.Width, image.Height, PixelFormat.Format32bppArgb);
-        using var canvasGraphics = DrawingGraphics.FromImage(canvas);
-        canvasGraphics.Clear(DrawingColor.Transparent);
-        canvasGraphics.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
+        using var collection = ReadCoalescedFrames(gifBytes);
+        var frameCount = Math.Min(collection.Count, maxGifFrames);
 
         var output = new List<DecodedGifFrame>(frameCount);
         for (var i = 0; i < frameCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            image.SelectActiveFrame(frameDimension, i);
-            canvasGraphics.DrawImage(image, 0, 0, image.Width, image.Height);
-
-            using var snapshot = (DrawingBitmap)canvas.Clone();
-            output.Add(new DecodedGifFrame(snapshot.Width, snapshot.Height, CopyPixels(snapshot)));
+            var frame = collection[i];
+            output.Add(new DecodedGifFrame((int)frame.Width, (int)frame.Height, CopyPixels(frame), ResolveFrameDurationMs(frame)));
         }
 
         return output;
     }
 
-    private static FrameDimension ResolveFrameDimension(DrawingImage image)
+    public static DecodedGifFrame DecodeFirstFrame(byte[] gifBytes, CancellationToken cancellationToken = default)
     {
-        if (image.FrameDimensionsList.Length == 0)
-        {
-            return FrameDimension.Time;
-        }
-
-        var preferred = image.FrameDimensionsList.FirstOrDefault(id => id == FrameDimension.Time.Guid);
-        return preferred != Guid.Empty
-            ? new FrameDimension(preferred)
-            : new FrameDimension(image.FrameDimensionsList[0]);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var collection = ReadCoalescedFrames(gifBytes);
+        var frame = collection[0];
+        return new DecodedGifFrame((int)frame.Width, (int)frame.Height, CopyPixels(frame), ResolveFrameDurationMs(frame));
     }
 
-    private static bool LooksLikeGif(byte[] data)
+    private static MagickImageCollection ReadCoalescedFrames(byte[] gifBytes)
     {
-        if (data.Length < 6)
+        ValidateGifSignature(gifBytes);
+
+        var collection = new MagickImageCollection();
+        collection.Read(gifBytes);
+        if (collection.Count == 0)
         {
-            return false;
+            collection.Dispose();
+            throw new InvalidDataException("GIF sem frames decodificaveis.");
         }
 
-        return data[0] == (byte)'G'
-            && data[1] == (byte)'I'
-            && data[2] == (byte)'F'
-            && data[3] == (byte)'8'
-            && (data[4] == (byte)'7' || data[4] == (byte)'9')
-            && data[5] == (byte)'a';
+        collection.Coalesce();
+        return collection;
     }
 
-    private static RgbaColor[] CopyPixels(DrawingBitmap bitmap)
+    private static void ValidateGifSignature(byte[] data)
     {
-        var rect = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
-        var data = bitmap.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-        try
+        if (data.Length < 6
+            || data[0] != (byte)'G'
+            || data[1] != (byte)'I'
+            || data[2] != (byte)'F'
+            || data[3] != (byte)'8'
+            || (data[4] != (byte)'7' && data[4] != (byte)'9')
+            || data[5] != (byte)'a')
         {
-            var stride = Math.Abs(data.Stride);
-            var bytes = new byte[stride * bitmap.Height];
-            System.Runtime.InteropServices.Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
-            var output = new RgbaColor[bitmap.Width * bitmap.Height];
-            for (var y = 0; y < bitmap.Height; y++)
-            {
-                var rowOffset = data.Stride >= 0
-                    ? y * stride
-                    : (bitmap.Height - 1 - y) * stride;
-
-                for (var x = 0; x < bitmap.Width; x++)
-                {
-                    var i = (y * bitmap.Width) + x;
-                    var pixelOffset = rowOffset + (x * 4);
-                    var b = bytes[pixelOffset];
-                    var g = bytes[pixelOffset + 1];
-                    var r = bytes[pixelOffset + 2];
-                    var a = bytes[pixelOffset + 3];
-                    output[i] = new RgbaColor(r, g, b, a);
-                }
-            }
-
-            return output;
+            throw new InvalidDataException("Arquivo invalido: esperado GIF87a/GIF89a.");
         }
-        finally
+    }
+
+    internal static int NormalizeFrameDurationMs(int rawDelayUnits)
+    {
+        return rawDelayUnits > 0
+            ? rawDelayUnits * 10
+            : DefaultFrameDurationMs;
+    }
+
+    private static int ResolveFrameDurationMs(IMagickImage<byte> image)
+    {
+        var ticksPerSecond = image.AnimationTicksPerSecond > 0
+            ? (double)image.AnimationTicksPerSecond
+            : 100d;
+        var durationMs = (int)Math.Round((image.AnimationDelay * 1000d) / ticksPerSecond, MidpointRounding.AwayFromZero);
+        return durationMs > 0
+            ? durationMs
+            : DefaultFrameDurationMs;
+    }
+
+    private static RgbaColor[] CopyPixels(IMagickImage<byte> image)
+    {
+        var pixels = image.GetPixels();
+        var bytes = pixels.ToByteArray(PixelMapping.RGBA)
+            ?? throw new InvalidDataException("Falha ao extrair pixels RGBA do frame GIF.");
+        var output = new RgbaColor[(int)(image.Width * image.Height)];
+        var expectedByteCount = output.Length * 4;
+        if (bytes.Length < expectedByteCount)
         {
-            bitmap.UnlockBits(data);
+            throw new InvalidDataException("Frame GIF retornou menos bytes RGBA do que o esperado.");
         }
+
+        for (var pixelIndex = 0; pixelIndex < output.Length; pixelIndex++)
+        {
+            var offset = pixelIndex * 4;
+            output[pixelIndex] = new RgbaColor(
+                bytes[offset],
+                bytes[offset + 1],
+                bytes[offset + 2],
+                bytes[offset + 3]);
+        }
+
+        return output;
     }
 }
 
-internal sealed record DecodedGifFrame(int Width, int Height, RgbaColor[] Pixels);
+internal sealed record DecodedGifFrame(int Width, int Height, RgbaColor[] Pixels, int DurationMs = Hub75GifDecoder.DefaultFrameDurationMs);

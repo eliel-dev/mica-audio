@@ -1,0 +1,14 @@
+---
+import { STATUS_META } from '../data/atlas-data.mjs';
+
+const { status, compact = false } = Astro.props;
+const meta = status ? STATUS_META[status] : null;
+---
+
+{
+	meta && (
+		<span class:list={['atlas-status-chip', `atlas-status-chip-${meta.tone}`, compact && 'is-compact']}>
+			{meta.label}
+		</span>
+	)
+}

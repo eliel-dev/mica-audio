@@ -6,6 +6,7 @@ using MicaAudio.Core.Presets;
 namespace App.WinUI.Services;
 
 // DOCS: docs/wiki/modules/settings-presets-persistence.md#modulo-settings-presets-e-persistencia
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 internal sealed class AppSettingsDomainService
 {
     // DOCS: docs/wiki/guides/change-visualizer-settings.md#passos
@@ -37,6 +38,7 @@ internal sealed class AppSettingsDomainService
         {
             ActivePresetId = visualizer.ActivePresetId,
             SelectedRendererId = visualizer.SelectedRendererId,
+            UseMicaBackdrop = settings.UseMicaBackdrop,
             Hub75PreviewEnabled = settings.Hub75PreviewEnabled,
             Brightness = settings.Brightness,
             Sensitivity = VisualizerRuntimeDefaults.DefaultMaxDecibels,
@@ -54,6 +56,8 @@ internal sealed class AppSettingsDomainService
             DeviceStaleThresholdMinutes = thresholds.DeviceStaleThresholdMinutes,
             DeviceDormantThresholdHours = thresholds.DeviceDormantThresholdHours,
             AllowLegacyWebSocketQueryToken = settings.AllowLegacyWebSocketQueryToken,
+            DeviceServerMode = Enum.IsDefined(settings.DeviceServerMode) ? settings.DeviceServerMode : DeviceServerMode.Embedded,
+            RemoteServerBaseAddress = NormalizeRemoteServerBaseAddress(settings.RemoteServerBaseAddress),
             WindowWidth = settings.WindowWidth,
             WindowHeight = settings.WindowHeight,
         };
@@ -67,6 +71,7 @@ internal sealed class AppSettingsDomainService
 
             ActivePresetId = visualizer.ActivePresetId;
             SelectedRendererId = visualizer.SelectedRendererId;
+            UseMicaBackdrop = source.UseMicaBackdrop;
             Hub75PreviewEnabled = source.Hub75PreviewEnabled;
             Brightness = source.Brightness;
             Sensitivity = VisualizerRuntimeDefaults.DefaultMaxDecibels;
@@ -84,12 +89,15 @@ internal sealed class AppSettingsDomainService
             DeviceStaleThresholdMinutes = source.DeviceStaleThresholdMinutes;
             DeviceDormantThresholdHours = source.DeviceDormantThresholdHours;
             AllowLegacyWebSocketQueryToken = source.AllowLegacyWebSocketQueryToken;
+            DeviceServerMode = Enum.IsDefined(source.DeviceServerMode) ? source.DeviceServerMode : DeviceServerMode.Embedded;
+            RemoteServerBaseAddress = NormalizeRemoteServerBaseAddress(source.RemoteServerBaseAddress);
             WindowWidth = source.WindowWidth;
             WindowHeight = source.WindowHeight;
         }
 
         public string ActivePresetId { get; private set; }
         public string SelectedRendererId { get; private set; }
+        public bool UseMicaBackdrop { get; private set; }
         public bool Hub75PreviewEnabled { get; private set; }
         public float Brightness { get; private set; }
         public float Sensitivity { get; private set; }
@@ -107,11 +115,14 @@ internal sealed class AppSettingsDomainService
         public int DeviceStaleThresholdMinutes { get; private set; }
         public int DeviceDormantThresholdHours { get; private set; }
         public bool AllowLegacyWebSocketQueryToken { get; private set; }
+        public DeviceServerMode DeviceServerMode { get; private set; }
+        public string RemoteServerBaseAddress { get; private set; }
         public int WindowWidth { get; private set; }
         public int WindowHeight { get; private set; }
 
         public void SetActivePresetId(string value) => ActivePresetId = value;
         public void SetSelectedRendererId(string value) => SelectedRendererId = value;
+        public void SetUseMicaBackdrop(bool value) => UseMicaBackdrop = value;
         public void SetHub75PreviewEnabled(bool value) => Hub75PreviewEnabled = value;
         public void SetBarCount(int value) => BarCount = value;
         public void SetFftSize(int value) => FftSize = VisualizerRuntimeSettings.NormalizeFftSize(value);
@@ -121,6 +132,8 @@ internal sealed class AppSettingsDomainService
         public void SetDeviceStaleThresholdMinutes(int value) => DeviceStaleThresholdMinutes = value;
         public void SetDeviceDormantThresholdHours(int value) => DeviceDormantThresholdHours = value;
         public void SetAllowLegacyWebSocketQueryToken(bool value) => AllowLegacyWebSocketQueryToken = value;
+        public void SetDeviceServerMode(DeviceServerMode value) => DeviceServerMode = value;
+        public void SetRemoteServerBaseAddress(string value) => RemoteServerBaseAddress = NormalizeRemoteServerBaseAddress(value);
         public void SetFrequencyScale(FrequencyScale value) => FrequencyScale = value;
         public void SetFrequencyRange(float minHz, float maxHz)
         {
@@ -156,6 +169,7 @@ internal sealed class AppSettingsDomainService
             {
                 ActivePresetId = ActivePresetId,
                 SelectedRendererId = SelectedRendererId,
+                UseMicaBackdrop = UseMicaBackdrop,
                 Hub75PreviewEnabled = Hub75PreviewEnabled,
                 Brightness = Brightness,
                 Sensitivity = Sensitivity,
@@ -173,9 +187,22 @@ internal sealed class AppSettingsDomainService
                 DeviceStaleThresholdMinutes = DeviceStaleThresholdMinutes,
                 DeviceDormantThresholdHours = DeviceDormantThresholdHours,
                 AllowLegacyWebSocketQueryToken = AllowLegacyWebSocketQueryToken,
+                DeviceServerMode = DeviceServerMode,
+                RemoteServerBaseAddress = RemoteServerBaseAddress,
                 WindowWidth = WindowWidth,
                 WindowHeight = WindowHeight,
             });
         }
+    }
+
+    private static string NormalizeRemoteServerBaseAddress(string? value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return "http://127.0.0.1:5272";
+        }
+
+        return uri.ToString().TrimEnd('/');
     }
 }

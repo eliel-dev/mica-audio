@@ -1,14 +1,22 @@
-using App.WinUI.Services;
-using Device.Protocol.Models;
+using System.Diagnostics;
 using System.Globalization;
+using App.WinUI.Infrastructure.Observability;
+using App.WinUI.Services.Logging;
+using Device.Client;
+using Device.Protocol.Models;
+using Microsoft.Extensions.Logging;
 
 namespace App.WinUI.Services.Devices;
 
 // DOCS: docs/wiki/modules/device-operations-coordinator.md#modulo-deviceoperationscoordinator
-internal sealed class DeviceOperationsCoordinator : IDisposable
+// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
+// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
+// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+internal sealed partial class DeviceOperationsCoordinator : IDisposable
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FirmwareUpdateTimeout = TimeSpan.FromMinutes(5);
     private const int MaxLogEntries = 600;
     private const int MaxDeviceLogEntries = 100;
     private const int SafeBrightnessMin = 30;
@@ -16,36 +24,51 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
     private readonly IDeviceOperationsRuntime integration;
     private readonly DeviceLogBook logBook = new(MaxLogEntries, MaxDeviceLogEntries);
+    private readonly DeviceTelemetryHistoryBook telemetryHistoryBook = new(maxSamples: 60);
     private readonly DeviceCommandTracker commandTracker = new();
     private readonly DeviceRefreshCoordinator refreshCoordinator = new();
     private readonly DeviceLifecycleThresholdProvider lifecycleThresholdProvider;
     private readonly DeviceCommandDispatcher commandDispatcher;
+    private readonly IDeviceClientSessionManager? sessionManager;
+    private readonly ILogger<DeviceOperationsCoordinator>? logger;
     private readonly Timer refreshTimer;
     private bool disposed;
 
-    public DeviceOperationsCoordinator(DeviceIntegrationService integration, SettingsRepository settingsRepository, AppSettingsDomainService settingsDomainService)
-        : this(new DeviceOperationsRuntime(integration), settingsRepository, settingsDomainService)
+    public DeviceOperationsCoordinator(
+        IDeviceServerClient integration,
+        SettingsRepository? settingsRepository,
+        AppSettingsDomainService? settingsDomainService,
+        ILogger<DeviceOperationsCoordinator>? logger = null,
+        IDeviceClientSessionManager? sessionManager = null)
+        : this(new DeviceOperationsRuntime(integration), settingsRepository, settingsDomainService, logger, sessionManager)
     {
     }
 
     internal DeviceOperationsCoordinator(
         IDeviceOperationsRuntime integration,
         SettingsRepository? settingsRepository,
-        AppSettingsDomainService? settingsDomainService)
+        AppSettingsDomainService? settingsDomainService,
+        ILogger<DeviceOperationsCoordinator>? logger = null,
+        IDeviceClientSessionManager? sessionManager = null)
     {
         this.integration = integration;
+        this.logger = logger;
+        this.sessionManager = sessionManager;
         lifecycleThresholdProvider = new DeviceLifecycleThresholdProvider(settingsRepository, settingsDomainService);
         commandDispatcher = new DeviceCommandDispatcher(integration, CommandTimeout);
         refreshTimer = new Timer(OnRefreshTimerTick, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
         integration.DevicesChanged += OnDevicesChanged;
         integration.LogMessage += OnLogMessage;
+        integration.DeviceLogReceived += OnDeviceLogReceived;
         integration.CommandProgressChanged += OnHostCommandProgressChanged;
     }
 
     public event EventHandler? StateChanged;
 
     public event EventHandler? DeviceListChanged;
+
+    internal AppLogStore? CentralLogStore { get; set; }
 
     public DeviceOperationsState GetStateSnapshot()
     {
@@ -66,8 +89,11 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         };
     }
 
-    public IReadOnlyList<string> GetDeviceLogs(string deviceId)
+    public IReadOnlyList<DeviceLogEntry> GetDeviceLogs(string deviceId)
         => logBook.GetDeviceLogs(deviceId);
+
+    public DeviceTelemetryHistorySnapshot GetDeviceTelemetryHistory(string deviceId)
+        => telemetryHistoryBook.GetHistory(deviceId);
 
     public void SetDevicesPageVisible(bool visible)
     {
@@ -91,13 +117,25 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
     public string GetServerBaseAddress() => integration.GetServerBaseAddress();
 
     public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
+        => CreatePairingCodeAsync(ttl).GetAwaiter().GetResult();
+
+    public async Task<PairingCodeInfo> CreatePairingCodeAsync(TimeSpan ttl, CancellationToken cancellationToken = default)
     {
-        var pairing = integration.CreatePairingCode(ttl);
+        var pairing = await integration.CreatePairingCodeAsync(ttl, cancellationToken).ConfigureAwait(false);
         AppendLog($"Codigo de pareamento: {pairing.Code} (expira {pairing.ExpiresAtUtc:HH:mm:ss} UTC)");
         return pairing;
     }
 
+    internal PairingCodeInfo CreateHiddenPairingCode(TimeSpan ttl)
+        => CreateHiddenPairingCodeAsync(ttl).GetAwaiter().GetResult();
+
+    internal Task<PairingCodeInfo> CreateHiddenPairingCodeAsync(TimeSpan ttl, CancellationToken cancellationToken = default)
+        => integration.CreatePairingCodeAsync(ttl, cancellationToken);
+
     public bool RemoveDevice(string deviceId)
+        => RemoveDeviceAsync(deviceId).GetAwaiter().GetResult();
+
+    public async Task<bool> RemoveDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
         {
@@ -105,14 +143,15 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
 
         var normalizedDeviceId = deviceId.Trim();
-        var removed = integration.RemoveDevice(normalizedDeviceId);
+        var removed = await integration.RemoveDeviceAsync(normalizedDeviceId, cancellationToken).ConfigureAwait(false);
         if (!removed)
         {
             return false;
         }
 
-        AppendDeviceLog(normalizedDeviceId, "Dispositivo removido do registro local.");
-        AppendLog($"Dispositivo removido do registro local: {normalizedDeviceId}");
+        logBook.RemoveDevice(normalizedDeviceId);
+        telemetryHistoryBook.RemoveDevice(normalizedDeviceId);
+        AppendLog($"Dispositivo removido do registro local: {normalizedDeviceId}", category: "device", code: "removed", source: DeviceLogSource.App);
         RequestRefresh();
         return true;
     }
@@ -123,7 +162,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         DeviceCommandType commandType,
         CancellationToken cancellationToken = default)
     {
-        return RunCommandCoreAsync(deviceId, commandType, parameters: null, cancellationToken);
+        return RunCommandCoreAsync(deviceId, commandType, parameters: null, timeoutOverride: null, cancellationToken);
     }
 
     public Task<CommandDispatchResult> RunCommandAsync(
@@ -132,7 +171,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         IReadOnlyDictionary<string, string>? parameters,
         CancellationToken cancellationToken = default)
     {
-        return RunCommandCoreAsync(deviceId, commandType, parameters, cancellationToken);
+        return RunCommandCoreAsync(deviceId, commandType, parameters, timeoutOverride: null, cancellationToken);
     }
 
     public Task<CommandDispatchResult> InstallAppAsync(string deviceId, DeviceAppCommandPayload payload, CancellationToken cancellationToken = default)
@@ -182,6 +221,20 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         return RunCommandAsync(deviceId, DeviceCommandType.TestLed, parameters: null, cancellationToken);
     }
 
+    public Task<CommandDispatchResult> UpdateFirmwareAsync(
+        string deviceId,
+        string targetVersion,
+        CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(targetVersion))
+        {
+            parameters["version"] = targetVersion.Trim();
+        }
+
+        return RunCommandCoreAsync(deviceId, DeviceCommandType.UpdateFirmware, parameters, FirmwareUpdateTimeout, cancellationToken);
+    }
+
     public Task<CommandDispatchResult> SetTestLedEnabledAsync(string deviceId, bool enabled, CancellationToken cancellationToken = default)
     {
         var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -204,6 +257,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         lifecycleThresholdProvider.Dispose();
         integration.DevicesChanged -= OnDevicesChanged;
         integration.LogMessage -= OnLogMessage;
+        integration.DeviceLogReceived -= OnDeviceLogReceived;
         integration.CommandProgressChanged -= OnHostCommandProgressChanged;
     }
 
@@ -211,6 +265,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         string deviceId,
         DeviceCommandType commandType,
         IReadOnlyDictionary<string, string>? parameters,
+        TimeSpan? timeoutOverride,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
@@ -220,27 +275,117 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
         var normalizedDeviceId = deviceId.Trim();
         var operationLabel = DeviceOperationsText.DescribeCommand(commandType);
+        using var activity = AppObservability.StartActivity("device.command", AppObservability.DeviceIntegrationComponent);
+        activity?.SetTag(AppObservability.DeviceIdKey, normalizedDeviceId);
+        activity?.SetTag("commandType", commandType.ToString());
+        if (TryGetAppId(parameters, out var appId))
+        {
+            activity?.SetTag(AppObservability.AppIdKey, appId);
+        }
+
+        using var scope = AppObservability.BeginScope(
+            logger,
+            activity,
+            (AppObservability.ComponentKey, AppObservability.DeviceIntegrationComponent),
+            (AppObservability.MicaComponentKey, AppObservability.DeviceIntegrationComponent),
+            (AppObservability.OperationKey, "device.command"),
+            (AppObservability.DeviceIdKey, normalizedDeviceId),
+            ("commandType", commandType.ToString()),
+            (AppObservability.AppIdKey, appId));
 
         if (!commandTracker.TryQueue(normalizedDeviceId, operationLabel, out var busyResult))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, busyResult?.ErrorCode ?? "busy");
+            if (logger is not null)
+            {
+                LogDeviceCommandBusy(logger, commandType, normalizedDeviceId);
+            }
+
             return busyResult!;
         }
 
         RaiseStateChanged();
-        AppendDeviceLog(normalizedDeviceId, $"Comando iniciado ({operationLabel}).");
-        AppendLog($"Comando iniciado ({operationLabel}) para {normalizedDeviceId}.");
+        AppendDeviceLog(normalizedDeviceId, $"Comando iniciado ({operationLabel}).", category: "command", code: "started");
+        AppendLog($"Comando iniciado ({operationLabel}) para {normalizedDeviceId}.", category: "command", code: "started", source: DeviceLogSource.App);
+        if (logger is not null)
+        {
+            LogDeviceCommandStarted(logger, commandType, normalizedDeviceId);
+        }
 
-        var result = await commandDispatcher
-            .DispatchAsync(normalizedDeviceId, commandType, parameters, cancellationToken)
-            .ConfigureAwait(false);
+        DeviceClientLockLease? lockLease = null;
+        var sessionContext = sessionManager?.CreateCommandContext(normalizedDeviceId);
+        try
+        {
+            if (IsProtectedCommand(commandType) && sessionManager is not null)
+            {
+                lockLease = await sessionManager
+                    .AcquireLockAsync(normalizedDeviceId, commandType.ToString(), TimeSpan.FromSeconds(15), cancellationToken)
+                    .ConfigureAwait(false);
+                sessionContext = sessionManager.CreateCommandContext(normalizedDeviceId);
+            }
 
-        commandTracker.Complete(normalizedDeviceId, result);
-        RaiseStateChanged();
+            var result = await commandDispatcher
+                .DispatchAsync(normalizedDeviceId, commandType, parameters, sessionContext, timeoutOverride, cancellationToken)
+                .ConfigureAwait(false);
 
-        var resultMessage = DeviceOperationsText.BuildResultLogMessage(result);
-        AppendDeviceLog(normalizedDeviceId, resultMessage);
-        AppendLog(resultMessage);
-        return result;
+            activity?.SetTag(AppObservability.CommandIdKey, result.CommandId);
+            activity?.SetTag("command.stage", result.Stage);
+            activity?.SetTag("command.success", result.Success);
+            if (!result.Success)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, result.ErrorCode ?? result.Stage);
+                if (logger is not null)
+                {
+                    LogDeviceCommandFailed(logger, commandType, normalizedDeviceId, result.Stage ?? "unknown", result.ErrorCode ?? "none");
+                }
+            }
+            else
+            {
+                if (logger is not null)
+                {
+                    LogDeviceCommandSucceeded(logger, commandType, normalizedDeviceId, result.CommandId ?? string.Empty);
+                }
+            }
+
+            commandTracker.Complete(normalizedDeviceId, result);
+            RaiseStateChanged();
+
+            var resultMessage = DeviceOperationsText.BuildResultLogMessage(result);
+            var resultSeverity = result.Success ? DeviceLogSeverity.Info : DeviceLogSeverity.Warning;
+            AppendDeviceLog(normalizedDeviceId, resultMessage, severity: resultSeverity, category: "command", code: result.Stage);
+            AppendLog(resultMessage, severity: resultSeverity, category: "command", code: result.Stage, source: DeviceLogSource.App);
+            return result;
+        }
+        finally
+        {
+            if (lockLease is not null && sessionManager is not null)
+            {
+                try
+                {
+                    await sessionManager.ReleaseLockAsync(normalizedDeviceId, lockLease.LockToken, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    private static bool TryGetAppId(IReadOnlyDictionary<string, string>? parameters, out string? appId)
+    {
+        appId = null;
+        if (parameters is null)
+        {
+            return false;
+        }
+
+        if (!parameters.TryGetValue("appId", out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
+        {
+            return false;
+        }
+
+        appId = rawValue.Trim();
+        return true;
     }
 
     private void OnRefreshTimerTick(object? _)
@@ -260,7 +405,20 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
 
     private void OnLogMessage(object? sender, string message)
     {
-        AppendLog(message);
+        AppendLog(message, category: "server", source: DeviceLogSource.Server);
+    }
+
+    private void OnDeviceLogReceived(object? sender, DeviceLogMessage log)
+    {
+        if (logBook.AppendDeviceFirmware(log))
+        {
+            if (log.Level.Equals("error", StringComparison.OrdinalIgnoreCase))
+            {
+                CentralLogStore?.Append(LogCategory.Devices, LogSeverity.Error, log.Message, log.DeviceId);
+            }
+
+            RaiseStateChanged();
+        }
     }
 
     private void OnHostCommandProgressChanged(object? sender, DeviceCommandProgressMessage progress)
@@ -270,9 +428,10 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
             return;
         }
 
-        AppendDeviceLog(normalizedDeviceId, progressMessage);
+        var severity = progress.Success is false ? DeviceLogSeverity.Warning : DeviceLogSeverity.Info;
+        AppendDeviceLog(normalizedDeviceId, progressMessage, severity: severity, category: "command", code: progress.Stage);
         RaiseStateChanged();
-        AppendLog(progressMessage);
+        AppendLog(progressMessage, severity: severity, category: "command", code: progress.Stage, source: DeviceLogSource.App);
     }
 
     private async Task RefreshDevicesAsync(bool forcePublish)
@@ -285,15 +444,18 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         try
         {
             var lifecycleThresholds = await lifecycleThresholdProvider.EnsureLoadedAsync().ConfigureAwait(false);
+            var devices = await integration.GetDevicesAsync().ConfigureAwait(false);
             var nextSnapshot = DeviceListVisibilityPolicy.BuildVisibleList(
-                integration.GetDevices(),
+                devices,
                 lifecycleThresholds,
                 DateTimeOffset.UtcNow);
+            sessionManager?.ObserveDevices(nextSnapshot);
 
             var update = refreshCoordinator.Apply(nextSnapshot, forcePublish, DateTimeOffset.UtcNow);
             if (update.Changed)
             {
                 logBook.RecordLifecycleEvents(update.PreviousSnapshot, update.CurrentSnapshot, DateTimeOffset.Now);
+                telemetryHistoryBook.RecordSnapshots(update.CurrentSnapshot);
                 DeviceListChanged?.Invoke(this, EventArgs.Empty);
             }
 
@@ -304,7 +466,7 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
         catch (Exception ex)
         {
-            AppendLog($"Falha ao atualizar lista de dispositivos: {ex.Message}");
+            AppendLog($"Falha ao atualizar lista de dispositivos: {ex.Message}", severity: DeviceLogSeverity.Error, category: "refresh", code: "refresh_failed", source: DeviceLogSource.App);
         }
         finally
         {
@@ -312,26 +474,67 @@ internal sealed class DeviceOperationsCoordinator : IDisposable
         }
     }
 
-    private void AppendDeviceLog(string deviceId, string message)
+    private void AppendDeviceLog(
+        string deviceId,
+        string message,
+        DeviceLogSeverity severity = DeviceLogSeverity.Info,
+        string category = "app",
+        string? code = null,
+        DeviceLogSource source = DeviceLogSource.App)
     {
-        if (logBook.AppendDevice(deviceId, message))
+        if (logBook.AppendDevice(deviceId, message, severity, category, code, source))
         {
             RaiseStateChanged();
         }
     }
 
-    private void AppendLog(string message)
+    private void AppendLog(
+        string message,
+        DeviceLogSeverity severity = DeviceLogSeverity.Info,
+        string category = "server",
+        string? code = null,
+        DeviceLogSource source = DeviceLogSource.Server)
     {
-        if (logBook.AppendGlobal(message))
+        if (logBook.AppendGlobal(message, severity, category, code, source))
         {
+            CentralLogStore?.Append(LogCategory.Devices, MapSeverity(severity), message);
             RaiseStateChanged();
         }
+    }
+
+    private static LogSeverity MapSeverity(DeviceLogSeverity severity)
+        => severity switch
+        {
+            DeviceLogSeverity.Warning => LogSeverity.Warning,
+            DeviceLogSeverity.Error => LogSeverity.Error,
+            _ => LogSeverity.Info,
+        };
+
+    private static bool IsProtectedCommand(DeviceCommandType commandType)
+    {
+        return commandType is DeviceCommandType.EnterProvisioning
+            or DeviceCommandType.RevokeAndRestart
+            or DeviceCommandType.UpdateFirmware
+            or DeviceCommandType.InstallApp
+            or DeviceCommandType.SetAppConfig;
     }
 
     private void RaiseStateChanged()
     {
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    [LoggerMessage(EventId = 1600, Level = LogLevel.Warning, Message = "Comando {CommandType} rejeitado para {DeviceId} porque ja existe outra operacao em andamento.")]
+    private static partial void LogDeviceCommandBusy(ILogger logger, DeviceCommandType commandType, string deviceId);
+
+    [LoggerMessage(EventId = 1601, Level = LogLevel.Information, Message = "Comando {CommandType} iniciado para {DeviceId}.")]
+    private static partial void LogDeviceCommandStarted(ILogger logger, DeviceCommandType commandType, string deviceId);
+
+    [LoggerMessage(EventId = 1602, Level = LogLevel.Warning, Message = "Comando {CommandType} para {DeviceId} concluiu sem sucesso. stage={Stage} errorCode={ErrorCode}")]
+    private static partial void LogDeviceCommandFailed(ILogger logger, DeviceCommandType commandType, string deviceId, string stage, string errorCode);
+
+    [LoggerMessage(EventId = 1603, Level = LogLevel.Information, Message = "Comando {CommandType} para {DeviceId} concluiu com sucesso. commandId={CommandId}")]
+    private static partial void LogDeviceCommandSucceeded(ILogger logger, DeviceCommandType commandType, string deviceId, string commandId);
 }
 
 internal interface IDeviceOperationsRuntime
@@ -340,15 +543,29 @@ internal interface IDeviceOperationsRuntime
 
     event EventHandler<string>? LogMessage;
 
+    event EventHandler<DeviceLogMessage>? DeviceLogReceived;
+
     event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged;
 
     string GetServerBaseAddress();
 
-    PairingCodeInfo CreatePairingCode(TimeSpan ttl);
+    PairingCodeInfo CreatePairingCode(TimeSpan ttl)
+        => CreatePairingCodeAsync(ttl, CancellationToken.None).GetAwaiter().GetResult();
 
-    bool RemoveDevice(string deviceId);
+    Task<PairingCodeInfo> CreatePairingCodeAsync(TimeSpan ttl, CancellationToken cancellationToken = default)
+        => Task.FromResult(CreatePairingCode(ttl));
 
-    IReadOnlyList<DeviceSnapshot> GetDevices();
+    bool RemoveDevice(string deviceId)
+        => RemoveDeviceAsync(deviceId, CancellationToken.None).GetAwaiter().GetResult();
+
+    Task<bool> RemoveDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
+        => Task.FromResult(RemoveDevice(deviceId));
+
+    IReadOnlyList<DeviceSnapshot> GetDevices()
+        => GetDevicesAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+    Task<IReadOnlyList<DeviceSnapshot>> GetDevicesAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(GetDevices());
 
     Task<CommandDispatchResult> SendCommandTrackedAsync(
         string deviceId,
@@ -356,13 +573,22 @@ internal interface IDeviceOperationsRuntime
         IReadOnlyDictionary<string, string>? parameters,
         TimeSpan timeout,
         CancellationToken cancellationToken);
+
+    Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+        => SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
 }
 
 internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
 {
-    private readonly DeviceIntegrationService integration;
+    private readonly IDeviceServerClient integration;
 
-    public DeviceOperationsRuntime(DeviceIntegrationService integration)
+    public DeviceOperationsRuntime(IDeviceServerClient integration)
     {
         this.integration = integration;
     }
@@ -379,19 +605,34 @@ internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
         remove => integration.LogMessage -= value;
     }
 
+    public event EventHandler<DeviceLogMessage>? DeviceLogReceived
+    {
+        add => integration.DeviceLogReceived += value;
+        remove => integration.DeviceLogReceived -= value;
+    }
+
     public event EventHandler<DeviceCommandProgressMessage>? CommandProgressChanged
     {
-        add => integration.Host.CommandProgressChanged += value;
-        remove => integration.Host.CommandProgressChanged -= value;
+        add => integration.CommandProgressChanged += value;
+        remove => integration.CommandProgressChanged -= value;
     }
 
     public string GetServerBaseAddress() => integration.GetServerBaseAddress();
 
     public PairingCodeInfo CreatePairingCode(TimeSpan ttl) => integration.CreatePairingCode(ttl);
 
+    public Task<PairingCodeInfo> CreatePairingCodeAsync(TimeSpan ttl, CancellationToken cancellationToken = default)
+        => integration.CreatePairingCodeAsync(ttl, cancellationToken);
+
     public bool RemoveDevice(string deviceId) => integration.RemoveDevice(deviceId);
 
+    public Task<bool> RemoveDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
+        => integration.RemoveDeviceAsync(deviceId, cancellationToken);
+
     public IReadOnlyList<DeviceSnapshot> GetDevices() => integration.GetDevices();
+
+    public Task<IReadOnlyList<DeviceSnapshot>> GetDevicesAsync(CancellationToken cancellationToken = default)
+        => integration.GetDevicesAsync(cancellationToken);
 
     public Task<CommandDispatchResult> SendCommandTrackedAsync(
         string deviceId,
@@ -400,6 +641,17 @@ internal sealed class DeviceOperationsRuntime : IDeviceOperationsRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        return integration.Host.SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
+        return integration.SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
+    }
+
+    public Task<CommandDispatchResult> SendCommandTrackedAsync(
+        string deviceId,
+        DeviceCommandType commandType,
+        IReadOnlyDictionary<string, string>? parameters,
+        DeviceCommandSessionContext? sessionContext,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        return integration.SendCommandTrackedAsync(deviceId, commandType, parameters, sessionContext, timeout, cancellationToken);
     }
 }

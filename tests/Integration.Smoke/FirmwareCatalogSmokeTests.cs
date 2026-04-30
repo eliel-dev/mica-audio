@@ -1,4 +1,5 @@
 using App.WinUI.Services.Firmware;
+using Device.Server.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Integration.Smoke;
@@ -10,6 +11,7 @@ public sealed class FirmwareCatalogSmokeTests
     {
         var provider = App.WinUI.App.BuildServiceProvider();
         var service = provider.GetRequiredService<PrecompiledFirmwareService>();
+        var catalog = provider.GetRequiredService<IDeviceOfficialFirmwareCatalog>();
 
         var options = service.GetOptions(
             PrecompiledFirmwareService.Esp32S3DevKitC1Board,
@@ -19,6 +21,20 @@ public sealed class FirmwareCatalogSmokeTests
         Assert.Equal("dma_exp", dma.Profile);
         Assert.Equal("esp32s3-devkitc1-128x64-dma_exp_merged.bin", dma.FileName);
         Assert.Empty(service.GetOptions(boardModel: "unknown_board"));
+        Assert.NotNull(catalog);
+
+        var resolved = service.TryResolveArtifact(
+            PrecompiledFirmwareService.Esp32S3DevKitC1Board,
+            PrecompiledFirmwareService.Hub75PanelP25_128x64_Smd2121_Scan32,
+            "dma_exp",
+            out var artifact,
+            out var error);
+
+        Assert.True(resolved, error);
+        Assert.Equal("dma_exp", artifact.Manifest.Profile);
+        Assert.Equal(PrecompiledFirmwareService.RequiredControlPlane, artifact.Manifest.ControlPlane);
+        Assert.True(artifact.Manifest.FileSizeBytes > 0);
+        Assert.False(string.IsNullOrWhiteSpace(artifact.Manifest.Sha256));
     }
 
     [Fact]

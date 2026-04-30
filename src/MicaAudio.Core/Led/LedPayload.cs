@@ -17,6 +17,8 @@ public sealed class LedPayload
 
     public string? PresetId { get; init; }
 
+    public byte BinsFlags { get; init; }
+
     public RgbaColor[]? Frame128x64
     {
         get => frame128x64;

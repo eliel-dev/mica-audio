@@ -22,12 +22,12 @@ public sealed partial class AppsPage
                 allItems.Clear();
                 allItems.AddRange(catalog);
                 ApplyFilter();
-                AppendLog($"CatÃ¡logo carregado: {allItems.Count} apps.");
+                AppendLog($"Catálogo carregado: {allItems.Count} apps.");
             });
         }
         catch (Exception ex)
         {
-            _ = DispatcherQueue.TryEnqueue(() => AppendLog($"Falha ao carregar catÃ¡logo: {ex.Message}"));
+            _ = DispatcherQueue.TryEnqueue(() => AppendLog($"Falha ao carregar catálogo: {ex.Message}"));
         }
     }
 
@@ -48,10 +48,10 @@ public sealed partial class AppsPage
         viewModel.OperationStatus = state.CommandStatus;
         viewModel.OperationPercent = Math.Clamp(state.CommandPercent, 0, 100);
 
-        OperationProgressRing.IsActive = viewModel.OperationInProgress;
-        OperationProgressRing.Visibility = viewModel.OperationInProgress ? Visibility.Visible : Visibility.Collapsed;
-        OperationStatusText.Text = viewModel.OperationStatus;
-        OperationPercentText.Text = $"{viewModel.OperationPercent}%";
+        var msg = viewModel.OperationInProgress && viewModel.OperationPercent > 0
+            ? $"{viewModel.OperationStatus} ({viewModel.OperationPercent}%)"
+            : viewModel.OperationStatus;
+        ShowOperationNotification(msg, viewModel.OperationInProgress);
         UpdateGifOpenFileButtonVisibility();
         UpdateActionButtonsEnabled();
     }
@@ -115,7 +115,7 @@ public sealed partial class AppsPage
     {
         foreach (var card in catalogCards)
         {
-            card.Preview.Stop();
+            card.SetPreviewPlayback(false);
         }
 
         catalogCards.Clear();
@@ -187,7 +187,14 @@ public sealed partial class AppsPage
         catalogReloadInProgress = true;
         try
         {
-            await LoadCatalogAsync().ConfigureAwait(false);
+            var catalog = await catalogService.ReloadCatalogAsync().ConfigureAwait(false);
+            _ = DispatcherQueue.TryEnqueue(() =>
+            {
+                allItems.Clear();
+                allItems.AddRange(catalog);
+                ApplyFilter();
+                AppendLog($"Catalogo recarregado do disco: {allItems.Count} apps.");
+            });
         }
         finally
         {
@@ -255,7 +262,7 @@ public sealed partial class AppsPage
         SelectedAppDescriptionText.Text = viewModel.SelectedAppDescription;
         ModifiersHintText.Text = "Selecione um app e um dispositivo para editar modificadores.";
         ModifiersPanel.Children.Clear();
-        modifierBindings.Clear();
+        modifierEditor.Cleanup();
 
         previousProvider?.OnDeselected(previousItem ?? new AppCatalogItem());
 
@@ -304,20 +311,60 @@ public sealed partial class AppsPage
     {
         if (catalogCards.Count == 0)
         {
+            foreach (var card in activePreviewCards)
+            {
+                card.SetPreviewPlayback(false);
+            }
+
+            activePreviewCards.Clear();
             return;
         }
 
         var stale = activePreviewCards.Except(catalogCards).ToArray();
         foreach (var removed in stale)
         {
-            removed.Preview.Stop();
+            removed.SetPreviewPlayback(false);
             activePreviewCards.Remove(removed);
         }
 
-        activePreviewCards.Clear();
         foreach (var card in catalogCards)
         {
+            card.SetPreviewPlayback(true);
             activePreviewCards.Add(card);
         }
+    }
+
+    private void ShowOperationNotification(string message, bool inProgress)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+
+        var hasError = message.Contains("erro", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("falh", StringComparison.OrdinalIgnoreCase);
+
+        OperationInfoBar.Severity = inProgress
+            ? InfoBarSeverity.Informational
+            : (hasError ? InfoBarSeverity.Error : InfoBarSeverity.Success);
+        OperationInfoBar.Message = message;
+        OperationInfoBar.IsOpen = true;
+
+        if (!inProgress)
+        {
+            EnsureNotificationTimer();
+            _notificationTimer!.Stop();
+            _notificationTimer.Start();
+        }
+        else
+        {
+            _notificationTimer?.Stop();
+        }
+    }
+
+    private void EnsureNotificationTimer()
+    {
+        if (_notificationTimer is not null) return;
+        _notificationTimer = DispatcherQueue.CreateTimer();
+        _notificationTimer.Interval = TimeSpan.FromSeconds(4);
+        _notificationTimer.IsRepeating = false;
+        _notificationTimer.Tick += (_, _) => { OperationInfoBar.IsOpen = false; };
     }
 }

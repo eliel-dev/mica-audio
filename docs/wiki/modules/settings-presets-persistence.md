@@ -110,10 +110,21 @@ A regra de normalizacao garante sempre: `Fresh < Stale < Dormant`.
 - override emergencial: `true` em `%AppData%\\MicaAudio\\settings.json`;
 - sem UI dedicada nesta fase; controle intencionalmente operacional.
 
+## Atualizacao 2026-03 - Preferencia global de Mica
+
+- `AppSettings` agora persiste `UseMicaBackdrop` como preferencia global de janela.
+- Compatibilidade legado:
+  - `settings.json` sem a propriedade continua carregando como `true`;
+  - no proximo save, a propriedade passa a ser escrita explicitamente.
+- A preferencia vive no mesmo `settings.json` global e nao cria arquivo separado.
+- Ownership da mudanca:
+  - `SettingsPage` hidrata e persiste o toggle em `Configuracoes > Geral`;
+  - `App` consome o valor no startup antes da primeira tentativa de backdrop;
+  - `AppSettingsDomainService` preserva a flag em `Migrate` e `Copy`.
+
 ## Migracao de Registro de Devices
 
 O registro persistido de devices agora usa dupla protecao para evitar falso `Nunca conectado`:
 
 - script explicito: `scripts/migrate-device-registry-presence-v1.ps1`
 - fallback automatico em runtime: `DeviceRegistryPresenceNormalizer` + `JsonDeviceRegistryStore`
-

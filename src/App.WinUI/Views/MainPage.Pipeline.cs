@@ -57,7 +57,7 @@ public partial class MainPage
 
             if (includePreview)
             {
-                builder.SetHub75PreviewEnabled(hubPreviewEnabled);
+                builder.SetHub75PreviewEnabled(hub75ModeEnabled);
             }
 
             if (!includeWindowSize)

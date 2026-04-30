@@ -1,22 +1,20 @@
-using App.WinUI.Models.Apps;
 using App.WinUI.Services.Devices;
 using App.WinUI.Views.Controls;
 using Device.Protocol.Models;
-using System.Globalization;
 
 namespace App.WinUI.Views;
 
 public sealed partial class DevicesPage
 {
     // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
+    // DOCS: docs/handoffs/2026-04-20-remove-usb-flash-flow.md
     private void ApplyState(DeviceOperationsState state)
     {
         currentState = state;
 
-        var refreshText = state.LastRefreshUtc == default
-            ? "sem atualizacao"
-            : state.LastRefreshUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture);
-        ServerInfoText.Text = $"Servidor: {state.ServerBaseAddress} | mDNS: _micaaudio._tcp | Atualizado: {refreshText}";
+        viewModel.CommandInProgress = state.CommandInProgress;
+        viewModel.CommandPercent = state.CommandPercent;
+        viewModel.CommandStatus = state.CommandStatus;
 
         ApplySelectionDetails();
         ApplyButtonState();
@@ -151,6 +149,7 @@ public sealed partial class DevicesPage
         renderedOrder.Clear();
         renderedOrder.AddRange(nextIds);
         lastAppliedDeviceListSignature = nextSignature;
+        RefreshVisiblePreviewConfigsIfNeeded();
 
         RestoreSelection(retainedSelectionDeviceId);
         UpdateDeviceRowSelection();
@@ -234,6 +233,7 @@ public sealed partial class DevicesPage
         renderedItemsByDeviceId.Clear();
         renderedOrder.Clear();
         lastAppliedDeviceListSignature = null;
+        lastAppliedPreviewConfigSignature = null;
         selectedDeviceId = null;
         SetListSelectedItem(null);
         DevicesList.Items.Clear();

@@ -1,0 +1,51 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import AtlasStatusChip from '../components/AtlasStatusChip.astro';
+import { futureCatalog, toDocHref } from '../data/atlas-data.mjs';
+
+// DOCS: ../../../docs/wiki/future-implementations/README.md#future-state--nao-implementado
+// DOCS: ../../../docs/handoffs/2026-04-20-mica-atlas-structural-site.md
+---
+
+<StarlightPage
+	frontmatter={{
+		title: 'Future',
+		description: 'Target-state e checklists prospectivos organizados separadamente da operacao atual.',
+		editUrl: false,
+	}}
+>
+	<div class="atlas-shell">
+		<section class="atlas-surface atlas-section-intro">
+			<div class="atlas-label">FUTURE AREA</div>
+			<p class="atlas-display-title">Target-state e checklists</p>
+			<p>
+				Esta area separa arquitetura futura e checklists prospectivos do estado implementado.
+				A leitura aqui e deliberadamente orientada a viabilidade, gaps e proximos passos.
+			</p>
+		</section>
+
+		<section class="atlas-doc-list">
+			{
+				futureCatalog.map((entry) => (
+					<article class="atlas-surface atlas-doc-row">
+						<div class="atlas-doc-row-head">
+							<div>
+								<AtlasStatusChip status={entry.status} />
+								<h2>{entry.title}</h2>
+							</div>
+							<a class="atlas-inline-link" href={toDocHref(entry.sourcePath)}>
+								Ler documento
+							</a>
+						</div>
+						<p>{entry.summary}</p>
+						{entry.nextSteps?.length ? (
+							<ul class="atlas-bullet-list">
+								{entry.nextSteps.map((item) => <li>{item}</li>)}
+							</ul>
+						) : null}
+					</article>
+				))
+			}
+		</section>
+	</div>
+</StarlightPage>

@@ -1,4 +1,4 @@
-# Guia - Operar ciclo de vida de dispositivo
+﻿# Guia - Operar ciclo de vida de dispositivo
 
 ## Objetivo
 
@@ -19,7 +19,7 @@ Executar rotina operacional completa: parear, validar online, enviar comandos, a
 
 ## Referencias de codigo
 
-- [DeviceIntegrationService.CreatePairingCode](../../../src/App.WinUI/Services/Devices/DeviceIntegrationService.cs#L82) - assinatura: `PairingCodeInfo CreatePairingCode(TimeSpan ttl)`
+- [IDeviceServerClient.CreatePairingCode](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L20) - assinatura: `PairingCodeInfo CreatePairingCode(TimeSpan ttl)`
 - [DevicesPage.OnGeneratePairingCodeClicked](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L84) - assinatura: `private void OnGeneratePairingCodeClicked(...)`
 - [DeviceOperationsCoordinator.RunCommandAsync](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L104) - assinatura: `public async Task<CommandDispatchResult> RunCommandAsync(...)`
 - [DeviceServerHost.GetDevicesSnapshot](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L156) - assinatura: `IReadOnlyList<DeviceSnapshot> GetDevicesSnapshot()`

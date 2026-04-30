@@ -10,6 +10,7 @@ namespace App.WinUI.Services;
 
 // DOCS: docs/wiki/modules/app-winui.md#responsabilidades
 // DOCS: docs/wiki/modules/output-led.md#fluxo-de-execucao
+// DOCS: docs/wiki/modules/output-led.md#atualizacao-2026-03-toggle-hub75-como-gate-do-device-output
 internal sealed class AudioPipelineCoordinator
 {
     private readonly ILoopbackCapture capture;
@@ -36,17 +37,24 @@ internal sealed class AudioPipelineCoordinator
 
     public event EventHandler<string>? StatusChanged;
 
-    public async Task StartAsync(bool hubPreviewEnabled, float brightness, string presetId, CancellationToken cancellationToken = default)
+    public async Task StartAsync(
+        bool enableSimulator,
+        bool enableHub75DeviceOutput,
+        float brightness,
+        string presetId,
+        string rendererId,
+        CancellationToken cancellationToken = default)
     {
+        frameProcessor.SetCurrentVisualizerIdentity(presetId, rendererId);
+        outputRouter.Configure(enableSimulator, enableHub75DeviceOutput, brightness);
+
         if (running)
         {
             return;
         }
 
         cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        frameProcessor.SetCurrentPreset(presetId);
         frameProcessor.Reset();
-        outputRouter.Configure(hubPreviewEnabled, brightness);
 
         try
         {
@@ -63,7 +71,7 @@ internal sealed class AudioPipelineCoordinator
 
         loopTask = Task.Run(() => PipelineLoopAsync(cts.Token), CancellationToken.None);
         running = true;
-        StatusChanged?.Invoke(this, "Executando a 60 FPS");
+        StatusChanged?.Invoke(this, string.Empty);
     }
 
     public async Task StopAsync()
@@ -100,14 +108,9 @@ internal sealed class AudioPipelineCoordinator
         StatusChanged?.Invoke(this, "Parado");
     }
 
-    public void SetHubPreview(bool enabled, float brightness)
+    public void ConfigureHubOutputs(bool enableSimulator, bool enableHub75DeviceOutput, float brightness)
     {
-        outputRouter.Configure(enabled, brightness);
-    }
-
-    public void ConfigureHubOutputs(bool enableSimulator, float brightness)
-    {
-        outputRouter.Configure(enableSimulator, brightness);
+        outputRouter.Configure(enableSimulator, enableHub75DeviceOutput, brightness);
     }
 
     public void SendHubFrame(RgbaColor[] frame128x64, bool forceSimulator = false, string presetId = "gif-hub75")
@@ -120,7 +123,18 @@ internal sealed class AudioPipelineCoordinator
         frameProcessor.SendHubFrame(frame128x64, forceSimulator, presetId);
     }
 
-    public void SetCurrentPreset(string presetId) => frameProcessor.SetCurrentPreset(presetId);
+    public void SendHubBins(float[] bins128, float level = 0f, bool forceSimulator = false, string presetId = "hub75-bins")
+    {
+        if (bins128.Length != LedDefaults.MatrixWidth)
+        {
+            return;
+        }
+
+        frameProcessor.SendHubBins(bins128, level, forceSimulator, presetId);
+    }
+
+    public void SetCurrentVisualizerIdentity(string presetId, string rendererId)
+        => frameProcessor.SetCurrentVisualizerIdentity(presetId, rendererId);
 
     public void SetHubTransportMode(RendererHubTransportMode mode)
     {
@@ -151,5 +165,3 @@ internal sealed class AudioPipelineCoordinator
         }
     }
 }
-
-

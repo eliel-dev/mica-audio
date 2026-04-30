@@ -24,6 +24,8 @@ public sealed class VisualizerPresetSmokeTests
         Assert.Contains(RendererIds.PolarArcs, rendererIds);
         Assert.Contains(RendererIds.AuroraRibbon, rendererIds);
         Assert.Contains(RendererIds.PlasmaPulse, rendererIds);
+        Assert.Contains(RendererIds.LaunchpadGrid, rendererIds);
+        Assert.Contains(RendererIds.WaveMirror, rendererIds);
         Assert.DoesNotContain("vizzy-hyper-tunnel", rendererIds);
         Assert.DoesNotContain("vizzy-hyper-tunnel-shader", rendererIds);
     }
@@ -39,8 +41,24 @@ public sealed class VisualizerPresetSmokeTests
         Assert.Contains("spectrum-polar-arcs", presetIds);
         Assert.Contains("spectrum-aurora-ribbon", presetIds);
         Assert.Contains("spectrum-plasma-pulse", presetIds);
+        Assert.Contains("spectrum-launchpad-grid", presetIds);
+        Assert.Contains("spectrum-wave-mirror", presetIds);
         Assert.DoesNotContain("spectrum-vizzy-hyper-tunnel", presetIds);
         Assert.DoesNotContain("spectrum-vizzy-hyper-tunnel-shader", presetIds);
+    }
+
+    [Fact]
+    public void DefaultPresets_ShouldKeepAudioMotionClonePresetAlignedWithRendererDefaults()
+    {
+        var presets = GetDefaultPresets();
+        var preset = presets.Single(static candidate =>
+            string.Equals(candidate.PresetId, "audiomotion-clone", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(RendererIds.AudioMotionClone, preset.RendererId);
+        Assert.Equal(38, preset.DisplayBandCount);
+        Assert.Equal(3f, preset.RendererParameters["lineThickness"]);
+        Assert.Equal(0.78f, preset.RendererParameters["heightScale"]);
+        Assert.Equal(0f, preset.RendererParameters["minHalfHeight"]);
     }
 
     [Fact]
@@ -97,6 +115,7 @@ public sealed class VisualizerPresetSmokeTests
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-polar-arcs", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-aurora-ribbon", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-plasma-pulse", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(loaded, static preset => string.Equals(preset.PresetId, "spectrum-launchpad-grid", StringComparison.OrdinalIgnoreCase));
             Assert.DoesNotContain(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-hyper-tunnel", StringComparison.OrdinalIgnoreCase));
             Assert.DoesNotContain(loaded, static preset => string.Equals(preset.PresetId, "spectrum-vizzy-hyper-tunnel-shader", StringComparison.OrdinalIgnoreCase));
 
@@ -293,6 +312,62 @@ public sealed class VisualizerPresetSmokeTests
     }
 
     [Fact]
+    public void WaveMirrorRenderer_Render_ShouldNotThrow_ForValidAndEmptyFrames()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        CanvasRenderTarget? target = null;
+        CanvasDrawingSession? drawingSession = null;
+
+        try
+        {
+            var renderer = new WaveMirrorRenderer();
+            var preset = CreateTestPreset(RendererIds.WaveMirror);
+            var peaks = new float[64];
+            var bands = CreateBands(64);
+
+            target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 320, 180, 96);
+            drawingSession = target.CreateDrawingSession();
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = peaks,
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = Array.Empty<float>(),
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(Array.Empty<float>(), Array.Empty<float>(), 0f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+        }
+        catch (COMException)
+        {
+            return;
+        }
+        finally
+        {
+            drawingSession?.Dispose();
+            target?.Dispose();
+        }
+    }
+
+    [Fact]
     public void AuroraRibbonRenderer_Render_ShouldNotThrow_ForValidAndEmptyFrames()
     {
         if (!OperatingSystem.IsWindows())
@@ -363,6 +438,62 @@ public sealed class VisualizerPresetSmokeTests
         {
             var renderer = new PlasmaPulseRenderer();
             var preset = CreateTestPreset(RendererIds.PlasmaPulse);
+            var peaks = new float[64];
+            var bands = CreateBands(64);
+
+            target = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), 320, 180, 96);
+            drawingSession = target.CreateDrawingSession();
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = peaks,
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(bands, bands, 0.55f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+
+            renderer.Render(new RenderContext
+            {
+                DrawingSession = drawingSession,
+                Preset = preset,
+                Palette = new PaletteSampler(preset.Palette),
+                Peaks = Array.Empty<float>(),
+                Frame = new MicaAudio.Core.Audio.SpectrumFrame(Array.Empty<float>(), Array.Empty<float>(), 0f, 0),
+                Width = 320,
+                Height = 180,
+                DeltaSeconds = 1f / 60f,
+            });
+        }
+        catch (COMException)
+        {
+            return;
+        }
+        finally
+        {
+            drawingSession?.Dispose();
+            target?.Dispose();
+        }
+    }
+
+    [Fact]
+    public void LaunchpadGridRenderer_Render_ShouldNotThrow_ForValidAndEmptyFrames()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        CanvasRenderTarget? target = null;
+        CanvasDrawingSession? drawingSession = null;
+
+        try
+        {
+            var renderer = new LaunchpadGridRenderer();
+            var preset = CreateTestPreset(RendererIds.LaunchpadGrid);
             var peaks = new float[64];
             var bands = CreateBands(64);
 
