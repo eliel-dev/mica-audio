@@ -259,12 +259,20 @@ public sealed class RemoteDeviceServerClientTests
     }
 
     [Fact]
-    public async Task RemoteDeviceFrameTransport_ShouldSendBins128DirectlyToVisualUdpEndpoint()
+    public async Task RemoteDeviceFrameTransport_ShouldSendBins128ThroughServerVisualUdp()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();
         var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
         var visualUdpPort = DeviceServerTestHarness.GetFreeUdpPort();
-        await using var host = new DeviceServerHost();
+        var udpSender = new FakeVisualUdpSender();
+        await using var host = new DeviceServerHost(
+            TimeProvider.System,
+            firmwareCatalog: null,
+            panelsBatchStore: null,
+            pairingStore: null,
+            commandStateStore: null,
+            sessionStateStore: null,
+            visualUdpSender: udpSender);
         await host.StartAsync(new ServerConfig
         {
             ListenHost = "127.0.0.1",
@@ -273,6 +281,8 @@ public sealed class RemoteDeviceServerClientTests
             MqttPort = mqttPort,
             RestrictToPrivateNetworks = true,
             AdminToken = AdminToken,
+            PreferLanUdpVisualTransport = true,
+            VisualUdpPort = visualUdpPort,
         });
 
         const string deviceToken = "direct-udp-device-token";
@@ -282,7 +292,7 @@ public sealed class RemoteDeviceServerClientTests
             {
                 DeviceId = "direct-udp-device",
                 Token = deviceToken,
-                Name = "Direct UDP",
+                Name = "Server UDP",
                 LastSeenUtc = DateTimeOffset.UtcNow,
                 LanIpAddress = "127.0.0.1",
                 VisualUdpSupported = true,
@@ -302,7 +312,6 @@ public sealed class RemoteDeviceServerClientTests
             TimeSpan.FromSeconds(5));
         Assert.True(online, "Device seedado nao entrou em online pelo MQTT.");
 
-        using var udpListener = new UdpClient(new IPEndPoint(IPAddress.Loopback, visualUdpPort));
         await using var transport = new RemoteDeviceFrameTransport(new RemoteDeviceServerClientOptions
         {
             BaseAddress = $"http://127.0.0.1:{port}",
@@ -314,25 +323,31 @@ public sealed class RemoteDeviceServerClientTests
         var payload = CreateBinsPayload(sequence: 77);
         transport.SendFrame("direct-udp-device", payload);
 
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var received = await udpListener.ReceiveAsync(timeoutCts.Token);
+        var sentByServer = await DeviceServerTestHarness.WaitForConditionAsync(
+            () => udpSender.Sends.Count > 0,
+            TimeSpan.FromSeconds(5));
+        Assert.True(sentByServer, "O servidor nao enviou o frame visual por UDP.");
+
+        var received = Assert.Single(udpSender.Sends);
+        Assert.Equal("127.0.0.1", received.Address.ToString());
+        Assert.Equal(visualUdpPort, received.Port);
         Assert.True(VisualUdpFrameV1.TryValidateDatagram(
-            received.Buffer,
+            received.Datagram,
             deviceToken,
             lastAcceptedSequence: null,
             out var sequence,
             out var payloadOffset,
             out var payloadLength));
         Assert.Equal(77u, sequence);
-        Assert.Equal(payload, received.Buffer.AsSpan(payloadOffset, payloadLength).ToArray());
+        Assert.Equal(payload, received.Datagram.AsSpan(payloadOffset, payloadLength).ToArray());
 
         var diagnostics = transport.GetDiagnosticsSnapshot();
-        Assert.True(diagnostics.DirectUdpFramesSent > 0);
-        Assert.Equal(0, diagnostics.WebSocketFallbackFramesQueued);
+        Assert.True(diagnostics.ServerWebSocketFramesQueued > 0);
+        Assert.True(diagnostics.ServerWebSocketFramesSent > 0);
     }
 
     [Fact]
-    public async Task RemoteDeviceFrameTransport_ShouldExplainMissingVisualEndpointsRoute()
+    public async Task RemoteDeviceFrameTransport_ShouldNotRequireVisualEndpointsRoute()
     {
         using var legacyServer = new LegacyVisualEndpointServer();
         await using var transport = new RemoteDeviceFrameTransport(new RemoteDeviceServerClientOptions
@@ -342,11 +357,13 @@ public sealed class RemoteDeviceServerClientTests
             FrameQueueCapacity = 4,
         });
 
-        await transport.RefreshVisualEndpointsAsync(CancellationToken.None);
+        await transport.StartAsync(CancellationToken.None);
+        transport.BroadcastFrame(CreateBinsPayload(sequence: 12));
+        await Task.Delay(100);
 
         var diagnostics = transport.GetDiagnosticsSnapshot();
-        Assert.Contains("visual-endpoints", diagnostics.LastEndpointRefreshError, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("servidor remoto", diagnostics.LastEndpointRefreshError, StringComparison.OrdinalIgnoreCase);
+        Assert.True(diagnostics.ServerWebSocketFramesQueued > 0);
+        Assert.DoesNotContain("visual-endpoints", diagnostics.LastWebSocketError ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -412,8 +429,8 @@ public sealed class RemoteDeviceServerClientTests
         Assert.Equal(payload, await ReceiveBinaryFrameAsync(deviceWs));
 
         var diagnostics = transport.GetDiagnosticsSnapshot();
-        Assert.Equal(0, diagnostics.DirectUdpFramesSent);
-        Assert.True(diagnostics.WebSocketFallbackFramesQueued > 0);
+        Assert.True(diagnostics.ServerWebSocketFramesQueued > 0);
+        Assert.True(diagnostics.ServerWebSocketFramesSent > 0);
 
         await transport.StopAsync();
         await CloseWebSocketQuietlyAsync(deviceWs);
@@ -500,6 +517,17 @@ public sealed class RemoteDeviceServerClientTests
                     Message = "ok",
                 }),
             };
+        }
+    }
+
+    private sealed class FakeVisualUdpSender : IVisualUdpSender
+    {
+        public List<(IPAddress Address, int Port, byte[] Datagram)> Sends { get; } = [];
+
+        public bool TrySend(IPAddress address, int port, ReadOnlySpan<byte> datagram)
+        {
+            Sends.Add((address, port, datagram.ToArray()));
+            return true;
         }
     }
 

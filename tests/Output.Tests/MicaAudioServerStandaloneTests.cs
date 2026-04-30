@@ -85,6 +85,7 @@ public sealed class MicaAudioServerStandaloneTests
                 ["MaxMediaUploadBytes"] = "20971520",
                 ["DeviceFreshThresholdSeconds"] = "21",
                 ["AllowLegacyWebSocketQueryToken"] = "true",
+                ["PanelsAutoRuntimeEnabled"] = "false",
                 ["StartupPairCodeTtlSeconds"] = "0",
                 ["StorageRoot"] = storageRoot,
             })
@@ -109,8 +110,17 @@ public sealed class MicaAudioServerStandaloneTests
         Assert.Equal(20L * 1024L * 1024L, config.MaxMediaUploadBytes);
         Assert.Equal(21, config.DeviceFreshThresholdSeconds);
         Assert.True(config.AllowLegacyWebSocketQueryToken);
+        Assert.False(options.PanelsAutoRuntimeEnabled);
         Assert.Equal(0, options.StartupPairCodeTtlSeconds);
         Assert.Equal(storageRoot, options.StorageRoot);
+    }
+
+    [Fact]
+    public void Options_ShouldEnableServerOwnedPanelsRuntimeByDefault()
+    {
+        var options = MicaAudioServerBootstrap.LoadOptions(new ConfigurationBuilder().Build());
+
+        Assert.True(options.PanelsAutoRuntimeEnabled);
     }
 
     [Fact]
@@ -179,16 +189,19 @@ public sealed class MicaAudioServerStandaloneTests
     }
 
     [Fact]
-    public void DockerRedeployScript_ShouldDefaultToWsAndKeepVisualUdpOptIn()
+    public void DockerRedeployScript_ShouldDefaultToServerUdpAndAllowDisablingVisualUdp()
     {
         var script = File.ReadAllText(GetRepoPath("scripts", "docker-server-redeploy.ps1"));
 
         Assert.Contains("[switch]$PreferVisualUdp", script);
-        Assert.Contains("$preferVisualUdpValue = if ($PreferVisualUdp)", script);
+        Assert.Contains("[switch]$DisableVisualUdp", script);
+        Assert.Contains("$visualUdpEnabled = -not $DisableVisualUdp", script);
         Assert.Contains("\"MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=$preferVisualUdpValue\"", script);
+        Assert.Contains("MICA_SERVER__PANELSAUTORUNTIMEENABLED=true", script);
         Assert.Contains("Visual transport:", script);
-        Assert.Contains("WS", script);
-        Assert.Contains("-PreferVisualUdp", script);
+        Assert.Contains("Panels runtime:", script);
+        Assert.Contains("UDP servidor->ESP", script);
+        Assert.Contains("-DisableVisualUdp", script);
         Assert.DoesNotContain("\"MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true\"", script);
     }
 

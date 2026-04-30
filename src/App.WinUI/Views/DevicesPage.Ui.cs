@@ -13,22 +13,13 @@ public sealed partial class DevicesPage
     private const double PanelCornerRadius = 8d;
     private const double SectionCornerRadius = 8d;
     private const double ToolbarControlHeight = 34d;
-    private const double DetailHeaderPadding = 24d;
     private const double MetricsGridGap = 16d;
 
     private ListView DevicesList = null!;
     private ColumnDefinition DevicesDetailsColumn = null!;
     private Grid DeviceDetailsGrid = null!;
     private WebView2 DeviceDashboardWebView = null!;
-    private TextBlock SelectedDeviceTitleText = null!;
-    private TextBlock SelectedDeviceSubtitleText = null!;
-    private TextBlock SelectedDeviceRegistrationText = null!;
-    private TextBlock SelectedDeviceAppText = null!;
-    private TextBlock ServerInfoText = null!;
-    private TextBlock SelectedDeviceSignalText = null!;
     private AppBarButton CopyDashboardLinkButton = null!;
-    private AppBarButton TestLedButton = null!;
-    private AppBarButton RemoveDeviceButton = null!;
 
     private TextBlock DashboardPlaceholderText = null!;
     private Grid DashboardMetricsGrid = null!;
@@ -199,7 +190,6 @@ public sealed partial class DevicesPage
     {
         DeviceDetailsGrid = new Grid
         {
-            RowSpacing = 0,
             Visibility = Visibility.Collapsed,
         };
         Grid.SetColumn(DeviceDetailsGrid, 1);
@@ -239,92 +229,6 @@ public sealed partial class DevicesPage
 
         scrollViewer.Content = contentStack;
         return scrollViewer;
-    }
-
-    private Border BuildDetailsHeader()
-    {
-        var header = new Border
-        {
-            Padding = new Thickness(DetailHeaderPadding),
-            BorderBrush = ResolveBrush("AppSurfaceStrokeBrush", Color.FromArgb(255, 49, 62, 81)),
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Background = ResolveBrush("AppSurfacePanelBrush", Color.FromArgb(255, 18, 24, 32)),
-        };
-
-        var titleRow = new Grid { ColumnSpacing = 16 };
-        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var summary = new StackPanel { Spacing = 4 };
-        SelectedDeviceTitleText = new TextBlock
-        {
-            Text = "Nenhum dispositivo selecionado",
-            FontSize = 28,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        SelectedDeviceSubtitleText = new TextBlock { Text = "-", Opacity = 0.86, TextWrapping = TextWrapping.Wrap };
-        SelectedDeviceRegistrationText = new TextBlock { Text = "-", Opacity = 0.82, TextWrapping = TextWrapping.Wrap };
-        SelectedDeviceAppText = new TextBlock { Text = "App ativo: -", Opacity = 0.82, TextWrapping = TextWrapping.Wrap };
-        ServerInfoText = new TextBlock { Text = "Servidor: iniciando...", Opacity = 0.72, TextWrapping = TextWrapping.Wrap };
-
-        summary.Children.Add(SelectedDeviceTitleText);
-        summary.Children.Add(SelectedDeviceSubtitleText);
-        summary.Children.Add(SelectedDeviceRegistrationText);
-        summary.Children.Add(SelectedDeviceAppText);
-        summary.Children.Add(ServerInfoText);
-
-        titleRow.Children.Add(summary);
-
-        var actionStack = new StackPanel
-        {
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top,
-            Spacing = 8,
-        };
-
-        SelectedDeviceSignalText = new TextBlock
-        {
-            Text = "Sinal -",
-            Opacity = 0.88,
-            FontSize = 12,
-        };
-
-        var buttonsStack = new StackPanel
-        {
-            Orientation = Orientation.Vertical,
-            Spacing = 8,
-        };
-
-        TestLedButton = new AppBarButton
-        {
-            Label = "Testar LED",
-            Icon = new SymbolIcon(Symbol.TouchPointer),
-            MinWidth = 132,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-        TestLedButton.Click += OnTestLedClicked;
-
-        RemoveDeviceButton = new AppBarButton
-        {
-            Label = "Remover dispositivo",
-            Icon = new SymbolIcon(Symbol.Delete),
-            MinWidth = 132,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-        RemoveDeviceButton.Click += OnRemoveDeviceClicked;
-
-        buttonsStack.Children.Add(TestLedButton);
-        buttonsStack.Children.Add(RemoveDeviceButton);
-
-        actionStack.Children.Add(SelectedDeviceSignalText);
-        actionStack.Children.Add(buttonsStack);
-
-        Grid.SetColumn(actionStack, 1);
-        titleRow.Children.Add(actionStack);
-
-        header.Child = titleRow;
-        return header;
     }
 
     private Border BuildBrightnessSection()

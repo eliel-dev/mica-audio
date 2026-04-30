@@ -31,6 +31,8 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 // DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
+// DOCS: docs/handoffs/2026-04-29-server-mediated-visual-udp.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -58,7 +60,10 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly ISessionStateStore sessionStateStore;
     private readonly IPanelLibraryStore panelLibraryStore;
     private readonly IMediaLibraryStore mediaLibraryStore;
+    private readonly IPanelRuntimeDiagnosticsSource panelRuntimeDiagnostics;
     private readonly IVisualUdpSender visualUdpSender;
+    private readonly object visualUdpFailureGate = new();
+    private readonly Dictionary<string, DateTimeOffset> visualUdpFailureLogUtc = new(StringComparer.OrdinalIgnoreCase);
     private readonly DeviceFrameConnectionRegistry frameConnections = new();
     private readonly object adminEventConnectionsGate = new();
     private readonly List<AdminEventConnection> adminEventConnections = new();
@@ -93,7 +98,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         ICommandStateStore? commandStateStore = null,
         ISessionStateStore? sessionStateStore = null,
         IPanelLibraryStore? panelLibraryStore = null,
-        IMediaLibraryStore? mediaLibraryStore = null)
+        IMediaLibraryStore? mediaLibraryStore = null,
+        IPanelRuntimeDiagnosticsSource? panelRuntimeDiagnostics = null)
         : this(
             timeProvider,
             firmwareCatalog,
@@ -103,6 +109,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             sessionStateStore,
             panelLibraryStore,
             mediaLibraryStore,
+            panelRuntimeDiagnostics,
             visualUdpSender: null)
     {
     }
@@ -116,6 +123,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         ISessionStateStore? sessionStateStore,
         IPanelLibraryStore? panelLibraryStore = null,
         IMediaLibraryStore? mediaLibraryStore = null,
+        IPanelRuntimeDiagnosticsSource? panelRuntimeDiagnostics = null,
         IVisualUdpSender? visualUdpSender = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -127,6 +135,7 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         this.sessionStateStore = sessionStateStore ?? new InMemorySessionStateStore();
         this.panelLibraryStore = panelLibraryStore ?? new InMemoryPanelLibraryStore();
         this.mediaLibraryStore = mediaLibraryStore ?? new InMemoryMediaLibraryStore();
+        this.panelRuntimeDiagnostics = panelRuntimeDiagnostics ?? new InMemoryPanelRuntimeDiagnosticsStore();
         this.visualUdpSender = visualUdpSender ?? new SocketVisualUdpSender();
     }
 
@@ -819,13 +828,23 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         ArgumentNullException.ThrowIfNull(framePayload);
 
         if (!runtimeConfig.PreferLanUdpVisualTransport
-            || !isOnline
             || record.VisualUdpSupported != true
             || !string.Equals(record.VisualUdpMode, "bins128", StringComparison.OrdinalIgnoreCase)
             || string.IsNullOrWhiteSpace(record.Token)
-            || !TryResolveVisualUdpEndpoint(record, runtimeConfig, out var endpointAddress, out var endpointPort)
             || !VisualUdpFrameV1.IsSupportedPayload(framePayload))
         {
+            return false;
+        }
+
+        if (!isOnline)
+        {
+            LogVisualUdpFailureThrottled(record.DeviceId, "control plane MQTT offline; usando fallback WS.");
+            return false;
+        }
+
+        if (!TryResolveVisualUdpEndpoint(record, runtimeConfig, out var endpointAddress, out var endpointPort))
+        {
+            LogVisualUdpFailureThrottled(record.DeviceId, "endpoint LAN indisponivel; verifique LanIpAddress e visualUdpPort.");
             return false;
         }
 
@@ -838,12 +857,37 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
                 return false;
             }
 
-            return visualUdpSender.TrySend(endpointAddress, endpointPort, rented.AsSpan(0, written));
+            var sent = visualUdpSender.TrySend(endpointAddress, endpointPort, rented.AsSpan(0, written));
+            if (!sent)
+            {
+                LogVisualUdpFailureThrottled(
+                    record.DeviceId,
+                    $"falha ao enviar para udp://{endpointAddress}:{endpointPort}; usando fallback WS.");
+            }
+
+            return sent;
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(rented);
         }
+    }
+
+    private void LogVisualUdpFailureThrottled(string deviceId, string reason)
+    {
+        var now = timeProvider.GetUtcNow();
+        lock (visualUdpFailureGate)
+        {
+            if (visualUdpFailureLogUtc.TryGetValue(deviceId, out var lastLog)
+                && now - lastLog < TimeSpan.FromSeconds(5))
+            {
+                return;
+            }
+
+            visualUdpFailureLogUtc[deviceId] = now;
+        }
+
+        Log($"UDP visual servidor->ESP indisponivel para {deviceId}: {reason}");
     }
 
     private static bool TryResolveVisualUdpEndpoint(

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- DOCS: docs/wiki/modules/paineis.md#runtime-autonomo-server-owned -->
+  <!-- DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.12.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
+    <ProjectReference Include="..\MicaAudio.Core\MicaAudio.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -13,6 +13,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 // DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 public sealed partial class DeviceServerHost
 {
     private static readonly TimeSpan AdminPairingCodeDefaultTtl = TimeSpan.FromMinutes(10);
@@ -264,6 +265,19 @@ public sealed partial class DeviceServerHost
         return await mediaLibraryStore.DeleteAsync(mediaId, ctx.RequestAborted).ConfigureAwait(false)
             ? Results.NoContent()
             : Results.NotFound(new { error = "media_not_found" });
+    }
+
+    private IResult HandleAdminPanelsRuntime(HttpContext ctx)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        return Results.Ok(new PanelRuntimeDiagnosticsResponse
+        {
+            Devices = panelRuntimeDiagnostics.CreateSnapshot(),
+        });
     }
 
     private async Task<IResult> HandleAdminPanelsBatchAsync(

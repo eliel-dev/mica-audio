@@ -484,7 +484,7 @@
 - `mica_visual_udp.cpp` abre um socket UDP nao bloqueante via BSD/lwIP somente quando o Wi-Fi esta conectado; ao cair Wi-Fi, o socket e fechado.
 - O receiver valida envelope `VisualUdpFrameV1` (`MICA`, versao `1`, tamanho, sequencia e HMAC-SHA256 truncado pelo token do device).
 - Somente `StreamFrameV2` tipo `1` (`Bins128`) e aceito por UDP; `Frame128x64 RGB565` continua no WebSocket para evitar fragmentacao.
-- No modo `Remote`, o emissor normal do UDP visual e o WinUI na mesma LAN, usando endpoint e token autorizados pelo servidor; o Docker nao precisa repassar esses frames no caminho padrao.
+- No modo `Remote`, o emissor normal do UDP visual e o servidor na LAN, usando `LanIpAddress`, porta e token do registro do device; o WinUI envia frames ao servidor por WS admin.
 - Pacotes invalidos incrementam o contador existente de frames invalidos e nao alteram o frame atual.
 - O WebSocket segue como fallback e tambem cancela playback WebP quando um stream binario valido chega.
 - O pacing do playback WebP agora usa deltas entre timestamps depois de apresentar o frame, evitando acelerar frames seguintes quando o primeiro decode for lento.

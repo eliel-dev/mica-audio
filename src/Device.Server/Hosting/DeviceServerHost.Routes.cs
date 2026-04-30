@@ -9,6 +9,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 // DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 public sealed partial class DeviceServerHost
 {
     private void MapRoutes(WebApplication localApp)
@@ -34,6 +35,7 @@ public sealed partial class DeviceServerHost
         admin.MapPost("/library/media", (Delegate)HandleAdminUploadMediaAsync);
         admin.MapGet("/library/media/{mediaId}", (Delegate)HandleAdminGetMediaAsync);
         admin.MapDelete("/library/media/{mediaId}", (Delegate)HandleAdminDeleteMediaAsync);
+        admin.MapGet("/panels/runtime", (Delegate)HandleAdminPanelsRuntime);
         admin.MapPost("/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence:long}", (Delegate)HandleAdminPanelsBatchAsync);
         admin.MapDelete("/panels/batches/{deviceId}", (Delegate)HandleAdminClearPanelsBatches);
 

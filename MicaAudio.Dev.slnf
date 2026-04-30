@@ -3,6 +3,7 @@
     "path": "MicaAudio.sln",
     "projects": [
       "src\\MicaAudio.Core\\MicaAudio.Core.csproj",
+      "src\\MicaAudio.PanelRuntime\\MicaAudio.PanelRuntime.csproj",
       "src\\Audio.Loopback\\Audio.Loopback.csproj",
       "src\\Analyzer.Dsp\\Analyzer.Dsp.csproj",
       "src\\Visual.Win2D\\Visual.Win2D.csproj",

@@ -11,15 +11,15 @@
 ## Direcao oficial
 
 - O app WinUI passa a ser o primeiro cliente oficial do control plane do Mica.
-- Para `visualizador` e `Paineis`, a direcao oficial e atuar como edge client local e dono do data plane LAN.
-- O app consulta o server para pairing, estado, catalogo, configs e assets, mas o hot path visual oficial deixa de depender do server.
+- Para `visualizador` e `Paineis`, o app atua como controlador/fonte de dados local, mas conversa com o ESP por meio do servidor.
+- O app consulta o server para pairing, estado, catalogo, configs, assets e tambem para encaminhar frames visuais ao ESP.
 
 ## Baseline atual / transicao
 
 - `Embedded` continua como default seguro e preserva o server no mesmo processo.
 - O composition root ainda conhece `DeviceServerHost`, `EmbeddedDeviceServerClient` e o modo remoto atual para compatibilidade.
-- O roteamento de frames ainda convive com caminhos mediatedos por `IDeviceFrameTransport` enquanto o client-owned direct path converge.
-- `WinUI Remote` deve ser lido como cliente do control plane, nao como obrigacao de rotear todo frame visual pelo server.
+- O roteamento de frames usa `IDeviceFrameTransport`; no modo Remote, o transporte envia envelopes ao server e nao abre UDP direto para o ESP.
+- `WinUI Remote` deve ser lido como cliente do servidor LAN: o server coordena estado e repassa frames ao device.
 
 ## Referencias relacionadas
 
@@ -66,9 +66,10 @@
   - `RemoteDeviceServerClient + RemoteDeviceFrameTransport + RemoteDeviceServerRuntime` para o modo remoto.
 - `App.StartDeviceIntegrationAsync` agora usa `IDeviceServerClientRuntime`, preservando o lifecycle comum entre embedded e remote.
 - Trocar modo/URL/token exige restart nesta entrega.
-- `RemoteDeviceFrameTransport` e o caminho normal do visualizador remoto: `Bins128` direto do WinUI para o ESP por UDP LAN, usando `/api/v1/admin/visual-endpoints` apenas para descoberta/autorizacao.
-- `Frame128x64`, GIF/painel e endpoint LAN ausente permanecem no WebSocket admin como fallback tecnico.
-- `Configuracoes > Servidor de dispositivos` mostra diagnostico tecnico do transporte remoto: frames UDP diretos enviados, fallback WS, endpoints ausentes e ultimo erro.
+- `RemoteDeviceFrameTransport` e o caminho normal do visualizador remoto: `Bins128` sai do WinUI para o servidor por `WS /ws/v1/admin/frames`.
+- O servidor repassa `Bins128` ao ESP por UDP visual LAN quando `PreferLanUdpVisualTransport=true`; comandos e telemetria continuam em canais confiaveis.
+- `Frame128x64`, GIF/painel e payloads grandes permanecem em WS/WebP batch.
+- `Configuracoes > Servidor de dispositivos` mostra diagnostico tecnico do transporte remoto: frames enfileirados/enviados ao servidor, reconnects do WS admin e ultimo erro.
 
 ## Atualizacao 2026-04 - Painel LAN Sempre Ligado
 

@@ -6,22 +6,21 @@ namespace Output.Tests;
 public sealed class RemoteDeviceTransportDiagnosticsFormatterTests
 {
     [Fact]
-    public void Format_ShouldExposeDirectUdpFallbackMissingEndpointAndLastErrors()
+    public void Format_ShouldExposeServerWebSocketFramesAndLastError()
     {
         var diagnostics = new RemoteDeviceFrameTransportDiagnostics(
-            DirectUdpFramesSent: 42,
-            WebSocketFallbackFramesQueued: 3,
-            MissingEndpointFrames: 2,
-            LastEndpointRefreshError: "admin 401",
-            LastUdpError: "network unreachable");
+            ServerWebSocketFramesQueued: 42,
+            ServerWebSocketFramesSent: 40,
+            ServerWebSocketReconnects: 2,
+            LastWebSocketError: "admin ws 401");
 
         var text = RemoteDeviceTransportDiagnosticsFormatter.Format(diagnostics);
 
-        Assert.Contains("UDP direto enviados: 42", text, StringComparison.Ordinal);
-        Assert.Contains("fallback WS: 3", text, StringComparison.Ordinal);
-        Assert.Contains("endpoint ausente: 2", text, StringComparison.Ordinal);
-        Assert.Contains("endpoint: admin 401", text, StringComparison.Ordinal);
-        Assert.Contains("UDP: network unreachable", text, StringComparison.Ordinal);
+        Assert.Contains("servidor WS enfileirados: 42", text, StringComparison.Ordinal);
+        Assert.Contains("enviados: 40", text, StringComparison.Ordinal);
+        Assert.Contains("reconnects: 2", text, StringComparison.Ordinal);
+        Assert.Contains("admin ws 401", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("UDP direto", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -86,6 +86,7 @@
     <ProjectReference Include="..\Analyzer.Dsp\Analyzer.Dsp.csproj" />
     <ProjectReference Include="..\Visual.Win2D\Visual.Win2D.csproj" />
     <ProjectReference Include="..\Output\Output.csproj" />
+    <ProjectReference Include="..\MicaAudio.PanelRuntime\MicaAudio.PanelRuntime.csproj" />
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
     <ProjectReference Include="..\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
     <ProjectReference Include="..\Device.Client.Embedded\Device.Client.Embedded.csproj" />

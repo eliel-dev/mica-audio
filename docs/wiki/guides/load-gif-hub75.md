@@ -7,7 +7,7 @@ Descrever o fluxo ativo de GIF HUB75 no modelo atual, onde o GIF entra como widg
 ## Premissas Do V1
 
 - A entrada preferencial e imagem/GIF ja preformatado externamente para `128x64`.
-- O compositor desktop continua sendo a origem do `Frame128x64` enviado ao ESP32.
+- Em modo Remote, o `MicaAudio.Server` compoe widgets `server` e envia batches `WebP` ao ESP32; em modo Embedded, o WinUI preserva o compositor local.
 - O playback usa `30 Hz` como teto de apresentacao.
 - GIF animado respeita os delays reais do arquivo; o loop nao usa mais um indice global fixo de tick.
 - GIF animado e decodificado em frames coalescidos/full-frame, respeitando transparencia e disposal para evitar rastro no preview e no device.
@@ -20,12 +20,12 @@ Descrever o fluxo ativo de GIF HUB75 no modelo atual, onde o GIF entra como widg
 3. Selecione o widget e defina a fonte do GIF no inspetor.
 4. Prefira GIF/imagem ja tratado para `128x64` antes de salvar o painel.
 5. Salve o painel e ative-o para um device.
-6. O runtime desktop compoe o frame `128x64` final, resolve o frame ativo por timeline da midia sobre frames GIF ja coalescidos e o envia ao ESP32.
+6. Em Remote, o WinUI salva/ativa o painel no server e o runtime server-owned compoe o quadro final, resolve a timeline da midia sobre frames GIF ja coalescidos e envia batches `WebP` ao ESP32.
 
 ## Referencias de codigo
 
 - [PanelsPage](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L1)
-- [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
+- [PanelsFrameComposer](../../../src/MicaAudio.PanelRuntime/Services/Panels/PanelsFrameComposer.cs#L1)
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [Hub75FrameFormatter](../../../src/App.WinUI/Services/Gif/Hub75FrameFormatter.cs#L1)
 - [StreamFrameV2](../reference/ws-protocol-v2.md)

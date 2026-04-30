@@ -1,14 +1,14 @@
 # Modulo Paineis
 
-A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts HUB75 `128x64`, com biblioteca server-first, composicao client-driven e carga direcionada por `deviceId`.
+A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts HUB75 `128x64`, com biblioteca server-first, runtime autonomo no servidor e carga direcionada por `deviceId`.
 
 ## Direcao oficial
 
-- `Paineis` passa a ser oficialmente `asset/config sync + cache no cliente + push local ao ESP`.
-- O server fica como fonte de verdade de assets, catalogo, manifests e metadata de device/ownership.
+- `Paineis` passa a ser oficialmente `asset/config sync + runtime server-owned + cache/editor no cliente`.
+- O server fica como fonte de verdade de assets, catalogo, manifests, runtime de widgets `server` e metadata de device/ownership.
 - O server passa a ser a fonte de verdade dos paineis salvos e das midias enviadas; o arquivo local vira cache/migracao.
 - O server tambem guarda o estado ativo por device (`activePanelId`, `activeAppId`, `lastServerOwnedPanelId`) para que widgets server-owned continuem conhecidos apos fechar o WinUI.
-- O cliente local continua compositor autoritativo e dono do envio ao device na LAN.
+- Em modo Remote, o WinUI salva/ativa o painel e o `MicaAudio.Server` compoe widgets `server` e envia batches `WebP` ao ESP. Em modo Embedded, o comportamento local existente permanece porque fechar o WinUI tambem encerra o servidor embutido.
 
 ## Baseline atual / transicao
 
@@ -56,8 +56,8 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - O estado local em `%APPDATA%\\MicaAudio\\panels\\panels.json` via `MicaAudioOptions.PanelsFilePath` permanece como cache e fonte de migracao.
 - Cada painel persiste `PanelId`, nome, dimensoes HUB75 e a lista de widgets, incluindo `dataSource`, `ConfigValues` e `RuntimeState`.
 - `dataSource` declara quem fornece os dados do widget: `server`, `windows-client`, `android-client` ou `device`.
-- Widgets `server` sao os candidatos a continuar apos o cliente fechar, desde que o firmware/app no device consiga executar o painel salvo; widgets `windows-client` e `android-client` sao efemeros e devem expirar quando o cliente dono desconectar.
-- `RuntimeState` existe para dados locais que nao cabem no contrato do catalogo; no V1 ele guarda o `sourcePath` do widget `gifhub75`.
+- Widgets `server` sao compostos pelo runtime autonomo do servidor e continuam apos fechar o WinUI enquanto o servidor estiver ligado; widgets `windows-client` e `android-client` sao efemeros e devem expirar quando o cliente dono desconectar.
+- `RuntimeState` existe para dados de runtime que nao cabem no contrato do catalogo. `sourcePath` fica apenas no cache local do WinUI; o documento salvo no server aceita somente `mediaId` e `mediaIds`.
 - A selecao mais recente da tela fica em `lastSelectedPanelId`, restaurada ao reabrir a sessao.
 - O estado ativo por device fica em `activePanels[]`; ao ativar um painel, o WinUI grava `activePanelId=panelId`, `activeAppId=panels-hub75` e atualiza `lastServerOwnedPanelId`.
 - Ao parar explicitamente o runtime, `activePanelId` e `activeAppId` sao limpos, mas `lastServerOwnedPanelId` permanece para diagnostico e retomada server-first futura.
@@ -68,7 +68,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - Se o server tiver paineis, o documento do server substitui o cache local.
 - Se o server estiver vazio e o cache local tiver paineis, o WinUI migra automaticamente o documento local para o server.
 - Se a chamada ao server falhar, o cache local continua permitindo abrir e editar a sessao.
-- Midias novas devem passar pela biblioteca de midia do server para deduplicacao por `SHA-256`; caminhos locais em `RuntimeState` ficam como compatibilidade do editor atual.
+- Midias novas passam pela biblioteca de midia do server para deduplicacao por `SHA-256`; ao salvar/ativar, o WinUI faz upload de arquivo/pasta local e troca a copia remota para `mediaId`/`mediaIds`.
 
 ## Editor Compartilhado De Modifiers
 
@@ -79,9 +79,11 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 ## Compositor Hub75
 
 - `PanelsFrameComposer` cria um unico framebuffer RGBA `128x64` por apresentacao e compoe os widgets em ordem de `ZIndex`.
+- `PanelsFrameComposer`, modelos de painel e encoder `WebP` vivem em `MicaAudio.PanelRuntime` (`net10.0`) para serem consumidos pelo WinUI e pelo `MicaAudio.Server`.
 - `CreatePosterAsync(...)` separa poster render de playback render para manter a galeria leve e previsivel.
 - `analogclock` e renderizado nativamente no compositor com texto `5x7` e barra de segundos.
-- `gifhub75` usa decodificacao propria por widget, inclusive para arquivos estaticos e slideshow local por pasta.
+- `gifhub75` usa decodificacao propria por widget, inclusive para arquivos estaticos e slideshow por pasta/cache local ou biblioteca de midia do servidor.
+- Imagens estaticas agora usam `Magick.NET` cross-platform no compositor compartilhado; GIF, PNG, JPG/JPEG, BMP e WebP sao aceitos no runtime.
 - GIF animado agora preserva os delays reais do arquivo por frame; o compositor resolve o frame ativo por timeline da midia, nao mais por indice global fixo.
 - O decoder de `gifhub75` coalesce os frames animados antes do formatter/blit, respeitando transparencia e disposal para evitar ghosting no preview e no transporte `WebP`.
 - `PanelsMediaCache` trata midia animada como sequencia temporal (`frames + durationMs + totalDurationMs`), o que evita redecodificacao e permite playback mais fiel.
@@ -92,8 +94,8 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 
 ## Runtime Em Background
 
-- `PanelsPlaybackService` mantem somente um painel ativo por vez, em background, enquanto o app desktop estiver aberto.
-- O servidor passa a conhecer o ultimo painel ativo/configurado por device, mas o compositor de `Paineis` ainda roda no WinUI nesta etapa.
+- `ServerOwnedPanelsRuntimeService` roda no `MicaAudio.Server` quando `MICA_SERVER__PANELSAUTORUNTIMEENABLED=true` (default), observa `ActivePanels` e mantem o painel server-owned ativo mesmo apos fechar o WinUI.
+- `PanelsPlaybackService` continua existindo para modo Embedded e preview/compatibilidade local; em modo Remote a ativacao de painel persiste estado no servidor e nao inicia compositor continuo no WinUI.
 - O toggle `Ativo` da galeria usa snapshot salvo do painel; editar depois disso nao muda o device ate novo `Salvar` ou nova ativacao.
 - O scheduler padrao do painel e `30 FPS`, ancorado em relogio monotonic para reduzir drift do loop de reproducao.
 - O playback real de `gifhub75` usa `30 Hz` como teto de apresentacao, mas respeita os delays reais do GIF; frames repetidos continuam sendo deduplicados antes do envio.
@@ -106,7 +108,8 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
   - o envio ao device acontece por `queue_panels_batch` + download HTTP autenticado no `Device.Server`;
   - o fallback para `Frame128x64` continua automatico se o device nao suportar batches ou se a fila de lotes falhar.
 - `PanelsPlaybackService` consome `Device.Client.IDeviceServerClient` para snapshots/comandos/batches e `Device.Client.IDeviceFrameTransport` apenas para frames; no runtime WinUI esses contratos sao atendidos por `Device.Client.Embedded` + `DeviceServerHost`, preservando o server embutido mas removendo dependencia direta do host completo.
-- No modo WinUI Remote, o mesmo `PanelsPlaybackService` usa `RemoteDeviceServerClient` para snapshots, comandos tracked e registro/clear de batches WebP via Admin API; frames HUB75 seguem por `RemoteDeviceFrameTransport`.
+- No modo WinUI Remote, o server compoe widgets `dataSource=server`, registra batches `WebP` no `DeviceServerHost` e envia `queue_panels_batch` ao ESP. Widgets `windows-client`/`android-client` sao ignorados no V1 sem derrubar o painel.
+- `GET /api/v1/admin/panels/runtime` expoe diagnostico por device: `deviceId`, `panelId`, `state`, `lastBatchSequence`, `lastError` e `updatedAtUtc`.
 - As operacoes sensiveis de client (`CreatePairingCode`, `GetDevices`, `RemoveDevice`, batches) possuem caminho async em `IDeviceServerClient`, permitindo remote HTTP sem bloquear o loop do app.
 - O storage dos batches `WebP` foi isolado em `Device.Server.Hosting.IPanelsBatchStore`, preparando troca futura de backend sem alterar o contrato de `PanelsPlaybackService`, comandos ou endpoint de download.
 - O caminho oficial de batch deixou de materializar `30` arrays RGBA por segundo antes do encode:
@@ -142,11 +145,12 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [AppModifierEditorHost](../../../src/App.WinUI/Views/Controls/AppModifierEditorHost.cs#L1)
 - [PanelsStore](../../../src/App.WinUI/Services/Panels/PanelsStore.cs#L1)
 - [PanelsStoreDocument](../../../src/App.WinUI/Models/Panels/PanelsStoreDocument.cs#L1)
-- [PanelDefinition](../../../src/App.WinUI/Models/Panels/PanelDefinition.cs#L1)
-- [PanelWidgetDefinition](../../../src/App.WinUI/Models/Panels/PanelWidgetDefinition.cs#L1)
-- [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
-- [PanelsMediaCache](../../../src/App.WinUI/Services/Panels/PanelsMediaCache.cs#L1)
-- [PanelsAnimatedWebpEncoder](../../../src/App.WinUI/Services/Panels/PanelsAnimatedWebpEncoder.cs#L1)
+- [PanelDefinition](../../../src/MicaAudio.PanelRuntime/Models/Panels/PanelDefinition.cs#L1)
+- [PanelWidgetDefinition](../../../src/MicaAudio.PanelRuntime/Models/Panels/PanelWidgetDefinition.cs#L1)
+- [PanelsFrameComposer](../../../src/MicaAudio.PanelRuntime/Services/Panels/PanelsFrameComposer.cs#L1)
+- [PanelsMediaCache](../../../src/MicaAudio.PanelRuntime/Services/Panels/PanelsMediaCache.cs#L1)
+- [PanelsAnimatedWebpEncoder](../../../src/MicaAudio.PanelRuntime/Services/Panels/PanelsAnimatedWebpEncoder.cs#L1)
+- [ServerOwnedPanelsRuntimeService](../../../src/MicaAudio.Server/ServerOwnedPanelsRuntimeService.cs#L1)
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [PanelsDeviceSessionService](../../../src/App.WinUI/Services/Devices/PanelsDeviceSessionService.cs#L1)
 - [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)
@@ -165,7 +169,11 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [PanelWidgetDataSources](../../../src/Device.Protocol/Models/PanelWidgetDataSources.cs#L1)
 - [PanelLibraryItem](../../../src/Device.Protocol/Models/PanelLibraryItem.cs#L1)
 - [PanelWidgetItem](../../../src/Device.Protocol/Models/PanelWidgetItem.cs#L1)
+- [PanelWidgetRuntimeStateKeys](../../../src/Device.Protocol/Models/PanelWidgetRuntimeStateKeys.cs#L1)
+- [PanelRuntimeDiagnosticsResponse](../../../src/Device.Protocol/Models/PanelRuntimeDiagnosticsResponse.cs#L1)
 - [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1)
+- [IPanelRuntimeDiagnosticsStore](../../../src/Device.Server.Abstractions/Hosting/IPanelRuntimeDiagnosticsStore.cs#L1)
+- [InMemoryPanelRuntimeDiagnosticsStore](../../../src/Device.Server/Hosting/InMemoryPanelRuntimeDiagnosticsStore.cs#L1)
 - [IPanelLibraryStore](../../../src/Device.Server.Abstractions/Hosting/IPanelLibraryStore.cs#L1)
 - [IMediaLibraryStore](../../../src/Device.Server.Abstractions/Hosting/IMediaLibraryStore.cs#L1)
 - [PanelsBatchCommandPayload](../../../src/Device.Protocol/Models/PanelsBatchCommandPayload.cs#L1)

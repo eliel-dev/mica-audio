@@ -12,7 +12,7 @@ Adicionar um novo item ao catalogo HUB75 para que ele apareca na biblioteca de `
 4. Valide os tipos suportados em `AppModifierFieldType`.
 5. Nao altere `AppCatalogService` para cadastrar o item: a fonte de verdade continua sendo o JSON.
 6. Abra `Paineis` e confirme que o item aparece na biblioteca.
-7. Se o item precisar ser adicionavel ao canvas, implemente o renderer HUB75 correspondente em `PanelsFrameComposer`.
+7. Se o item precisar ser adicionavel ao canvas, implemente o renderer HUB75 correspondente em `PanelsFrameComposer` no projeto compartilhado `MicaAudio.PanelRuntime`.
 
 ## Referencias de codigo
 
@@ -22,7 +22,7 @@ Adicionar um novo item ao catalogo HUB75 para que ele apareca na biblioteca de `
 - [AppCatalogService.LoadCatalogAsync](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
 - [PanelsPage.LoadCatalogAsync](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L149)
 - [PanelsPage.ResolveWidgetDefaultValuesAsync](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L1505)
-- [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
+- [PanelsFrameComposer](../../../src/MicaAudio.PanelRuntime/Services/Panels/PanelsFrameComposer.cs#L1)
 
 ## Checklist rapido
 

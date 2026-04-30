@@ -5,6 +5,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/wiki/modules/paineis.md#server-first-library
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 // DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 internal sealed class InMemoryPanelLibraryStore : IPanelLibraryStore
 {
     private readonly object gate = new();
@@ -76,6 +77,9 @@ internal sealed class InMemoryPanelLibraryStore : IPanelLibraryStore
                             Height = widget.Height,
                             ZIndex = widget.ZIndex,
                             ConfigValues = new Dictionary<string, string>(widget.ConfigValues, StringComparer.OrdinalIgnoreCase),
+                            RuntimeState = widget.RuntimeState
+                                .Where(static entry => PanelWidgetRuntimeStateKeys.IsServerSafe(entry.Key))
+                                .ToDictionary(static entry => entry.Key.Trim(), static entry => entry.Value, StringComparer.OrdinalIgnoreCase),
                         })
                         .ToArray(),
                 })

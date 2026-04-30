@@ -10,6 +10,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MicaAudio.Core\MicaAudio.Core.csproj" />
+    <ProjectReference Include="..\MicaAudio.PanelRuntime\MicaAudio.PanelRuntime.csproj" />
+    <ProjectReference Include="..\Output\Output.csproj" />
     <ProjectReference Include="..\Device.Server\Device.Server.csproj" />
     <ProjectReference Include="..\Device.Server.Abstractions\Device.Server.Abstractions.csproj" />
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />

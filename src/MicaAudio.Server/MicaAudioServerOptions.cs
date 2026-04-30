@@ -6,6 +6,7 @@ namespace MicaAudio.Server;
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 public sealed class MicaAudioServerOptions
 {
     public const string EnvironmentVariablePrefix = "MICA_SERVER__";
@@ -59,6 +60,8 @@ public sealed class MicaAudioServerOptions
     public long MaxJsonBodyBytes { get; set; } = 64L * 1024L;
 
     public int MaxWebSocketMessageBytes { get; set; } = 64 * 1024;
+
+    public bool PanelsAutoRuntimeEnabled { get; set; } = true;
 
     public int StartupPairCodeTtlSeconds { get; set; }
 

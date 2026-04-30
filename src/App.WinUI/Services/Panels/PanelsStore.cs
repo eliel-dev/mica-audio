@@ -12,6 +12,7 @@ namespace App.WinUI.Services.Panels;
 // DOCS: docs/wiki/modules/paineis.md#persistencia-do-layout
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 // DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 internal sealed class PanelsStore : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -19,6 +20,8 @@ internal sealed class PanelsStore : IDisposable
         PropertyNameCaseInsensitive = true,
         WriteIndented = true,
     };
+    private static readonly HashSet<string> SupportedMediaExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".gif", ".png", ".jpg", ".jpeg", ".bmp", ".webp" };
     private static readonly Action<ILogger, string, Exception?> LogEmptyStoreDocument =
         LoggerMessage.Define<string>(LogLevel.Warning, new EventId(1001, nameof(LogEmptyStoreDocument)), "Panels store is empty. Returning a new document. Path: {PanelsPath}");
     private static readonly Action<ILogger, string, string, Exception?> LogWhitespaceStoreDocument =
@@ -92,6 +95,8 @@ internal sealed class PanelsStore : IDisposable
         try
         {
             var normalized = nextDocument.Clone();
+            normalized.Normalize();
+            await TryMigrateLocalMediaAsync(normalized, cancellationToken).ConfigureAwait(false);
             normalized.Normalize();
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -230,6 +235,100 @@ internal sealed class PanelsStore : IDisposable
         }
     }
 
+    private async Task TryMigrateLocalMediaAsync(PanelsStoreDocument localDocument, CancellationToken cancellationToken)
+    {
+        if (deviceServerClient is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var uploadCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var widget in localDocument.Panels.SelectMany(static panel => panel.Widgets))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!string.Equals(widget.AppId, "gifhub75", StringComparison.OrdinalIgnoreCase)
+                    || !widget.RuntimeState.TryGetValue(PanelWidgetRuntimeStateKeys.SourcePath, out var rawSourcePath)
+                    || string.IsNullOrWhiteSpace(rawSourcePath))
+                {
+                    continue;
+                }
+
+                var sourcePath = rawSourcePath.Trim();
+                if (Directory.Exists(sourcePath))
+                {
+                    var mediaIds = new List<string>();
+                    foreach (var path in EnumerateSupportedMediaFiles(sourcePath))
+                    {
+                        mediaIds.Add(await UploadMediaFileAsync(path, uploadCache, cancellationToken).ConfigureAwait(false));
+                    }
+
+                    if (mediaIds.Count > 0)
+                    {
+                        widget.RuntimeState[PanelWidgetRuntimeStateKeys.MediaIds] = string.Join(",", mediaIds);
+                        widget.RuntimeState.Remove(PanelWidgetRuntimeStateKeys.MediaId);
+                    }
+
+                    continue;
+                }
+
+                if (File.Exists(sourcePath) && SupportedMediaExtensions.Contains(Path.GetExtension(sourcePath)))
+                {
+                    widget.RuntimeState[PanelWidgetRuntimeStateKeys.MediaId] =
+                        await UploadMediaFileAsync(sourcePath, uploadCache, cancellationToken).ConfigureAwait(false);
+                    widget.RuntimeState.Remove(PanelWidgetRuntimeStateKeys.MediaIds);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+        }
+    }
+
+    private async Task<string> UploadMediaFileAsync(
+        string path,
+        Dictionary<string, string> uploadCache,
+        CancellationToken cancellationToken)
+    {
+        if (uploadCache.TryGetValue(path, out var cachedMediaId))
+        {
+            return cachedMediaId;
+        }
+
+        var payload = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+        var info = await deviceServerClient!.UploadMediaAsync(
+                Path.GetFileName(path),
+                ResolveContentType(path),
+                payload,
+                cancellationToken)
+            .ConfigureAwait(false);
+        uploadCache[path] = info.MediaId;
+        return info.MediaId;
+    }
+
+    private static string[] EnumerateSupportedMediaFiles(string sourcePath)
+    {
+        return Directory
+            .EnumerateFiles(sourcePath)
+            .Where(static path => SupportedMediaExtensions.Contains(Path.GetExtension(path)))
+            .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string ResolveContentType(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".gif" => "image/gif",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".bmp" => "image/bmp",
+            ".webp" => "image/webp",
+            _ => "application/octet-stream",
+        };
+    }
+
     private static PanelLibraryDocument ToPanelLibrary(PanelsStoreDocument source)
     {
         return new PanelLibraryDocument
@@ -255,6 +354,9 @@ internal sealed class PanelsStore : IDisposable
                     Height = widget.Height,
                     ZIndex = widget.ZIndex,
                     ConfigValues = new Dictionary<string, string>(widget.ConfigValues, StringComparer.OrdinalIgnoreCase),
+                    RuntimeState = widget.RuntimeState
+                        .Where(static entry => PanelWidgetRuntimeStateKeys.IsServerSafe(entry.Key))
+                        .ToDictionary(static entry => entry.Key.Trim(), static entry => entry.Value, StringComparer.OrdinalIgnoreCase),
                 }).ToArray(),
             }).ToArray(),
         };
@@ -284,6 +386,7 @@ internal sealed class PanelsStore : IDisposable
                     Height = widget.Height,
                     ZIndex = widget.ZIndex,
                     ConfigValues = new Dictionary<string, string>(widget.ConfigValues, StringComparer.OrdinalIgnoreCase),
+                    RuntimeState = new Dictionary<string, string>(widget.RuntimeState, StringComparer.OrdinalIgnoreCase),
                 }).ToList(),
             }).ToList(),
         };

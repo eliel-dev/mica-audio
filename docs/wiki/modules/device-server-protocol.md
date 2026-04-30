@@ -8,25 +8,25 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 
 - O `Device.Server` e o control plane oficial do sistema.
 - O server continua dono de auto-registro LAN, compatibilidade de pairing, catalogo, comandos tracked, snapshots, logs, assets e metadata de ownership/mode.
-- O server nao e mais a topologia oficial do hot path visual para `visualizador` e `Paineis`; nesses casos, o cliente local fala direto com o ESP na LAN.
+- O server tambem volta a ser a topologia oficial do hot path visual remoto: clientes enviam frames ao server e o server entrega ao ESP.
 
 ## Baseline atual / transicao
 
-- O host ainda preserva `/ws/v1/stream`, UDP LAN opt-in e o fluxo embedded/remoto atual.
-- Esses caminhos continuam validos como compatibilidade enquanto o client-owned data plane converge.
-- O server continua mediando o runtime legado e o fluxo atual de batches `WebP`.
+- O host preserva `/ws/v1/stream`, `WS /ws/v1/admin/frames` e UDP visual LAN servidor->ESP.
+- O caminho direto WinUI->ESP foi removido da UX normal; `/api/v1/admin/visual-endpoints` permanece apenas como diagnostico/admin.
+- O server continua mediando o runtime embedded/remoto e o fluxo atual de batches `WebP`.
 
 ## Responsabilidades
 
 - HTTP API `/api/v1/*` para info, pair, command-ack e health.
 - UDP discovery LAN em `5275/udp` para registrar devices confiaveis sem codigo de pareamento.
 - Broker MQTT embutido para `commands`, `command-events`, `status`, `presence`, `stats` e `logs`.
-- WebSocket `/ws/v1/stream` exclusivamente para stream visual binario legado/de transicao.
-- Endpoint de descoberta visual LAN para o WinUI remoto enviar `Bins128` direto ao ESP por UDP, com WS admin como fallback.
-- UDP visual server->ESP permanece opt-in/experimental para diagnostico local.
+- WebSocket `/ws/v1/stream` para stream visual binario server->device.
+- UDP visual server->ESP para `Bins128` de baixa latencia quando o device anuncia suporte e `PreferLanUdpVisualTransport=true`.
 - Admin API opt-in por token para clients remotos WinUI (`/api/v1/admin/*`).
 - Admin API de biblioteca para paineis e midias persistidos no `StorageRoot`.
-- Admin API de endpoints visuais LAN (`GET /api/v1/admin/visual-endpoints`) para descobrir ESPs online aptos a UDP direto.
+- Admin API de diagnostico do runtime autonomo de paineis (`GET /api/v1/admin/panels/runtime`).
+- Admin API de endpoints visuais LAN (`GET /api/v1/admin/visual-endpoints`) mantida como diagnostico/admin, nao como dependencia do WinUI Remote.
 - WebSockets admin para eventos (`/ws/v1/admin/events`) e frames remotos (`/ws/v1/admin/frames`).
 - Dashboard local para `WebView2` via `GET /dashboard` + `WS /ws/device/{deviceId}` com DTO dedicado.
 - Sessao de comandos rastreados com timeout.
@@ -35,6 +35,7 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 - Controle temporal deterministico via `TimeProvider` no pairing, snapshots e timeouts tracked.
 - Encaminhamento de comandos de operacao do device (`test_led`, `set_brightness`, `install/activate/set_app_config`).
 - Encaminhamento de `queue_panels_batch` para lotes `WebP` precompostos no host.
+- Runtime autonomo `server-owned` que compoe widgets `dataSource=server` a partir de `PanelLibraryDocument.ActivePanels`, registra batches `WebP` e envia `queue_panels_batch`.
 - Encaminhamento de `update_firmware` com progresso tracked via `command-events`.
 - Controle de acesso de rede e rate limiting por endpoint critico.
 - Persistencia de metadados de hardware (`BoardModel`, `PanelType`) por dispositivo.
@@ -60,8 +61,8 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 8. `ICommandStateStore` e `TrackedCommandState` correlacionam `command-events` por `commandId`.
 9. `logs` MQTT transporta eventos estruturados do firmware para o estado do app.
 10. `/api/v1/pair` permanece disponivel apenas como compatibilidade/deprecado para fluxos tecnicos.
-11. `Device.Client.Remote` consulta `/api/v1/admin/visual-endpoints` e envia `Bins128` direto ao `LanIpAddress:visualUdpPort` do ESP via `VisualUdpFrameV1`; `Frame128x64`, GIF/painel e endpoints ausentes caem para `/ws/v1/admin/frames`.
-12. `IDeviceFrameTransport.BroadcastFrame/SendFrame` continua existindo como baseline legado/de transicao; a direcao oficial para tempo real e cliente LAN direto no ESP.
+11. `Device.Client.Remote` envia `Bins128` para `WS /ws/v1/admin/frames`; o WinUI nao descobre nem chama IP do ESP diretamente.
+12. `DeviceServerHost.BroadcastFrame/SendFrame` entrega ao ESP por UDP visual LAN quando o payload e `Bins128`, o device esta online/MQTT e `PreferLanUdpVisualTransport=true`; caso contrario usa o WS de stream do device.
 
 ## Ownership, shadow e lock lease
 
@@ -135,6 +136,8 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
   - `PanelLibraryItem`
   - `PanelWidgetItem`
   - `PanelWidgetDataSources`
+  - `PanelWidgetRuntimeStateKeys`
+  - `PanelRuntimeDiagnosticsResponse`
   - `MediaAssetInfo`
 - `DeviceRecord.DeviceMac` passou a ser persistido. Re-registro LAN com o mesmo MAC reutiliza o registro/token existente em vez de criar device duplicado.
 - `MicaDiscoveryRequestV1.DeviceIp` passou a carregar o IP LAN real do ESP para preencher `LanIpAddress`, sem depender do IP observado pelo socket HTTP/MQTT quando o servidor roda em Docker.
@@ -152,8 +155,9 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
   - `GET /api/v1/admin/library/media/{mediaId}`
   - `DELETE /api/v1/admin/library/media/{mediaId}`
 - Upload de midia respeita `MaxMediaUploadBytes` (`MICA_SERVER__MAXMEDIAUPLOADBYTES`, default `20971520`) e deduplica blobs por `SHA-256`.
+- `PanelWidgetItem.RuntimeState` persiste somente chaves server-safe (`mediaId`, `mediaIds`) no servidor; `sourcePath` permanece cache local do WinUI e e filtrado pelos stores.
 
-## Atualizacao 2026-04 - Direct LAN Visual + Stable Device Identity
+## Atualizacao 2026-04 - Server-Mediated Visual + Stable Device Identity
 
 - `DeviceMac` virou a identidade primaria de re-registro LAN. Um flash com NVS preservada continua usando `deviceId/token`; um flash limpo com NVS apagada redescobre o servidor por MAC e recebe o mesmo `deviceId/token`.
 - `/api/v1/pair` permanece legado, mas agora tambem aceita `DeviceMac` e reutiliza o registro existente quando o MAC ja esta cadastrado.
@@ -162,19 +166,22 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 - `DeviceRecord` e `DeviceSnapshot` separam `LanIpAddress` de `LastKnownIp`:
   - `LanIpAddress` vem de `deviceIp` no discovery ou `ipAddress` na telemetria do firmware;
   - `LastKnownIp` continua representando o IP observado pela conexao e pode ser `172.17.0.1` em Docker.
-- `GET /api/v1/admin/visual-endpoints` retorna somente devices online no control plane MQTT, UDP-capable, com token e `LanIpAddress` valido.
-- `Device.Client.Remote` usa esse endpoint para enviar `StreamFrameV2/3` tipo `Bins128` direto do WinUI para o ESP via `VisualUdpFrameV1` autenticado por HMAC com o token do device.
-- Se `/api/v1/admin/visual-endpoints` retornar `404`, a causa provavel e container/servidor antigo: o cliente nao descobriu endpoint LAN algum e deve orientar redeploy do `MicaAudio.Server`.
-- O fallback por `/ws/v1/admin/frames` continua para `Frame128x64`, payloads grandes, GIF/painel, endpoint ausente ou erro UDP.
-- O caminho Docker local padrao continua com UDP visual server->ESP desligado; o hot path remoto normal nao depende do container repassar frames visuais.
+- `GET /api/v1/admin/visual-endpoints` retorna somente devices online no control plane MQTT, UDP-capable, com token e `LanIpAddress` valido, mas agora e diagnostico/admin.
+- `Device.Client.Remote` nao usa mais esse endpoint no hot path; todo frame remoto entra pelo `WS /ws/v1/admin/frames`.
+- O server usa `VisualUdpFrameV1` no trecho servidor->ESP para `StreamFrameV2/3` tipo `Bins128`, autenticado por HMAC com o token do device.
+- Quando UDP visual servidor->ESP nao consegue usar `LanIpAddress:visualUdpPort`, o host registra log tecnico e cai para WS de stream quando houver socket aberto.
+- Docker local passa a habilitar UDP visual servidor->ESP por default; `-DisableVisualUdp` volta o caminho tecnico por WS.
 
 ## Atualizacao 2026-04 - Painel LAN Sempre Ligado + Estado Ativo
 
 - `PanelLibraryDocument` passou a carregar `ActivePanels`, uma lista por device com `DeviceId`, `ActivePanelId`, `ActiveAppId`, `LastServerOwnedPanelId` e `UpdatedAtUtc`.
 - `PanelWidgetItem.DataSource` formaliza a origem de dados do widget: `server`, `windows-client`, `android-client` ou `device`.
+- `MicaAudio.Server` registra `ServerOwnedPanelsRuntimeService` quando `MICA_SERVER__PANELSAUTORUNTIMEENABLED=true` (default), compoe `Relogio + GIF/imagem` no servidor e mantem o ultimo painel ativo/configurado apos o WinUI Remote fechar.
+- `GET /api/v1/admin/panels/runtime` retorna `deviceId`, `panelId`, `state`, `lastBatchSequence`, `lastError` e `updatedAtUtc`.
+- `RuntimeState.mediaId` referencia um unico blob de midia; `RuntimeState.mediaIds` guarda slideshow em lista ordenada separada por virgula.
 - `server` e o caminho esperado para relogio, clima configurado no servidor, GIF/imagem e status simples que devem continuar conhecidos apos o cliente fechar.
 - `windows-client` e `android-client` representam fontes efemeras como audio ao vivo e metricas locais; quando o cliente dono desconectar, o painel deve voltar ao ultimo estado server-owned valido.
-- O WinUI Remote permanece cliente do control plane para descobrir/autenticar devices, mas o visualizador de audio usa UDP direto para `Bins128`; `/ws/v1/admin/frames` fica como fallback tecnico.
+- O WinUI Remote permanece cliente do servidor para autenticar/controlar devices e enviar `Bins128`; a baixa latencia fica no trecho servidor->ESP via UDP visual.
 - OTA continua no control plane existente: o app resolve o firmware oficial, envia `update_firmware` via servidor e acompanha progresso por `command-events`.
 
 ## Atualizacao 2026-04 - Server Standalone + Docker/Render Smoke
@@ -206,24 +213,25 @@ Esta secao ancora os DTOs e handlers admin remotos. O historico operacional deta
   - `GET /api/v1/admin/library/media/{mediaId}`
   - `DELETE /api/v1/admin/library/media/{mediaId}`
   - `GET /api/v1/admin/visual-endpoints`
+  - `GET /api/v1/admin/panels/runtime`
 - `WS /ws/v1/admin/events` publica JSON de `devices_changed`, `device_log`, `command_progress` e `heartbeat`.
 
 ## Admin WebSocket Frames
 
 - `WS /ws/v1/admin/frames` recebe envelope binario admin -> server e chama `BroadcastFrame` ou `SendFrame` sem mudar `StreamFrameV2`.
-- `Device.Client.Remote` implementa `IDeviceServerClient` via HTTP Admin API e `IDeviceFrameTransport` hibrido: UDP direto para `Bins128` com endpoint visual LAN valido, WebSocket admin como fallback.
+- `Device.Client.Remote` implementa `IDeviceServerClient` via HTTP Admin API e `IDeviceFrameTransport` via WebSocket admin; ele nao abre UDP direto para o ESP.
 
 ## Atualizacao 2026-04 - Visual UDP LAN Opt-In
 
 - `ServerConfig.VisualUdpPort` usa default `5274` e `ServerConfig.PreferLanUdpVisualTransport` liga a preferencia UDP de forma explicita.
 - O firmware anuncia `visualUdpSupported`, `visualUdpPort` e `visualUdpMode` pela telemetria; campos ausentes continuam sendo firmware legado.
-- `DeviceServerHost` tenta UDP server->ESP apenas quando opt-in esta ligado, o device esta online no control plane, possui `LanIpAddress` LAN, tem token valido e anunciou `visualUdpMode = bins128`.
+- `DeviceServerHost` tenta UDP server->ESP apenas quando a preferencia esta ligada, o device esta online no control plane, possui `LanIpAddress` LAN, tem token valido e anunciou `visualUdpMode = bins128`.
 - O envelope `VisualUdpFrameV1` usa `magic/version/sequence/payloadLength/payload/tag`, com `tag = HMAC-SHA256` truncado pelo token do device.
 - UDP v1 aceita apenas `StreamFrameV2.Bins128`; `Frame128x64 RGB565` permanece em WS/WebP batch para evitar fragmentacao IP.
 - `DeviceFrameConnection` manteve `DropOldest`, mas a fila visual passou a default `3` para absorver jitter curto sem acumular latencia longa.
 - O WebSocket admin de frames deixou de montar `MemoryStream`/slices intermediarios e passa a parsear envelopes com buffers alugados e `ReadOnlySpan<byte>`.
 - `Device.Client.Remote` aluga o buffer do envelope admin para reduzir alocacoes no hot path remoto.
-- Render/cloud continuam em HTTPS/WSS; UDP e apenas otimizacao local para PC/ESP na mesma LAN.
+- Render/cloud continuam em HTTPS/WSS; UDP visual e otimizacao local para servidor LAN e ESP na mesma rede.
 
 ## Politicas de seguranca
 
@@ -390,6 +398,7 @@ Esta secao ancora os DTOs e handlers admin remotos. O historico operacional deta
 - [MicaAudio.Server](../../../src/MicaAudio.Server/MicaAudio.Server.csproj#L1) - assinatura: `<Project Sdk="Microsoft.NET.Sdk.Web">`
 - [MicaAudioServerBootstrap](../../../src/MicaAudio.Server/MicaAudioServerBootstrap.cs#L1) - assinatura: `public static class MicaAudioServerBootstrap`
 - [MicaAudioServerRuntime](../../../src/MicaAudio.Server/MicaAudioServerRuntime.cs#L1) - assinatura: `public sealed partial class MicaAudioServerRuntime`
+- [ServerOwnedPanelsRuntimeService](../../../src/MicaAudio.Server/ServerOwnedPanelsRuntimeService.cs#L1) - assinatura: `public sealed class ServerOwnedPanelsRuntimeService`
 - [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1) - assinatura: `public sealed class StandaloneDeviceRegistryStore`
 - [Render Blueprint](../../../render.yaml#L1) - assinatura: `services:`
 - [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1) - assinatura: `public interface IPanelsBatchStore`
@@ -400,6 +409,8 @@ Esta secao ancora os DTOs e handlers admin remotos. O historico operacional deta
 - [IMediaLibraryStore](../../../src/Device.Server.Abstractions/Hosting/IMediaLibraryStore.cs#L1) - assinatura: `public interface IMediaLibraryStore`
 - [InMemoryPanelLibraryStore](../../../src/Device.Server/Hosting/InMemoryPanelLibraryStore.cs#L1) - assinatura: `public sealed class InMemoryPanelLibraryStore`
 - [InMemoryMediaLibraryStore](../../../src/Device.Server/Hosting/InMemoryMediaLibraryStore.cs#L1) - assinatura: `public sealed class InMemoryMediaLibraryStore`
+- [IPanelRuntimeDiagnosticsStore](../../../src/Device.Server.Abstractions/Hosting/IPanelRuntimeDiagnosticsStore.cs#L1) - assinatura: `public interface IPanelRuntimeDiagnosticsStore`
+- [InMemoryPanelRuntimeDiagnosticsStore](../../../src/Device.Server/Hosting/InMemoryPanelRuntimeDiagnosticsStore.cs#L1) - assinatura: `public sealed class InMemoryPanelRuntimeDiagnosticsStore`
 - [StandalonePanelLibraryStore](../../../src/MicaAudio.Server/StandalonePanelLibraryStore.cs#L1) - assinatura: `public sealed class StandalonePanelLibraryStore`
 - [StandaloneMediaLibraryStore](../../../src/MicaAudio.Server/StandaloneMediaLibraryStore.cs#L1) - assinatura: `public sealed class StandaloneMediaLibraryStore`
 - [IDevicePairingStore](../../../src/Device.Server.Abstractions/Hosting/IDevicePairingStore.cs#L1) - assinatura: `public interface IDevicePairingStore`
@@ -432,6 +443,8 @@ Esta secao ancora os DTOs e handlers admin remotos. O historico operacional deta
 - [PanelLibraryItem](../../../src/Device.Protocol/Models/PanelLibraryItem.cs#L1) - assinatura: `public sealed class PanelLibraryItem`
 - [PanelWidgetItem](../../../src/Device.Protocol/Models/PanelWidgetItem.cs#L1) - assinatura: `public sealed class PanelWidgetItem`
 - [PanelWidgetDataSources](../../../src/Device.Protocol/Models/PanelWidgetDataSources.cs#L1) - assinatura: `public static class PanelWidgetDataSources`
+- [PanelWidgetRuntimeStateKeys](../../../src/Device.Protocol/Models/PanelWidgetRuntimeStateKeys.cs#L1) - assinatura: `public static class PanelWidgetRuntimeStateKeys`
+- [PanelRuntimeDiagnosticsResponse](../../../src/Device.Protocol/Models/PanelRuntimeDiagnosticsResponse.cs#L1) - assinatura: `public sealed class PanelRuntimeDiagnosticsResponse`
 - [MediaAssetInfo](../../../src/Device.Protocol/Models/MediaAssetInfo.cs#L1) - assinatura: `public sealed class MediaAssetInfo`
 - [ServerInfoResponse](../../../src/Device.Protocol/Models/ServerInfoResponse.cs#L1) - assinatura: `public sealed class ServerInfoResponse`
 - [DevicePresenceMessage](../../../src/Device.Protocol/Models/DevicePresenceMessage.cs#L1) - assinatura: `public sealed class DevicePresenceMessage`

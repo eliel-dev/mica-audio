@@ -12,7 +12,7 @@ public sealed class RemoteDeviceServerConnectionTesterTests
     private const string AdminToken = "settings-test-token";
 
     [Fact]
-    public async Task TestAsync_ShouldValidateHealthAdminFramesWebSocketAndVisualEndpoints()
+    public async Task TestAsync_ShouldValidateHealthAdminDevicesAndFramesWebSocket()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();
         var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
@@ -64,7 +64,7 @@ public sealed class RemoteDeviceServerConnectionTesterTests
     }
 
     [Fact]
-    public async Task TestAsync_ShouldExplainMissingVisualEndpointsRoute()
+    public async Task TestAsync_ShouldExplainMissingAdminRouteWithoutVisualEndpoints()
     {
         using var legacyServer = new LegacyHttpServer();
         var tester = new RemoteDeviceServerConnectionTester(TimeSpan.FromSeconds(3));
@@ -74,7 +74,8 @@ public sealed class RemoteDeviceServerConnectionTesterTests
         Assert.False(result.Success);
         Assert.True(result.HealthOk);
         Assert.False(result.AdminOk);
-        Assert.Contains("visual-endpoints", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("admin", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("visual-endpoints", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("servidor remoto", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 

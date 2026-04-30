@@ -387,11 +387,7 @@
   function resetVisualState() {
     currentDevice = null;
     lastCommittedBrightness = null;
-    $("d-title").textContent = "Nenhum dispositivo selecionado";
-    $("d-sub2").textContent = "App ativo: -";
-    $("d-rssi").textContent = "-";
     $("s-rssi").textContent = "-";
-    setWifiIconState($("d-rssi-icon"), null, null);
     setWifiIconState($("s-rssi-icon"), null, null);
     $("firmware-row").style.display = "none";
     $("firmware-current").textContent = "-";
@@ -426,11 +422,7 @@
 
   function render(device) {
     currentDevice = device;
-    $("d-title").textContent = device.name || "Dispositivo";
-    $("d-sub2").textContent = `App ativo: ${device.activeAppName || "-"}`;
-    $("d-rssi").textContent = fmtSignal(device.signalDbm, device.online);
     $("s-rssi").textContent = fmtSignal(device.signalDbm, device.online);
-    setWifiIconState($("d-rssi-icon"), device.wifiState, device.signalDbm);
     setWifiIconState($("s-rssi-icon"), device.wifiState, device.signalDbm);
 
     const embeddedMode = HOST_BRIDGE_AVAILABLE;
@@ -617,17 +609,17 @@
       postHostMessage({ type: "update-firmware", deviceId: selectedDeviceId });
     };
 
-    const reprovisionHandler = () => {
+    const removeDeviceHandler = () => {
       if (!selectedDeviceId) {
         return;
       }
 
-      postHostMessage({ type: "reprovision-wifi", deviceId: selectedDeviceId });
+      postHostMessage({ type: "remove-device", deviceId: selectedDeviceId });
     };
 
     $("btn-fw").addEventListener("click", updateFirmwareHandler);
     $("btn-led").addEventListener("click", ledHandler);
-    $("btn-rm").addEventListener("click", reprovisionHandler);
+    $("btn-rm").addEventListener("click", removeDeviceHandler);
 
     $("slider-bright").addEventListener("input", (event) => {
       setBrightnessUi(Number(event.target.value));

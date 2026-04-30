@@ -11,6 +11,7 @@ namespace MicaAudio.Server;
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 public static class MicaAudioServerBootstrap
 {
     public static MicaAudioServerOptions LoadOptions(IConfiguration configuration, string? renderPort = null)
@@ -76,6 +77,8 @@ public static class MicaAudioServerBootstrap
         services.AddSingleton<ISessionStateStore, InMemorySessionStateStore>();
         services.AddSingleton<IPanelLibraryStore>(sp => new StandalonePanelLibraryStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
         services.AddSingleton<IMediaLibraryStore>(sp => new StandaloneMediaLibraryStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
+        services.AddSingleton<IPanelRuntimeDiagnosticsStore, InMemoryPanelRuntimeDiagnosticsStore>();
+        services.AddSingleton<IPanelRuntimeDiagnosticsSource>(sp => sp.GetRequiredService<IPanelRuntimeDiagnosticsStore>());
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
             firmwareCatalog: null,
@@ -84,10 +87,12 @@ public static class MicaAudioServerBootstrap
             sp.GetRequiredService<ICommandStateStore>(),
             sp.GetRequiredService<ISessionStateStore>(),
             sp.GetRequiredService<IPanelLibraryStore>(),
-            sp.GetRequiredService<IMediaLibraryStore>()));
+            sp.GetRequiredService<IMediaLibraryStore>(),
+            sp.GetRequiredService<IPanelRuntimeDiagnosticsSource>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
         services.AddSingleton(sp => new StandaloneDeviceRegistryStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
         services.AddHostedService<MicaAudioServerRuntime>();
+        services.AddHostedService<ServerOwnedPanelsRuntimeService>();
     }
 
     private static void NormalizeOptions(MicaAudioServerOptions options)

@@ -182,8 +182,11 @@ public sealed partial class DevicesPage
                 break;
 
             case "reprovision-wifi":
-            case "remove-device":
                 await ExecuteReprovisionWifiAsync(message.DeviceId).ConfigureAwait(true);
+                break;
+
+            case "remove-device":
+                await ExecuteRemoveDeviceAsync(message.DeviceId).ConfigureAwait(true);
                 break;
 
             case "update-firmware":

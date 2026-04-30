@@ -1,7 +1,5 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Net.WebSockets;
-using Device.Protocol.Models;
 
 namespace App.WinUI.Services.Devices;
 
@@ -9,9 +7,10 @@ namespace App.WinUI.Services.Devices;
 // DOCS: docs/wiki/modules/device-server-protocol.md#admin-api-remota
 // DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 // DOCS: docs/handoffs/2026-04-29-remote-visual-endpoint-diagnostics.md
+// DOCS: docs/handoffs/2026-04-29-server-mediated-visual-udp.md
 public sealed class RemoteDeviceServerConnectionTester
 {
-    private const string VisualEndpointsPath = "/api/v1/admin/visual-endpoints";
+    private const string AdminDevicesPath = "/api/v1/admin/devices";
     private readonly TimeSpan requestTimeout;
 
     public RemoteDeviceServerConnectionTester()
@@ -55,21 +54,16 @@ public sealed class RemoteDeviceServerConnectionTester
                 return RemoteDeviceServerConnectionTestResult.Fail($"Health falhou: HTTP {(int)health.StatusCode}.");
             }
 
-            using var endpointsResponse = await httpClient.GetAsync(VisualEndpointsPath, timeoutCts.Token).ConfigureAwait(false);
-            if (!endpointsResponse.IsSuccessStatusCode)
+            using var adminResponse = await httpClient.GetAsync(AdminDevicesPath, timeoutCts.Token).ConfigureAwait(false);
+            if (!adminResponse.IsSuccessStatusCode)
             {
                 return new RemoteDeviceServerConnectionTestResult(
                     Success: false,
-                    Message: BuildVisualEndpointsFailureMessage(endpointsResponse.StatusCode),
+                    Message: BuildAdminDevicesFailureMessage(adminResponse.StatusCode),
                     HealthOk: true,
                     AdminOk: false,
-                    FramesWebSocketOk: false,
-                    VisualEndpointCount: 0);
+                    FramesWebSocketOk: false);
             }
-
-            var endpoints = await endpointsResponse.Content
-                .ReadFromJsonAsync<AdminVisualEndpointsResponse>(cancellationToken: timeoutCts.Token)
-                .ConfigureAwait(false);
 
             var framesWebSocketOk = await TryOpenFramesWebSocketAsync(
                 normalizedBaseAddress,
@@ -79,12 +73,11 @@ public sealed class RemoteDeviceServerConnectionTester
             return new RemoteDeviceServerConnectionTestResult(
                 Success: framesWebSocketOk,
                 Message: framesWebSocketOk
-                    ? $"Servidor remoto ok. Endpoints visuais: {endpoints?.Devices.Count ?? 0}."
+                    ? "Servidor remoto ok. Health, admin token e WebSocket de frames validos."
                     : "HTTP/admin ok, mas o WebSocket de frames falhou.",
                 HealthOk: true,
                 AdminOk: true,
-                FramesWebSocketOk: framesWebSocketOk,
-                VisualEndpointCount: endpoints?.Devices.Count ?? 0);
+                FramesWebSocketOk: framesWebSocketOk);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -127,15 +120,15 @@ public sealed class RemoteDeviceServerConnectionTester
         }.Uri;
     }
 
-    private static string BuildVisualEndpointsFailureMessage(System.Net.HttpStatusCode statusCode)
+    private static string BuildAdminDevicesFailureMessage(System.Net.HttpStatusCode statusCode)
         => statusCode switch
         {
             System.Net.HttpStatusCode.NotFound =>
-                $"Servidor remoto sem a rota {VisualEndpointsPath} (HTTP 404). Recrie o container com scripts/docker-server-redeploy.ps1 para publicar a versao atual.",
+                $"Servidor remoto sem a rota admin {AdminDevicesPath} (HTTP 404). Recrie o container com scripts/docker-server-redeploy.ps1 para publicar a versao atual.",
             System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden =>
-                $"Admin token falhou em {VisualEndpointsPath}: HTTP {(int)statusCode}.",
+                $"Admin token falhou em {AdminDevicesPath}: HTTP {(int)statusCode}.",
             _ =>
-                $"Endpoint {VisualEndpointsPath} falhou: HTTP {(int)statusCode}.",
+                $"Endpoint admin {AdminDevicesPath} falhou: HTTP {(int)statusCode}.",
         };
 
     private static bool TryNormalizeBaseAddress(string value, out Uri normalized)
@@ -157,8 +150,7 @@ public sealed record RemoteDeviceServerConnectionTestResult(
     string Message,
     bool HealthOk,
     bool AdminOk,
-    bool FramesWebSocketOk,
-    int VisualEndpointCount)
+    bool FramesWebSocketOk)
 {
     public static RemoteDeviceServerConnectionTestResult Fail(string message)
         => new(
@@ -166,6 +158,5 @@ public sealed record RemoteDeviceServerConnectionTestResult(
             Message: message,
             HealthOk: false,
             AdminOk: false,
-            FramesWebSocketOk: false,
-            VisualEndpointCount: 0);
+            FramesWebSocketOk: false);
 }

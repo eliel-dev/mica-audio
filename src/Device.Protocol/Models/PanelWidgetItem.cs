@@ -3,6 +3,7 @@ namespace Device.Protocol.Models;
 // DOCS: docs/wiki/modules/paineis.md#server-first-library
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 // DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 public sealed class PanelWidgetItem
 {
     public string WidgetId { get; init; } = string.Empty;
@@ -22,5 +23,8 @@ public sealed class PanelWidgetItem
     public int ZIndex { get; init; }
 
     public IReadOnlyDictionary<string, string> ConfigValues { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, string> RuntimeState { get; init; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 }

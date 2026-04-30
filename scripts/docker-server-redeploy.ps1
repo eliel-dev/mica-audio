@@ -1,6 +1,8 @@
 # DOCS: docs/wiki/modules/server-build-and-artifacts.md#server-standalone
 # DOCS: docs/handoffs/2026-04-28-docker-local-redeploy-script.md
 # DOCS: docs/handoffs/2026-04-28-docker-visual-ws-and-firmware-versioning.md
+# DOCS: docs/handoffs/2026-04-29-server-mediated-visual-udp.md
+# DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 [CmdletBinding()]
 param(
     [ValidateNotNullOrEmpty()]
@@ -34,6 +36,8 @@ param(
     [switch]$NoCache,
 
     [switch]$PreferVisualUdp,
+
+    [switch]$DisableVisualUdp,
 
     [switch]$FollowLogs,
 
@@ -355,7 +359,12 @@ function Start-ServerContainer {
     )
 
     $httpBase = "http://${LanHost}:$HttpPort"
-    $preferVisualUdpValue = if ($PreferVisualUdp) { "true" } else { "false" }
+    if ($PreferVisualUdp -and $DisableVisualUdp) {
+        throw "Use apenas um switch visual: -PreferVisualUdp e legado/no-op; -DisableVisualUdp desliga o UDP visual."
+    }
+
+    $visualUdpEnabled = -not $DisableVisualUdp
+    $preferVisualUdpValue = if ($visualUdpEnabled) { "true" } else { "false" }
     $arguments = @(
         "run",
         "-d",
@@ -368,6 +377,7 @@ function Start-ServerContainer {
         "-e", "MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=true",
         "-e", "MICA_SERVER__DISCOVERYUDPPORT=$DiscoveryUdpPort",
         "-e", "MICA_SERVER__MAXMEDIAUPLOADBYTES=20971520",
+        "-e", "MICA_SERVER__PANELSAUTORUNTIMEENABLED=true",
         "-e", "MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=$preferVisualUdpValue",
         "-e", "MICA_SERVER__VISUALUDPPORT=$VisualUdpPort",
         "-e", "MICA_SERVER__MQTTPORT=$MqttPort",
@@ -380,7 +390,7 @@ function Start-ServerContainer {
         "-v", "${VolumeName}:/data"
     )
 
-    if ($PreferVisualUdp) {
+    if ($visualUdpEnabled) {
         $arguments += @("-p", "${VisualUdpPort}:${VisualUdpPort}/udp")
     }
 
@@ -460,13 +470,18 @@ Write-Host "  Storage volume:  $StorageVolume -> /data"
 Write-Host "  Local health:    $localHealth"
 Write-Host "  LAN base:        $lanBase"
 Write-Host "  MQTT:            ${resolvedPublicHost}:$MqttPort"
-Write-Host "  Visual transport: $(if ($PreferVisualUdp) { "UDP opt-in (${resolvedPublicHost}:$VisualUdpPort/udp)" } else { "WS" })"
+Write-Host "  Panels runtime:  server-owned enabled"
+Write-Host "  Visual transport: $(if (-not $DisableVisualUdp) { "UDP servidor->ESP (${resolvedPublicHost}:$VisualUdpPort/udp)" } else { "WS tecnico servidor->ESP" })"
 Write-Host "  Discovery UDP:   ${resolvedPublicHost}:$DiscoveryUdpPort/udp"
 Write-Host "  Logs:            docker logs -f $ContainerName"
 Write-Host ""
 Write-Host "No portal AP do ESP, use Servidor=$lanBase apenas como fallback tecnico."
-if (-not $PreferVisualUdp) {
-    Write-Host "UDP visual fica desligado por default no Docker local; use -PreferVisualUdp apenas para teste fisico especifico."
+if ($PreferVisualUdp) {
+    Write-Host "-PreferVisualUdp agora e legado: o UDP visual ja vem habilitado por default."
+}
+
+if ($DisableVisualUdp) {
+    Write-Host "UDP visual foi desligado explicitamente; use o default sem -DisableVisualUdp para o caminho oficial."
 }
 
 if ($FollowLogs) {

@@ -7,14 +7,14 @@ Documentar o ciclo de vida da app, as trocas de secao da shell e o runtime ativo
 ## Direcao oficial
 
 - A shell WinUI continua sendo o primeiro cliente oficial do Mica.
-- O runtime visual local passa a ser o dono do data plane LAN para `visualizador` e `Paineis`.
-- O server nao participa mais da narrativa oficial de hot path visual; ele permanece como control plane e fonte de verdade duravel.
+- O runtime visual local passa a ser a fonte de dados para `visualizador`; `Paineis` server-owned rodam no `MicaAudio.Server` em modo Remote.
+- O server participa da narrativa oficial de hot path visual remoto: cliente envia frames ao server e o server repassa ao device.
 
 ## Baseline atual / transicao
 
 - O startup ainda inicializa servicos embedded/local por compatibilidade.
-- `PanelsPlaybackService` e o visualizador ainda convivem com caminhos via `IDeviceServerClient` e `IDeviceFrameTransport` que preservam o baseline atual.
-- O modo `Embedded` continua sendo fallback seguro enquanto o client-driven direto ao ESP termina de convergir.
+- `PanelsPlaybackService` permanece para modo Embedded, preview e compatibilidade local; em modo Remote o server assume composicao/envio de paineis server-owned.
+- O modo `Embedded` continua sendo fallback seguro; o modo `Remote` usa `WS /ws/v1/admin/frames` em vez de UDP direto cliente->ESP.
 
 ## Startup
 
@@ -37,8 +37,9 @@ Documentar o ciclo de vida da app, as trocas de secao da shell e o runtime ativo
 ## Sessao de paineis
 
 - `PanelsPage` carrega catalogo, store e thumbnails ao entrar.
-- `PanelsPlaybackService` mantem no maximo um painel ativo em background.
-- O runtime de painel continua no desktop; o ESP32 recebe apenas o resultado final do cliente local.
+- Em modo `Remote`, `PanelsPage` salva/ativa o painel no server e nao inicia o compositor continuo local.
+- `ServerOwnedPanelsRuntimeService` le `ActivePanels`, compoe widgets `dataSource=server`, registra batches `WebP` e envia `queue_panels_batch` ao ESP.
+- Em modo `Embedded`, `PanelsPlaybackService` preserva o comportamento local porque fechar o WinUI encerra tambem o server embutido.
 
 ## Fullscreen
 
@@ -54,6 +55,7 @@ Documentar o ciclo de vida da app, as trocas de secao da shell e o runtime ativo
 - [MainPage.OnLoaded](../../../src/App.WinUI/Views/MainPage.xaml.cs#L36)
 - [PanelsPage](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L1)
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
+- [ServerOwnedPanelsRuntimeService](../../../src/MicaAudio.Server/ServerOwnedPanelsRuntimeService.cs#L1)
 
 ## Backlinks no codigo
 

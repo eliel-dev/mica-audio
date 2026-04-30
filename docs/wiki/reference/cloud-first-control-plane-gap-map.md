@@ -44,7 +44,7 @@ Este documento e preparatorio. Ele nao muda contrato publico, nao define endpoin
 | MQTT `command-events` | Device publica progresso/conclusao por `commandId`. | Eventos futuros devem trafegar em WSS/public session com semantica de progresso preservada. |
 | MQTT `status`/`presence` | Fonte oficial de online/offline local; retained. | Presenca futura precisa ser estado de sessao cloud, nao broker local embutido. |
 | MQTT `stats`/`logs` | Telemetria estruturada e logs chegam ao host e alimentam snapshot/UI. | Deve migrar para canal publico WSS mantendo campos nullable e compatibilidade com firmware legado. |
-| WS `/ws/v1/stream` | Stream visual binario legado/de transicao para o device. | O target-state pode manter WSS publico para casos remotos, mas o caminho oficial de baixa latencia passa a ser `cliente local -> ESP` na LAN. |
+| WS `/ws/v1/stream` | Stream visual binario server->device e fallback quando UDP visual servidor->ESP nao esta disponivel. | O target-state pode manter WSS publico para casos remotos, mas o caminho local de baixa latencia atual usa `cliente local -> server -> ESP`, com UDP apenas no trecho servidor LAN -> ESP. |
 | WS `/ws/device/{deviceId}` | Dashboard local/WebView2, DTO dedicado e sem auth de device. | Nao e contrato publico do firmware; precisa permanecer separado de API cloud/admin. |
 
 ## Gaps principais

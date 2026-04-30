@@ -1,8 +1,8 @@
-using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using App.WinUI.Models.Panels;
 using App.WinUI.Services.Gif;
+using Device.Protocol.Models;
+using ImageMagick;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 
@@ -10,28 +10,33 @@ namespace App.WinUI.Services.Panels;
 
 // DOCS: docs/wiki/modules/paineis.md#compositor-hub75
 // DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
-[SupportedOSPlatform("windows")]
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 internal sealed class PanelsFrameComposer
 {
     public const int TargetFps = 30;
     private static readonly HashSet<string> SupportedWidgetAppIds =
         new(StringComparer.OrdinalIgnoreCase) { "analogclock", "gifhub75" };
     private static readonly HashSet<string> SupportedImageExtensions =
-        new(StringComparer.OrdinalIgnoreCase) { ".gif", ".png", ".jpg", ".jpeg", ".bmp" };
+        new(StringComparer.OrdinalIgnoreCase) { ".gif", ".png", ".jpg", ".jpeg", ".bmp", ".webp" };
     private static readonly TimeZoneInfo BrasiliaTimeZone = ResolveBrasiliaTimeZone();
 
     private readonly Hub75GifDecoder decoder;
     private readonly PanelsMediaCache mediaCache;
+    private readonly IPanelMediaSourceResolver mediaSourceResolver;
 
     public PanelsFrameComposer()
-        : this(new Hub75GifDecoder(Hub75GifDecoder.DefaultMaxGifFrames), new PanelsMediaCache())
+        : this(new Hub75GifDecoder(Hub75GifDecoder.DefaultMaxGifFrames), new PanelsMediaCache(), new LocalPanelMediaSourceResolver())
     {
     }
 
-    internal PanelsFrameComposer(Hub75GifDecoder decoder, PanelsMediaCache mediaCache)
+    internal PanelsFrameComposer(
+        Hub75GifDecoder decoder,
+        PanelsMediaCache mediaCache,
+        IPanelMediaSourceResolver? mediaSourceResolver = null)
     {
         this.decoder = decoder;
         this.mediaCache = mediaCache;
+        this.mediaSourceResolver = mediaSourceResolver ?? new LocalPanelMediaSourceResolver();
     }
 
     internal static bool SupportsWidgetApp(string? appId)
@@ -77,7 +82,7 @@ internal sealed class PanelsFrameComposer
         return widget.AppId.Trim().ToLowerInvariant() switch
         {
             "analogclock" => new ClockWidgetRuntime(widget.Clone()),
-            "gifhub75" => await GifWidgetRuntime.CreateAsync(widget.Clone(), decoder, mediaCache, renderIntent, cancellationToken).ConfigureAwait(false),
+            "gifhub75" => await GifWidgetRuntime.CreateAsync(widget.Clone(), decoder, mediaCache, mediaSourceResolver, renderIntent, cancellationToken).ConfigureAwait(false),
             _ => new EmptyWidgetRuntime(widget.Clone()),
         };
     }
@@ -244,9 +249,10 @@ internal sealed class PanelsFrameComposer
         private readonly PanelWidgetDefinition widget;
         private readonly Hub75GifDecoder decoder;
         private readonly PanelsMediaCache mediaCache;
+        private readonly IPanelMediaSourceResolver mediaSourceResolver;
         private readonly RenderIntent renderIntent;
         private readonly CancellationTokenSource lifetimeCts = new();
-        private readonly List<string> mediaSources = [];
+        private readonly List<PanelMediaSource> mediaSources = [];
         private readonly object stateGate = new();
         private AnimatedMediaSequence mediaSequence = AnimatedMediaSequence.Empty;
         private DateTimeOffset mediaStartedUtc = DateTimeOffset.UtcNow;
@@ -257,11 +263,17 @@ internal sealed class PanelsFrameComposer
         private string? errorMessage;
         private bool switchInProgress;
 
-        private GifWidgetRuntime(PanelWidgetDefinition widget, Hub75GifDecoder decoder, PanelsMediaCache mediaCache, RenderIntent renderIntent)
+        private GifWidgetRuntime(
+            PanelWidgetDefinition widget,
+            Hub75GifDecoder decoder,
+            PanelsMediaCache mediaCache,
+            IPanelMediaSourceResolver mediaSourceResolver,
+            RenderIntent renderIntent)
         {
             this.widget = widget;
             this.decoder = decoder;
             this.mediaCache = mediaCache;
+            this.mediaSourceResolver = mediaSourceResolver;
             this.renderIntent = renderIntent;
             widget.Normalize(LedDefaults.MatrixWidth, LedDefaults.MatrixHeight);
         }
@@ -283,10 +295,11 @@ internal sealed class PanelsFrameComposer
             PanelWidgetDefinition widget,
             Hub75GifDecoder decoder,
             PanelsMediaCache mediaCache,
+            IPanelMediaSourceResolver mediaSourceResolver,
             RenderIntent renderIntent,
             CancellationToken cancellationToken)
         {
-            var runtime = new GifWidgetRuntime(widget, decoder, mediaCache, renderIntent);
+            var runtime = new GifWidgetRuntime(widget, decoder, mediaCache, mediaSourceResolver, renderIntent);
             await runtime.InitializeAsync(cancellationToken).ConfigureAwait(false);
             return runtime;
         }
@@ -295,7 +308,7 @@ internal sealed class PanelsFrameComposer
         {
             AnimatedMediaSequence localSequence;
             DateTimeOffset localMediaStartedUtc;
-            string? nextSlideSource = null;
+            PanelMediaSource? nextSlideSource = null;
             int nextSlideIndex = -1;
 
             lock (stateGate)
@@ -345,40 +358,31 @@ internal sealed class PanelsFrameComposer
 
         private async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            var sourcePath = widget.RuntimeState.TryGetValue("sourcePath", out var storedPath)
-                ? storedPath?.Trim()
-                : string.Empty;
-            if (string.IsNullOrWhiteSpace(sourcePath))
+            var sources = await mediaSourceResolver.ResolveAsync(widget, cancellationToken).ConfigureAwait(false);
+            if (sources.Count == 0)
             {
-                SetError("Widget GIF sem caminho salvo.");
+                SetError("Widget GIF sem midia resolvida.");
                 return;
             }
 
             slideshow = string.Equals(widget.ConfigValues.TryGetValue("sourceType", out var sourceType) ? sourceType : null, "slideshow", StringComparison.OrdinalIgnoreCase)
-                || Directory.Exists(sourcePath);
+                || sources.Count > 1;
             slideshowIntervalMs = ParseSlideshowIntervalMs(widget.ConfigValues);
 
             if (renderIntent == RenderIntent.Poster)
             {
-                await InitializePosterAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+                await InitializePosterAsync(sources[0], cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            await InitializeAnimatedAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+            await InitializeAnimatedAsync(sources, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task InitializePosterAsync(string sourcePath, CancellationToken cancellationToken)
+        private async Task InitializePosterAsync(PanelMediaSource source, CancellationToken cancellationToken)
         {
             try
             {
-                var posterSource = ResolvePosterSourcePath(sourcePath);
-                if (string.IsNullOrWhiteSpace(posterSource))
-                {
-                    SetError(slideshow ? "Pasta sem imagens compativeis." : "Arquivo GIF/imagem nao encontrado.");
-                    return;
-                }
-
-                var posterFrame = await LoadPosterFrameAsync(posterSource, cancellationToken).ConfigureAwait(false);
+                var posterFrame = await LoadPosterFrameAsync(source, cancellationToken).ConfigureAwait(false);
                 lock (stateGate)
                 {
                     mediaSequence = posterFrame.Length == 0
@@ -398,29 +402,23 @@ internal sealed class PanelsFrameComposer
             }
         }
 
-        private async Task InitializeAnimatedAsync(string sourcePath, CancellationToken cancellationToken)
+        private async Task InitializeAnimatedAsync(IReadOnlyList<PanelMediaSource> sources, CancellationToken cancellationToken)
         {
             if (slideshow)
             {
-                if (!Directory.Exists(sourcePath))
-                {
-                    SetError("Pasta de slideshow nao encontrada.");
-                    return;
-                }
-
-                var sources = EnumerateMediaSources(sourcePath);
                 if (sources.Count == 0)
                 {
-                    SetError("Pasta sem imagens compativeis.");
+                    SetError("Slideshow sem imagens compativeis.");
                     return;
                 }
 
+                var orderedSources = sources.ToList();
                 if (ParseShuffle(widget.ConfigValues))
                 {
-                    sources = sources.OrderBy(static _ => RandomNumberGenerator.GetInt32(int.MaxValue)).ToList();
+                    orderedSources = orderedSources.OrderBy(static _ => RandomNumberGenerator.GetInt32(int.MaxValue)).ToList();
                 }
 
-                mediaSources.AddRange(sources);
+                mediaSources.AddRange(orderedSources);
                 try
                 {
                     await LoadFramesForSourceAsync(mediaSources[0], cancellationToken).ConfigureAwait(false);
@@ -443,16 +441,10 @@ internal sealed class PanelsFrameComposer
                 return;
             }
 
-            if (!File.Exists(sourcePath))
-            {
-                SetError("Arquivo GIF/imagem nao encontrado.");
-                return;
-            }
-
-            mediaSources.Add(sourcePath);
+            mediaSources.Add(sources[0]);
             try
             {
-                await LoadFramesForSourceAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+                await LoadFramesForSourceAsync(sources[0], cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -464,18 +456,19 @@ internal sealed class PanelsFrameComposer
             }
         }
 
-        private async Task LoadFramesForSourceAsync(string sourcePath, CancellationToken cancellationToken)
+        private async Task LoadFramesForSourceAsync(PanelMediaSource source, CancellationToken cancellationToken)
         {
-            if (!SupportedImageExtensions.Contains(Path.GetExtension(sourcePath)))
+            var extension = Path.GetExtension(source.FileName);
+            if (!SupportedImageExtensions.Contains(extension))
             {
                 throw new InvalidDataException("Arquivo de midia nao suportado.");
             }
 
             var scaleMode = ParseGifScaleMode(widget.ConfigValues.TryGetValue("scaleMode", out var rawScale) ? rawScale : null);
-            var cacheKey = BuildMediaCacheKey(sourcePath, widget.Width, widget.Height, scaleMode, posterOnly: false);
+            var cacheKey = BuildMediaCacheKey(source.Key, widget.Width, widget.Height, scaleMode, posterOnly: false);
             var loadedFrames = await mediaCache.GetOrCreateAnimatedAsync(
                 cacheKey,
-                token => DecodeFramesCoreAsync(decoder, sourcePath, widget.Width, widget.Height, scaleMode, token),
+                token => DecodeFramesCoreAsync(decoder, source.Payload, extension, widget.Width, widget.Height, scaleMode, token),
                 cancellationToken).ConfigureAwait(false);
             if (loadedFrames.IsEmpty)
             {
@@ -490,15 +483,16 @@ internal sealed class PanelsFrameComposer
             }
         }
 
-        private async Task<RgbaColor[]> LoadPosterFrameAsync(string sourcePath, CancellationToken cancellationToken)
+        private async Task<RgbaColor[]> LoadPosterFrameAsync(PanelMediaSource source, CancellationToken cancellationToken)
         {
+            var extension = Path.GetExtension(source.FileName);
             var scaleMode = ParseGifScaleMode(widget.ConfigValues.TryGetValue("scaleMode", out var rawScale) ? rawScale : null);
-            var cacheKey = BuildMediaCacheKey(sourcePath, widget.Width, widget.Height, scaleMode, posterOnly: true);
+            var cacheKey = BuildMediaCacheKey(source.Key, widget.Width, widget.Height, scaleMode, posterOnly: true);
             var posterFrame = await mediaCache.GetOrCreatePosterAsync(
                 cacheKey,
                 async token =>
                 {
-                    var sequence = await DecodeFramesCoreAsync(decoder, sourcePath, widget.Width, widget.Height, scaleMode, token, firstFrameOnly: true).ConfigureAwait(false);
+                    var sequence = await DecodeFramesCoreAsync(decoder, source.Payload, extension, widget.Width, widget.Height, scaleMode, token, firstFrameOnly: true).ConfigureAwait(false);
                     return sequence.IsEmpty ? Array.Empty<RgbaColor>() : sequence.Frames[0].Pixels;
                 },
                 cancellationToken).ConfigureAwait(false);
@@ -510,11 +504,11 @@ internal sealed class PanelsFrameComposer
             return posterFrame;
         }
 
-        private async Task BeginSlideSwitchAsync(int nextIndex, string sourcePath)
+        private async Task BeginSlideSwitchAsync(int nextIndex, PanelMediaSource source)
         {
             try
             {
-                await LoadFramesForSourceAsync(sourcePath, lifetimeCts.Token).ConfigureAwait(false);
+                await LoadFramesForSourceAsync(source, lifetimeCts.Token).ConfigureAwait(false);
                 lock (stateGate)
                 {
                     sourceIndex = nextIndex;
@@ -540,30 +534,6 @@ internal sealed class PanelsFrameComposer
             }
         }
 
-        private static string? ResolvePosterSourcePath(string sourcePath)
-        {
-            if (string.IsNullOrWhiteSpace(sourcePath))
-            {
-                return null;
-            }
-
-            if (Directory.Exists(sourcePath))
-            {
-                return EnumerateMediaSources(sourcePath).FirstOrDefault();
-            }
-
-            return File.Exists(sourcePath) ? sourcePath : null;
-        }
-
-        private static List<string> EnumerateMediaSources(string sourcePath)
-        {
-            return Directory
-                .EnumerateFiles(sourcePath)
-                .Where(static path => SupportedImageExtensions.Contains(Path.GetExtension(path)))
-                .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
         private void SetError(string message, bool clearFrames = true)
         {
             lock (stateGate)
@@ -579,66 +549,62 @@ internal sealed class PanelsFrameComposer
 
     private static async Task<AnimatedMediaSequence> DecodeFramesCoreAsync(
         Hub75GifDecoder decoder,
-        string sourcePath,
+        byte[] sourceBytes,
+        string extension,
         int targetWidth,
         int targetHeight,
         GifScaleMode scaleMode,
         CancellationToken cancellationToken,
         bool firstFrameOnly = false)
     {
-        var extension = Path.GetExtension(sourcePath);
         if (string.Equals(extension, ".gif", StringComparison.OrdinalIgnoreCase))
         {
-            var bytes = await File.ReadAllBytesAsync(sourcePath, cancellationToken).ConfigureAwait(false);
             if (firstFrameOnly)
             {
-                var firstFrame = await Task.Run(() => Hub75GifDecoder.DecodeFirstFrame(bytes, cancellationToken), cancellationToken).ConfigureAwait(false);
+                var firstFrame = await Task.Run(() => Hub75GifDecoder.DecodeFirstFrame(sourceBytes, cancellationToken), cancellationToken).ConfigureAwait(false);
                 return CreateAnimatedSequence([firstFrame], targetWidth, targetHeight, scaleMode);
             }
 
-            var decodedFrames = await Task.Run(() => decoder.Decode(bytes, cancellationToken), cancellationToken).ConfigureAwait(false);
+            var decodedFrames = await Task.Run(() => decoder.Decode(sourceBytes, cancellationToken), cancellationToken).ConfigureAwait(false);
             return CreateAnimatedSequence(decodedFrames, targetWidth, targetHeight, scaleMode);
         }
 
-        var rawBytes = await File.ReadAllBytesAsync(sourcePath, cancellationToken).ConfigureAwait(false);
-        var imageFrame = await Task.Run(() => DecodeStaticImageBytes(rawBytes), cancellationToken).ConfigureAwait(false);
+        await Task.Yield();
+        cancellationToken.ThrowIfCancellationRequested();
+        var imageFrame = await Task.Run(() => DecodeStaticImageBytes(sourceBytes), cancellationToken).ConfigureAwait(false);
         return CreateAnimatedSequence([imageFrame], targetWidth, targetHeight, scaleMode);
     }
 
     private static DecodedGifFrame DecodeStaticImageBytes(byte[] bytes)
     {
-        using var ms = new MemoryStream(bytes, writable: false);
-        using var img = System.Drawing.Image.FromStream(ms);
-        using var bmp = new System.Drawing.Bitmap(img);
-        var lockData = bmp.LockBits(
-            new System.Drawing.Rectangle(0, 0, bmp.Width, bmp.Height),
-            System.Drawing.Imaging.ImageLockMode.ReadOnly,
-            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-        try
+        using var image = new MagickImage(bytes);
+        if (image.Width == 0 || image.Height == 0)
         {
-            var stride = Math.Abs(lockData.Stride);
-            var raw = new byte[stride * bmp.Height];
-            Marshal.Copy(lockData.Scan0, raw, 0, raw.Length);
-            var pixels = new RgbaColor[bmp.Width * bmp.Height];
-            for (var y = 0; y < bmp.Height; y++)
-            {
-                var rowOffset = lockData.Stride >= 0
-                    ? y * stride
-                    : (bmp.Height - 1 - y) * stride;
-
-                for (var x = 0; x < bmp.Width; x++)
-                {
-                    var offset = rowOffset + (x * 4);
-                    pixels[(y * bmp.Width) + x] = new RgbaColor(raw[offset + 2], raw[offset + 1], raw[offset], raw[offset + 3]);
-                }
-            }
-
-            return new DecodedGifFrame(bmp.Width, bmp.Height, pixels);
+            throw new InvalidDataException("Imagem sem dimensoes validas.");
         }
-        finally
+
+        var pixelBytes = image.GetPixels().ToByteArray(PixelMapping.RGBA)
+            ?? throw new InvalidDataException("Falha ao extrair pixels RGBA da imagem.");
+        var width = (int)image.Width;
+        var height = (int)image.Height;
+        var pixels = new RgbaColor[width * height];
+        var expectedByteCount = pixels.Length * 4;
+        if (pixelBytes.Length < expectedByteCount)
         {
-            bmp.UnlockBits(lockData);
+            throw new InvalidDataException("Imagem retornou menos bytes RGBA do que o esperado.");
         }
+
+        for (var pixelIndex = 0; pixelIndex < pixels.Length; pixelIndex++)
+        {
+            var offset = pixelIndex * 4;
+            pixels[pixelIndex] = new RgbaColor(
+                pixelBytes[offset],
+                pixelBytes[offset + 1],
+                pixelBytes[offset + 2],
+                pixelBytes[offset + 3]);
+        }
+
+        return new DecodedGifFrame(width, height, pixels);
     }
 
     internal static int ResolveAnimatedFrameIndex(AnimatedMediaSequence sequence, TimeSpan elapsed)

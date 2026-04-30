@@ -106,20 +106,9 @@ public sealed partial class DevicesPage
     // DOCS: docs/wiki/reference/device-observability-dashboard.md
     private void ApplyButtonState()
     {
-        var hasSelectedDevice = GetSelectedDeviceId() is not null;
         if (CopyDashboardLinkButton is not null)
         {
             CopyDashboardLinkButton.IsEnabled = BuildDashboardShareUri(currentState.ServerBaseAddress, GetSelectedDeviceId()) is not null;
-        }
-
-        if (TestLedButton is not null)
-        {
-            TestLedButton.IsEnabled = hasSelectedDevice;
-        }
-
-        if (RemoveDeviceButton is not null)
-        {
-            RemoveDeviceButton.IsEnabled = hasSelectedDevice;
         }
     }
 

@@ -1,13 +1,7 @@
 using System.Buffers;
-using System.Net;
-using System.Net.Http.Json;
-using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Channels;
-using Device.Protocol.Models;
-using Device.Protocol.Stream;
 
 namespace Device.Client.Remote;
 
@@ -17,33 +11,19 @@ namespace Device.Client.Remote;
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-direct-lan-visual-and-device-identity.md
 // DOCS: docs/handoffs/2026-04-29-remote-visual-endpoint-diagnostics.md
+// DOCS: docs/handoffs/2026-04-29-server-mediated-visual-udp.md
 public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceServerClientRuntime
 {
-    private const string VisualEndpointsPath = "/api/v1/admin/visual-endpoints";
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNameCaseInsensitive = true,
-    };
-
-    private static readonly TimeSpan EndpointRefreshInterval = TimeSpan.FromSeconds(2);
-
     private readonly RemoteDeviceServerClientOptions options;
     private readonly Channel<FrameEnvelope> queue;
     private readonly object lifecycleGate = new();
-    private readonly object endpointGate = new();
-    private readonly SemaphoreSlim endpointRefreshGate = new(1, 1);
-    private readonly Dictionary<string, DeviceVisualEndpointInfo> visualEndpoints = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HttpClient endpointHttpClient;
-    private readonly Socket udpSocket;
 
     private CancellationTokenSource? cts;
     private Task? sendTask;
-    private DateTimeOffset endpointsLastRefreshUtc = DateTimeOffset.MinValue;
-    private long directUdpFramesSent;
-    private long webSocketFallbackFramesQueued;
-    private long missingEndpointFrames;
-    private string? lastEndpointRefreshError;
-    private string? lastUdpError;
+    private long serverWebSocketFramesQueued;
+    private long serverWebSocketFramesSent;
+    private long serverWebSocketReconnects;
+    private string? lastWebSocketError;
 
     public RemoteDeviceFrameTransport(RemoteDeviceServerClientOptions options)
     {
@@ -54,23 +34,16 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
             SingleReader = true,
             SingleWriter = false,
         });
-
-        endpointHttpClient = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(3),
-        };
-        RemoteDeviceServerClient.ConfigureHttpClient(endpointHttpClient, options);
-        udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public Task StartAsync(CancellationToken cancellationToken = default)
     {
         CancellationToken localToken;
         lock (lifecycleGate)
         {
             if (sendTask is not null)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -78,7 +51,7 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
             sendTask = Task.Run(() => SendLoopAsync(localToken), CancellationToken.None);
         }
 
-        await RefreshVisualEndpointsAsync(localToken).ConfigureAwait(false);
+        return Task.CompletedTask;
     }
 
     public async Task StopAsync()
@@ -118,18 +91,14 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
-        endpointRefreshGate.Dispose();
-        endpointHttpClient.Dispose();
-        udpSocket.Dispose();
     }
 
     public RemoteDeviceFrameTransportDiagnostics GetDiagnosticsSnapshot()
         => new(
-            Interlocked.Read(ref directUdpFramesSent),
-            Interlocked.Read(ref webSocketFallbackFramesQueued),
-            Interlocked.Read(ref missingEndpointFrames),
-            Volatile.Read(ref lastEndpointRefreshError),
-            Volatile.Read(ref lastUdpError));
+            Interlocked.Read(ref serverWebSocketFramesQueued),
+            Interlocked.Read(ref serverWebSocketFramesSent),
+            Interlocked.Read(ref serverWebSocketReconnects),
+            Volatile.Read(ref lastWebSocketError));
 
     public void SendFrame(string deviceId, byte[] framePayload)
     {
@@ -140,191 +109,18 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
 
         ArgumentNullException.ThrowIfNull(framePayload);
         var normalizedDeviceId = deviceId.Trim();
-        if (VisualUdpFrameV1.IsSupportedPayload(framePayload)
-            && TrySendDirectUdp(normalizedDeviceId, framePayload))
-        {
-            return;
-        }
-
-        QueueFallback(new FrameEnvelope(true, normalizedDeviceId, framePayload));
+        QueueServerFrame(new FrameEnvelope(true, normalizedDeviceId, framePayload));
     }
 
     public void BroadcastFrame(byte[] framePayload)
     {
         ArgumentNullException.ThrowIfNull(framePayload);
-        if (VisualUdpFrameV1.IsSupportedPayload(framePayload) && TryBroadcastDirectUdp(framePayload))
-        {
-            return;
-        }
-
-        QueueFallback(new FrameEnvelope(false, string.Empty, framePayload));
+        QueueServerFrame(new FrameEnvelope(false, string.Empty, framePayload));
     }
 
-    public async Task RefreshVisualEndpointsAsync(CancellationToken cancellationToken = default)
+    private void QueueServerFrame(FrameEnvelope frame)
     {
-        await endpointRefreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            using var httpResponse = await endpointHttpClient
-                .GetAsync(VisualEndpointsPath, cancellationToken)
-                .ConfigureAwait(false);
-            if (!httpResponse.IsSuccessStatusCode)
-            {
-                lock (endpointGate)
-                {
-                    visualEndpoints.Clear();
-                    endpointsLastRefreshUtc = DateTimeOffset.UtcNow;
-                }
-
-                Volatile.Write(ref lastEndpointRefreshError, BuildVisualEndpointsHttpError(httpResponse.StatusCode));
-                return;
-            }
-
-            var response = await httpResponse.Content
-                .ReadFromJsonAsync<AdminVisualEndpointsResponse>(JsonOptions, cancellationToken)
-                .ConfigureAwait(false);
-
-            lock (endpointGate)
-            {
-                visualEndpoints.Clear();
-                if (response is not null)
-                {
-                    foreach (var endpoint in response.Devices)
-                    {
-                        if (!string.IsNullOrWhiteSpace(endpoint.DeviceId))
-                        {
-                            visualEndpoints[endpoint.DeviceId] = endpoint;
-                        }
-                    }
-                }
-
-                endpointsLastRefreshUtc = DateTimeOffset.UtcNow;
-            }
-
-            Volatile.Write(ref lastEndpointRefreshError, null);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Volatile.Write(ref lastEndpointRefreshError, ex.Message);
-        }
-        finally
-        {
-            endpointRefreshGate.Release();
-        }
-    }
-
-    private bool TrySendDirectUdp(string deviceId, byte[] framePayload)
-    {
-        if (!TryGetEndpoint(deviceId, out var endpoint))
-        {
-            Interlocked.Increment(ref missingEndpointFrames);
-            RefreshEndpointsIfStale();
-            return false;
-        }
-
-        return TrySendDirectUdp(endpoint, framePayload);
-    }
-
-    private bool TryBroadcastDirectUdp(byte[] framePayload)
-    {
-        DeviceVisualEndpointInfo[] endpoints;
-        lock (endpointGate)
-        {
-            endpoints = visualEndpoints.Values.ToArray();
-        }
-
-        if (endpoints.Length == 0)
-        {
-            Interlocked.Increment(ref missingEndpointFrames);
-            RefreshEndpointsIfStale();
-            return false;
-        }
-
-        var sent = 0;
-        foreach (var endpoint in endpoints)
-        {
-            if (TrySendDirectUdp(endpoint, framePayload))
-            {
-                sent++;
-            }
-        }
-
-        if (sent == 0)
-        {
-            RefreshEndpointsIfStale();
-        }
-
-        return sent > 0;
-    }
-
-    private bool TrySendDirectUdp(DeviceVisualEndpointInfo endpoint, byte[] framePayload)
-    {
-        if (!TryResolveEndpoint(endpoint, out var remoteEndPoint))
-        {
-            Interlocked.Increment(ref missingEndpointFrames);
-            return false;
-        }
-
-        var datagramLength = VisualUdpFrameV1.GetDatagramSize(framePayload.Length);
-        var rented = ArrayPool<byte>.Shared.Rent(datagramLength);
-        try
-        {
-            if (!VisualUdpFrameV1.TryWriteDatagram(
-                    rented.AsSpan(0, datagramLength),
-                    framePayload,
-                    endpoint.DeviceToken,
-                    out var written))
-            {
-                return false;
-            }
-
-            udpSocket.SendTo(rented.AsSpan(0, written), SocketFlags.None, remoteEndPoint);
-            Interlocked.Increment(ref directUdpFramesSent);
-            Volatile.Write(ref lastUdpError, null);
-            return true;
-        }
-        catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
-        {
-            Volatile.Write(ref lastUdpError, ex.Message);
-            return false;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(rented);
-        }
-    }
-
-    private bool TryGetEndpoint(string deviceId, out DeviceVisualEndpointInfo endpoint)
-    {
-        lock (endpointGate)
-        {
-            return visualEndpoints.TryGetValue(deviceId, out endpoint!);
-        }
-    }
-
-    private void RefreshEndpointsIfStale()
-    {
-        DateTimeOffset lastRefresh;
-        lock (endpointGate)
-        {
-            lastRefresh = endpointsLastRefreshUtc;
-        }
-
-        if (DateTimeOffset.UtcNow - lastRefresh < EndpointRefreshInterval)
-        {
-            return;
-        }
-
-        _ = Task.Run(() => RefreshVisualEndpointsAsync(CancellationToken.None), CancellationToken.None);
-    }
-
-    private void QueueFallback(FrameEnvelope frame)
-    {
-        Interlocked.Increment(ref webSocketFallbackFramesQueued);
+        Interlocked.Increment(ref serverWebSocketFramesQueued);
         queue.Writer.TryWrite(frame);
     }
 
@@ -336,14 +132,17 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
             {
                 using var ws = CreateAdminWebSocket();
                 await ws.ConnectAsync(BuildWebSocketUri("/ws/v1/admin/frames"), cancellationToken).ConfigureAwait(false);
+                Volatile.Write(ref lastWebSocketError, null);
                 await DrainQueueAsync(ws, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 return;
             }
-            catch
+            catch (Exception ex)
             {
+                Interlocked.Increment(ref serverWebSocketReconnects);
+                Volatile.Write(ref lastWebSocketError, ex.Message);
             }
 
             try
@@ -371,6 +170,7 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
                         true,
                         cancellationToken)
                     .ConfigureAwait(false);
+                Interlocked.Increment(ref serverWebSocketFramesSent);
             }
             finally
             {
@@ -424,33 +224,6 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
         return envelope;
     }
 
-    private static bool TryResolveEndpoint(DeviceVisualEndpointInfo endpoint, out IPEndPoint remoteEndPoint)
-    {
-        remoteEndPoint = null!;
-        if (string.IsNullOrWhiteSpace(endpoint.LanIpAddress)
-            || string.IsNullOrWhiteSpace(endpoint.DeviceToken)
-            || endpoint.VisualUdpPort is < 1 or > 65535
-            || !string.Equals(endpoint.VisualUdpMode, "bins128", StringComparison.OrdinalIgnoreCase)
-            || !IPAddress.TryParse(endpoint.LanIpAddress, out var address))
-        {
-            return false;
-        }
-
-        if (address.IsIPv4MappedToIPv6)
-        {
-            address = address.MapToIPv4();
-        }
-
-        if (address.AddressFamily != AddressFamily.InterNetwork
-            || (!IPAddress.IsLoopback(address) && !IsPrivateNetworkAddress(address)))
-        {
-            return false;
-        }
-
-        remoteEndPoint = new IPEndPoint(address, endpoint.VisualUdpPort);
-        return true;
-    }
-
     private static Uri NormalizeBaseAddress(string value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
@@ -462,31 +235,11 @@ public sealed class RemoteDeviceFrameTransport : IDeviceFrameTransport, IDeviceS
         return uri;
     }
 
-    private static string BuildVisualEndpointsHttpError(HttpStatusCode statusCode)
-        => statusCode switch
-        {
-            HttpStatusCode.NotFound =>
-                $"Servidor remoto sem a rota {VisualEndpointsPath} (HTTP 404). Recrie o container com scripts/docker-server-redeploy.ps1 para publicar a versao atual.",
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
-                $"Admin token falhou em {VisualEndpointsPath}: HTTP {(int)statusCode}.",
-            _ =>
-                $"Endpoint {VisualEndpointsPath} falhou: HTTP {(int)statusCode}.",
-        };
-
-    private static bool IsPrivateNetworkAddress(IPAddress address)
-    {
-        var bytes = address.GetAddressBytes();
-        return bytes[0] == 10
-            || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
-            || (bytes[0] == 192 && bytes[1] == 168);
-    }
-
     private readonly record struct FrameEnvelope(bool Targeted, string DeviceId, byte[] Payload);
 }
 
 public sealed record RemoteDeviceFrameTransportDiagnostics(
-    long DirectUdpFramesSent,
-    long WebSocketFallbackFramesQueued,
-    long MissingEndpointFrames,
-    string? LastEndpointRefreshError,
-    string? LastUdpError);
+    long ServerWebSocketFramesQueued,
+    long ServerWebSocketFramesSent,
+    long ServerWebSocketReconnects,
+    string? LastWebSocketError);

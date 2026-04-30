@@ -62,7 +62,12 @@ public sealed class DeviceServerHostLibraryApiTests
                             ZIndex = 0,
                             ConfigValues = new Dictionary<string, string>
                             {
+                                ["scaleMode"] = "fit",
+                            },
+                            RuntimeState = new Dictionary<string, string>
+                            {
                                 ["mediaId"] = "media-1",
+                                ["sourcePath"] = "C:\\temp\\local-only.gif",
                             },
                         },
                     ],
@@ -92,7 +97,48 @@ public sealed class DeviceServerHostLibraryApiTests
         var widget = Assert.Single(panel.Widgets);
         Assert.Equal("gifhub75", widget.AppId);
         Assert.Equal(PanelWidgetDataSources.Server, widget.DataSource);
-        Assert.Equal("media-1", widget.ConfigValues["mediaId"]);
+        Assert.Equal("fit", widget.ConfigValues["scaleMode"]);
+        Assert.Equal("media-1", widget.RuntimeState["mediaId"]);
+        Assert.False(widget.RuntimeState.ContainsKey("sourcePath"));
+    }
+
+    [Fact]
+    public async Task AdminPanelsRuntime_ShouldReturnRuntimeDiagnostics()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var diagnosticsStore = new InMemoryPanelRuntimeDiagnosticsStore();
+        diagnosticsStore.Upsert(new PanelRuntimeDeviceDiagnostic
+        {
+            DeviceId = "device-1",
+            PanelId = "panel-1",
+            State = "running",
+            LastBatchSequence = 3,
+            UpdatedAtUtc = new DateTimeOffset(2026, 4, 30, 12, 0, 0, TimeSpan.Zero),
+        });
+        await using var host = new DeviceServerHost(
+            TimeProvider.System,
+            firmwareCatalog: null,
+            panelRuntimeDiagnostics: diagnosticsStore);
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            AdminToken = AdminToken,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        using var request = CreateAdminRequest(HttpMethod.Get, "/api/v1/admin/panels/runtime");
+        using var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var diagnostics = await response.Content.ReadFromJsonAsync<PanelRuntimeDiagnosticsResponse>();
+
+        Assert.NotNull(diagnostics);
+        var device = Assert.Single(diagnostics!.Devices);
+        Assert.Equal("device-1", device.DeviceId);
+        Assert.Equal("panel-1", device.PanelId);
+        Assert.Equal("running", device.State);
+        Assert.Equal(3UL, device.LastBatchSequence);
     }
 
     [Fact]

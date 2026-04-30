@@ -6,23 +6,24 @@ Descrever o fluxo principal do sistema e onde cada modulo participa.
 
 ## Direcao oficial
 
-- `server` = control plane + storage + catalogo + estado duravel.
-- `cliente Windows` = edge client local e primeiro data plane LAN oficial.
+- `server` = control plane + storage + catalogo + estado duravel + relay visual LAN.
+- `cliente Windows` = controlador/fonte local de dados, incluindo captura de audio.
 - `ESP32` = runtime de execucao/render com ownership explicito por device.
-- `visualizador` e `Paineis` sao oficialmente `client-driven`:
-  - `visualizador`: captura/processamento local no cliente e envio direto ao ESP;
-  - `Paineis`: sync/cache de assets/config no cliente e push local ao ESP.
+- `visualizador` e `Paineis` usam o server como fronteira oficial para o ESP:
+  - `visualizador`: captura/processamento local no cliente, envio ao server e UDP visual servidor->ESP;
+  - `Paineis`: WinUI edita/ativa, o server persiste assets/config e compoe widgets `server` em runtime autonomo.
 
 ## Baseline atual / transicao
 
-- O app desktop ainda preserva caminhos embedded e transporte via server para compatibilidade.
+- O app desktop preserva caminhos embedded e remote usando a mesma fronteira `IDeviceFrameTransport` para visualizador e compatibilidade local.
 - `Device.Server` ainda participa do fluxo operacional atual de pareamento, snapshots, comandos tracked e batches `WebP`.
-- O hot path visual mediado por server continua existindo como baseline legado, nao como topologia alvo de baixa latencia.
+- O hot path visual remoto mediado por server e a topologia alvo atual de baixa latencia, com UDP apenas no trecho servidor->ESP.
+- Em modo Remote, paineis server-owned continuam depois que o WinUI fecha enquanto o `MicaAudio.Server` permanecer ligado.
 
 ## Pipeline principal oficial
 
 ```text
-WASAPI loopback -> PcmFrame -> SpectrumAnalyzer -> SpectrumFrame -> VisualizerEngine -> Cliente LAN -> ESP32
+WASAPI loopback -> PcmFrame -> SpectrumAnalyzer -> SpectrumFrame -> VisualizerEngine -> WinUI -> Server -> ESP32
 ```
 
 ## Fluxo por modulo
@@ -30,8 +31,8 @@ WASAPI loopback -> PcmFrame -> SpectrumAnalyzer -> SpectrumFrame -> VisualizerEn
 1. `Audio.Loopback` captura audio e publica `PcmFrame`.
 2. `Analyzer.Dsp` transforma PCM em espectro e bandas.
 3. `Visual.Win2D` renderiza no canvas a partir de `SpectrumFrame`.
-4. `Output` serializa payload visual e o cliente decide se envia localmente ao ESP, ao simulador ou ao caminho legado.
-5. `Device.Server` fica responsavel por control plane, assets, pairing, estado de device e catalogo.
+4. `Output` serializa payload visual e o cliente envia ao simulador local ou ao servidor.
+5. `Device.Server` fica responsavel por control plane, assets, pairing, estado de device, catalogo, runtime autonomo de paineis server-owned e entrega visual ao ESP.
 
 ## Referencias de codigo
 

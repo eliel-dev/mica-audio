@@ -24,6 +24,7 @@ namespace App.WinUI.Views;
 // DOCS: docs/wiki/modules/paineis.md#editor-hub75
 // DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-regra-global-de-scroll-canvas-first
 // DOCS: docs/handoffs/2026-04-29-lan-panel-architecture-realignment.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 public sealed partial class PanelsPage : Page, IDisposable
 {
     private static readonly RgbaColor[] EmptyFrame = Enumerable.Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight).ToArray();
@@ -38,6 +39,8 @@ public sealed partial class PanelsPage : Page, IDisposable
     private readonly IAppCatalogService catalogService;
     private readonly IAppModifierStateStore modifierStore;
     private readonly PanelsStore panelsStore;
+    private readonly SettingsRepository settingsRepository;
+    private readonly AppSettingsDomainService settingsDomainService;
     private readonly PanelsFrameComposer frameComposer;
     private readonly PanelsPlaybackService playbackService;
     private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
@@ -75,6 +78,8 @@ public sealed partial class PanelsPage : Page, IDisposable
         IAppCatalogService catalogService,
         IAppModifierStateStore modifierStore,
         PanelsStore panelsStore,
+        SettingsRepository settingsRepository,
+        AppSettingsDomainService settingsDomainService,
         PanelsFrameComposer frameComposer,
         PanelsPlaybackService playbackService,
         Hub75VisualizerSessionService hub75VisualizerSessionService,
@@ -85,6 +90,8 @@ public sealed partial class PanelsPage : Page, IDisposable
         this.catalogService = catalogService;
         this.modifierStore = modifierStore;
         this.panelsStore = panelsStore;
+        this.settingsRepository = settingsRepository;
+        this.settingsDomainService = settingsDomainService;
         this.frameComposer = frameComposer;
         this.playbackService = playbackService;
         this.hub75VisualizerSessionService = hub75VisualizerSessionService;
@@ -509,6 +516,25 @@ public sealed partial class PanelsPage : Page, IDisposable
             && !await SaveCurrentPanelIfDirtyAsync())
         {
             UpdateGalleryCardStates();
+            return;
+        }
+
+        if (await IsRemoteDeviceServerModeAsync().ConfigureAwait(true))
+        {
+            if (playbackService.IsRunning)
+            {
+                await playbackService.StopAsync();
+            }
+
+            var remoteStateSaved = await TryPersistActivePanelStateAsync(
+                deviceId,
+                panel.PanelId,
+                PanelsDeviceSessionService.PanelsAppId,
+                panel.PanelId);
+            UpdateGalleryCardStates();
+            SetStatus(remoteStateSaved
+                ? $"Painel '{panel.Name}' ativado no servidor para {deviceId}."
+                : $"Painel '{panel.Name}' ativado no servidor para {deviceId}, mas o estado ativo nao foi salvo.");
             return;
         }
 
@@ -954,6 +980,11 @@ public sealed partial class PanelsPage : Page, IDisposable
             return false;
         }
 
+        if (await IsRemoteDeviceServerModeAsync().ConfigureAwait(true))
+        {
+            return false;
+        }
+
         var activePanel = playbackService.GetActivePanelSnapshot();
         var targetDeviceId = playbackService.TargetDeviceId;
         if (activePanel is null
@@ -970,6 +1001,12 @@ public sealed partial class PanelsPage : Page, IDisposable
             PanelsDeviceSessionService.PanelsAppId,
             currentPanel.PanelId);
         return true;
+    }
+
+    private async Task<bool> IsRemoteDeviceServerModeAsync()
+    {
+        var settings = settingsDomainService.Migrate(await settingsRepository.LoadAsync());
+        return settings.DeviceServerMode == DeviceServerMode.Remote;
     }
 
     private async Task<bool> TryPersistActivePanelStateAsync(

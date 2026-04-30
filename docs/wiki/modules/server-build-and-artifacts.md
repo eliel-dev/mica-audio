@@ -4,7 +4,7 @@
 
 - `MicaAudio.Server` e o artefato oficial do control plane.
 - O host standalone existe para pairing, assets, ownership metadata, catalogo, telemetria e administracao.
-- Ele nao e mais o hot path visual oficial para `visualizador` e `Paineis`; esses fluxos passam a ser client-driven na LAN.
+- Ele volta a ser o hot path oficial do visualizador remoto: cliente envia frames ao server e o server entrega ao ESP.
 
 ## Server standalone
 
@@ -16,10 +16,11 @@
   - `MICA_SERVER__PUBLICHTTPBASEADDRESS` define a base HTTP anunciada para firmware/clients quando o bind interno difere da porta publica;
   - `MICA_SERVER__PUBLICHOST` define o host MQTT anunciado para uso local/legado;
   - `MICA_SERVER__VISUALUDPPORT` define a porta UDP LAN anunciada para visual opt-in (`5274` por default);
-  - `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` permite o host preferir UDP LAN para `Bins128` quando o device anunciar suporte; em Docker local fica opt-in por `-PreferVisualUdp`;
+  - `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` permite o host preferir UDP LAN servidor->ESP para `Bins128` quando o device anunciar suporte; no Docker local fica ligado por default;
   - `MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=true` habilita auto-registro LAN por UDP discovery;
   - `MICA_SERVER__DISCOVERYUDPPORT` define a porta UDP discovery (`5275` por default);
   - `MICA_SERVER__MAXMEDIAUPLOADBYTES` define o limite de upload de midia da biblioteca (`20971520` por default);
+  - `MICA_SERVER__PANELSAUTORUNTIMEENABLED=true` liga o runtime autonomo server-owned de paineis (`true` por default);
   - `MICA_SERVER__STORAGEROOT` define onde o standalone grava `devices.json`, `panels/panels.json` e `media/*`.
 - `src/MicaAudio.Server/Dockerfile` usa build multi-stage com imagens oficiais .NET 10 e `render.yaml` define Web Service Docker com health check em `/api/v1/health`.
 - Docker local em workspace/dev deve usar o helper oficial, que rebuilda a imagem, para/remove apenas o container `mica-audio-server`, sobe a nova versao com volume persistente e anuncia automaticamente o IP LAN do PC:
@@ -28,10 +29,10 @@
 powershell -ExecutionPolicy Bypass -File .\scripts\docker-server-redeploy.ps1
 ```
 
-- Defaults do helper: imagem `micaaudio-server:dev`, container `mica-audio-server`, HTTP externo `5272`, MQTT `5273`, transporte visual por WS, UDP discovery `5275/udp`, volume Docker `mica-audio-server-data` montado em `/data` e `MICA_SERVER__STORAGEROOT=/data`.
-- Para forcar um IP especifico, usar `-PublicHost <IP_DO_PC>`. Para acompanhar logs apos subir, usar `-FollowLogs`. Para ver os comandos sem executar, usar `-DryRun`. Para teste fisico especifico de UDP visual, usar `-PreferVisualUdp`, que habilita `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=true` e publica `5274/udp`.
+- Defaults do helper: imagem `micaaudio-server:dev`, container `mica-audio-server`, HTTP externo `5272`, MQTT `5273`, transporte visual UDP servidor->ESP em `5274/udp`, UDP discovery `5275/udp`, runtime server-owned de paineis ligado, volume Docker `mica-audio-server-data` montado em `/data` e `MICA_SERVER__STORAGEROOT=/data`.
+- Para forcar um IP especifico, usar `-PublicHost <IP_DO_PC>`. Para acompanhar logs apos subir, usar `-FollowLogs`. Para ver os comandos sem executar, usar `-DryRun`. Para troubleshooting especifico por WS, usar `-DisableVisualUdp`, que define `MICA_SERVER__PREFERLANUDPVISUALTRANSPORT=false` e nao publica `5274/udp`.
 - No fluxo normal, o firmware precisa apenas de Wi-Fi; `Servidor` no portal AP fica opcional como fallback tecnico. Se usado manualmente, informe `http://<IP_DO_PC>:5272`; nao use `localhost` nem `127.0.0.1` para um ESP fisico.
-- UDP visual e opcional/LAN-only; no helper Docker local o caminho WS e o default confiavel, e `5274/udp` so e publicado com `-PreferVisualUdp`.
+- UDP visual e LAN-only; no helper Docker local ele e o default oficial no trecho servidor->ESP, e `5274/udp` deve estar liberado no firewall/host Docker.
 - UDP discovery e LAN-only; sem `MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=true` ou sem `-p 5275:5275/udp`, o firmware nao aparece automaticamente no client e o pareamento legado fica como compatibilidade.
 - O smoke Render desta fase valida runtime HTTP/WS publico; operacao cloud completa de firmware e WinUI remoto ficam para fases posteriores.
 
@@ -87,6 +88,7 @@ O catalogo ativo nao expoe mais Matrix Portal S3, painel `64x32` nem o perfil `s
 - [MicaAudio.Server](../../../src/MicaAudio.Server/MicaAudio.Server.csproj#L1)
 - [MicaAudioServerBootstrap](../../../src/MicaAudio.Server/MicaAudioServerBootstrap.cs#L1)
 - [MicaAudioServerRuntime](../../../src/MicaAudio.Server/MicaAudioServerRuntime.cs#L1)
+- [ServerOwnedPanelsRuntimeService](../../../src/MicaAudio.Server/ServerOwnedPanelsRuntimeService.cs#L1)
 - [MicaAudioServerOptions](../../../src/MicaAudio.Server/MicaAudioServerOptions.cs#L1)
 - [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1)
 - [MicaAudio.Server Dockerfile](../../../src/MicaAudio.Server/Dockerfile#L1)

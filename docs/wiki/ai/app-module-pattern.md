@@ -45,12 +45,12 @@ Todo item novo deve ser modelado como **Widget Module** contendo:
 
 **Entrada**: painel salvo + widget selecionado + device alvo.
 
-**Saida**: preview composto, persistencia local e playback HUB75 ativo.
+**Saida**: preview composto, persistencia local/server-first e playback HUB75 ativo.
 
 **Responsabilidade**:
 - Reaproveitar drafts `__local__|appId` como defaults de widget.
-- Persistir paineis e widgets em store propria.
-- Compor um unico framebuffer `128x64` e transmiti-lo ao device alvo.
+- Persistir paineis e widgets em store propria e, no modo Remote, salvar biblioteca/estado ativo no server.
+- Compor um unico framebuffer `128x64` e transmiti-lo ao device alvo no modo Embedded; no modo Remote, o runtime autonomo do server compoe widgets `server`.
 
 ### 4) Integracao com dispositivo
 
@@ -60,7 +60,7 @@ Todo item novo deve ser modelado como **Widget Module** contendo:
 
 **Responsabilidade**:
 - Manter um unico painel ativo por vez.
-- Nao executar widgets isolados no ESP32; o runtime permanece no desktop.
+- Nao executar widgets isolados no ESP32; em modo Remote widgets `server` rodam no `MicaAudio.Server`, e em modo Embedded permanecem no WinUI.
 
 ## Regras de dependencia
 
@@ -85,4 +85,4 @@ Todo item novo deve ser modelado como **Widget Module** contendo:
 - [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)
 - [PanelsPage](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L1)
 - [AppModifierEditorHost](../../../src/App.WinUI/Views/Controls/AppModifierEditorHost.cs#L1)
-- [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
+- [PanelsFrameComposer](../../../src/MicaAudio.PanelRuntime/Services/Panels/PanelsFrameComposer.cs#L1)

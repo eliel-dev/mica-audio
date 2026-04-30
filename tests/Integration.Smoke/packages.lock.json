@@ -794,6 +794,7 @@
           "Device.Server.Abstractions": "[1.0.0, )",
           "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
           "MicaAudio.Core": "[1.0.0, )",
+          "MicaAudio.PanelRuntime": "[1.0.0, )",
           "Microsoft.Extensions.Caching.Hybrid": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.3, )",
           "Microsoft.Extensions.Http.Resilience": "[10.3.0, )",
@@ -872,6 +873,14 @@
       },
       "micaaudio.core": {
         "type": "Project"
+      },
+      "micaaudio.panelruntime": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )",
+          "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
+          "MicaAudio.Core": "[1.0.0, )"
+        }
       },
       "output": {
         "type": "Project",

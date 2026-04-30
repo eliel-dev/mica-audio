@@ -252,11 +252,6 @@ public sealed partial class DevicesPage : Page
         }
     }
 
-    private async void OnTestLedClicked(object sender, RoutedEventArgs e)
-    {
-        await ExecuteTestLedAsync().ConfigureAwait(false);
-    }
-
     private void OnBrightnessSliderValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (suppressBrightnessSliderEvents)
@@ -278,11 +273,6 @@ public sealed partial class DevicesPage : Page
     private async void OnBrightnessSliderLostFocus(object sender, RoutedEventArgs e)
     {
         await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
-    }
-
-    private async void OnRemoveDeviceClicked(object sender, RoutedEventArgs e)
-    {
-        await ExecuteRemoveDeviceAsync().ConfigureAwait(false);
     }
 
     private void OnCopyHostClicked(object sender, RoutedEventArgs e)

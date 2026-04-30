@@ -11,7 +11,7 @@
 ## Direcao oficial
 
 - `Output` continua sendo o adaptador que serializa payload visual no cliente.
-- O caminho oficial de baixa latencia passa a ser `cliente local -> ESP`, nao `cliente -> server -> ESP`.
+- O caminho oficial de baixa latencia passa a ser `cliente local -> server -> ESP`, com UDP apenas no trecho servidor->ESP.
 - O wire legacy `StreamFrameV2` continua valido em transicao; `StreamFrameV3` existe para ownership explicito por `ownerEpoch` quando o data plane direto estiver ativo.
 
 ## Baseline atual / transicao

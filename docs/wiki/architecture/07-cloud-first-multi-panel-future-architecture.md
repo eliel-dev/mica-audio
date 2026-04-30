@@ -695,7 +695,7 @@ Ganho esperado:
 - [PrecompiledFirmwareService](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1) - assinatura esperada: `internal sealed partial class PrecompiledFirmwareService`
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1) - assinatura esperada: `public sealed partial class DeviceServerHost`
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1) - assinatura esperada: `public sealed partial class DeviceServerHost`
-- [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1) - assinatura esperada: `internal sealed class PanelsFrameComposer`
+- [PanelsFrameComposer](../../../src/MicaAudio.PanelRuntime/Services/Panels/PanelsFrameComposer.cs#L1) - assinatura esperada: `internal sealed class PanelsFrameComposer`
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1) - assinatura esperada: `void setup()`
 - [mica_types.h](../../../firmware/esp32s3-devkitc1/src/mica_types.h#L1) - assinatura esperada: `#pragma once`
 

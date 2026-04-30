@@ -6,6 +6,7 @@ namespace MicaAudio.Server;
 
 // DOCS: docs/wiki/modules/paineis.md#server-first-library
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-04-30-server-owned-panels-runtime.md
 public sealed class StandalonePanelLibraryStore : IPanelLibraryStore, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -40,8 +41,9 @@ public sealed class StandalonePanelLibraryStore : IPanelLibraryStore, IDisposabl
             try
             {
                 await using var stream = File.OpenRead(filePath);
-                return await JsonSerializer.DeserializeAsync<PanelLibraryDocument>(stream, JsonOptions, cancellationToken).ConfigureAwait(false)
+                var loaded = await JsonSerializer.DeserializeAsync<PanelLibraryDocument>(stream, JsonOptions, cancellationToken).ConfigureAwait(false)
                     ?? new PanelLibraryDocument();
+                return Normalize(loaded);
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
@@ -66,7 +68,7 @@ public sealed class StandalonePanelLibraryStore : IPanelLibraryStore, IDisposabl
 
             await using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous))
             {
-                await JsonSerializer.SerializeAsync(stream, document, JsonOptions, cancellationToken).ConfigureAwait(false);
+                await JsonSerializer.SerializeAsync(stream, Normalize(document), JsonOptions, cancellationToken).ConfigureAwait(false);
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -89,6 +91,63 @@ public sealed class StandalonePanelLibraryStore : IPanelLibraryStore, IDisposabl
 
         File.Move(tempPath, filePath);
     }
+
+    private static PanelLibraryDocument Normalize(PanelLibraryDocument source)
+    {
+        return new PanelLibraryDocument
+        {
+            SchemaVersion = source.SchemaVersion,
+            LastSelectedPanelId = NormalizeOptional(source.LastSelectedPanelId),
+            ActivePanels = (source.ActivePanels ?? Array.Empty<PanelDeviceState>())
+                .Where(state => !string.IsNullOrWhiteSpace(state.DeviceId))
+                .GroupBy(state => state.DeviceId.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                {
+                    var state = group.Last();
+                    return new PanelDeviceState
+                    {
+                        DeviceId = state.DeviceId.Trim(),
+                        ActivePanelId = NormalizeOptional(state.ActivePanelId),
+                        ActiveAppId = NormalizeOptional(state.ActiveAppId),
+                        LastServerOwnedPanelId = NormalizeOptional(state.LastServerOwnedPanelId),
+                        UpdatedAtUtc = state.UpdatedAtUtc == default ? DateTimeOffset.UtcNow : state.UpdatedAtUtc,
+                    };
+                })
+                .ToArray(),
+            Panels = (source.Panels ?? Array.Empty<PanelLibraryItem>())
+                .Where(panel => !string.IsNullOrWhiteSpace(panel.PanelId))
+                .Select(panel => new PanelLibraryItem
+                {
+                    PanelId = panel.PanelId.Trim(),
+                    Name = string.IsNullOrWhiteSpace(panel.Name) ? "Painel" : panel.Name.Trim(),
+                    Width = panel.Width <= 0 ? 128 : panel.Width,
+                    Height = panel.Height <= 0 ? 64 : panel.Height,
+                    IsEnabled = panel.IsEnabled,
+                    Widgets = (panel.Widgets ?? Array.Empty<PanelWidgetItem>())
+                        .Where(widget => !string.IsNullOrWhiteSpace(widget.WidgetId))
+                        .Select(widget => new PanelWidgetItem
+                        {
+                            WidgetId = widget.WidgetId.Trim(),
+                            AppId = NormalizeOptional(widget.AppId) ?? string.Empty,
+                            DataSource = PanelWidgetDataSources.Normalize(widget.DataSource),
+                            X = widget.X,
+                            Y = widget.Y,
+                            Width = widget.Width,
+                            Height = widget.Height,
+                            ZIndex = widget.ZIndex,
+                            ConfigValues = new Dictionary<string, string>(widget.ConfigValues, StringComparer.OrdinalIgnoreCase),
+                            RuntimeState = widget.RuntimeState
+                                .Where(static entry => PanelWidgetRuntimeStateKeys.IsServerSafe(entry.Key))
+                                .ToDictionary(static entry => entry.Key.Trim(), static entry => entry.Value, StringComparer.OrdinalIgnoreCase),
+                        })
+                        .ToArray(),
+                })
+                .ToArray(),
+        };
+    }
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private void TryDeleteTempFile()
     {

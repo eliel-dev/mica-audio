@@ -40,6 +40,11 @@ public sealed class StandaloneLibraryStoreTests
                             WidgetId = "clock-a",
                             AppId = "clockhub75",
                             DataSource = PanelWidgetDataSources.Server,
+                            RuntimeState = new Dictionary<string, string>
+                            {
+                                ["mediaId"] = "server-safe.webp",
+                                ["sourcePath"] = "C:\\temp\\local-only.webp",
+                            },
                         },
                     ],
                 },
@@ -55,7 +60,10 @@ public sealed class StandaloneLibraryStoreTests
         Assert.Equal("panel-a", activePanel.ActivePanelId);
         var loadedPanel = Assert.Single(loaded.Panels);
         Assert.Equal("Persisted panel", loadedPanel.Name);
-        Assert.Equal(PanelWidgetDataSources.Server, Assert.Single(loadedPanel.Widgets).DataSource);
+        var loadedWidget = Assert.Single(loadedPanel.Widgets);
+        Assert.Equal(PanelWidgetDataSources.Server, loadedWidget.DataSource);
+        Assert.Equal("server-safe.webp", loadedWidget.RuntimeState["mediaId"]);
+        Assert.False(loadedWidget.RuntimeState.ContainsKey("sourcePath"));
 
         await File.WriteAllTextAsync(Path.Combine(root, "panels", "panels.json"), "{ broken json");
         var recovered = await store.LoadAsync();

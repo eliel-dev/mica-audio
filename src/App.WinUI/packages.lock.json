@@ -760,6 +760,14 @@
       "micaaudio.core": {
         "type": "Project"
       },
+      "micaaudio.panelruntime": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )",
+          "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
+          "MicaAudio.Core": "[1.0.0, )"
+        }
+      },
       "output": {
         "type": "Project",
         "dependencies": {

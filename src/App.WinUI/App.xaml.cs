@@ -300,6 +300,8 @@ public partial class App : Application
             sp.GetRequiredService<IAppCatalogService>(),
             sp.GetRequiredService<IAppModifierStateStore>(),
             sp.GetRequiredService<PanelsStore>(),
+            sp.GetRequiredService<SettingsRepository>(),
+            sp.GetRequiredService<AppSettingsDomainService>(),
             sp.GetRequiredService<PanelsFrameComposer>(),
             sp.GetRequiredService<PanelsPlaybackService>(),
             sp.GetRequiredService<Hub75VisualizerSessionService>(),
