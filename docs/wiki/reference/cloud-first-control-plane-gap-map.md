@@ -8,9 +8,9 @@ Este documento e preparatorio. Ele nao muda contrato publico, nao define endpoin
 
 ## Direcao oficial
 
-- O target-state cloud-first do Mica assume `server = control plane`.
-- `visualizador` e `Paineis` deixam de ser requisitos do data plane cloud.
-- O gap principal deixa de ser "como rotear cada frame pela nuvem" e passa a ser "como expor control plane publico, ownership e assets sem quebrar o data plane LAN local".
+- O target-state cloud-first do Mica assume `server = control plane + runtime de paineis server-capable`.
+- `visualizador` e metricas do PC continuam dependentes do cliente enquanto os dados existirem apenas no WinUI.
+- O gap principal e expor control plane publico, ownership, assets e runtime de paineis sem reintroduzir server embedded no WinUI.
 
 ## Fontes e escopo
 
@@ -44,12 +44,12 @@ Este documento e preparatorio. Ele nao muda contrato publico, nao define endpoin
 | MQTT `command-events` | Device publica progresso/conclusao por `commandId`. | Eventos futuros devem trafegar em WSS/public session com semantica de progresso preservada. |
 | MQTT `status`/`presence` | Fonte oficial de online/offline local; retained. | Presenca futura precisa ser estado de sessao cloud, nao broker local embutido. |
 | MQTT `stats`/`logs` | Telemetria estruturada e logs chegam ao host e alimentam snapshot/UI. | Deve migrar para canal publico WSS mantendo campos nullable e compatibilidade com firmware legado. |
-| WS `/ws/v1/stream` | Stream visual binario legado/de transicao para o device. | O target-state pode manter WSS publico para casos remotos, mas o caminho oficial de baixa latencia passa a ser `cliente local -> ESP` na LAN. |
+| WS `/ws/v1/stream` | Stream visual binario para o device. | O target-state mantem WSS/WS servidor -> device; o WinUI nao deve falar direto com o ESP. |
 | WS `/ws/device/{deviceId}` | Dashboard local/WebView2, DTO dedicado e sem auth de device. | Nao e contrato publico do firmware; precisa permanecer separado de API cloud/admin. |
 
 ## Gaps principais
 
-1. **Hosting e ownership**: `DeviceServerHost` ainda nasce dentro do app WinUI; o target-state exige servidor standalone, Dockerizavel e com lifecycle proprio.
+1. **Hosting e ownership**: o target-state exige servidor standalone, Dockerizavel e com lifecycle proprio.
 2. **Persistencia**: pairing, sessions, batches e catalogo oficial ainda dependem de memoria/processo/app local em pontos criticos; cloud precisa Postgres, Key Value e blob store.
 3. **Protocolo publico**: o caminho publico ainda nao esta consolidado em `HTTPS/WSS`; HTTP/WS locais e MQTT embutido continuam sendo o baseline operacional.
 4. **Pairing e claim**: `PairDeviceResponse` ainda devolve endpoints MQTT e HTTP locais; o target-state precisa separar claim, credenciais, capacidades e endpoints publicos.

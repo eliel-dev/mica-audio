@@ -18,6 +18,8 @@ internal sealed class PanelsStore : IDisposable
         PropertyNameCaseInsensitive = true,
         WriteIndented = true,
     };
+    private static readonly HashSet<string> ServerMediaExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".gif", ".png", ".jpg", ".jpeg", ".bmp", ".webp" };
     private static readonly Action<ILogger, string, Exception?> LogEmptyStoreDocument =
         LoggerMessage.Define<string>(LogLevel.Warning, new EventId(1001, nameof(LogEmptyStoreDocument)), "Panels store is empty. Returning a new document. Path: {PanelsPath}");
     private static readonly Action<ILogger, string, string, Exception?> LogWhitespaceStoreDocument =
@@ -202,7 +204,10 @@ internal sealed class PanelsStore : IDisposable
 
             if (localDocument.Panels.Count > 0)
             {
-                await deviceServerClient.SavePanelLibraryAsync(ToPanelLibrary(localDocument), cancellationToken).ConfigureAwait(false);
+                await deviceServerClient.SavePanelLibraryAsync(
+                        await ToPanelLibraryAsync(localDocument, deviceServerClient, cancellationToken).ConfigureAwait(false),
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             return localDocument;
@@ -222,27 +227,29 @@ internal sealed class PanelsStore : IDisposable
 
         try
         {
-            await deviceServerClient.SavePanelLibraryAsync(ToPanelLibrary(localDocument), cancellationToken).ConfigureAwait(false);
+            await deviceServerClient.SavePanelLibraryAsync(
+                    await ToPanelLibraryAsync(localDocument, deviceServerClient, cancellationToken).ConfigureAwait(false),
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or IOException or UnauthorizedAccessException)
         {
         }
     }
 
-    private static PanelLibraryDocument ToPanelLibrary(PanelsStoreDocument source)
+    private static async Task<PanelLibraryDocument> ToPanelLibraryAsync(
+        PanelsStoreDocument source,
+        IDeviceServerClient? deviceServerClient,
+        CancellationToken cancellationToken)
     {
-        return new PanelLibraryDocument
+        var panels = new List<PanelLibraryItem>(source.Panels.Count);
+        foreach (var panel in source.Panels)
         {
-            SchemaVersion = source.SchemaVersion,
-            LastSelectedPanelId = source.LastSelectedPanelId,
-            Panels = source.Panels.Select(static panel => new PanelLibraryItem
+            var widgets = new List<PanelWidgetItem>(panel.Widgets.Count);
+            foreach (var widget in panel.Widgets)
             {
-                PanelId = panel.PanelId,
-                Name = panel.Name,
-                Width = panel.Width,
-                Height = panel.Height,
-                IsEnabled = true,
-                Widgets = panel.Widgets.Select(static widget => new PanelWidgetItem
+                var runtimeState = await BuildServerRuntimeStateAsync(widget, deviceServerClient, cancellationToken).ConfigureAwait(false);
+                widgets.Add(new PanelWidgetItem
                 {
                     WidgetId = widget.WidgetId,
                     AppId = widget.AppId,
@@ -252,9 +259,107 @@ internal sealed class PanelsStore : IDisposable
                     Height = widget.Height,
                     ZIndex = widget.ZIndex,
                     ConfigValues = new Dictionary<string, string>(widget.ConfigValues, StringComparer.OrdinalIgnoreCase),
-                }).ToArray(),
-            }).ToArray(),
+                    RuntimeState = runtimeState,
+                });
+            }
+
+            panels.Add(new PanelLibraryItem
+            {
+                PanelId = panel.PanelId,
+                Name = panel.Name,
+                Width = panel.Width,
+                Height = panel.Height,
+                IsEnabled = true,
+                Widgets = widgets.ToArray(),
+            });
+        }
+
+        return new PanelLibraryDocument
+        {
+            SchemaVersion = PanelLibraryDocument.CurrentSchemaVersion,
+            LastSelectedPanelId = source.LastSelectedPanelId,
+            Panels = panels.ToArray(),
         };
+    }
+
+    private static async Task<Dictionary<string, string>> BuildServerRuntimeStateAsync(
+        PanelWidgetDefinition widget,
+        IDeviceServerClient? deviceServerClient,
+        CancellationToken cancellationToken)
+    {
+        var sourceRuntimeState = widget.RuntimeState ?? [];
+        var runtimeState = new Dictionary<string, string>(sourceRuntimeState, StringComparer.OrdinalIgnoreCase);
+        runtimeState.Remove("sourcePath");
+
+        if (deviceServerClient is null
+            || !string.Equals(widget.AppId, "gifhub75", StringComparison.OrdinalIgnoreCase)
+            || runtimeState.ContainsKey("mediaId")
+            || runtimeState.ContainsKey("mediaIds")
+            || !sourceRuntimeState.TryGetValue("sourcePath", out var rawSourcePath)
+            || string.IsNullOrWhiteSpace(rawSourcePath))
+        {
+            return runtimeState;
+        }
+
+        var sourcePath = rawSourcePath.Trim();
+        if (File.Exists(sourcePath))
+        {
+            var mediaId = await UploadMediaFileAsync(sourcePath, deviceServerClient, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(mediaId))
+            {
+                runtimeState["mediaId"] = mediaId;
+            }
+
+            return runtimeState;
+        }
+
+        if (!Directory.Exists(sourcePath))
+        {
+            return runtimeState;
+        }
+
+        var mediaIds = new List<string>();
+        foreach (var path in Directory
+            .EnumerateFiles(sourcePath)
+            .Where(static path => ServerMediaExtensions.Contains(Path.GetExtension(path)))
+            .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var mediaId = await UploadMediaFileAsync(path, deviceServerClient, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(mediaId))
+            {
+                mediaIds.Add(mediaId);
+            }
+        }
+
+        if (mediaIds.Count > 0)
+        {
+            runtimeState["mediaId"] = mediaIds[0];
+            runtimeState["mediaIds"] = string.Join(",", mediaIds);
+        }
+
+        return runtimeState;
+    }
+
+    private static async Task<string?> UploadMediaFileAsync(
+        string path,
+        IDeviceServerClient deviceServerClient,
+        CancellationToken cancellationToken)
+    {
+        if (!ServerMediaExtensions.Contains(Path.GetExtension(path)))
+        {
+            return null;
+        }
+
+        var payload = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+        if (payload.Length == 0)
+        {
+            return null;
+        }
+
+        var info = await deviceServerClient
+            .UploadMediaAsync(Path.GetFileName(path), ResolveContentType(path), payload, cancellationToken)
+            .ConfigureAwait(false);
+        return info.MediaId;
     }
 
     private static PanelsStoreDocument FromPanelLibrary(PanelLibraryDocument source)
@@ -279,6 +384,7 @@ internal sealed class PanelsStore : IDisposable
                     Height = widget.Height,
                     ZIndex = widget.ZIndex,
                     ConfigValues = new Dictionary<string, string>(widget.ConfigValues, StringComparer.OrdinalIgnoreCase),
+                    RuntimeState = new Dictionary<string, string>(widget.RuntimeState, StringComparer.OrdinalIgnoreCase),
                 }).ToList(),
             }).ToList(),
         };
@@ -337,5 +443,18 @@ internal sealed class PanelsStore : IDisposable
         {
             LogFailedDeleteTempFileDueToAccessRestrictions(logger, tempPath, ex);
         }
+    }
+
+    private static string ResolveContentType(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".gif" => "image/gif",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            _ => "application/octet-stream",
+        };
     }
 }

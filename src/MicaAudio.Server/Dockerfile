@@ -11,9 +11,13 @@ COPY src/Device.Client.Abstractions/Device.Client.Abstractions.csproj src/Device
 COPY src/Device.Protocol/Device.Protocol.csproj src/Device.Protocol/
 COPY src/Device.Server.Abstractions/Device.Server.Abstractions.csproj src/Device.Server.Abstractions/
 COPY src/Device.Server/Device.Server.csproj src/Device.Server/
+COPY src/MicaAudio.Core/MicaAudio.Core.csproj src/MicaAudio.Core/
+COPY src/MicaAudio.Panels/MicaAudio.Panels.csproj src/MicaAudio.Panels/
 COPY src/MicaAudio.Server/MicaAudio.Server.csproj src/MicaAudio.Server/
 RUN dotnet restore src/MicaAudio.Server/MicaAudio.Server.csproj
 
+COPY src/MicaAudio.Core/ src/MicaAudio.Core/
+COPY src/MicaAudio.Panels/ src/MicaAudio.Panels/
 COPY src/Device.Client.Abstractions/ src/Device.Client.Abstractions/
 COPY src/Device.Protocol/ src/Device.Protocol/
 COPY src/Device.Server.Abstractions/ src/Device.Server.Abstractions/

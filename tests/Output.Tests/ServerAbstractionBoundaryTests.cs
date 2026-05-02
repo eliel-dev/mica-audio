@@ -2,7 +2,6 @@ using System.Xml.Linq;
 using System.Net.WebSockets;
 using System.Threading.Channels;
 using Device.Client;
-using Device.Client.Embedded;
 using Device.Client.Remote;
 using Device.Server.Hosting;
 using Output.Led;
@@ -53,12 +52,10 @@ public sealed class ServerAbstractionBoundaryTests
     }
 
     [Fact]
-    public void DeviceEmbeddedClient_ShouldLiveInEmbeddedAssembly()
+    public void EmbeddedClientAssembly_ShouldBeRemoved()
     {
-        Assert.Equal("Device.Client.Embedded", typeof(EmbeddedDeviceServerClient).Assembly.GetName().Name);
-        Assert.True(typeof(IDeviceServerClient).IsAssignableFrom(typeof(EmbeddedDeviceServerClient)));
-        Assert.True(typeof(IEmbeddedDeviceServerClientRuntime).IsAssignableFrom(typeof(EmbeddedDeviceServerClient)));
-        Assert.True(typeof(IDeviceServerClientRuntime).IsAssignableFrom(typeof(EmbeddedDeviceServerClient)));
+        Assert.Null(Type.GetType("Device.Client.Embedded.EmbeddedDeviceServerClient, Device.Client.Embedded"));
+        Assert.Null(Type.GetType("Device.Client.Embedded.IEmbeddedDeviceServerClientRuntime, Device.Client.Embedded"));
     }
 
     [Fact]
@@ -108,30 +105,23 @@ public sealed class ServerAbstractionBoundaryTests
     }
 
     [Fact]
-    public void EmbeddedClientProject_ShouldNotReferenceAppWinUI()
+    public void Solution_ShouldNotContainEmbeddedClientProject()
     {
-        var projectPath = Path.GetFullPath(Path.Combine(
+        var solutionPath = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory,
             "..",
             "..",
             "..",
             "..",
             "..",
+            "MicaAudio.sln"));
+
+        var solution = File.ReadAllText(solutionPath);
+        Assert.DoesNotContain("Device.Client.Embedded", solution, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(solutionPath)!,
             "src",
-            "Device.Client.Embedded",
-            "Device.Client.Embedded.csproj"));
-
-        var project = XDocument.Load(projectPath);
-        var references = project
-            .Descendants("ProjectReference")
-            .Select(element => element.Attribute("Include")?.Value.Replace('\\', '/'))
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .ToArray();
-
-        Assert.Contains("../Device.Client.Abstractions/Device.Client.Abstractions.csproj", references);
-        Assert.Contains("../Device.Server.Abstractions/Device.Server.Abstractions.csproj", references);
-        Assert.Contains("../Device.Protocol/Device.Protocol.csproj", references);
-        Assert.DoesNotContain("../App.WinUI/App.WinUI.csproj", references);
+            "Device.Client.Embedded"))));
     }
 
     [Fact]

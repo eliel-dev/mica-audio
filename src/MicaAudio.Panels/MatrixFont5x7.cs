@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text;
 
-namespace App.WinUI.Services.Panels;
+namespace MicaAudio.Panels;
 
-// DOCS: docs/wiki/modules/paineis.md#compositor-hub75
+// DOCS: docs/wiki/modules/paineis.md#compositor-compartilhado
 internal static class MatrixFont5x7
 {
     private static readonly Dictionary<char, string[]> Glyphs = new()
@@ -76,7 +76,5 @@ internal static class MatrixFont5x7
     }
 
     public static bool TryGetGlyph(char ch, out string[] glyph)
-    {
-        return Glyphs.TryGetValue(char.ToUpperInvariant(ch), out glyph!);
-    }
+        => Glyphs.TryGetValue(char.ToUpperInvariant(ch), out glyph!);
 }

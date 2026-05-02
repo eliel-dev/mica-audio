@@ -1,69 +1,35 @@
-using System.Diagnostics;
 using App.WinUI.Models.Panels;
-using App.WinUI.Services.Devices;
 using Device.Client;
 using Device.Protocol.Models;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
-using Output.Led;
 
 namespace App.WinUI.Services.Panels;
 
-// DOCS: docs/wiki/modules/paineis.md#runtime-em-background
-// DOCS: docs/wiki/modules/app-winui.md#atualizacao-2026-03-prioridade-hub75-visualizador-sobre-paineis
-// DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
-// DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
-// DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
-// DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/wiki/modules/paineis.md#runtime-autonomo-no-servidor
+// DOCS: docs/wiki/modules/app-winui.md#remote-only
+// DOCS: docs/handoffs/2026-04-30-remote-only-server-panel-runtime.md
 internal sealed class PanelsPlaybackService : IDisposable
 {
-    private static readonly bool EnableBatchPerfLogging =
-        AppContext.TryGetSwitch("MicaAudio.Panels.BatchPerfLogging", out var enabled) && enabled;
-    private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(1000d / PanelsFrameComposer.TargetFps);
-    private static readonly TimeSpan BatchDuration = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan BatchPreloadLead = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan BatchCommandTimeout = TimeSpan.FromSeconds(10);
     private static readonly RgbaColor[] BlackFrame = Enumerable
         .Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
         .ToArray();
 
     private readonly IDeviceServerClient serverClient;
-    private readonly IDeviceFrameTransport frameTransport;
-    private readonly IDeviceClientSessionManager? sessionManager;
     private readonly PanelsFrameComposer composer;
-    private readonly PanelsDeviceSessionService deviceSessionService;
-    private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
-    private readonly bool enableMatrixTransport;
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
     private readonly object stateGate = new();
 
-    private CancellationTokenSource? loopCts;
-    private Task? loopTask;
-    private PanelsFrameComposer.PanelCompositionSession? compositionSession;
     private PanelDefinition? activePanelSnapshot;
     private string? targetDeviceId;
-    private Esp32S3LedOutput? matrixOutput;
-    private PanelsBatchTransportState? batchTransportState;
     private SuspendedPanelState? suspendedPanelState;
     private RgbaColor[] latestFrame = BlackFrame;
     private bool disposed;
 
-    public PanelsPlaybackService(
-        IDeviceServerClient serverClient,
-        IDeviceFrameTransport frameTransport,
-        PanelsFrameComposer composer,
-        PanelsDeviceSessionService deviceSessionService,
-        Hub75VisualizerSessionService hub75VisualizerSessionService,
-        bool enableMatrixTransport = true,
-        IDeviceClientSessionManager? sessionManager = null)
+    public PanelsPlaybackService(IDeviceServerClient serverClient, PanelsFrameComposer composer)
     {
         this.serverClient = serverClient;
-        this.frameTransport = frameTransport;
-        this.sessionManager = sessionManager;
         this.composer = composer;
-        this.deviceSessionService = deviceSessionService;
-        this.hub75VisualizerSessionService = hub75VisualizerSessionService;
-        this.enableMatrixTransport = enableMatrixTransport;
     }
 
     public event EventHandler? StateChanged;
@@ -76,9 +42,7 @@ internal sealed class PanelsPlaybackService : IDisposable
         {
             lock (stateGate)
             {
-                return loopCts is not null
-                    && compositionSession is not null
-                    && (!enableMatrixTransport || !string.IsNullOrWhiteSpace(targetDeviceId));
+                return activePanelSnapshot is not null && !string.IsNullOrWhiteSpace(targetDeviceId);
             }
         }
     }
@@ -140,22 +104,63 @@ internal sealed class PanelsPlaybackService : IDisposable
         }
     }
 
+    public async Task SyncFromRemoteAsync(PanelsStoreDocument document, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ThrowIfDisposed();
+
+        try
+        {
+            var runtime = await serverClient.GetPanelRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
+            if (!runtime.Enabled
+                || string.IsNullOrWhiteSpace(runtime.PanelId)
+                || string.IsNullOrWhiteSpace(runtime.TargetDeviceId))
+            {
+                ClearActiveState();
+                return;
+            }
+
+            var panel = document.Panels.FirstOrDefault(candidate =>
+                string.Equals(candidate.PanelId, runtime.PanelId, StringComparison.OrdinalIgnoreCase));
+            if (panel is null)
+            {
+                ClearActiveState();
+                return;
+            }
+
+            await SetActiveStateAsync(panel.Clone(), runtime.TargetDeviceId, renderPreview: true, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            ClearActiveState();
+        }
+    }
+
     public async Task StartAsync(PanelDefinition panelSnapshot, string deviceId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(panelSnapshot);
         ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
         ThrowIfDisposed();
 
-        if (enableMatrixTransport && hub75VisualizerSessionService.IsHub75Enabled)
-        {
-            throw new InvalidOperationException("O visualizador HUB75 tem prioridade enquanto estiver ativo.");
-        }
-
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await StopCoreAsync(restoreDevice: true, clearSuspendedState: true, cancellationToken).ConfigureAwait(false);
-            await StartCoreAsync(panelSnapshot, deviceId.Trim(), resumeSuppressedSession: false, cancellationToken).ConfigureAwait(false);
+            var snapshot = panelSnapshot.Clone();
+            snapshot.Normalize();
+            var normalizedDeviceId = deviceId.Trim();
+            await serverClient.SavePanelRuntimeStateAsync(new PanelRuntimeStateDocument
+            {
+                Enabled = true,
+                PanelId = snapshot.PanelId,
+                TargetDeviceId = normalizedDeviceId,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            }, cancellationToken).ConfigureAwait(false);
+
+            await SetActiveStateAsync(snapshot, normalizedDeviceId, renderPreview: true, cancellationToken).ConfigureAwait(false);
+            lock (stateGate)
+            {
+                suspendedPanelState = null;
+            }
         }
         finally
         {
@@ -166,11 +171,6 @@ internal sealed class PanelsPlaybackService : IDisposable
     public async Task SuspendAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-
-        if (!enableMatrixTransport)
-        {
-            return;
-        }
 
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -188,14 +188,13 @@ internal sealed class PanelsPlaybackService : IDisposable
                 return;
             }
 
-            await deviceSessionService.SuppressAsync(cancellationToken).ConfigureAwait(false);
-
             lock (stateGate)
             {
                 suspendedPanelState = new SuspendedPanelState(retainedPanel, retainedDeviceId);
             }
 
-            await StopCoreAsync(restoreDevice: false, clearSuspendedState: false, cancellationToken).ConfigureAwait(false);
+            await SaveStoppedRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
+            ClearActiveState();
         }
         finally
         {
@@ -207,19 +206,9 @@ internal sealed class PanelsPlaybackService : IDisposable
     {
         ThrowIfDisposed();
 
-        if (!enableMatrixTransport)
-        {
-            return;
-        }
-
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (hub75VisualizerSessionService.IsHub75Enabled)
-            {
-                return;
-            }
-
             SuspendedPanelState? retainedState;
             lock (stateGate)
             {
@@ -231,12 +220,19 @@ internal sealed class PanelsPlaybackService : IDisposable
                 return;
             }
 
-            await StartCoreAsync(
-                    retainedState.PanelSnapshot,
-                    retainedState.TargetDeviceId,
-                    resumeSuppressedSession: true,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            await serverClient.SavePanelRuntimeStateAsync(new PanelRuntimeStateDocument
+            {
+                Enabled = true,
+                PanelId = retainedState.PanelSnapshot.PanelId,
+                TargetDeviceId = retainedState.TargetDeviceId,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            }, cancellationToken).ConfigureAwait(false);
+
+            await SetActiveStateAsync(retainedState.PanelSnapshot.Clone(), retainedState.TargetDeviceId, renderPreview: true, cancellationToken).ConfigureAwait(false);
+            lock (stateGate)
+            {
+                suspendedPanelState = null;
+            }
         }
         finally
         {
@@ -250,7 +246,13 @@ internal sealed class PanelsPlaybackService : IDisposable
         await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await StopCoreAsync(restoreDevice: true, clearSuspendedState: true, cancellationToken).ConfigureAwait(false);
+            await SaveStoppedRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
+            lock (stateGate)
+            {
+                suspendedPanelState = null;
+            }
+
+            ClearActiveState();
         }
         finally
         {
@@ -268,7 +270,22 @@ internal sealed class PanelsPlaybackService : IDisposable
         disposed = true;
         try
         {
-            StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            SuspendedPanelState? retainedState;
+            lock (stateGate)
+            {
+                retainedState = suspendedPanelState;
+            }
+
+            if (retainedState is not null)
+            {
+                serverClient.SavePanelRuntimeStateAsync(new PanelRuntimeStateDocument
+                {
+                    Enabled = true,
+                    PanelId = retainedState.PanelSnapshot.PanelId,
+                    TargetDeviceId = retainedState.TargetDeviceId,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                }).GetAwaiter().GetResult();
+            }
         }
         catch
         {
@@ -277,354 +294,60 @@ internal sealed class PanelsPlaybackService : IDisposable
         lifecycleGate.Dispose();
     }
 
-    private async Task StartCoreAsync(
+    private async Task SetActiveStateAsync(
         PanelDefinition panelSnapshot,
-        string deviceId,
-        bool resumeSuppressedSession,
+        string normalizedDeviceId,
+        bool renderPreview,
         CancellationToken cancellationToken)
     {
-        var snapshot = panelSnapshot.Clone();
-        snapshot.Normalize();
-        var normalizedDeviceId = deviceId.Trim();
-        var session = await composer.CreateSessionAsync(snapshot, cancellationToken).ConfigureAwait(false);
-        Esp32S3LedOutput? output = null;
-        PanelsBatchTransportState? batchState = null;
-        CancellationTokenSource? cts = null;
-
-        try
+        RgbaColor[] frame = BlackFrame;
+        if (renderPreview)
         {
-            if (enableMatrixTransport && resumeSuppressedSession)
-            {
-                await deviceSessionService.ResumeAsync(cancellationToken).ConfigureAwait(false);
-            }
-            else if (enableMatrixTransport)
-            {
-                await deviceSessionService.StartAsync(normalizedDeviceId, cancellationToken).ConfigureAwait(false);
-            }
-
-            if (enableMatrixTransport)
-            {
-                output = new Esp32S3LedOutput(frameTransport, sessionManager);
-                output.Start(new LedOutputConfig
-                {
-                    Width = LedDefaults.MatrixWidth,
-                    Height = LedDefaults.MatrixHeight,
-                    Brightness = LedDefaults.Brightness,
-                    TargetDeviceId = normalizedDeviceId,
-                });
-                output.SetBrightness(LedDefaults.Brightness);
-            }
-
-            if (enableMatrixTransport && await SupportsAnimatedWebpBatchAsync(normalizedDeviceId, cancellationToken).ConfigureAwait(false))
-            {
-                batchState = await TryPrimeBatchTransportAsync(session, normalizedDeviceId, cancellationToken).ConfigureAwait(false);
-            }
-
-            cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-            lock (stateGate)
-            {
-                compositionSession = session;
-                activePanelSnapshot = snapshot;
-                targetDeviceId = normalizedDeviceId;
-                matrixOutput = output;
-                batchTransportState = batchState;
-                loopCts = cts;
-                latestFrame = BlackFrame;
-                if (resumeSuppressedSession)
-                {
-                    suspendedPanelState = null;
-                }
-            }
-
-            await SendFrameAsync(session, output, DateTimeOffset.UtcNow, sendToDevice: batchState is null).ConfigureAwait(false);
-
-            var localLoopTask = RunLoopAsync(session, output, normalizedDeviceId, batchState, cts.Token);
-            lock (stateGate)
-            {
-                loopTask = localLoopTask;
-            }
-
-            StateChanged?.Invoke(this, EventArgs.Empty);
+            using var session = await composer.CreateSessionAsync(panelSnapshot, cancellationToken).ConfigureAwait(false);
+            frame = session.RenderFrame(DateTimeOffset.UtcNow);
         }
-        catch
-        {
-            cts?.Cancel();
-            cts?.Dispose();
-            output?.Stop();
-            session.Dispose();
-            throw;
-        }
-    }
-
-    private async Task RunLoopAsync(
-        PanelsFrameComposer.PanelCompositionSession session,
-        Esp32S3LedOutput? output,
-        string deviceId,
-        PanelsBatchTransportState? batchState,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var stopwatch = Stopwatch.StartNew();
-            var nextTickIndex = 1L;
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var dueAt = TimeSpan.FromTicks(nextTickIndex * TickInterval.Ticks);
-                var remaining = dueAt - stopwatch.Elapsed;
-                if (remaining > TimeSpan.Zero)
-                {
-                    await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
-                }
-
-                var utcNow = DateTimeOffset.UtcNow;
-                await SendFrameAsync(session, output, utcNow, sendToDevice: batchState is null).ConfigureAwait(false);
-
-                if (batchState is not null
-                    && utcNow + BatchPreloadLead >= batchState.NextBatchStartUtc)
-                {
-                    if (!await QueueNextBatchAsync(session, deviceId, batchState, cancellationToken).ConfigureAwait(false))
-                    {
-                        await serverClient.ClearPanelsBatchesAsync(deviceId, batchState.PanelsSessionId, cancellationToken).ConfigureAwait(false);
-                        batchState = null;
-                        lock (stateGate)
-                        {
-                            batchTransportState = null;
-                        }
-
-                        await SendFrameAsync(session, output, utcNow, sendToDevice: true).ConfigureAwait(false);
-                    }
-                }
-
-                var elapsedTicks = stopwatch.Elapsed.Ticks;
-                nextTickIndex = Math.Max(nextTickIndex + 1, (elapsedTicks / TickInterval.Ticks) + 1);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private async Task StopCoreAsync(bool restoreDevice, bool clearSuspendedState, CancellationToken cancellationToken)
-    {
-        CancellationTokenSource? localLoopCts;
-        Task? localLoopTask;
-        PanelsFrameComposer.PanelCompositionSession? localSession;
-        Esp32S3LedOutput? localOutput;
-        string? localTargetDeviceId;
-        PanelsBatchTransportState? localBatchState;
 
         lock (stateGate)
         {
-            localLoopCts = loopCts;
-            localLoopTask = loopTask;
-            localSession = compositionSession;
-            localOutput = matrixOutput;
-            localTargetDeviceId = targetDeviceId;
-            localBatchState = batchTransportState;
-
-            loopCts = null;
-            loopTask = null;
-            compositionSession = null;
-            matrixOutput = null;
-            activePanelSnapshot = null;
-            targetDeviceId = null;
-            batchTransportState = null;
-            latestFrame = BlackFrame;
-            if (clearSuspendedState)
-            {
-                suspendedPanelState = null;
-            }
-        }
-
-        if (localLoopCts is not null)
-        {
-            localLoopCts.Cancel();
-            localLoopCts.Dispose();
-        }
-
-        if (localLoopTask is not null)
-        {
-            try
-            {
-                await localLoopTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }
-
-        if (localOutput is not null && !string.IsNullOrWhiteSpace(localTargetDeviceId))
-        {
-            if (localBatchState is not null)
-            {
-                await serverClient.ClearPanelsBatchesAsync(localTargetDeviceId, localBatchState.PanelsSessionId, cancellationToken).ConfigureAwait(false);
-            }
-
-            localOutput.Send(LedPayloadFactory.CreateFramePayload(BlackFrame, PanelsDeviceSessionService.PanelsAppId));
-            localOutput.Stop();
-        }
-
-        localSession?.Dispose();
-        RaiseFrameUpdated(BlackFrame);
-
-        if (enableMatrixTransport && restoreDevice)
-        {
-            await deviceSessionService.StopAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        StateChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    private Task SendFrameAsync(
-        PanelsFrameComposer.PanelCompositionSession session,
-        Esp32S3LedOutput? output,
-        DateTimeOffset utcNow,
-        bool sendToDevice)
-    {
-        var frame = session.RenderFrame(utcNow);
-        lock (stateGate)
-        {
+            activePanelSnapshot = panelSnapshot.Clone();
+            targetDeviceId = normalizedDeviceId.Trim();
             latestFrame = frame;
         }
 
-        if (sendToDevice)
-        {
-            output?.Send(LedPayloadFactory.CreateFramePayload(frame, PanelsDeviceSessionService.PanelsAppId));
-        }
-
         RaiseFrameUpdated(frame);
-        return Task.CompletedTask;
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private async Task<bool> SupportsAnimatedWebpBatchAsync(string deviceId, CancellationToken cancellationToken)
+    private async Task SaveStoppedRuntimeStateAsync(CancellationToken cancellationToken)
     {
-        var devices = await serverClient.GetDevicesAsync(cancellationToken).ConfigureAwait(false);
-        return devices
-            .Any(snapshot =>
-                string.Equals(snapshot.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase)
-                && snapshot.AnimatedWebpBatchSupported == true);
-    }
-
-    private async Task<PanelsBatchTransportState?> TryPrimeBatchTransportAsync(
-        PanelsFrameComposer.PanelCompositionSession session,
-        string deviceId,
-        CancellationToken cancellationToken)
-    {
-        var state = new PanelsBatchTransportState(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow);
-
-        for (var i = 0; i < 2; i++)
+        PanelDefinition? retainedPanel;
+        string? retainedDeviceId;
+        lock (stateGate)
         {
-            if (!await QueueNextBatchAsync(session, deviceId, state, cancellationToken).ConfigureAwait(false))
-            {
-                await serverClient.ClearPanelsBatchesAsync(deviceId, state.PanelsSessionId, cancellationToken).ConfigureAwait(false);
-                return null;
-            }
+            retainedPanel = activePanelSnapshot;
+            retainedDeviceId = targetDeviceId;
         }
 
-        return state;
+        await serverClient.SavePanelRuntimeStateAsync(new PanelRuntimeStateDocument
+        {
+            Enabled = false,
+            PanelId = retainedPanel?.PanelId,
+            TargetDeviceId = retainedDeviceId,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<bool> QueueNextBatchAsync(
-        PanelsFrameComposer.PanelCompositionSession session,
-        string deviceId,
-        PanelsBatchTransportState state,
-        CancellationToken cancellationToken)
+    private void ClearActiveState()
     {
-        var encodedBatch = RenderEncodedBatch(session, state.NextBatchStartUtc);
-        var registration = await serverClient
-            .RegisterPanelsBatchAsync(
-                deviceId,
-                state.PanelsSessionId,
-                state.NextBatchSequence,
-                encodedBatch.Payload,
-                encodedBatch.FrameCount,
-                encodedBatch.DurationMs,
-                cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-
-        var payload = new PanelsBatchCommandPayload
+        lock (stateGate)
         {
-            PanelsSessionId = registration.PanelsSessionId,
-            BatchSequence = registration.BatchSequence,
-            DownloadUrl = registration.DownloadUrl,
-            Sha256 = registration.Sha256,
-            FileSizeBytes = registration.FileSizeBytes,
-            ContentType = registration.ContentType,
-            FrameCount = registration.FrameCount,
-            DurationMs = registration.DurationMs,
-        };
-
-        var result = await serverClient
-            .SendCommandTrackedAsync(
-                deviceId,
-                DeviceCommandType.QueuePanelsBatch,
-                payload.ToParameters(),
-                sessionManager?.CreateCommandContext(deviceId),
-                timeout: BatchCommandTimeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!result.Accepted || !result.Success)
-        {
-            return false;
+            activePanelSnapshot = null;
+            targetDeviceId = null;
+            latestFrame = BlackFrame;
         }
 
-        state.Advance();
-        return true;
-    }
-
-    private static PanelsEncodedBatch RenderEncodedBatch(
-        PanelsFrameComposer.PanelCompositionSession session,
-        DateTimeOffset batchStartUtc)
-    {
-        long renderTicks = 0;
-        var totalStartTimestamp = Stopwatch.GetTimestamp();
-        var encodedBatch = PanelsAnimatedWebpEncoder.Encode(
-            PanelsFrameComposer.TargetFps,
-            LedDefaults.MatrixWidth,
-            LedDefaults.MatrixHeight,
-            (frameIndex, targetFrame) =>
-            {
-                var renderStartTimestamp = Stopwatch.GetTimestamp();
-                session.RenderFrameInto(
-                    batchStartUtc + TimeSpan.FromMilliseconds(GetBatchFrameOffsetMs(frameIndex)),
-                    targetFrame);
-                renderTicks += Stopwatch.GetTimestamp() - renderStartTimestamp;
-            },
-            GetBatchFrameDurationMs);
-
-        if (EnableBatchPerfLogging)
-        {
-            var totalTicks = Stopwatch.GetTimestamp() - totalStartTimestamp;
-            LogBatchPerf(renderTicks, Math.Max(0L, totalTicks - renderTicks), encodedBatch);
-        }
-
-        return encodedBatch;
-    }
-
-    private static int GetBatchFrameOffsetMs(int frameIndex)
-    {
-        return (frameIndex * (int)BatchDuration.TotalMilliseconds) / PanelsFrameComposer.TargetFps;
-    }
-
-    private static int GetBatchFrameDurationMs(int frameIndex)
-    {
-        var frameOffsetMs = GetBatchFrameOffsetMs(frameIndex);
-        var nextFrameOffsetMs = GetBatchFrameOffsetMs(frameIndex + 1);
-        return Math.Max(1, nextFrameOffsetMs - frameOffsetMs);
-    }
-
-    private static void LogBatchPerf(long renderTicks, long encodeTicks, PanelsEncodedBatch encodedBatch)
-    {
-        Debug.WriteLine(
-            $"[panels-perf] render_batch_ms={TicksToMilliseconds(renderTicks):F2} encode_batch_ms={TicksToMilliseconds(encodeTicks):F2} frames={encodedBatch.FrameCount} payload_bytes={encodedBatch.Payload.Length}");
-    }
-
-    private static double TicksToMilliseconds(long ticks)
-    {
-        return ticks <= 0 ? 0d : (ticks * 1000d) / Stopwatch.Frequency;
+        RaiseFrameUpdated(BlackFrame);
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RaiseFrameUpdated(RgbaColor[] frame)
@@ -638,25 +361,4 @@ internal sealed class PanelsPlaybackService : IDisposable
     }
 
     private sealed record SuspendedPanelState(PanelDefinition PanelSnapshot, string TargetDeviceId);
-
-    private sealed class PanelsBatchTransportState
-    {
-        public PanelsBatchTransportState(string panelsSessionId, DateTimeOffset nextBatchStartUtc)
-        {
-            PanelsSessionId = panelsSessionId;
-            NextBatchStartUtc = nextBatchStartUtc;
-        }
-
-        public string PanelsSessionId { get; }
-
-        public ulong NextBatchSequence { get; private set; } = 1;
-
-        public DateTimeOffset NextBatchStartUtc { get; private set; }
-
-        public void Advance()
-        {
-            NextBatchSequence++;
-            NextBatchStartUtc += BatchDuration;
-        }
-    }
 }

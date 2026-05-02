@@ -13,9 +13,9 @@ O alvo principal do servidor e `.NET 10 / ASP.NET Core` em Docker. Mudanca de st
 
 ## Direcao oficial
 
-- Render/Fly/cloud entram como control plane publico.
-- O hot path visual oficial continua fora do servidor: cliente local captura/processa e fala direto com o ESP na LAN.
-- O deploy cloud deixa de carregar a expectativa de transportar frames em tempo real para `visualizador` e `Paineis`.
+- Render/Fly/cloud entram como control plane publico e runtime de paineis server-capable.
+- O fluxo oficial para o device e `cliente -> servidor remoto -> ESP`.
+- O visualizador e metricas do PC continuam client-only enquanto dependerem de dados locais do WinUI.
 
 ## Escopo oficial
 
@@ -51,7 +51,7 @@ Regras fechadas:
 - Manter `.NET 10 / ASP.NET Core` como stack principal.
 - Extrair um host standalone de servidor antes de refatorar protocolo publico.
 - Preservar `Device.Server` e `Device.Protocol` como base do dominio durante a transicao.
-- Manter o servidor embutido no WinUI apenas como modo legado/local ate o cliente remoto ficar estavel.
+- Nao manter servidor embutido no WinUI; o cliente remoto e o caminho unico ativo.
 
 ### Render v1
 
@@ -92,15 +92,15 @@ Regra operacional:
 
 O estado atual relevante para a migracao e:
 
-1. `DeviceServerHost` nasce dentro do `App.WinUI` no fluxo desktop embedded e tambem pode ser iniciado pelo executavel standalone `MicaAudio.Server`.
-2. Persistencia de devices fica em JSON local protegido por DPAPI.
-3. Pair codes, sessoes, comandos pendentes e batches WebP vivem em memoria do processo; o standalone persiste apenas o registry de devices em JSON local.
+1. `DeviceServerHost` nasce no executavel standalone `MicaAudio.Server`.
+2. Persistencia de devices fica no `StorageRoot` do servidor standalone.
+3. Pair codes, sessoes, comandos pendentes e status efemero vivem em stores do processo; biblioteca, midias e runtime de paineis sao persistidos pelo standalone.
 4. O catalogo oficial de firmware fica embarcado no app desktop.
 5. O control plane operacional usa HTTP local, WS local e MQTT embutido.
-6. O hot path visual legado ainda existe em `Esp32S3LedOutput -> DeviceServerHost.BroadcastFrame -> /ws/v1/stream`, mas a direcao oficial passa a ser `cliente LAN -> ESP`.
-7. `Paineis` ja tem batch WebP, mas o batch atual e in-memory.
+6. O caminho oficial para device e mediado pelo servidor.
+7. `Paineis` tem runtime autonomo server-side e batch WebP; batches continuam efemeros, enquanto biblioteca/midia/runtime state sao persistidos.
 8. `render.yaml` e `src/MicaAudio.Server/Dockerfile` existem para smoke Docker/Render do server standalone.
-9. O WinUI possui modo remoto opt-in contra `MicaAudio.Server` via Admin API/WSS, com `Embedded` ainda como default seguro.
+9. O WinUI e remote-only contra `MicaAudio.Server` via Admin API/WSS.
 
 ## Fases de migracao
 

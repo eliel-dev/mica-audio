@@ -4,10 +4,10 @@ Documentacao tecnica versionada junto com o codigo para acelerar manutencao, onb
 
 ## Direcao oficial atual
 
-- `server` = control plane.
-- `cliente Windows` = edge client local / data plane LAN.
-- `ESP32` = runtime com ownership por device.
-- `visualizador` e `Paineis` sao oficialmente client-driven; a wiki continua marcando caminhos via server como `baseline atual / transicao` quando ainda existirem no codigo.
+- `WinUI` = cliente remoto/editor.
+- `MicaAudio.Server` = control plane, storage e runtime autoritativo de paineis server-capable.
+- `ESP32` = runtime de display conectado ao servidor.
+- Fluxo oficial: `cliente -> servidor remoto -> ESP`.
 
 ## Como usar esta wiki
 

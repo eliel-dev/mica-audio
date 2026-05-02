@@ -1,9 +1,9 @@
 using MicaAudio.Core.Presets;
 
-namespace App.WinUI.Services.Panels;
+namespace MicaAudio.Panels;
 
-// DOCS: docs/wiki/modules/paineis.md#compositor-hub75
-internal sealed class PanelsMediaCache
+// DOCS: docs/wiki/modules/paineis.md#compositor-compartilhado
+public sealed class PanelsMediaCache
 {
     private const int MaxPosterEntries = 32;
     private const int MaxAnimatedEntries = 8;
@@ -138,9 +138,9 @@ internal sealed class PanelsMediaCache
     private sealed record CacheEntry<T>(T Value, LinkedListNode<string> Node);
 }
 
-internal sealed record AnimatedMediaFrame(RgbaColor[] Pixels, int DurationMs);
+public sealed record AnimatedMediaFrame(RgbaColor[] Pixels, int DurationMs);
 
-internal sealed class AnimatedMediaSequence
+public sealed class AnimatedMediaSequence
 {
     public static AnimatedMediaSequence Empty { get; } = new([], 0);
 

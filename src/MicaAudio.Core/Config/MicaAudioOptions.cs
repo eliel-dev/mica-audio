@@ -8,8 +8,6 @@ public class MicaAudioOptions
 
     public string AppDataRoot { get; set; } = string.Empty;
 
-    public string DevicesFilePath { get; set; } = string.Empty;
-
     public string SettingsFilePath { get; set; } = string.Empty;
 
     public string PresetsDirectory { get; set; } = string.Empty;

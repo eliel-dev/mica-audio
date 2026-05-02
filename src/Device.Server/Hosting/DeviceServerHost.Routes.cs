@@ -29,6 +29,9 @@ public sealed partial class DeviceServerHost
         admin.MapPost("/devices/{deviceId}/commands/tracked", (Delegate)HandleAdminTrackedCommandAsync);
         admin.MapGet("/library/panels", (Delegate)HandleAdminGetPanelLibraryAsync);
         admin.MapPut("/library/panels", (Delegate)HandleAdminPutPanelLibraryAsync);
+        admin.MapGet("/panels/runtime", (Delegate)HandleAdminGetPanelRuntimeAsync);
+        admin.MapPut("/panels/runtime", (Delegate)HandleAdminPutPanelRuntimeAsync);
+        admin.MapGet("/panels/runtime/status", (Delegate)HandleAdminGetPanelRuntimeStatusAsync);
         admin.MapPost("/library/media", (Delegate)HandleAdminUploadMediaAsync);
         admin.MapGet("/library/media/{mediaId}", (Delegate)HandleAdminGetMediaAsync);
         admin.MapDelete("/library/media/{mediaId}", (Delegate)HandleAdminDeleteMediaAsync);

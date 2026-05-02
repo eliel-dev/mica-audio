@@ -18,7 +18,6 @@ public sealed partial class SettingsPage : Page
     private AppSettings currentSettings = new();
     private bool suppressMicaBackdropChanged;
     private ToggleSwitch micaBackdropToggle = null!;
-    private ComboBox deviceServerModeCombo = null!;
     private TextBox remoteServerBaseAddressBox = null!;
     private PasswordBox remoteAdminTokenBox = null!;
     private TextBlock micaBackdropStatusText = null!;
@@ -54,20 +53,18 @@ public sealed partial class SettingsPage : Page
             var adminToken = await remoteSecretStore.LoadAdminTokenAsync();
             suppressMicaBackdropChanged = true;
             micaBackdropToggle.IsOn = currentSettings.UseMicaBackdrop;
-            deviceServerModeCombo.SelectedIndex = currentSettings.DeviceServerMode == DeviceServerMode.Remote ? 1 : 0;
             remoteServerBaseAddressBox.Text = currentSettings.RemoteServerBaseAddress;
             remoteAdminTokenBox.Password = adminToken;
             suppressMicaBackdropChanged = false;
             micaBackdropStatusText.Text = BuildMicaBackdropStatusText(
                 currentSettings.UseMicaBackdrop,
                 App.MainWindow?.SystemBackdrop is MicaBackdrop);
-            deviceServerStatusText.Text = BuildDeviceServerStatusText(currentSettings.DeviceServerMode, currentSettings.RemoteServerBaseAddress);
+            deviceServerStatusText.Text = BuildDeviceServerStatusText(currentSettings.RemoteServerBaseAddress);
         }
         catch (Exception ex)
         {
             suppressMicaBackdropChanged = true;
             micaBackdropToggle.IsOn = true;
-            deviceServerModeCombo.SelectedIndex = 0;
             remoteServerBaseAddressBox.Text = "http://127.0.0.1:5272";
             remoteAdminTokenBox.Password = string.Empty;
             suppressMicaBackdropChanged = false;
@@ -128,10 +125,8 @@ public sealed partial class SettingsPage : Page
     private async void OnSaveDeviceServerSettingsClicked(object sender, RoutedEventArgs e)
     {
         var previousSettings = currentSettings;
-        var selectedMode = deviceServerModeCombo.SelectedIndex == 1 ? DeviceServerMode.Remote : DeviceServerMode.Embedded;
         var updatedSettings = settingsDomainService.Copy(currentSettings, builder =>
         {
-            builder.SetDeviceServerMode(selectedMode);
             builder.SetRemoteServerBaseAddress(remoteServerBaseAddressBox.Text);
         });
 
@@ -141,12 +136,11 @@ public sealed partial class SettingsPage : Page
             await remoteSecretStore.SaveAdminTokenAsync(remoteAdminTokenBox.Password);
             currentSettings = updatedSettings;
             remoteServerBaseAddressBox.Text = updatedSettings.RemoteServerBaseAddress;
-            deviceServerStatusText.Text = BuildDeviceServerStatusText(updatedSettings.DeviceServerMode, updatedSettings.RemoteServerBaseAddress);
+            deviceServerStatusText.Text = BuildDeviceServerStatusText(updatedSettings.RemoteServerBaseAddress);
         }
         catch (Exception ex)
         {
             currentSettings = previousSettings;
-            deviceServerModeCombo.SelectedIndex = previousSettings.DeviceServerMode == DeviceServerMode.Remote ? 1 : 0;
             remoteServerBaseAddressBox.Text = previousSettings.RemoteServerBaseAddress;
             deviceServerStatusText.Text = "Nao foi possivel salvar as preferencias do servidor.";
             App.ReportError("SettingsPage.SaveDeviceServerSettings failed", ex);
@@ -290,15 +284,6 @@ public sealed partial class SettingsPage : Page
 
     private Border BuildDeviceServerCard()
     {
-        deviceServerModeCombo = new ComboBox
-        {
-            Header = "Modo do servidor",
-            HorizontalAlignment = HorizontalAlignment.Left,
-            MinWidth = 180,
-        };
-        deviceServerModeCombo.Items.Add("Embedded");
-        deviceServerModeCombo.Items.Add("Remote");
-
         remoteServerBaseAddressBox = new TextBox
         {
             Header = "Servidor remoto",
@@ -329,8 +314,7 @@ public sealed partial class SettingsPage : Page
 
         return CreateCard(
             "Servidor de dispositivos",
-            "O modo remoto usa o MicaAudio.Server externo no proximo restart.",
-            deviceServerModeCombo,
+            "O WinUI usa somente o MicaAudio.Server remoto. Use localhost para o processo standalone local.",
             remoteServerBaseAddressBox,
             remoteAdminTokenBox,
             saveButton,
@@ -384,11 +368,9 @@ public sealed partial class SettingsPage : Page
             : "Mica configurado, mas este ambiente esta usando o fallback de superficie solida.";
     }
 
-    internal static string BuildDeviceServerStatusText(DeviceServerMode mode, string remoteBaseAddress)
+    internal static string BuildDeviceServerStatusText(string remoteBaseAddress)
     {
-        return mode == DeviceServerMode.Remote
-            ? $"Remote salvo para o proximo restart: {remoteBaseAddress}"
-            : "Embedded salvo para o proximo restart.";
+        return $"Servidor remoto salvo para o proximo restart: {remoteBaseAddress}";
     }
 
     internal static string ResolveLogsDirectoryPath(string crashLogPath)

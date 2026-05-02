@@ -134,6 +134,80 @@ public sealed partial class DeviceServerHost
         return Results.NoContent();
     }
 
+    public Task<PanelRuntimeStateDocument> GetPanelRuntimeStateAsync(CancellationToken cancellationToken = default)
+        => panelRuntimeStateStore.LoadAsync(cancellationToken);
+
+    public async Task SavePanelRuntimeStateAsync(PanelRuntimeStateDocument document, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        var normalized = new PanelRuntimeStateDocument
+        {
+            SchemaVersion = PanelRuntimeStateDocument.CurrentSchemaVersion,
+            Enabled = document.Enabled,
+            PanelId = NormalizeOptional(document.PanelId),
+            TargetDeviceId = NormalizeOptional(document.TargetDeviceId),
+            UpdatedAtUtc = document.UpdatedAtUtc == default ? timeProvider.GetUtcNow() : document.UpdatedAtUtc,
+        };
+
+        await panelRuntimeStateStore.SaveAsync(normalized, cancellationToken).ConfigureAwait(false);
+        _ = BroadcastAdminEventAsync(new AdminEventMessage
+        {
+            Type = "panels_runtime_changed",
+            Utc = timeProvider.GetUtcNow(),
+        });
+    }
+
+    public Task<PanelRuntimeStatusDocument> GetPanelRuntimeStatusAsync(CancellationToken cancellationToken = default)
+        => panelRuntimeStatusStore.LoadAsync(cancellationToken);
+
+    private async Task<IResult> HandleAdminGetPanelRuntimeAsync(HttpContext ctx)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        return Results.Ok(await GetPanelRuntimeStateAsync(ctx.RequestAborted).ConfigureAwait(false));
+    }
+
+    private async Task<IResult> HandleAdminPutPanelRuntimeAsync(HttpContext ctx)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        if (IsRequestBodyTooLarge(ctx))
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        PanelRuntimeStateDocument document;
+        try
+        {
+            document = await JsonSerializer.DeserializeAsync<PanelRuntimeStateDocument>(ctx.Request.Body, JsonOptions, ctx.RequestAborted).ConfigureAwait(false)
+                ?? new PanelRuntimeStateDocument();
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid_json" });
+        }
+
+        await SavePanelRuntimeStateAsync(document, ctx.RequestAborted).ConfigureAwait(false);
+        return Results.NoContent();
+    }
+
+    private async Task<IResult> HandleAdminGetPanelRuntimeStatusAsync(HttpContext ctx)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        return Results.Ok(await GetPanelRuntimeStatusAsync(ctx.RequestAborted).ConfigureAwait(false));
+    }
+
     private async Task<IResult> HandleAdminUploadMediaAsync(HttpContext ctx)
     {
         if (TryRejectAdminRequest(ctx, out var rejected))

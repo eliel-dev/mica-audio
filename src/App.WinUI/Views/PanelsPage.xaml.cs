@@ -288,6 +288,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         storeDocument = loadedDocument;
+        await playbackService.SyncFromRemoteAsync(storeDocument);
         var initialPanelId = storeDocument.LastSelectedPanelId ?? storeDocument.Panels.First().PanelId;
         await SelectPanelAsync(initialPanelId, saveDirty: false, refreshPreview: false);
         RebuildPanelsGallery();

@@ -58,6 +58,7 @@ internal sealed class InMemoryPanelLibraryStore : IPanelLibraryStore
                             Height = widget.Height,
                             ZIndex = widget.ZIndex,
                             ConfigValues = new Dictionary<string, string>(widget.ConfigValues, StringComparer.OrdinalIgnoreCase),
+                            RuntimeState = new Dictionary<string, string>(widget.RuntimeState, StringComparer.OrdinalIgnoreCase),
                         })
                         .ToArray(),
                 })

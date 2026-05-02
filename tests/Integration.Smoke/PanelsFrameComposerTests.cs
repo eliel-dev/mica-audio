@@ -1,9 +1,9 @@
 using App.WinUI.Models.Panels;
-using App.WinUI.Services.Gif;
 using App.WinUI.Services.Panels;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
 using System.Reflection;
+using SharedPanels = MicaAudio.Panels;
 
 namespace Integration.Smoke;
 
@@ -278,15 +278,15 @@ public sealed class PanelsFrameComposerTests
     [InlineData(650, 0)]
     public void ResolveAnimatedFrameIndex_ShouldRespectFrameDurationsAndWrap(long elapsedMs, int expectedIndex)
     {
-        var sequence = new AnimatedMediaSequence(
+        var sequence = new SharedPanels.AnimatedMediaSequence(
             [
-                new AnimatedMediaFrame([new RgbaColor(255, 0, 0, 255)], 100),
-                new AnimatedMediaFrame([new RgbaColor(0, 255, 0, 255)], 200),
-                new AnimatedMediaFrame([new RgbaColor(0, 0, 255, 255)], 300),
+                new SharedPanels.AnimatedMediaFrame([new RgbaColor(255, 0, 0, 255)], 100),
+                new SharedPanels.AnimatedMediaFrame([new RgbaColor(0, 255, 0, 255)], 200),
+                new SharedPanels.AnimatedMediaFrame([new RgbaColor(0, 0, 255, 255)], 300),
             ],
             totalDurationMs: 600);
 
-        var index = PanelsFrameComposer.ResolveAnimatedFrameIndex(sequence, TimeSpan.FromMilliseconds(elapsedMs));
+        var index = SharedPanels.PanelFrameComposer.ResolveAnimatedFrameIndex(sequence, TimeSpan.FromMilliseconds(elapsedMs));
 
         Assert.Equal(expectedIndex, index);
     }
@@ -297,9 +297,9 @@ public sealed class PanelsFrameComposerTests
         var pixels = Enumerable
             .Repeat(new RgbaColor(12, 34, 56, 255), 8 * 4)
             .ToArray();
-        var frame = new DecodedGifFrame(8, 4, pixels);
+        var frame = new SharedPanels.DecodedGifFrame(8, 4, pixels);
 
-        var output = PanelsFrameComposer.FormatToTarget(frame, 8, 4, GifScaleMode.Fit);
+        var output = SharedPanels.PanelFrameComposer.FormatToTarget(frame, 8, 4, SharedPanels.GifScaleMode.Fit);
 
         Assert.Same(pixels, output);
     }
@@ -320,7 +320,7 @@ public sealed class PanelsFrameComposerTests
             .Repeat(new RgbaColor(0, 0, 255, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
             .ToArray();
 
-        var encoded = PanelsAnimatedWebpEncoder.Encode(
+        var encoded = SharedPanels.PanelsAnimatedWebpEncoder.Encode(
             [frameA, frameB],
             [33, 67],
             LedDefaults.MatrixWidth,

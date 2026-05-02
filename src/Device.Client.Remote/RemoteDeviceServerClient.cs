@@ -243,6 +243,27 @@ public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDev
         await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<PanelRuntimeStateDocument> GetPanelRuntimeStateAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync("/api/v1/admin/panels/runtime", cancellationToken).ConfigureAwait(false);
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return await ReadRequiredJsonAsync<PanelRuntimeStateDocument>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SavePanelRuntimeStateAsync(PanelRuntimeStateDocument document, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        using var response = await httpClient.PutAsJsonAsync("/api/v1/admin/panels/runtime", document, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<PanelRuntimeStatusDocument> GetPanelRuntimeStatusAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync("/api/v1/admin/panels/runtime/status", cancellationToken).ConfigureAwait(false);
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return await ReadRequiredJsonAsync<PanelRuntimeStatusDocument>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<MediaAssetInfo> UploadMediaAsync(
         string fileName,
         string contentType,

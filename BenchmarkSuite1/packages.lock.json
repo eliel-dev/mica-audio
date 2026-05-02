@@ -552,19 +552,6 @@
           "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260125001"
         }
       },
-      "MQTTnet": {
-        "type": "Transitive",
-        "resolved": "5.1.0.1559",
-        "contentHash": "9mkk0H+76CToIzp9ru5Uj5BuC3P5hQdkhvXM+CLmmTDdZWqajjICCHuUMbDd1yVBt9BWL77Rvzt0A+/PA4WMCA=="
-      },
-      "MQTTnet.Server": {
-        "type": "Transitive",
-        "resolved": "5.1.0.1559",
-        "contentHash": "pSYkUvtP7F/EohPvStM+PMJlgmVyF1v0wB29KEr0t5x4MXY9kTDqWcCG9L+5sD4Phz6md+C+Fe4heBbh15+gSQ==",
-        "dependencies": {
-          "MQTTnet": "5.1.0.1559"
-        }
-      },
       "NAudio": {
         "type": "Transitive",
         "resolved": "2.2.1",
@@ -662,14 +649,6 @@
         "dependencies": {
           "Microsoft.Extensions.Hosting.Abstractions": "10.0.0",
           "OpenTelemetry": "1.15.0"
-        }
-      },
-      "OpenTelemetry.Instrumentation.AspNetCore": {
-        "type": "Transitive",
-        "resolved": "1.15.0",
-        "contentHash": "mte1nRYefxjed2syXgVWq3UCfMKO7MkebvTZmf0O1aLgVgCktLsVjQ6mftyjIbWGBBCHN0wg+Glxj8BSFS70pQ==",
-        "dependencies": {
-          "OpenTelemetry.Api.ProviderBuilderExtensions": "[1.15.0, 2.0.0)"
         }
       },
       "OpenTelemetry.Instrumentation.Http": {
@@ -808,13 +787,11 @@
           "Audio.Loopback": "[1.0.0, )",
           "CommunityToolkit.Mvvm": "[8.4.0, )",
           "Device.Client.Abstractions": "[1.0.0, )",
-          "Device.Client.Embedded": "[1.0.0, )",
           "Device.Client.Remote": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )",
-          "Device.Server": "[1.0.0, )",
-          "Device.Server.Abstractions": "[1.0.0, )",
           "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
           "MicaAudio.Core": "[1.0.0, )",
+          "MicaAudio.Panels": "[1.0.0, )",
           "Microsoft.Extensions.Caching.Hybrid": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.3, )",
           "Microsoft.Extensions.Http.Resilience": "[10.3.0, )",
@@ -850,15 +827,6 @@
           "Device.Protocol": "[1.0.0, )"
         }
       },
-      "device.client.embedded": {
-        "type": "Project",
-        "dependencies": {
-          "Device.Client.Abstractions": "[1.0.0, )",
-          "Device.Protocol": "[1.0.0, )",
-          "Device.Server.Abstractions": "[1.0.0, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.3, )"
-        }
-      },
       "device.client.remote": {
         "type": "Project",
         "dependencies": {
@@ -870,29 +838,16 @@
       "device.protocol": {
         "type": "Project"
       },
-      "device.server": {
-        "type": "Project",
-        "dependencies": {
-          "Device.Client.Abstractions": "[1.0.0, )",
-          "Device.Protocol": "[1.0.0, )",
-          "Device.Server.Abstractions": "[1.0.0, )",
-          "MQTTnet.Server": "[5.1.0.1559, )",
-          "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.15.0, )",
-          "OpenTelemetry.Extensions.Hosting": "[1.15.0, )",
-          "OpenTelemetry.Instrumentation.AspNetCore": "[1.15.0, )",
-          "Serilog": "[4.3.1, )",
-          "Serilog.Extensions.Logging": "[10.0.0, )"
-        }
-      },
-      "device.server.abstractions": {
-        "type": "Project",
-        "dependencies": {
-          "Device.Client.Abstractions": "[1.0.0, )",
-          "Device.Protocol": "[1.0.0, )"
-        }
-      },
       "micaaudio.core": {
         "type": "Project"
+      },
+      "micaaudio.panels": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )",
+          "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
+          "MicaAudio.Core": "[1.0.0, )"
+        }
       },
       "output": {
         "type": "Project",

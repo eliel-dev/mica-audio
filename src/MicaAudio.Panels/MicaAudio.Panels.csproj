@@ -1,19 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
+  <!-- DOCS: docs/wiki/modules/paineis.md#compositor-compartilhado -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+    <RootNamespace>MicaAudio.Panels</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.12.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
-    <ProjectReference Include="..\Device.Server.Abstractions\Device.Server.Abstractions.csproj" />
+    <ProjectReference Include="..\MicaAudio.Core\MicaAudio.Core.csproj" />
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
   </ItemGroup>
-
 </Project>

@@ -2,11 +2,10 @@ using ImageMagick;
 using ImageMagick.Formats;
 using MicaAudio.Core.Presets;
 
-namespace App.WinUI.Services.Panels;
+namespace MicaAudio.Panels;
 
 // DOCS: docs/wiki/modules/paineis.md#transporte-em-lotes-webp
-// DOCS: docs/handoffs/2026-04-18-panels-webp-batch-pipeline-optimizations.md
-internal static class PanelsAnimatedWebpEncoder
+public static class PanelsAnimatedWebpEncoder
 {
     public static PanelsEncodedBatch Encode(
         IReadOnlyList<RgbaColor[]> frames,
@@ -119,4 +118,4 @@ internal static class PanelsAnimatedWebpEncoder
     }
 }
 
-internal sealed record PanelsEncodedBatch(byte[] Payload, int FrameCount, int DurationMs);
+public sealed record PanelsEncodedBatch(byte[] Payload, int FrameCount, int DurationMs);

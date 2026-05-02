@@ -617,15 +617,6 @@
           "Device.Protocol": "[1.0.0, )"
         }
       },
-      "device.client.embedded": {
-        "type": "Project",
-        "dependencies": {
-          "Device.Client.Abstractions": "[1.0.0, )",
-          "Device.Protocol": "[1.0.0, )",
-          "Device.Server.Abstractions": "[1.0.0, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.3, )"
-        }
-      },
       "device.client.remote": {
         "type": "Project",
         "dependencies": {
@@ -661,12 +652,22 @@
       "micaaudio.core": {
         "type": "Project"
       },
+      "micaaudio.panels": {
+        "type": "Project",
+        "dependencies": {
+          "Device.Protocol": "[1.0.0, )",
+          "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
+          "MicaAudio.Core": "[1.0.0, )"
+        }
+      },
       "micaaudio.server": {
         "type": "Project",
         "dependencies": {
           "Device.Protocol": "[1.0.0, )",
           "Device.Server": "[1.0.0, )",
-          "Device.Server.Abstractions": "[1.0.0, )"
+          "Device.Server.Abstractions": "[1.0.0, )",
+          "MicaAudio.Core": "[1.0.0, )",
+          "MicaAudio.Panels": "[1.0.0, )"
         }
       },
       "output": {

@@ -10,6 +10,7 @@ namespace MicaAudio.Server;
 public sealed partial class MicaAudioServerRuntime : IHostedService, IAsyncDisposable
 {
     private readonly IDeviceServerHost serverHost;
+    private readonly ServerPanelRuntimeService panelRuntimeService;
     private readonly StandaloneDeviceRegistryStore registryStore;
     private readonly MicaAudioServerOptions options;
     private readonly ILogger<MicaAudioServerRuntime> logger;
@@ -20,11 +21,13 @@ public sealed partial class MicaAudioServerRuntime : IHostedService, IAsyncDispo
 
     public MicaAudioServerRuntime(
         IDeviceServerHost serverHost,
+        ServerPanelRuntimeService panelRuntimeService,
         StandaloneDeviceRegistryStore registryStore,
         MicaAudioServerOptions options,
         ILogger<MicaAudioServerRuntime> logger)
     {
         this.serverHost = serverHost;
+        this.panelRuntimeService = panelRuntimeService;
         this.registryStore = registryStore;
         this.options = options;
         this.logger = logger;
@@ -44,6 +47,7 @@ public sealed partial class MicaAudioServerRuntime : IHostedService, IAsyncDispo
         serverHost.SeedDevices(records);
 
         await serverHost.StartAsync(MicaAudioServerBootstrap.CreateServerConfig(options), cancellationToken).ConfigureAwait(false);
+        await panelRuntimeService.StartAsync(cancellationToken).ConfigureAwait(false);
 
         if (options.StartupPairCodeTtlSeconds > 0)
         {
@@ -64,6 +68,7 @@ public sealed partial class MicaAudioServerRuntime : IHostedService, IAsyncDispo
         }
 
         await SaveRegistryAsync(cancellationToken).ConfigureAwait(false);
+        await panelRuntimeService.StopAsync().ConfigureAwait(false);
         await serverHost.StopAsync().ConfigureAwait(false);
         started = false;
     }
@@ -73,6 +78,7 @@ public sealed partial class MicaAudioServerRuntime : IHostedService, IAsyncDispo
         serverHost.DevicesChanged -= OnDevicesChanged;
         serverHost.LogMessage -= OnServerLogMessage;
         await StopAsync(CancellationToken.None).ConfigureAwait(false);
+        await panelRuntimeService.DisposeAsync().ConfigureAwait(false);
         await serverHost.DisposeAsync().ConfigureAwait(false);
     }
 

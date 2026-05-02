@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using App.WinUI;
 using App.WinUI.Services;
 using App.WinUI.Services.Apps;
@@ -7,7 +8,6 @@ using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Device.Client;
-using Device.Client.Embedded;
 using Device.Client.Remote;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
@@ -16,28 +16,25 @@ using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 using Output.Led;
-using System.Text.Json;
 
 namespace Integration.Smoke;
 
 public sealed class WinUiBootstrapSmokeTests
 {
     [Fact]
-    public void BuildServiceProvider_ShouldResolveCoreAppServices()
+    public void BuildServiceProvider_ShouldResolveRemoteOnlyCoreAppServices()
     {
         var provider = App.WinUI.App.BuildServiceProvider();
 
-        Assert.NotNull(provider.GetService<EmbeddedDeviceServerClient>());
-        Assert.NotNull(provider.GetService<IDeviceServerClient>());
-        Assert.NotNull(provider.GetService<IEmbeddedDeviceServerClientRuntime>());
-        Assert.NotNull(provider.GetService<IDeviceServerClientRuntime>());
-        Assert.NotNull(provider.GetService<IDeviceServerHost>());
+        Assert.IsType<RemoteDeviceServerClient>(provider.GetRequiredService<IDeviceServerClient>());
+        Assert.IsType<RemoteDeviceFrameTransport>(provider.GetRequiredService<IDeviceFrameTransport>());
+        Assert.IsType<RemoteDeviceServerRuntime>(provider.GetRequiredService<IDeviceServerClientRuntime>());
+        Assert.Null(provider.GetService<IDeviceServerHost>());
+        Assert.Null(Type.GetType("Device.Client.Embedded.EmbeddedDeviceServerClient, Device.Client.Embedded"));
+        Assert.Null(Type.GetType("Device.Client.Embedded.IEmbeddedDeviceServerClientRuntime, Device.Client.Embedded"));
+        Assert.Null(Type.GetType("App.WinUI.Services.Devices.PanelsDeviceSessionService, App.WinUI"));
+
         Assert.NotNull(provider.GetService<IDeviceClientSessionManager>());
-        Assert.NotNull(provider.GetService<IPanelsBatchStore>());
-        Assert.NotNull(provider.GetService<IDevicePairingStore>());
-        Assert.NotNull(provider.GetService<ICommandStateStore>());
-        Assert.NotNull(provider.GetService<ISessionStateStore>());
-        Assert.NotNull(provider.GetService<IDeviceFrameTransport>());
         Assert.NotNull(provider.GetService<DeviceOperationsCoordinator>());
         Assert.NotNull(provider.GetService<IAppCatalogService>());
         Assert.NotNull(provider.GetService<IAppModifierStateStore>());
@@ -50,11 +47,10 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.NotNull(provider.GetService<PanelsStore>());
         Assert.NotNull(provider.GetService<PanelsFrameComposer>());
         Assert.NotNull(provider.GetService<PanelsPlaybackService>());
-        Assert.NotNull(provider.GetService<PanelsDeviceSessionService>());
     }
 
     [Fact]
-    public async Task BuildServiceProvider_WithRemoteSettings_ShouldResolveRemoteClientAndTransport()
+    public async Task BuildServiceProvider_WithLegacyEmbeddedSettings_ShouldStillResolveRemoteClientAndTransport()
     {
         var root = Path.Combine(Path.GetTempPath(), "mica-audio-winui-bootstrap", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -62,11 +58,12 @@ public sealed class WinUiBootstrapSmokeTests
         Directory.CreateDirectory(Path.GetDirectoryName(options.SettingsFilePath)!);
         await File.WriteAllTextAsync(
             options.SettingsFilePath,
-            JsonSerializer.Serialize(new AppSettings
+            """
             {
-                DeviceServerMode = DeviceServerMode.Remote,
-                RemoteServerBaseAddress = "http://127.0.0.1:5272",
-            }));
+              "deviceServerMode": "Embedded",
+              "remoteServerBaseAddress": "http://127.0.0.1:5272"
+            }
+            """);
         var secretStore = new RemoteDeviceServerSecretStore(Options.Create(options));
         await secretStore.SaveAdminTokenAsync("dev-token");
 
@@ -75,56 +72,51 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.IsType<RemoteDeviceServerClient>(provider.GetRequiredService<IDeviceServerClient>());
         Assert.IsType<RemoteDeviceFrameTransport>(provider.GetRequiredService<IDeviceFrameTransport>());
         Assert.IsType<RemoteDeviceServerRuntime>(provider.GetRequiredService<IDeviceServerClientRuntime>());
-        Assert.NotNull(provider.GetRequiredService<DeviceServerHost>());
+        Assert.Null(provider.GetService<IDeviceServerHost>());
     }
 
     [Fact]
-    public void BuildServiceProvider_ShouldEnableMatrixTransportForPanelsPlaybackService()
+    public void PanelsPlaybackService_ShouldDependOnlyOnDeviceServerClientAndComposer()
     {
-        var provider = App.WinUI.App.BuildServiceProvider();
-        var service = provider.GetRequiredService<PanelsPlaybackService>();
+        var constructor = Assert.Single(typeof(PanelsPlaybackService)
+            .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance));
 
-        var field = typeof(PanelsPlaybackService).GetField(
-            "enableMatrixTransport",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-
-        Assert.NotNull(field);
-        Assert.True(Assert.IsType<bool>(field!.GetValue(service)));
+        var parameters = constructor.GetParameters();
+        Assert.Equal(2, parameters.Length);
+        Assert.Equal(typeof(IDeviceServerClient), parameters[0].ParameterType);
+        Assert.Equal(typeof(PanelsFrameComposer), parameters[1].ParameterType);
     }
 
     [Fact]
-    public void PanelsPlaybackService_ShouldDependOnDeviceServerClientAndFrameTransport()
-    {
-        var constructor = typeof(PanelsPlaybackService)
-            .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-            .Single(ctor => ctor.GetParameters().Length == 7);
-
-        Assert.Equal(typeof(IDeviceServerClient), constructor.GetParameters()[0].ParameterType);
-        Assert.Equal(typeof(IDeviceFrameTransport), constructor.GetParameters()[1].ParameterType);
-        Assert.Equal(typeof(IDeviceClientSessionManager), constructor.GetParameters()[6].ParameterType);
-        Assert.True(constructor.GetParameters()[6].HasDefaultValue);
-    }
-
-    [Fact]
-    public void PanelsPlaybackService_ShouldBeConstructibleWithFakedDeviceServerClientAndFrameTransport()
+    public async Task PanelsPlaybackService_ShouldSaveRemoteRuntimeStateWithoutFrameTransport()
     {
         var client = new FakeDeviceServerClient();
-        var frameTransport = new FakeDeviceFrameTransport();
-        using var coordinator = new DeviceOperationsCoordinator(
-            client,
-            settingsRepository: null,
-            settingsDomainService: null);
-        using var panelsDeviceSessionService = new PanelsDeviceSessionService(coordinator);
-        using var visualizerSessionService = new Hub75VisualizerSessionService(coordinator);
-        using var service = new PanelsPlaybackService(
-            client,
-            frameTransport,
-            new PanelsFrameComposer(),
-            panelsDeviceSessionService,
-            visualizerSessionService,
-            enableMatrixTransport: false);
+        using var service = new PanelsPlaybackService(client, new PanelsFrameComposer(client));
+        var panel = new App.WinUI.Models.Panels.PanelDefinition
+        {
+            PanelId = "panel-remote",
+            Name = "Remoto",
+            Widgets =
+            [
+                new App.WinUI.Models.Panels.PanelWidgetDefinition
+                {
+                    WidgetId = "clock",
+                    AppId = "analogclock",
+                    X = 0,
+                    Y = 0,
+                    Width = 64,
+                    Height = 32,
+                },
+            ],
+        };
 
-        Assert.False(service.IsRunning);
+        await service.StartAsync(panel, "device-remote");
+
+        Assert.True(client.LastRuntimeState?.Enabled);
+        Assert.Equal("panel-remote", client.LastRuntimeState?.PanelId);
+        Assert.Equal("device-remote", client.LastRuntimeState?.TargetDeviceId);
+        Assert.True(service.IsRunning);
+        Assert.Equal("device-remote", service.TargetDeviceId);
     }
 
     [Fact]
@@ -152,18 +144,18 @@ public sealed class WinUiBootstrapSmokeTests
     }
 
     [Fact]
-    public void BuildServiceProvider_ShouldRegisterDependenciesRequiredByStartupPages()
+    public void BuildServiceProvider_ShouldPopulateMicaAudioOptions()
     {
         var provider = App.WinUI.App.BuildServiceProvider();
-        var isService = provider.GetRequiredService<IServiceProviderIsService>();
+        var options = provider.GetRequiredService<IOptions<MicaAudioOptions>>().Value;
 
-        Assert.True(isService.IsService(typeof(MainPageViewModel)));
-        Assert.True(isService.IsService(typeof(DevicesPageViewModel)));
-        Assert.True(isService.IsService(typeof(PanelsPageViewModel)));
-        Assert.True(isService.IsService(typeof(ShellPageViewModel)));
-        Assert.True(isService.IsService(typeof(PresetRepository)));
-        Assert.True(isService.IsService(typeof(SettingsRepository)));
-        Assert.True(isService.IsService(typeof(AppSettingsDomainService)));
+        Assert.False(string.IsNullOrWhiteSpace(options.AppDataRoot));
+        Assert.False(string.IsNullOrWhiteSpace(options.SettingsFilePath));
+        Assert.False(string.IsNullOrWhiteSpace(options.PresetsDirectory));
+        Assert.False(string.IsNullOrWhiteSpace(options.AppsCatalogPath));
+        Assert.False(string.IsNullOrWhiteSpace(options.AppsModifierStatePath));
+        Assert.False(string.IsNullOrWhiteSpace(options.PanelsFilePath));
+        Assert.False(string.IsNullOrWhiteSpace(options.CrashLogPath));
     }
 
     [Fact]
@@ -173,22 +165,6 @@ public sealed class WinUiBootstrapSmokeTests
         AssertNoServiceProviderConstructor(typeof(MainPage));
         AssertNoServiceProviderConstructor(typeof(DevicesPage));
         AssertNoServiceProviderConstructor(typeof(PanelsPage));
-    }
-
-    [Fact]
-    public void BuildServiceProvider_ShouldPopulateMicaAudioOptions()
-    {
-        var provider = App.WinUI.App.BuildServiceProvider();
-        var options = provider.GetRequiredService<IOptions<MicaAudioOptions>>().Value;
-
-        Assert.False(string.IsNullOrWhiteSpace(options.AppDataRoot));
-        Assert.False(string.IsNullOrWhiteSpace(options.DevicesFilePath));
-        Assert.False(string.IsNullOrWhiteSpace(options.SettingsFilePath));
-        Assert.False(string.IsNullOrWhiteSpace(options.PresetsDirectory));
-        Assert.False(string.IsNullOrWhiteSpace(options.AppsCatalogPath));
-        Assert.False(string.IsNullOrWhiteSpace(options.AppsModifierStatePath));
-        Assert.False(string.IsNullOrWhiteSpace(options.PanelsFilePath));
-        Assert.False(string.IsNullOrWhiteSpace(options.CrashLogPath));
     }
 
     private static void AssertNoServiceProviderConstructor(Type pageType)
@@ -210,7 +186,6 @@ public sealed class WinUiBootstrapSmokeTests
         return new MicaAudioOptions
         {
             AppDataRoot = roaming,
-            DevicesFilePath = Path.Combine(roaming, "devices.json"),
             SettingsFilePath = Path.Combine(roaming, "settings.json"),
             PresetsDirectory = Path.Combine(roaming, "presets"),
             AppsCatalogPath = Path.Combine(roaming, "apps", "catalog.json"),
@@ -245,6 +220,8 @@ public sealed class WinUiBootstrapSmokeTests
             remove { }
         }
 
+        public PanelRuntimeStateDocument? LastRuntimeState { get; private set; }
+
         public string GetServerBaseAddress() => "http://127.0.0.1:5272";
 
         public PairingCodeInfo CreatePairingCode(TimeSpan ttl)
@@ -256,6 +233,12 @@ public sealed class WinUiBootstrapSmokeTests
         {
             DevicesChanged?.Invoke(this, EventArgs.Empty);
             return true;
+        }
+
+        public Task SavePanelRuntimeStateAsync(PanelRuntimeStateDocument document, CancellationToken cancellationToken = default)
+        {
+            LastRuntimeState = document;
+            return Task.CompletedTask;
         }
 
         public Task<CommandDispatchResult> SendCommandTrackedAsync(
@@ -275,30 +258,5 @@ public sealed class WinUiBootstrapSmokeTests
                 Stage = "done",
                 Message = "ok",
             });
-
-        public PanelsBatchRegistration RegisterPanelsBatch(
-            string deviceId,
-            string panelsSessionId,
-            ulong batchSequence,
-            byte[] payload,
-            int frameCount,
-            int durationMs,
-            string contentType = "image/webp")
-            => new(panelsSessionId, batchSequence, payload.LongLength, string.Empty, contentType, frameCount, durationMs, string.Empty);
-
-        public void ClearPanelsBatches(string deviceId, string? panelsSessionId = null)
-        {
-        }
-    }
-
-    private sealed class FakeDeviceFrameTransport : IDeviceFrameTransport
-    {
-        public void SendFrame(string deviceId, byte[] framePayload)
-        {
-        }
-
-        public void BroadcastFrame(byte[] framePayload)
-        {
-        }
     }
 }

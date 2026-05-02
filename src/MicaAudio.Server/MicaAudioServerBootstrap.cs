@@ -1,5 +1,6 @@
 using Device.Protocol.Contracts;
 using Device.Server.Hosting;
+using MicaAudio.Panels;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -76,6 +77,10 @@ public static class MicaAudioServerBootstrap
         services.AddSingleton<ISessionStateStore, InMemorySessionStateStore>();
         services.AddSingleton<IPanelLibraryStore>(sp => new StandalonePanelLibraryStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
         services.AddSingleton<IMediaLibraryStore>(sp => new StandaloneMediaLibraryStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
+        services.AddSingleton<IPanelRuntimeStateStore>(sp => new StandalonePanelRuntimeStateStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
+        services.AddSingleton<IPanelRuntimeStatusStore, InMemoryPanelRuntimeStatusStore>();
+        services.AddSingleton<IPanelMediaSourceResolver, ServerPanelMediaSourceResolver>();
+        services.AddSingleton<PanelFrameComposer>(sp => new PanelFrameComposer(sp.GetRequiredService<IPanelMediaSourceResolver>()));
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
             firmwareCatalog: null,
@@ -84,8 +89,11 @@ public static class MicaAudioServerBootstrap
             sp.GetRequiredService<ICommandStateStore>(),
             sp.GetRequiredService<ISessionStateStore>(),
             sp.GetRequiredService<IPanelLibraryStore>(),
-            sp.GetRequiredService<IMediaLibraryStore>()));
+            sp.GetRequiredService<IMediaLibraryStore>(),
+            sp.GetRequiredService<IPanelRuntimeStateStore>(),
+            sp.GetRequiredService<IPanelRuntimeStatusStore>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
+        services.AddSingleton<ServerPanelRuntimeService>();
         services.AddSingleton(sp => new StandaloneDeviceRegistryStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
         services.AddHostedService<MicaAudioServerRuntime>();
     }

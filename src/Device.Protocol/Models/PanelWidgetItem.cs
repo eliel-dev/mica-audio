@@ -20,4 +20,7 @@ public sealed class PanelWidgetItem
 
     public IReadOnlyDictionary<string, string> ConfigValues { get; init; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, string> RuntimeState { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 }

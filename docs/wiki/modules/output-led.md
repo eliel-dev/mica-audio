@@ -10,14 +10,14 @@
 
 ## Direcao oficial
 
-- `Output` continua sendo o adaptador que serializa payload visual no cliente.
-- O caminho oficial de baixa latencia passa a ser `cliente local -> ESP`, nao `cliente -> server -> ESP`.
-- O wire legacy `StreamFrameV2` continua valido em transicao; `StreamFrameV3` existe para ownership explicito por `ownerEpoch` quando o data plane direto estiver ativo.
+- `Output` continua sendo o adaptador que serializa payload visual quando o fluxo depende do WinUI, como visualizador de audio.
+- O caminho oficial para device e `cliente -> servidor remoto -> ESP`.
+- `StreamFrameV2`/`StreamFrameV3` continuam como contratos de transporte do servidor para o device.
 
 ## Baseline atual / transicao
 
 - `Esp32S3LedOutput` continua emitindo `StreamFrameV2` no runtime atual.
-- `StreamFrameV3` entra como contrato owner-bound preparado para clientes LAN session-aware, sem quebrar o baseline legado.
+- `StreamFrameV3` permanece contrato owner-bound para sessoes coordenadas pelo servidor.
 
 ## Atualizacao 2026-03 - shipping mode HUB75 em Bins128
 
@@ -100,9 +100,9 @@
 
 - `Esp32S3LedOutput` depende de `Device.Client.IDeviceFrameTransport`, nao do host completo do server.
 - `Output` referencia `Device.Client.Abstractions` e nao referencia `Device.Server` nem `Device.Server.Abstractions`.
-- A implementacao embedded do transporte fica fora de `Output`, em `Device.Client.Embedded` + composition root WinUI.
-- O output continua emitindo os mesmos payloads `StreamFrameV2`; a mudanca e apenas de fronteira interna para preparar um futuro client remoto.
-- No modo WinUI Remote, `RemoteDeviceFrameTransport` atende `IDeviceFrameTransport` com fila bounded e envio por `WS /ws/v1/admin/frames`; `Esp32S3LedOutput` permanece sem dependencia de HTTP, server concreto ou WinUI.
+- A implementacao ativa do transporte no WinUI e `RemoteDeviceFrameTransport`.
+- O output continua emitindo os mesmos payloads `StreamFrameV2`; a mudanca e de fronteira interna para manter o WinUI remote-only.
+- `RemoteDeviceFrameTransport` atende `IDeviceFrameTransport` com fila bounded e envio por `WS /ws/v1/admin/frames`; `Esp32S3LedOutput` permanece sem dependencia de HTTP, server concreto ou WinUI.
 
 ## Referencias de codigo
 

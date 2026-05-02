@@ -4,48 +4,52 @@
 
 Descrever o fluxo principal do sistema e onde cada modulo participa.
 
-## Direcao oficial
+## Direcao Oficial
 
-- `server` = control plane + storage + catalogo + estado duravel.
-- `cliente Windows` = edge client local e primeiro data plane LAN oficial.
-- `ESP32` = runtime de execucao/render com ownership explicito por device.
-- `visualizador` e `Paineis` sao oficialmente `client-driven`:
-  - `visualizador`: captura/processamento local no cliente e envio direto ao ESP;
-  - `Paineis`: sync/cache de assets/config no cliente e push local ao ESP.
+- `WinUI` = cliente de administracao/editor remoto.
+- `MicaAudio.Server` = control plane, storage, catalogo, runtime autoritativo de paineis server-capable e transporte para o device.
+- `ESP32-S3` = runtime de display, conectado ao servidor por MQTT/WS/HTTP.
+- Fluxo oficial: `cliente -> servidor remoto -> ESP`.
+- Nao existe server embedded no WinUI, fallback embedded ou comunicacao direta cliente-ESP na direcao ativa.
 
-## Baseline atual / transicao
-
-- O app desktop ainda preserva caminhos embedded e transporte via server para compatibilidade.
-- `Device.Server` ainda participa do fluxo operacional atual de pareamento, snapshots, comandos tracked e batches `WebP`.
-- O hot path visual mediado por server continua existindo como baseline legado, nao como topologia alvo de baixa latencia.
-
-## Pipeline principal oficial
+## Fluxo Principal
 
 ```text
-WASAPI loopback -> PcmFrame -> SpectrumAnalyzer -> SpectrumFrame -> VisualizerEngine -> Cliente LAN -> ESP32
+WinUI -> Admin API/WSS -> MicaAudio.Server -> MQTT/WS/HTTP -> ESP32-S3 HUB75
 ```
 
-## Fluxo por modulo
+## Audio E Dados Locais
 
-1. `Audio.Loopback` captura audio e publica `PcmFrame`.
-2. `Analyzer.Dsp` transforma PCM em espectro e bandas.
-3. `Visual.Win2D` renderiza no canvas a partir de `SpectrumFrame`.
-4. `Output` serializa payload visual e o cliente decide se envia localmente ao ESP, ao simulador ou ao caminho legado.
-5. `Device.Server` fica responsavel por control plane, assets, pairing, estado de device e catalogo.
+- O visualizador de audio e metricas do PC continuam dependentes do WinUI, porque a captura e os dados existem no cliente.
+- Ao fechar o WinUI, esses fluxos param.
+- O servidor retoma o ultimo painel server-capable ativo quando houver estado remoto habilitado.
 
-## Referencias de codigo
+## Paineis Autonomos
 
-- [AudioPipelineCoordinator (classe)](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L10) - assinatura esperada: `internal sealed class AudioPipelineCoordinator`
-- [AudioPipelineCoordinator.StartAsync](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L43) - assinatura esperada: `Task StartAsync(...)`
-- [AudioPipelineCoordinator.PipelineLoopAsync](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L74) - assinatura esperada: `Task PipelineLoopAsync(...)`
-- [SpectrumAnalyzer.Process](../../../src/Analyzer.Dsp/Analysis/SpectrumAnalyzer.cs#L78) - assinatura esperada: `SpectrumFrame? Process(in PcmFrame frame)`
-- [VisualizerEngine.Render](../../../src/Visual.Win2D/Engine/VisualizerEngine.cs#L40) - assinatura esperada: `void Render(...)`
-- [Esp32S3LedOutput.Send](../../../src/Output/Led/Esp32S3LedOutput.cs#L42) - assinatura esperada: `void Send(LedPayload payload)`
+- O WinUI salva biblioteca, midias e `PanelRuntimeStateDocument` no servidor remoto.
+- O `MicaAudio.Server` carrega o ultimo painel ativo no startup, assume `clientId = server-panels`, ativa `panels-hub75` no device e envia batches/frames compostos.
+- Widgets server-capable incluem relogio, midia server-backed, clima/status server-backed e status de servidor/device.
+- Widgets client-only sao omitidos no runtime autonomo e reportados em `PanelRuntimeStatusDocument.skippedWidgets`.
 
-## Backlinks no codigo
+## Fluxo Por Modulo
 
-Procure por `DOCS:` nestes arquivos:
-- `src/App.WinUI/Services/AudioPipelineCoordinator.cs`
-- `src/Analyzer.Dsp/Analysis/SpectrumAnalyzer.cs`
-- `src/Visual.Win2D/Engine/VisualizerEngine.cs`
-- `src/Output/Led/Esp32S3LedOutput.cs`
+1. `App.WinUI` resolve apenas `RemoteDeviceServerClient`, `RemoteDeviceFrameTransport` e `RemoteDeviceServerRuntime`.
+2. `Device.Client.Remote` fala com `/api/v1/admin/*` e `/ws/v1/admin/*`.
+3. `Device.Server` expoe Admin API, stores, MQTT/WS/HTTP de device e endpoints de batches.
+4. `MicaAudio.Panels` compoe frames HUB75 sem depender de WinUI nem `System.Drawing`.
+5. `MicaAudio.Server` hospeda o runtime autonomo de paineis.
+6. O firmware ESP32-S3 consome comandos, heartbeat, batches e frames enviados pelo servidor.
+
+## Referencias De Codigo
+
+- [App](../../../src/App.WinUI/App.xaml.cs#L1)
+- [RemoteDeviceServerClient](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1)
+- [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
+- [ServerPanelRuntimeService](../../../src/MicaAudio.Server/ServerPanelRuntimeService.cs#L1)
+- [PanelFrameComposer compartilhado](../../../src/MicaAudio.Panels/PanelFrameComposer.cs#L1)
+- [PanelRuntimeStateDocument](../../../src/Device.Protocol/Models/PanelRuntimeStateDocument.cs#L1)
+- [PanelRuntimeStatusDocument](../../../src/Device.Protocol/Models/PanelRuntimeStatusDocument.cs#L1)
+
+## Backlinks No Codigo
+
+Procure por `DOCS:` nos arquivos acima e no handoff `docs/handoffs/2026-04-30-remote-only-server-panel-runtime.md`.

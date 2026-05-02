@@ -3,8 +3,8 @@
 ## Direcao oficial
 
 - `MicaAudio.Server` e o artefato oficial do control plane.
-- O host standalone existe para pairing, assets, ownership metadata, catalogo, telemetria e administracao.
-- Ele nao e mais o hot path visual oficial para `visualizador` e `Paineis`; esses fluxos passam a ser client-driven na LAN.
+- O host standalone existe para pairing, assets, ownership metadata, catalogo, telemetria, administracao e runtime de paineis server-capable.
+- O fluxo oficial para o ESP e `WinUI -> MicaAudio.Server -> ESP32-S3`.
 
 ## Server standalone
 
@@ -20,7 +20,7 @@
   - `MICA_SERVER__TRUSTEDLANAUTOREGISTRATION=true` habilita auto-registro LAN por UDP discovery;
   - `MICA_SERVER__DISCOVERYUDPPORT` define a porta UDP discovery (`5275` por default);
   - `MICA_SERVER__MAXMEDIAUPLOADBYTES` define o limite de upload de midia da biblioteca (`20971520` por default);
-  - `MICA_SERVER__STORAGEROOT` define onde o standalone grava `devices.json`, `panels/panels.json` e `media/*`.
+  - `MICA_SERVER__STORAGEROOT` define onde o standalone grava `devices.json`, `panels/panels.json`, `panels/runtime-state.json` e `media/*`.
 - `src/MicaAudio.Server/Dockerfile` usa build multi-stage com imagens oficiais .NET 10 e `render.yaml` define Web Service Docker com health check em `/api/v1/health`.
 - Docker local com porta externa diferente do bind interno deve publicar HTTP, MQTT e discovery UDP e anunciar o IP LAN do PC:
 

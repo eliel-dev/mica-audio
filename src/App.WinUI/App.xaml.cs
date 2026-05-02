@@ -11,9 +11,7 @@ using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using Audio.Loopback.Capture;
 using Device.Client;
-using Device.Client.Embedded;
 using Device.Client.Remote;
-using Device.Server.Hosting;
 using MicaAudio.Core.Config;
 using MicaAudio.Core.Presets;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,12 +29,8 @@ namespace App.WinUI;
 // DOCS: docs/handoffs/2026-04-21-remove-settings-serial-monitor.md
 // DOCS: docs/handoffs/2026-04-22-device-server-client-boundary.md
 // DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
-// DOCS: docs/handoffs/2026-04-22-device-client-embedded-adapter.md
-// DOCS: docs/handoffs/2026-04-22-device-server-panels-batch-storage.md
-// DOCS: docs/handoffs/2026-04-22-device-server-pairing-store.md
-// DOCS: docs/handoffs/2026-04-22-device-server-command-state-store.md
-// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
+// DOCS: docs/handoffs/2026-04-30-remote-only-server-panel-runtime.md
 public partial class App : Application
 {
     private static readonly JsonSerializerOptions StartupJsonOptions = new()
@@ -117,7 +111,6 @@ public partial class App : Application
         var options = new MicaAudioOptions
         {
             AppDataRoot = appDataRoot,
-            DevicesFilePath = Path.Combine(appDataRoot, "devices.json"),
             SettingsFilePath = Path.Combine(appDataRoot, "settings.json"),
             PresetsDirectory = Path.Combine(appDataRoot, "presets"),
             AppsCatalogPath = Path.Combine(appDataRoot, "apps", "catalog.json"),
@@ -151,7 +144,6 @@ public partial class App : Application
         services.Configure<MicaAudioOptions>(configured =>
         {
             configured.AppDataRoot = options.AppDataRoot;
-            configured.DevicesFilePath = options.DevicesFilePath;
             configured.SettingsFilePath = options.SettingsFilePath;
             configured.PresetsDirectory = options.PresetsDirectory;
             configured.AppsCatalogPath = options.AppsCatalogPath;
@@ -164,30 +156,7 @@ public partial class App : Application
         });
 
         services.AddSingleton<PrecompiledFirmwareService>();
-        services.AddSingleton<IDeviceOfficialFirmwareCatalog, PrecompiledFirmwareCatalogAdapter>();
-        services.AddSingleton<IEmbeddedDeviceRegistryStore, JsonDeviceRegistryStore>();
-        services.AddSingleton<IEmbeddedDeviceServerSettingsProvider, AppEmbeddedDeviceServerSettingsProvider>();
-        services.AddSingleton<IEmbeddedDevicePublicHostResolver, NetworkInterfaceEmbeddedDevicePublicHostResolver>();
-        services.AddSingleton<IPanelsBatchStore, InMemoryPanelsBatchStore>();
-        services.AddSingleton<IDevicePairingStore, InMemoryDevicePairingStore>();
-        services.AddSingleton<ICommandStateStore, InMemoryCommandStateStore>();
-        services.AddSingleton<ISessionStateStore, InMemorySessionStateStore>();
         services.AddSingleton<RemoteDeviceServerSecretStore>();
-        services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
-            TimeProvider.System,
-            sp.GetService<IDeviceOfficialFirmwareCatalog>(),
-            sp.GetRequiredService<IPanelsBatchStore>(),
-            sp.GetRequiredService<IDevicePairingStore>(),
-            sp.GetRequiredService<ICommandStateStore>(),
-            sp.GetRequiredService<ISessionStateStore>()));
-        services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
-        services.AddSingleton(sp => new EmbeddedDeviceServerClient(
-            sp.GetRequiredService<IDeviceServerHost>(),
-            sp.GetRequiredService<IEmbeddedDeviceRegistryStore>(),
-            sp.GetRequiredService<IEmbeddedDeviceServerSettingsProvider>(),
-            sp.GetRequiredService<IEmbeddedDevicePublicHostResolver>(),
-            sp.GetRequiredService<ILogger<EmbeddedDeviceServerClient>>()));
-        services.AddSingleton<IEmbeddedDeviceServerClientRuntime>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
         services.AddSingleton(sp => CreateRemoteDeviceServerClientOptions(options, startupDeviceServerSettings));
         services.AddSingleton(sp => new RemoteDeviceServerClient(
             new HttpClient(),
@@ -195,20 +164,11 @@ public partial class App : Application
             sp.GetRequiredService<ILogger<RemoteDeviceServerClient>>(),
             ownsHttpClient: true));
         services.AddSingleton<RemoteDeviceFrameTransport>();
-        if (startupDeviceServerSettings.Mode == DeviceServerMode.Remote)
-        {
-            services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<RemoteDeviceServerClient>());
-            services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<RemoteDeviceFrameTransport>());
-            services.AddSingleton<IDeviceServerClientRuntime>(sp => new RemoteDeviceServerRuntime(
-                sp.GetRequiredService<RemoteDeviceServerClient>(),
-                sp.GetRequiredService<RemoteDeviceFrameTransport>()));
-        }
-        else
-        {
-            services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
-            services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<IDeviceServerHost>());
-            services.AddSingleton<IDeviceServerClientRuntime>(sp => sp.GetRequiredService<EmbeddedDeviceServerClient>());
-        }
+        services.AddSingleton<IDeviceServerClient>(sp => sp.GetRequiredService<RemoteDeviceServerClient>());
+        services.AddSingleton<IDeviceFrameTransport>(sp => sp.GetRequiredService<RemoteDeviceFrameTransport>());
+        services.AddSingleton<IDeviceServerClientRuntime>(sp => new RemoteDeviceServerRuntime(
+            sp.GetRequiredService<RemoteDeviceServerClient>(),
+            sp.GetRequiredService<RemoteDeviceFrameTransport>()));
 
         services.AddSingleton<IDeviceClientSessionManager, WindowsDeviceClientSessionManager>();
         services.AddSingleton<DeviceOperationsCoordinator>(sp =>
@@ -248,17 +208,9 @@ public partial class App : Application
         services.AddSingleton(sp => new Esp32S3LedOutput(
             sp.GetRequiredService<IDeviceFrameTransport>(),
             sp.GetRequiredService<IDeviceClientSessionManager>()));
-        services.AddSingleton(sp => new PanelsDeviceSessionService(
-            sp.GetRequiredService<DeviceOperationsCoordinator>(),
-            sp.GetRequiredService<IDeviceClientSessionManager>()));
         services.AddSingleton(sp => new PanelsPlaybackService(
             sp.GetRequiredService<IDeviceServerClient>(),
-            sp.GetRequiredService<IDeviceFrameTransport>(),
-            sp.GetRequiredService<PanelsFrameComposer>(),
-            sp.GetRequiredService<PanelsDeviceSessionService>(),
-            sp.GetRequiredService<Hub75VisualizerSessionService>(),
-            enableMatrixTransport: true,
-            sessionManager: sp.GetRequiredService<IDeviceClientSessionManager>()));
+            sp.GetRequiredService<PanelsFrameComposer>()));
 
         services.AddTransient<MainPageViewModel>();
         services.AddTransient<DevicesPageViewModel>();
@@ -525,11 +477,11 @@ public partial class App : Application
             using var stream = File.OpenRead(options.SettingsFilePath);
             var settings = JsonSerializer.Deserialize<AppSettings>(stream, StartupJsonOptions) ?? new AppSettings();
             var migrated = new AppSettingsDomainService().Migrate(settings);
-            return new StartupDeviceServerSettings(migrated.DeviceServerMode, migrated.RemoteServerBaseAddress);
+            return new StartupDeviceServerSettings(migrated.RemoteServerBaseAddress);
         }
         catch (Exception ex)
         {
-            WriteCrashLog("Load startup device server mode failed. Using embedded mode.", ex);
+            WriteCrashLog("Load startup remote device server settings failed. Using localhost remote server.", ex);
             return StartupDeviceServerSettings.Default;
         }
     }
@@ -546,9 +498,9 @@ public partial class App : Application
         };
     }
 
-    private readonly record struct StartupDeviceServerSettings(DeviceServerMode Mode, string RemoteServerBaseAddress)
+    private readonly record struct StartupDeviceServerSettings(string RemoteServerBaseAddress)
     {
-        public static StartupDeviceServerSettings Default { get; } = new(DeviceServerMode.Embedded, "http://127.0.0.1:5272");
+        public static StartupDeviceServerSettings Default { get; } = new("http://127.0.0.1:5272");
     }
 
     private static string ResolveWorkspaceRoot()

@@ -1,9 +1,9 @@
 using MicaAudio.Core.Presets;
 
-namespace App.WinUI.Services.Panels;
+namespace MicaAudio.Panels;
 
-// DOCS: docs/wiki/modules/paineis.md#compositor-hub75
-internal static class PanelsMatrixDrawHelpers
+// DOCS: docs/wiki/modules/paineis.md#compositor-compartilhado
+public static class PanelsMatrixDrawHelpers
 {
     public static readonly RgbaColor Black = new(0, 0, 0, 255);
 
@@ -52,6 +52,14 @@ internal static class PanelsMatrixDrawHelpers
             }
 
             cursorX += 6;
+        }
+    }
+
+    public static void DrawHorizontalLine(RgbaColor[] frame, int frameWidth, int frameHeight, int x, int y, int width, RgbaColor color)
+    {
+        for (var offset = 0; offset < width; offset++)
+        {
+            DrawPixel(frame, frameWidth, frameHeight, x + offset, y, color);
         }
     }
 

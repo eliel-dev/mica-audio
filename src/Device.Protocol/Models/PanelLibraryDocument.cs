@@ -4,7 +4,9 @@ namespace Device.Protocol.Models;
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed class PanelLibraryDocument
 {
-    public int SchemaVersion { get; init; } = 1;
+    public const int CurrentSchemaVersion = 2;
+
+    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
     public string? LastSelectedPanelId { get; init; }
 

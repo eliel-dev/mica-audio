@@ -3,7 +3,7 @@ namespace App.WinUI.Models.Panels;
 // DOCS: docs/wiki/modules/paineis.md#persistencia-do-layout
 internal sealed class PanelsStoreDocument
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 

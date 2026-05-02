@@ -8,7 +8,7 @@ Explicar ciclo de sessao dos dispositivos (pareamento, online, heartbeat, reconn
 
 1. Device pareia via endpoint HTTP v1.
 2. Servidor entrega credenciais e token.
-3. Device conecta no WS e passa a receber stream/comandos.
+3. Device conecta ao servidor por MQTT/WS/HTTP e passa a receber comandos, heartbeat e batches/frames.
 4. Heartbeat/telemetria atualiza snapshot.
 5. Em perda de conexao, servidor marca stale e depois offline.
 6. Em reconnect, device volta para online sem recriar cadastro.
@@ -25,12 +25,12 @@ Explicar ciclo de sessao dos dispositivos (pareamento, online, heartbeat, reconn
 - [DeviceServerHost.StartAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L37) - assinatura: `Task StartAsync(ServerConfig, CancellationToken)`
 - [DeviceServerHost.GetDevicesSnapshot](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L156) - assinatura: `IReadOnlyList<DeviceSnapshot> GetDevicesSnapshot()`
 - [DeviceServerHost.Advanced handlers](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L63) - assinatura: `Task HandleIncomingWsTextAsync(...)`
-- [EmbeddedDeviceServerClient.StartAsync](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L62) - assinatura: `Task StartAsync(CancellationToken)`
+- [RemoteDeviceServerClient.StartAsync](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1) - assinatura: `Task StartAsync(CancellationToken)`
 - [DeviceOperationsCoordinator.ApplyDevices path](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L160) - assinatura: `private void ApplyDevices(IReadOnlyList<DeviceSnapshot> devices)`
 
 ## Backlinks no codigo
 
-- `src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs`
+- `src/Device.Client.Remote/RemoteDeviceServerClient.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
 
 ## Atualizacao 2026-03 - Lifecycle de Device Leve

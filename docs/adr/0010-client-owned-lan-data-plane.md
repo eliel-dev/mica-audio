@@ -1,48 +1,37 @@
 # ADR 0010 - Client-owned LAN data plane
 
+## Status
+
+Superseded em 2026-04-30 por `remote-only server panel runtime`.
+
 ## Contexto
 
-O baseline historico do Mica colocava o `Device.Server` no hot path visual entre desktop e ESP32. Esse modelo funcionou como etapa de integracao, mas impunha latencia e acoplamento desnecessarios para `visualizador` e `Paineis`, que sao fluxos sensiveis ao caminho de rede e nao precisam do servidor para transportar cada frame.
+Esta ADR registrava a direcao `cliente Windows -> ESP32` para o hot path visual de `visualizador` e `Paineis`, com o servidor atuando principalmente como control plane.
 
-Ao mesmo tempo, o projeto passou a precisar de um modelo de ownership por device para suportar multiplos clientes observando o mesmo estado, com takeover fluido no estilo `Spotify Connect`, sem deixar o ESP32 exposto a comandos concorrentes e sem transformar o servidor em roteador obrigatorio do data plane visual.
+Essa decisao foi substituida: o WinUI agora e remote-only e o firmware deve receber dados visuais pelo servidor remoto/standalone. O cliente nao deve conversar diretamente com o ESP nem manter server embedded como fallback.
 
-## Decisao
+## Decisao Superseded
 
-1. O `server` passa a ser oficialmente `control plane + storage + catalogo + estado duravel`.
-2. O `cliente Windows` passa a ser oficialmente o primeiro `edge client` e `data plane LAN`.
-3. O `ESP32` passa a ser runtime de execucao/render com ownership explicito por device.
-4. `visualizador` e `Paineis` passam a ser topologias `client-driven` e `LAN-direct`:
-   - `visualizador`: o cliente captura/processa localmente e envia direto ao ESP;
-   - `Paineis`: o cliente baixa config/assets do server, faz cache local e empurra ao ESP.
-5. O firmware passa a tratar `MQTT` como plano canonico de sessao:
-   - `shadow` retained;
-   - `activeClientId`;
-   - `last-writer-wins`;
-   - `lock com lease`.
-6. Ownership e por `device`, com um cliente ativo por vez para modos client-driven.
-7. Quando o owner expira, o fallback oficial do device e `relogio + mensagem de cliente desconectado`.
-8. `WS/UDP` continuam existindo para dados visuais, mas subordinados ao owner atual.
-9. O caminho `server -> WS -> ESP` permanece apenas como baseline de transicao/legado; nao e mais a topologia oficial de baixa latencia.
+A decisao antiga de `client-driven`/`LAN-direct` nao e mais direcao ativa.
+
+## Decisao Atual
+
+1. O fluxo oficial e `WinUI -> MicaAudio.Server -> ESP32`.
+2. O WinUI edita, salva e ativa estado remoto por Admin API.
+3. O `MicaAudio.Server` e o owner autoritativo do runtime de paineis server-capable.
+4. O ESP32 continua como runtime de display conectado ao servidor por MQTT/WS/HTTP, recebendo comandos, batches e frames ja compostos.
+5. Widgets dependentes do cliente, como metricas do PC e visualizador de audio, param quando o WinUI fecha; widgets server-capable continuam pelo servidor.
 
 ## Consequencias
 
-- O server deixa de ser gargalo obrigatorio para visualizador/paineis em LAN.
-- Cloud/Fly/Render continuam uteis para control plane, sem a exigencia de carregar o hot path visual.
-- O firmware ganha responsabilidade adicional de sessao/ownership, inclusive rejeicao de stream stale por `ownerEpoch`.
-- Clientes futuros (Windows, Android, Home Assistant) precisam observar `shadow` e respeitar ownership/lease.
-- O baseline legado continua existindo durante a transicao, mas a documentacao passa a trata-lo explicitamente como `baseline atual`, nao como direcao final.
-
-## Status
-
-Aceita
-
-## Data
-
-2026-04-23
+- `Device.Client.Embedded` foi removido da solution e do composition root WinUI.
+- O WinUI nao inicia `DeviceServerHost` in-process.
+- Documentacao ativa nao deve recomendar comunicacao direta cliente-ESP.
+- O servidor remoto/standalone passa a ser requisito operacional, mesmo quando roda em `localhost:5272`.
 
 ## Referencias
 
-- docs/wiki/architecture/01-system-overview.md
-- docs/wiki/modules/device-server-protocol.md
-- firmware/esp32s3-devkitc1/src/mica_session.cpp
-- src/Device.Protocol/Stream/StreamFrameV3.cs
+- `docs/handoffs/2026-04-30-remote-only-server-panel-runtime.md`
+- `docs/wiki/architecture/01-system-overview.md`
+- `docs/wiki/modules/device-server-protocol.md`
+- `docs/wiki/modules/paineis.md`

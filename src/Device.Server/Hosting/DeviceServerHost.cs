@@ -57,6 +57,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly ISessionStateStore sessionStateStore;
     private readonly IPanelLibraryStore panelLibraryStore;
     private readonly IMediaLibraryStore mediaLibraryStore;
+    private readonly IPanelRuntimeStateStore panelRuntimeStateStore;
+    private readonly IPanelRuntimeStatusStore panelRuntimeStatusStore;
     private readonly IVisualUdpSender visualUdpSender;
     private readonly DeviceFrameConnectionRegistry frameConnections = new();
     private readonly object adminEventConnectionsGate = new();
@@ -92,7 +94,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         ICommandStateStore? commandStateStore = null,
         ISessionStateStore? sessionStateStore = null,
         IPanelLibraryStore? panelLibraryStore = null,
-        IMediaLibraryStore? mediaLibraryStore = null)
+        IMediaLibraryStore? mediaLibraryStore = null,
+        IPanelRuntimeStateStore? panelRuntimeStateStore = null,
+        IPanelRuntimeStatusStore? panelRuntimeStatusStore = null)
         : this(
             timeProvider,
             firmwareCatalog,
@@ -102,6 +106,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             sessionStateStore,
             panelLibraryStore,
             mediaLibraryStore,
+            panelRuntimeStateStore,
+            panelRuntimeStatusStore,
             visualUdpSender: null)
     {
     }
@@ -115,6 +121,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         ISessionStateStore? sessionStateStore,
         IPanelLibraryStore? panelLibraryStore = null,
         IMediaLibraryStore? mediaLibraryStore = null,
+        IPanelRuntimeStateStore? panelRuntimeStateStore = null,
+        IPanelRuntimeStatusStore? panelRuntimeStatusStore = null,
         IVisualUdpSender? visualUdpSender = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -126,6 +134,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         this.sessionStateStore = sessionStateStore ?? new InMemorySessionStateStore();
         this.panelLibraryStore = panelLibraryStore ?? new InMemoryPanelLibraryStore();
         this.mediaLibraryStore = mediaLibraryStore ?? new InMemoryMediaLibraryStore();
+        this.panelRuntimeStateStore = panelRuntimeStateStore ?? new InMemoryPanelRuntimeStateStore();
+        this.panelRuntimeStatusStore = panelRuntimeStatusStore ?? new InMemoryPanelRuntimeStatusStore();
         this.visualUdpSender = visualUdpSender ?? new SocketVisualUdpSender();
     }
 

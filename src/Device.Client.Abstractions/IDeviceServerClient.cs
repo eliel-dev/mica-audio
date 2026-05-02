@@ -99,6 +99,15 @@ public interface IDeviceServerClient
     Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
+    Task<PanelRuntimeStateDocument> GetPanelRuntimeStateAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new PanelRuntimeStateDocument());
+
+    Task SavePanelRuntimeStateAsync(PanelRuntimeStateDocument document, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    Task<PanelRuntimeStatusDocument> GetPanelRuntimeStatusAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new PanelRuntimeStatusDocument());
+
     Task<MediaAssetInfo> UploadMediaAsync(
         string fileName,
         string contentType,
