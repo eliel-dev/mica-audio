@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#fluxo-de-execucao
+// DOCS: docs/wiki/reference/device-observability-dashboard.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
@@ -24,6 +25,7 @@ public sealed partial class DeviceServerHost
 
         var admin = api.MapGroup("/admin");
         admin.MapGet("/devices", (Delegate)HandleAdminDevices);
+        admin.MapGet("/devices/{deviceId}/telemetry", (Delegate)HandleAdminDeviceTelemetry);
         admin.MapPost("/pairing-codes", (Delegate)HandleAdminCreatePairingCodeAsync);
         admin.MapDelete("/devices/{deviceId}", (Delegate)HandleAdminRemoveDevice);
         admin.MapPost("/devices/{deviceId}/commands/tracked", (Delegate)HandleAdminTrackedCommandAsync);

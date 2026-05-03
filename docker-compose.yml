@@ -1,0 +1,27 @@
+# DOCS: docs/wiki/modules/server-build-and-artifacts.md#server-standalone
+# DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+services:
+  mica-audio-server:
+    build:
+      context: .
+      dockerfile: ./src/MicaAudio.Server/Dockerfile
+    container_name: mica-audio-server
+    ports:
+      - "8080:8080"
+      - "5273:5273"
+      - "5274:5274/udp"
+      - "5275:5275/udp"
+    environment:
+      MICA_SERVER__STORAGEROOT: /data
+      MICA_SERVER__RESTRICTTOPRIVATENETWORKS: "false"
+      MICA_SERVER__STARTUPPAIRCODETTLSECONDS: "0"
+      MICA_SERVER__ALLOWLEGACYWEBSOCKETQUERYTOKEN: "false"
+      MICA_SERVER__TRUSTEDLANAUTOREGISTRATION: "false"
+      MICA_SERVER__DISCOVERYUDPPORT: "5275"
+      MICA_SERVER__MAXMEDIAUPLOADBYTES: "20971520"
+    volumes:
+      - mica-audio-server-data:/data
+    restart: unless-stopped
+
+volumes:
+  mica-audio-server-data:

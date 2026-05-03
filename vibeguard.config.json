@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "debug": false,
+  "patterns": {
+    "admin_token": {
+      "match": "AdminToken\\s*=\\s*[^\\s,;]+",
+      "description": "Admin tokens"
+    },
+    "connection_strings": {
+      "match": "(Server|DataSource|Endpoint)=[^;]+",
+      "description": "Connection strings"
+    }
+  }
+}

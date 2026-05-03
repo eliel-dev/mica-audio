@@ -30,6 +30,27 @@ static WiFiUDP gDiscoveryUdp;
 static bool gDiscoveryUdpStarted = false;
 static unsigned long gLastDiscoveryBroadcastMs = 0;
 
+const char* resolveWifiStatusText(int status) {
+  switch (status) {
+    case WL_IDLE_STATUS:
+      return "IDLE";
+    case WL_NO_SSID_AVAIL:
+      return "NO_SSID_AVAIL";
+    case WL_SCAN_COMPLETED:
+      return "SCAN_COMPLETED";
+    case WL_CONNECTED:
+      return "CONNECTED";
+    case WL_CONNECT_FAILED:
+      return "CONNECT_FAILED";
+    case WL_CONNECTION_LOST:
+      return "CONNECTION_LOST";
+    case WL_DISCONNECTED:
+      return "DISCONNECTED";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 // ===========================================================================
 // HTTP helpers
 // ===========================================================================
@@ -1284,12 +1305,14 @@ void processNetworkPoll() {
     if (shouldRunNetworkStep(gWifiDisconnectedSinceMs == 0)) {
       gWifiDisconnectedSinceMs = millis();
       gLastWifiReconnectAttemptMs = canUseSavedWifi ? gWifiDisconnectedSinceMs : 0;
+      const int wifiStatus = WiFi.status();
+      const char* wifiStatusText = resolveWifiStatusText(wifiStatus);
       if (!canUseSavedWifi) {
         setConnectivityState(kWifiStateDisconnected, "wifi_disconnected", true);
-        Serial.println("[wifi] desconectado, aguardando reconexao.");
+        Serial.printf("[wifi] desconectado (status=%d %s), aguardando reconexao.\n", wifiStatus, wifiStatusText);
       } else {
         setConnectivityState(kWifiStateDisconnected, "wifi_waiting_saved_config", true);
-        Serial.println("[wifi_waiting_saved_config] credenciais salvas presentes; aguardando reconexao.");
+        Serial.printf("[wifi_waiting_saved_config] credenciais salvas presentes; aguardando reconexao (status=%d %s).\n", wifiStatus, wifiStatusText);
       }
       finishNetworkStep();
     }

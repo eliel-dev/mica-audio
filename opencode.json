@@ -1,7 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "ecc-universal"
+    "ecc-universal",
+    "@tarquinen/opencode-dcp@latest",
+    "@morphllm/opencode-morph-plugin",
+    "opencode-vibeguard"
   ],
   "instructions": [
     "AGENTS.md",
@@ -9,6 +12,7 @@
     "docs/wiki/ai/change-classification.md",
     "docs/wiki/ai/validation-matrix.md",
     "docs/wiki/ai/consistencia-codex.md",
+    "docs/wiki/ai/engineering-advisor.md",
     "docs/wiki/reference/ai-contract.v1.yaml",
     "docs/wiki/reference/code-index.md"
   ],
@@ -24,5 +28,21 @@
   },
   "permission": {
     "mcp_*": "ask"
+  },
+  "agent": {
+    "build": {
+      "permission": {
+        "task": {
+          "mica-checks": "allow"
+        }
+      }
+    },
+    "plan": {
+      "permission": {
+        "task": {
+          "mica-checks": "allow"
+        }
+      }
+    }
   }
 }

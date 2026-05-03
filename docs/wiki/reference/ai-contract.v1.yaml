@@ -61,24 +61,20 @@
                                "git checkout --",
                                "git clean -fd"
                            ],
-    "module_entrypoints":  [
-                               {
-                                   "path":  "src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs",
-                                   "min_docs_markers":  2
-                               },
-                               {
-                                   "path":  "src/App.WinUI/Services/Apps/AppDeploymentService.cs",
-                                   "min_docs_markers":  2
-                               },
-                               {
-                                   "path":  "src/Device.Server/Hosting/DeviceServerHost.cs",
-                                   "min_docs_markers":  2
-                               },
-                               {
-                                   "path":  "firmware/esp32s3-devkitc1/src/main.cpp",
-                                   "min_docs_markers":  2
-                               }
-                           ],
+     "module_entrypoints":  [
+                                {
+                                    "path":  "src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs",
+                                    "min_docs_markers":  2
+                                },
+                                {
+                                    "path":  "src/Device.Server/Hosting/DeviceServerHost.cs",
+                                    "min_docs_markers":  2
+                                },
+                                {
+                                    "path":  "firmware/esp32s3-devkitc1/src/main.cpp",
+                                    "min_docs_markers":  2
+                                }
+                            ],
     "decision_sources":  [
                              "AGENTS.md",
                              "docs/wiki/ai/agent-entrypoint.md",

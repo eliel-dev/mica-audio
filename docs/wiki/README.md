@@ -113,6 +113,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Playbooks de incidente](ai/incident-playbooks.md)
 - [Viabilidade MCP](ai/mcp-viability.md)
 - [Consistencia com Codex](ai/consistencia-codex.md)
+- [Engineering Advisor](ai/engineering-advisor.md)
 - [Setup OpenCode + ECC + Context7 (local)](ai/opencode-ecc-setup.md)
 
 ### Referencia

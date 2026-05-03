@@ -68,6 +68,22 @@
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [PanelsFrameComposer adapter](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
 
+## Observabilidade Tecnica
+
+- Configuracao de logging e OpenTelemetry em `App.BuildServiceProvider()`.
+- `AppObservability` gerencia telemetria global do aplicativo.
+- Startup breadcrumbs sao gravados via `AppStartupDiagnostics`.
+
+## Cache Compartilhado
+
+- `AddHybridCache()` registrado no `App.BuildServiceProvider()` para cache compartilhado.
+- Usado para reduzir chamadas repetitivas em servicos do WinUI.
+
+## Integracoes HTTP Externas
+
+- `AddExternalHttpClients()` registrado no `App.BuildServiceProvider()`.
+- Configura clientes HTTP para servicos externos (ex.: `CityAutocompleteService`, `OpenMeteoForecastClient`).
+
 ## Handoff
 
 - [2026-04-30 remote-only server panel runtime](../../handoffs/2026-04-30-remote-only-server-panel-runtime.md)

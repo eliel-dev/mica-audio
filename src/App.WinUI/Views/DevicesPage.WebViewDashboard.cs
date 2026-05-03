@@ -106,7 +106,6 @@ public sealed partial class DevicesPage
 
         var builder = new UriBuilder(baseAddress)
         {
-            Host = "127.0.0.1",
             Path = "/dashboard",
             Query = "embedded=1",
         };

@@ -47,6 +47,7 @@ Fornecer o control plane HTTP/WS/MQTT do Mica, persistir estado duravel e transp
 Endpoints principais:
 
 - `GET /api/v1/admin/devices`
+- `GET /api/v1/admin/devices/{deviceId}/telemetry`
 - `POST /api/v1/admin/pairing-codes`
 - `DELETE /api/v1/admin/devices/{deviceId}`
 - `POST /api/v1/admin/devices/{deviceId}/commands/tracked`
@@ -97,6 +98,14 @@ WebSockets admin:
 - Novos handlers admin em `DeviceServerHost.Admin`.
 - Stores em `Device.Server.Abstractions` e `Device.Server/Hosting`.
 - Runtime standalone em `MicaAudio.Server`.
+
+## Ownership Shadow e Lock Lease
+
+- `DeviceSessionShadowMessage` persiste estado de sessao no topico retained `mica/v1/devices/{deviceId}/shadow`.
+- Campos canonicos: `activeClientId`, `activeOwnerEpoch`, `ownerLeaseRemainingMs`, `lockHeld`, `lockClientId`, `lockReason`, `lockLeaseRemainingMs`.
+- `SendCommandTrackedAsync` usa `DeviceCommandSessionContext` para validar lease antes de despachar comando.
+- Lock temporario (`sessionLockHeld`) impede que outros clientes assumam o device para manutencao ou OTA.
+- `SessionHeartbeatAsync` renova lease do owner ativo.
 
 ## Referencias De Codigo
 

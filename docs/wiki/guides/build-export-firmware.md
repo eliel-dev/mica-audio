@@ -28,7 +28,6 @@ Este e o caminho oficial de campo quando voce nao vai usar OTA: o app so garante
 ## Referencias de codigo
 
 - [DevicesPage.SaveFirmwareAsync](../../../src/App.WinUI/Views/DevicesPage.Onboarding.cs#L1)
-- [ServerPage.SaveFirmwareAsync](../../../src/App.WinUI/Views/ServerPage.xaml.cs#L1)
 - [PrecompiledFirmwareService.PrepareOfficialFirmwareExportAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
 - [PrecompiledFirmwareService.CopyArtifactToAsync](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L1)
 

@@ -11,6 +11,8 @@
 // ---------------------------------------------------------------------------
 // Connectivity state
 // ---------------------------------------------------------------------------
+const char* resolveWifiStatusText(int status);
+
 void logConnectivityState(const char* eventOverride = nullptr);
 void publishConnectivityLog(const char* wifiState, const char* lastEvent, bool changedOrForced);
 void flushWsFlapDiagnostics(bool force = false);

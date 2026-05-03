@@ -195,7 +195,7 @@ internal sealed class AppSettingsDomainService
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            return "http://127.0.0.1:5272";
+            return string.Empty;
         }
 
         return uri.ToString().TrimEnd('/');

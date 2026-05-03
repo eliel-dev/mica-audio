@@ -30,8 +30,8 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
 
 ## DTO do dashboard
 
-- Nome interno:
-  - `DeviceDashboardDto`
+- Nome do contrato:
+  - `DeviceTelemetryResponse` (em `Device.Protocol/Models`)
 - Campos:
   - `deviceId`
   - `name`
@@ -77,6 +77,21 @@ Documentar o dashboard por device agora servido localmente em HTML/JS para o `We
   - `hub75Fps` e calculado no servidor com cache por `deviceId`, usando delta de `Hub75PresentFrames`;
   - `streamFramesApplied` representa payload novo efetivamente exibido ao menos uma vez;
   - ausencia de dado continua sendo `null`.
+
+## API REST de telemetria
+
+Alem do WebSocket push, o servidor expoe telemetria por device via endpoint admin REST:
+
+- `GET /api/v1/admin/devices/{deviceId}/telemetry`
+- Autenticacao: `X-Mica-Admin-Token` ou `Authorization: Bearer <token>`.
+- Resposta: `DeviceTelemetryResponse` com os mesmos campos do DTO do dashboard.
+- Comportamento:
+  - `200 OK` + payload JSON quando o device existe;
+  - `404 NotFound` quando o device nao e encontrado;
+  - `401 Unauthorized` / `503 ServiceUnavailable` conforme regras da Admin API.
+- Uso recomendado:
+  - clientes moveis (Android/iOS) que precisam consultar estado pontual sem manter WebSocket;
+  - integracoes externas que consomem telemetria sob demanda.
 
 ## Semantica operacional do dashboard
 

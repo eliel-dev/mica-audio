@@ -19,7 +19,7 @@ internal sealed class DeviceOperationsState
 
     public DateTimeOffset LastRefreshUtc { get; init; }
 
-    public string ServerBaseAddress { get; init; } = "http://127.0.0.1:5272";
+    public string ServerBaseAddress { get; init; } = string.Empty;
 
     public IReadOnlyList<DeviceLogEntry> Logs { get; init; } = Array.Empty<DeviceLogEntry>();
 }

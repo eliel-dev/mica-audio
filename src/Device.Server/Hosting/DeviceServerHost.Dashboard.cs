@@ -138,7 +138,7 @@ public sealed partial class DeviceServerHost
         return true;
     }
 
-    private bool TryBuildDeviceDashboardDto(string deviceId, out DeviceDashboardDto dto)
+    private bool TryBuildDeviceDashboardDto(string deviceId, out DeviceTelemetryResponse dto)
     {
         dto = default!;
         var snapshot = GetDevicesSnapshot().FirstOrDefault(snapshot =>
@@ -153,7 +153,7 @@ public sealed partial class DeviceServerHost
         return true;
     }
 
-    private DeviceDashboardDto ProjectDeviceDashboardDto(DeviceSnapshot snapshot)
+    private DeviceTelemetryResponse ProjectDeviceDashboardDto(DeviceSnapshot snapshot)
     {
         var psramAvailable = snapshot.PsramAvailable;
         if (!psramAvailable.HasValue && snapshot.PsramTotalBytes is > 0)
@@ -163,7 +163,7 @@ public sealed partial class DeviceServerHost
 
         var firmwareUpdateState = ResolveFirmwareUpdateState(snapshot);
 
-        return new DeviceDashboardDto
+        return new DeviceTelemetryResponse
         {
             DeviceId = snapshot.DeviceId,
             Name = snapshot.Name,
@@ -335,80 +335,5 @@ public sealed partial class DeviceServerHost
 
     private sealed record FirmwareUpdateState(string? LatestFirmwareVersion, bool Supported, bool Available);
 
-    private sealed class DeviceDashboardDto
-    {
-        public string DeviceId { get; init; } = string.Empty;
 
-        public string Name { get; init; } = string.Empty;
-
-        public bool Online { get; init; }
-
-        public string? ActiveAppName { get; init; }
-
-        public string? WifiState { get; init; }
-
-        public int? SignalDbm { get; init; }
-
-        public int? UptimeSeconds { get; init; }
-
-        public uint? TelemetrySequence { get; init; }
-
-        public bool? TestLedAvailable { get; init; }
-
-        public bool? TestLedEnabled { get; init; }
-
-        public int? TestLedDuty { get; init; }
-
-        public string? FirmwareVersion { get; init; }
-
-        public int? BrightnessCap { get; init; }
-
-        public int? BrightnessRequested { get; init; }
-
-        public int? BrightnessApplied { get; init; }
-
-        public int? LoopHealthyPercent { get; init; }
-
-        public int? LoopLoadPercent { get; init; }
-
-        public double? ChipTemperatureCelsius { get; init; }
-
-        public long? HeapFreeBytes { get; init; }
-
-        public long? HeapLargestBlockBytes { get; init; }
-
-        public long? HeapTotalBytes { get; init; }
-
-        public int? HeapFreePercent { get; init; }
-
-        public int? HeapFragmentationPercent { get; init; }
-
-        public bool? PsramAvailable { get; init; }
-
-        public long? PsramFreeBytes { get; init; }
-
-        public long? PsramLargestBlockBytes { get; init; }
-
-        public long? PsramTotalBytes { get; init; }
-
-        public int? PsramFreePercent { get; init; }
-
-        public uint? StreamFramesReceived { get; init; }
-
-        public uint? StreamFramesApplied { get; init; }
-
-        public uint? StreamSequenceGapCount { get; init; }
-
-        public uint? StreamInvalidFrameCount { get; init; }
-
-        public uint? StreamLastSequence { get; init; }
-
-        public int? Hub75Fps { get; init; }
-
-        public string? LatestFirmwareVersion { get; init; }
-
-        public bool FirmwareUpdateAvailable { get; init; }
-
-        public bool FirmwareUpdateSupported { get; init; }
-    }
 }

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Http;
 namespace Device.Server.Hosting;
 
 // DOCS: docs/wiki/modules/device-server-protocol.md#admin-api-remota
+// DOCS: docs/wiki/reference/device-observability-dashboard.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
@@ -604,5 +605,22 @@ public sealed partial class DeviceServerHost
             }
             while (!result.EndOfMessage);
         }
+    }
+
+    private IResult HandleAdminDeviceTelemetry(HttpContext ctx, string deviceId)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        var snapshot = GetDevicesSnapshot().FirstOrDefault(s =>
+            string.Equals(s.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase));
+        if (snapshot is null)
+        {
+            return Results.NotFound(new { error = "device_not_found" });
+        }
+
+        return Results.Ok(ProjectDeviceDashboardDto(snapshot));
     }
 }

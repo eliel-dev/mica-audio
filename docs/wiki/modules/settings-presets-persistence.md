@@ -54,7 +54,7 @@ Centralizar configuracoes de sessao, presets e armazenamento em `%AppData%`.
 - [SettingsRepository](../../../src/App.WinUI/Services/SettingsRepository.cs#L6) - assinatura: `internal sealed class SettingsRepository`
 - [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L6) - assinatura: `internal sealed class PresetRepository`
 - [MainPage Pipeline helpers](../../../src/App.WinUI/Views/MainPage.Pipeline.cs#L1) - assinatura: `public partial class MainPage`
-- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1) - assinatura: `internal sealed class JsonDeviceRegistryStore`
+- [RemoteDeviceServerSecretStore](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerSecretStore.cs#L1) - assinatura: `internal sealed class RemoteDeviceServerSecretStore`
 
 ## Backlinks no codigo
 

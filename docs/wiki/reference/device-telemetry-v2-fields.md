@@ -145,6 +145,6 @@ Campos canonicos:
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [VisualUdpFrameV1](../../../src/Device.Protocol/Stream/VisualUdpFrameV1.cs#L1)
 - [Firmware session runtime](../../../firmware/esp32s3-devkitc1/src/mica_session.cpp#L1)
-- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
+- [RemoteDeviceServerSecretStore](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerSecretStore.cs#L1)
 - [DeviceMetricsFormatter](../../../src/App.WinUI/Services/Devices/DeviceMetricsFormatter.cs#L1)
 - [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)

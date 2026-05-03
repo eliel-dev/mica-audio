@@ -65,7 +65,7 @@ public sealed partial class SettingsPage : Page
         {
             suppressMicaBackdropChanged = true;
             micaBackdropToggle.IsOn = true;
-            remoteServerBaseAddressBox.Text = "http://127.0.0.1:5272";
+            remoteServerBaseAddressBox.Text = string.Empty;
             remoteAdminTokenBox.Password = string.Empty;
             suppressMicaBackdropChanged = false;
             micaBackdropStatusText.Text = "Nao foi possivel carregar esta preferencia. O app manteve a aparencia atual.";
@@ -287,7 +287,7 @@ public sealed partial class SettingsPage : Page
         remoteServerBaseAddressBox = new TextBox
         {
             Header = "Servidor remoto",
-            PlaceholderText = "http://127.0.0.1:5272",
+            PlaceholderText = "http://<host>:<porta>",
             MinWidth = 320,
         };
 
@@ -314,7 +314,7 @@ public sealed partial class SettingsPage : Page
 
         return CreateCard(
             "Servidor de dispositivos",
-            "O WinUI usa somente o MicaAudio.Server remoto. Use localhost para o processo standalone local.",
+            "O WinUI usa somente o MicaAudio.Server remoto. Informe o endereco do servidor.",
             remoteServerBaseAddressBox,
             remoteAdminTokenBox,
             saveButton,

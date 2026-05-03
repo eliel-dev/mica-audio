@@ -500,7 +500,7 @@ public partial class App : Application
 
     private readonly record struct StartupDeviceServerSettings(string RemoteServerBaseAddress)
     {
-        public static StartupDeviceServerSettings Default { get; } = new("http://127.0.0.1:5272");
+        public static StartupDeviceServerSettings Default { get; } = new(string.Empty);
     }
 
     private static string ResolveWorkspaceRoot()
