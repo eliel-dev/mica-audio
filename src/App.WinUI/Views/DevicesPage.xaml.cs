@@ -40,12 +40,6 @@ public sealed partial class DevicesPage : Page
     private const string OfflineDashboardFallbackText = "Offline: exibindo snapshot seguro";
     private const string PendingTelemetryFallbackText = "Online: aguardando primeira telemetria do dispositivo";
 
-    private string? lastRenderedDashboardSignature;
-    private string? lastRenderedDeviceLogsDeviceId;
-    private int lastRenderedDeviceLogCount;
-    private string lastRenderedDeviceLogTail = string.Empty;
-    private string? lastRenderedDeviceLogsHeader;
-    private string? lastRenderedDeviceLogsPlaceholder;
     private DeviceOperationsState currentState = new();
     private bool appCatalogLoadAttempted;
     private DeviceLifecycleThresholds lifecycleThresholds = DeviceLifecycleThresholds.Default;
@@ -134,12 +128,6 @@ public sealed partial class DevicesPage : Page
             DeviceOps.SetDevicesPageVisible(false);
         }
 
-        lastRenderedDashboardSignature = null;
-        lastRenderedDeviceLogsDeviceId = null;
-        lastRenderedDeviceLogCount = 0;
-        lastRenderedDeviceLogTail = string.Empty;
-        lastRenderedDeviceLogsHeader = null;
-        lastRenderedDeviceLogsPlaceholder = null;
         selectedDeviceId = null;
         suppressBrightnessSliderEvents = false;
         suppressDeviceSelectionChanged = false;
@@ -279,9 +267,9 @@ public sealed partial class DevicesPage : Page
         await CommitBrightnessIfPendingAsync().ConfigureAwait(false);
     }
 
-    private async void OnReprovisionWifiClicked(object sender, RoutedEventArgs e)
+    private async void OnRemoveDeviceClicked(object sender, RoutedEventArgs e)
     {
-        await ExecuteReprovisionWifiAsync().ConfigureAwait(false);
+        await ExecuteRemoveDeviceAsync().ConfigureAwait(true);
     }
 
     private void OnCopyHostClicked(object sender, RoutedEventArgs e)
@@ -315,17 +303,6 @@ public sealed partial class DevicesPage : Page
 
         ShowInlineStatusMessage(InfoBarSeverity.Success, $"Link do dashboard copiado: {dashboardUri}");
         AddLocalLog($"Link do dashboard copiado: {dashboardUri}");
-    }
-
-    private async Task RunSelectedCommandAsync(DeviceCommandType commandType)
-    {
-        var selected = GetSelectedDeviceItem();
-        if (selected is null || DeviceOps is null)
-        {
-            return;
-        }
-
-        await DeviceOps.RunCommandAsync(selected.DeviceId, commandType).ConfigureAwait(false);
     }
 
     private async Task CommitBrightnessIfPendingAsync()
@@ -471,50 +448,6 @@ public sealed partial class DevicesPage : Page
 
         ApplySelectionDetails();
         ApplyButtonState();
-    }
-
-    private async Task ExecuteReprovisionWifiAsync(string? requestedDeviceId = null)
-    {
-        var selected = ResolveCommandDevice(requestedDeviceId);
-        var ops = DeviceOps;
-        if (selected is null || ops is null)
-        {
-            return;
-        }
-
-        if (selected.Status != DeviceStatus.Online)
-        {
-            ShowInlineStatusMessage(InfoBarSeverity.Warning, "O dispositivo precisa estar online para abrir o portal Wi-Fi.");
-            AddLocalLog($"Reprovisionamento Wi-Fi ignorado: {selected.DeviceId} esta offline.");
-            return;
-        }
-
-        var dialog = new ContentDialog
-        {
-            Title = "Reprovisionar Wi-Fi",
-            PrimaryButtonText = "Abrir portal",
-            CloseButtonText = "Cancelar",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-            Content = "O dispositivo vai abrir o portal/AP de configuracao de Wi-Fi. Depois de conectar na rede local, ele se registra automaticamente no servidor.",
-        };
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-
-        var result = await ops.RunCommandAsync(selected.DeviceId, DeviceCommandType.EnterProvisioning).ConfigureAwait(true);
-        if (result.Accepted && result.Completed && result.Success)
-        {
-            ShowInlineStatusMessage(InfoBarSeverity.Success, $"Portal Wi-Fi solicitado: {selected.DeviceId}");
-            AddLocalLog($"Portal Wi-Fi solicitado para {selected.DeviceId}.");
-            return;
-        }
-
-        var reason = string.IsNullOrWhiteSpace(result.Message) ? result.ErrorCode : result.Message;
-        ShowInlineStatusMessage(InfoBarSeverity.Error, "Falha ao solicitar reprovisionamento Wi-Fi.");
-        AddLocalLog($"Falha ao solicitar portal Wi-Fi em {selected.DeviceId}: {reason ?? "erro desconhecido"}");
     }
 
     private sealed class DeviceListItem

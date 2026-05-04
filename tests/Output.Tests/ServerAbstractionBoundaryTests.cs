@@ -14,7 +14,7 @@ public sealed class ServerAbstractionBoundaryTests
     public void DeviceServerContracts_ShouldLiveInAbstractionsAssembly()
     {
         Assert.Equal("Device.Server.Abstractions", typeof(IDeviceServerHost).Assembly.GetName().Name);
-        Assert.Equal("Device.Server.Abstractions", typeof(IDeviceOfficialFirmwareCatalog).Assembly.GetName().Name);
+        Assert.Equal("Device.Server.Abstractions", typeof(DeviceOfficialFirmwarePackage).Assembly.GetName().Name);
         Assert.Equal("Device.Server.Abstractions", typeof(IPanelsBatchStore).Assembly.GetName().Name);
         Assert.Equal("Device.Server.Abstractions", typeof(PanelsBatchWrite).Assembly.GetName().Name);
         Assert.Equal("Device.Server.Abstractions", typeof(PanelsBatchEntry).Assembly.GetName().Name);

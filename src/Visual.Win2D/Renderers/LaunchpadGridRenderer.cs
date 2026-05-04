@@ -26,14 +26,7 @@ public sealed class LaunchpadGridRenderer : IRenderer, IRendererCapabilitiesProv
         UsesAnalyzerPipeline = true,
         Controls = new RendererControlSupport
         {
-            SupportsSensitivity = true,
-            SupportsLinearBoost = true,
             SupportsBarCount = false,
-            SupportsFftSize = true,
-            SupportsFftSmoothing = true,
-            SupportsWeightingFilter = true,
-            SupportsFrequencyScale = true,
-            SupportsFrequencyRange = true,
         },
         BarCountMode = RendererBarCountMode.Fixed,
         IntegrationMode = RendererIntegrationMode.Explicit,

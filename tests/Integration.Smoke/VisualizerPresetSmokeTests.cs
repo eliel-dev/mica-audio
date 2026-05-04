@@ -591,7 +591,6 @@ public sealed class VisualizerPresetSmokeTests
             RendererId = rendererId,
             Palette = new GradientPalette
             {
-                Name = "Smoke",
                 Stops =
                 [
                     new PaletteStop { Offset = 0f, Color = new RgbaColor(255, 255, 255) },

@@ -29,7 +29,7 @@ public class SpectrumSampleWindowTests
         var hann = Enumerable.Repeat(1f, 5).ToArray();
 
         window.Append([1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f]);
-        window.Slide(3);
+        window.Advance(3);
         window.CopyWindowTo(output, 1f, hann);
 
         Assert.Equal(5, window.SampleCount);

@@ -1,5 +1,6 @@
 using App.WinUI.Services.Devices;
 using Device.Protocol.Models;
+using System.Globalization;
 
 namespace App.WinUI.Views;
 
@@ -112,28 +113,14 @@ public sealed partial class DevicesPage
         }
     }
 
-    private static string BuildRegistrationLine(DeviceListItem selected)
+    private static void LogSelectionBreadcrumb(
+        string stage,
+        string? deviceId,
+        DeviceSnapshot? snapshot,
+        DeviceMetricsPresentation? metrics)
     {
-        if (selected.Status == DeviceStatus.Pairing)
-        {
-            return "Vinculo: pareamento iniciado; aguardando a primeira sessao do dispositivo";
-        }
-
-        if (selected.Presence.IsNeverSeen)
-        {
-            return "Vinculo: registrado localmente; aguardando primeiro provisionamento";
-        }
-
-        if (selected.Status == DeviceStatus.Online)
-        {
-            return "Vinculo: configurado e em comunicacao";
-        }
-
-        if (selected.Presence.IsConfigUncertain)
-        {
-            return "Vinculo: registro salvo localmente; a configuracao no ESP pode ter mudado";
-        }
-
-        return "Vinculo: registro salvo localmente; sem telemetria no momento";
+        AddLocalLog(
+            $"Breadcrumb {stage} (device={deviceId ?? "-"}, status={snapshot?.Status.ToString() ?? "-"}, " +
+            $"hasMetrics={metrics?.HasMetrics.ToString() ?? "-"}, lastTelemetry={snapshot?.LastTelemetryUtc?.ToString("O", CultureInfo.InvariantCulture) ?? "-"})");
     }
 }

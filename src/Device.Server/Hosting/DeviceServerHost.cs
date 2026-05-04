@@ -50,7 +50,6 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     private readonly object gate = new();
     private readonly TimeProvider timeProvider;
-    private readonly IDeviceOfficialFirmwareCatalog? firmwareCatalog;
     private readonly IPanelsBatchStore panelsBatchStore;
     private readonly IDevicePairingStore pairingStore;
     private readonly ICommandStateStore commandStateStore;
@@ -72,23 +71,17 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private Task? discoveryUdpTask;
 
     public DeviceServerHost()
-        : this(TimeProvider.System, firmwareCatalog: null)
+        : this(TimeProvider.System)
     {
     }
 
     public DeviceServerHost(TimeProvider timeProvider)
-        : this(timeProvider, firmwareCatalog: null)
-    {
-    }
-
-    public DeviceServerHost(IDeviceOfficialFirmwareCatalog? firmwareCatalog)
-        : this(TimeProvider.System, firmwareCatalog)
+        : this(timeProvider, panelsBatchStore: null, pairingStore: null, commandStateStore: null, sessionStateStore: null, panelLibraryStore: null, mediaLibraryStore: null, panelRuntimeStateStore: null, panelRuntimeStatusStore: null)
     {
     }
 
     public DeviceServerHost(
         TimeProvider timeProvider,
-        IDeviceOfficialFirmwareCatalog? firmwareCatalog,
         IPanelsBatchStore? panelsBatchStore = null,
         IDevicePairingStore? pairingStore = null,
         ICommandStateStore? commandStateStore = null,
@@ -99,7 +92,6 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         IPanelRuntimeStatusStore? panelRuntimeStatusStore = null)
         : this(
             timeProvider,
-            firmwareCatalog,
             panelsBatchStore,
             pairingStore,
             commandStateStore,
@@ -114,7 +106,6 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
 
     internal DeviceServerHost(
         TimeProvider timeProvider,
-        IDeviceOfficialFirmwareCatalog? firmwareCatalog,
         IPanelsBatchStore? panelsBatchStore,
         IDevicePairingStore? pairingStore,
         ICommandStateStore? commandStateStore,
@@ -127,7 +118,6 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
-        this.firmwareCatalog = firmwareCatalog;
         this.panelsBatchStore = panelsBatchStore ?? new InMemoryPanelsBatchStore();
         this.pairingStore = pairingStore ?? new InMemoryDevicePairingStore();
         this.commandStateStore = commandStateStore ?? new InMemoryCommandStateStore();

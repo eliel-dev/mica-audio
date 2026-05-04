@@ -117,10 +117,6 @@
     <Compile Include="..\..\src\Visual.Win2D\Engine\ReactiveBandSampler.cs" Link="Shared\Visual\ReactiveBandSampler.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove="AppRuntimeProviderRegistryTests.cs" />
-  </ItemGroup>
-
 </Project>
 
 

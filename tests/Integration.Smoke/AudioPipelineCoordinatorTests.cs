@@ -36,7 +36,6 @@ public sealed class AudioPipelineCoordinatorTests
         Assert.Equal(1, capture.StartCalls);
         Assert.NotNull(capture.StartConfig);
         Assert.Equal(48_000, capture.StartConfig!.TargetSampleRate);
-        Assert.Equal(1, capture.StartConfig.TargetChannels);
         Assert.Equal(8, capture.StartConfig.ChannelCapacity);
         Assert.Equal(12, capture.StartConfig.BufferMilliseconds);
         Assert.Single(matrix.Payloads);

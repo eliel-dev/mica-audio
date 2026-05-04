@@ -32,14 +32,11 @@ internal static class AppObservability
     public const string DeviceIdKey = "deviceId";
     public const string CommandIdKey = "commandId";
     public const string AppIdKey = "appId";
-    public const string PortNameKey = "portName";
     public const string HttpClientNameKey = "http.client.name";
 
     private static readonly ActivitySource ActivitySource = new(ActivitySourceName);
     private static readonly Meter Meter = new(MeterName);
 
-    private static readonly Histogram<double> DeployDuration = Meter.CreateHistogram<double>("mica.app.deploy.duration", unit: "ms");
-    private static readonly Histogram<double> OnboardingFlashDuration = Meter.CreateHistogram<double>("mica.onboarding.flash.duration", unit: "ms");
     private static readonly Counter<long> UiErrorCount = Meter.CreateCounter<long>("mica.ui.error.count");
 
     public static ObservabilityOptions ConfigureGlobalLogger(MicaAudioOptions options)
@@ -191,33 +188,6 @@ internal static class AppObservability
         activity.SetStatus(ActivityStatusCode.Error, exception.Message);
         activity.SetTag("exception.type", exception.GetType().FullName);
         activity.SetTag("exception.message", exception.Message);
-    }
-
-    public static void RecordDeployDuration(TimeSpan duration, string? deviceId, string? appId, bool success)
-    {
-        var tags = new TagList
-        {
-            { ComponentKey, AppComponent },
-            { MicaComponentKey, AppComponent },
-            { DeviceIdKey, deviceId },
-            { AppIdKey, appId },
-            { "success", success },
-        };
-
-        DeployDuration.Record(duration.TotalMilliseconds, tags);
-    }
-
-    public static void RecordOnboardingFlashDuration(TimeSpan duration, string? portName, bool success)
-    {
-        var tags = new TagList
-        {
-            { ComponentKey, AppComponent },
-            { MicaComponentKey, AppComponent },
-            { PortNameKey, portName },
-            { "success", success },
-        };
-
-        OnboardingFlashDuration.Record(duration.TotalMilliseconds, tags);
     }
 
     public static void RecordUiError(string operation, string? component = null)

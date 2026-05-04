@@ -95,8 +95,6 @@ internal sealed class AnalyzerRuntimeProfile
             LinearBoost = Settings.LinearBoost,
             MinDecibels = VisualizerRuntimeDefaults.DefaultMinDecibels,
             MaxDecibels = VisualizerRuntimeDefaults.DefaultMaxDecibels,
-            DbFloor = VisualizerRuntimeDefaults.DefaultMinDecibels,
-            DbCeiling = VisualizerRuntimeDefaults.DefaultMaxDecibels,
             DisplaySmoothingRise = 0.82f,
             DisplaySmoothingFall = 0.06f,
             DisplayMotionDamping = 0.30f,

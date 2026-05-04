@@ -22,11 +22,14 @@ public class SpectrumPowerProcessorTests
             FftSmoothing = 0.8f,
         });
 
-        _ = noSmoothing.BuildPowerSpectrum(CreateSineWindow(2048, 440f, 48_000));
-        var noSmoothingAfterStop = noSmoothing.BuildPowerSpectrum(new Complex[2048]);
+        var powerBuffer = new float[1025];
+        noSmoothing.BuildPowerSpectrum(CreateSineWindow(2048, 440f, 48_000), powerBuffer);
+        var noSmoothingAfterStop = new float[1025];
+        noSmoothing.BuildPowerSpectrum(new Complex[2048], noSmoothingAfterStop);
 
-        _ = withSmoothing.BuildPowerSpectrum(CreateSineWindow(2048, 440f, 48_000));
-        var withSmoothingAfterStop = withSmoothing.BuildPowerSpectrum(new Complex[2048]);
+        withSmoothing.BuildPowerSpectrum(CreateSineWindow(2048, 440f, 48_000), new float[1025]);
+        var withSmoothingAfterStop = new float[1025];
+        withSmoothing.BuildPowerSpectrum(new Complex[2048], withSmoothingAfterStop);
 
         Assert.True(withSmoothingAfterStop.Max() > noSmoothingAfterStop.Max());
     }

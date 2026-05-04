@@ -1,5 +1,4 @@
 using Analyzer.Dsp.Analysis;
-using Audio.Loopback.Capture;
 using Device.Protocol.Stream;
 using MicaAudio.Core.Audio;
 using MicaAudio.Core.Config;
@@ -59,12 +58,4 @@ public class PipelineSmokeTests
         Assert.NotEqual(waveSnapshot, gridSnapshot);
     }
 
-    [Fact(Skip = "Manual validation for real WASAPI loopback session.")]
-    public async Task Loopback_ShouldRunForManualValidation()
-    {
-        await using var capture = new WasapiLoopbackCaptureService();
-        await capture.StartAsync(new CaptureConfig());
-        await Task.Delay(TimeSpan.FromSeconds(5));
-        await capture.StopAsync();
-    }
 }

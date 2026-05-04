@@ -83,7 +83,6 @@ public static class MicaAudioServerBootstrap
         services.AddSingleton<PanelFrameComposer>(sp => new PanelFrameComposer(sp.GetRequiredService<IPanelMediaSourceResolver>()));
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
-            firmwareCatalog: null,
             sp.GetRequiredService<IPanelsBatchStore>(),
             sp.GetRequiredService<IDevicePairingStore>(),
             sp.GetRequiredService<ICommandStateStore>(),

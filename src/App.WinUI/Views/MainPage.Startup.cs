@@ -287,9 +287,6 @@ public partial class MainPage
 
         return new GradientPalette
         {
-            Name = string.IsNullOrWhiteSpace(source.Name)
-                ? (fallback?.Name ?? "AudioMotion Clone")
-                : source.Name,
             Stops = source.Stops.Select(stop => new PaletteStop
             {
                 Offset = stop.Offset,

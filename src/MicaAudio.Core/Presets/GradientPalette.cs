@@ -2,8 +2,6 @@ namespace MicaAudio.Core.Presets;
 
 public sealed class GradientPalette
 {
-    public string Name { get; init; } = "Sunset";
-
     public IReadOnlyList<PaletteStop> Stops { get; init; } =
     [
         new PaletteStop { Offset = 0f, Color = new RgbaColor(6, 12, 40) },

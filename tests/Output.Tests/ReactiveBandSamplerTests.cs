@@ -16,7 +16,6 @@ public sealed class ReactiveBandSamplerTests
             RendererBarCountMode.Resampled,
             ref previous);
 
-        Assert.Equal(12, snapshot.EffectiveElementCount);
         Assert.All(snapshot.Bands.ToArray(), static value => Assert.Equal(0f, value));
         Assert.Equal(0f, snapshot.Low);
         Assert.Equal(0f, snapshot.Mid);
@@ -41,7 +40,7 @@ public sealed class ReactiveBandSamplerTests
         Assert.Equal(snapshotA.Mid, snapshotB.Mid);
         Assert.Equal(snapshotA.High, snapshotB.High);
         Assert.Equal(snapshotA.GlobalLevel, snapshotB.GlobalLevel);
-        Assert.Equal(snapshotA.EffectiveElementCount, snapshotB.EffectiveElementCount);
+
     }
 
     [Fact]
@@ -91,7 +90,7 @@ public sealed class ReactiveBandSamplerTests
     }
 
     [Fact]
-    public void Sample_ShouldHonorEffectiveElementCount_ByBarCountMode()
+    public void Sample_ShouldHonorBandCount_ByBarCountMode()
     {
         var input = CreateBands(10, 0.80f, 0.20f);
         var previousNative = Array.Empty<float>();
@@ -102,9 +101,9 @@ public sealed class ReactiveBandSamplerTests
         var resampledSnapshot = ReactiveBandSampler.Sample(input, 0.8f, 0.25f, 6, RendererBarCountMode.Resampled, ref previousResampled);
         var fixedSnapshot = ReactiveBandSampler.Sample(input, 0.8f, 0.25f, 6, RendererBarCountMode.Fixed, ref previousFixed);
 
-        Assert.Equal(10, nativeSnapshot.EffectiveElementCount);
-        Assert.Equal(6, resampledSnapshot.EffectiveElementCount);
-        Assert.Equal(6, fixedSnapshot.EffectiveElementCount);
+        Assert.Equal(10, nativeSnapshot.Bands.Length);
+        Assert.Equal(6, resampledSnapshot.Bands.Length);
+        Assert.Equal(6, fixedSnapshot.Bands.Length);
         Assert.InRange(resampledSnapshot.GlobalLevel, 0f, 1f);
         Assert.InRange(fixedSnapshot.GlobalLevel, 0f, 1f);
     }

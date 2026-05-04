@@ -8,8 +8,6 @@ internal readonly record struct DeviceLifecycleSettings(
     int DeviceStaleThresholdMinutes,
     int DeviceDormantThresholdHours)
 {
-    public static DeviceLifecycleSettings Default => Normalize(15, 2, 24);
-
     public static DeviceLifecycleSettings From(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);

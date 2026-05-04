@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Threading.Channels;
 using MicaAudio.Core.Audio;
 using NAudio.CoreAudioApi;

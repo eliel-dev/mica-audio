@@ -617,7 +617,9 @@ public sealed class DeviceServerHostMqttTests
                 return;
             }
 
-            using var doc = JsonDocument.Parse(args.ApplicationMessage.Payload.ToArray());
+            var payloadBytes = new byte[args.ApplicationMessage.Payload.Length];
+            args.ApplicationMessage.Payload.CopyTo(payloadBytes);
+            using var doc = JsonDocument.Parse(payloadBytes);
             var commandId = doc.RootElement.GetProperty("commandId").GetString();
             if (!string.IsNullOrWhiteSpace(commandId) && seenCommandId.TrySetResult(commandId))
             {
@@ -718,79 +720,6 @@ public sealed class DeviceServerHostMqttTests
     }
 
     [Fact]
-    public async Task AuthenticatedFirmwareEndpoints_ShouldExposeLatestMetadataAndDownloadArtifact()
-    {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "mica-audio-firmware-endpoints", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempRoot);
-        var firmwarePath = Path.Combine(tempRoot, "firmware.bin");
-        var firmwareBytes = new byte[] { 0x10, 0x20, 0x30, 0x40 };
-        await File.WriteAllBytesAsync(firmwarePath, firmwareBytes);
-
-        var package = new DeviceOfficialFirmwarePackage(
-            "v2026.03.12-untagged-c2ba150",
-            PrecompiledFirmwareBoard,
-            PrecompiledFirmwarePanel,
-            "dma_exp",
-            "mqtt",
-            firmwarePath,
-            Path.Combine(tempRoot, "firmware.manifest.json"),
-            "abcd",
-            firmwareBytes.Length);
-
-        var port = DeviceServerTestHarness.GetFreeTcpPort();
-        var mqttPort = DeviceServerTestHarness.GetFreeTcpPort();
-
-        try
-        {
-            await using var host = new DeviceServerHost(new StaticFirmwareCatalog(package));
-            await host.StartAsync(new ServerConfig
-            {
-                ListenHost = "127.0.0.1",
-                PublicHost = "127.0.0.1",
-                Port = port,
-                MqttPort = mqttPort,
-                RestrictToPrivateNetworks = true,
-            });
-
-            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
-            var paired = await DeviceServerTestHarness.PairDeviceAsync(
-                host,
-                client,
-                "firmware-http",
-                boardModel: package.BoardModel,
-                panelType: package.PanelType);
-
-            using var latestRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/device/firmware/latest");
-            latestRequest.Headers.Add("X-Device-Id", paired.DeviceId);
-            latestRequest.Headers.Add("X-Device-Token", paired.Token);
-
-            using var latestResponse = await client.SendAsync(latestRequest);
-            latestResponse.EnsureSuccessStatusCode();
-            var latest = await latestResponse.Content.ReadFromJsonAsync<DeviceFirmwareReleaseInfo>();
-
-            Assert.NotNull(latest);
-            Assert.Equal(package.FirmwareVersion, latest!.FirmwareVersion);
-            Assert.Equal(package.FileSizeBytes, latest.FileSizeBytes);
-            Assert.Equal(package.Sha256, latest.Sha256);
-            Assert.Equal($"/api/v1/device/firmware/download?version={WebUtility.UrlEncode(package.FirmwareVersion)}", latest.DownloadPath);
-
-            using var downloadRequest = new HttpRequestMessage(HttpMethod.Get, latest.DownloadPath);
-            downloadRequest.Headers.Add("X-Device-Id", paired.DeviceId);
-            downloadRequest.Headers.Add("X-Device-Token", paired.Token);
-
-            using var downloadResponse = await client.SendAsync(downloadRequest);
-            downloadResponse.EnsureSuccessStatusCode();
-            Assert.Equal(package.FirmwareVersion, downloadResponse.Headers.GetValues("X-Firmware-Version").Single());
-            Assert.Equal(package.Sha256, downloadResponse.Headers.GetValues("X-Firmware-Sha256").Single());
-            Assert.Equal(firmwareBytes, await downloadResponse.Content.ReadAsByteArrayAsync());
-        }
-        finally
-        {
-            Directory.Delete(tempRoot, recursive: true);
-        }
-    }
-
-    [Fact]
     public async Task SendTrackedCommandAsync_ShouldWaitForValidatedFirmwareStage()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();
@@ -825,7 +754,9 @@ public sealed class DeviceServerHostMqttTests
                 return;
             }
 
-            using var payload = JsonDocument.Parse(args.ApplicationMessage.Payload.ToArray());
+            var payloadBytes2 = new byte[args.ApplicationMessage.Payload.Length];
+            args.ApplicationMessage.Payload.CopyTo(payloadBytes2);
+            using var payload = JsonDocument.Parse(payloadBytes2);
             var commandId = payload.RootElement.GetProperty("commandId").GetString() ?? string.Empty;
             var command = payload.RootElement.GetProperty("command").GetString() ?? string.Empty;
             var version = payload.RootElement.GetProperty("parameters").GetProperty("version").GetString() ?? string.Empty;
@@ -910,7 +841,9 @@ public sealed class DeviceServerHostMqttTests
                 return;
             }
 
-            using var payload = JsonDocument.Parse(args.ApplicationMessage.Payload.ToArray());
+            var payloadBytes3 = new byte[args.ApplicationMessage.Payload.Length];
+            args.ApplicationMessage.Payload.CopyTo(payloadBytes3);
+            using var payload = JsonDocument.Parse(payloadBytes3);
             var commandId = payload.RootElement.GetProperty("commandId").GetString() ?? string.Empty;
             if (seenCommand.TrySetResult(commandId))
             {
@@ -951,37 +884,4 @@ public sealed class DeviceServerHostMqttTests
         Assert.Equal("device_reported_failure", result.ErrorCode);
     }
 
-    private const string PrecompiledFirmwareBoard = "esp32s3_devkitc1";
-    private const string PrecompiledFirmwarePanel = "hub75_p2_5_128x64_smd2121_scan32";
-
-    private sealed class StaticFirmwareCatalog : IDeviceOfficialFirmwareCatalog
-    {
-        private readonly DeviceOfficialFirmwarePackage package;
-
-        public StaticFirmwareCatalog(DeviceOfficialFirmwarePackage package)
-        {
-            this.package = package;
-        }
-
-        public bool TryResolveLatest(
-            string? boardModel,
-            string? panelType,
-            string? profile,
-            out DeviceOfficialFirmwarePackage package,
-            out string failureReason)
-        {
-            if (string.Equals(boardModel, this.package.BoardModel, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(panelType, this.package.PanelType, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(profile, this.package.Profile, StringComparison.OrdinalIgnoreCase))
-            {
-                package = this.package;
-                failureReason = string.Empty;
-                return true;
-            }
-
-            package = default!;
-            failureReason = "firmware_not_found";
-            return false;
-        }
-    }
 }

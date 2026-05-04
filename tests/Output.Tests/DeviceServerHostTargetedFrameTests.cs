@@ -174,7 +174,6 @@ public sealed class DeviceServerHostTargetedFrameTests
     private static DeviceServerHost CreateHost(ISessionStateStore store, IVisualUdpSender udpSender)
         => new(
             TimeProvider.System,
-            firmwareCatalog: null,
             panelsBatchStore: null,
             pairingStore: null,
             commandStateStore: null,

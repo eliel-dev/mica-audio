@@ -11,8 +11,10 @@ public class SmootherAndAnalyzerTests
     {
         var smoother = new EnvelopeSmoother(1, rise: 1f, fall: 0.2f);
 
-        _ = smoother.Process([1f]);
-        var next = smoother.Process([0f]);
+        var buffer = new float[1];
+        smoother.Process([1f], buffer);
+        smoother.Process([0f], buffer);
+        var next = buffer;
 
         Assert.InRange(next[0], 0.15f, 0.85f);
     }
@@ -131,8 +133,6 @@ public class SmootherAndAnalyzerTests
             MaxHz = 16_000f,
             ScaleMode = ScaleMode.Db,
             FrequencyScale = frequencyScale,
-            DbFloor = -85f,
-            DbCeiling = -25f,
         });
 
         SpectrumFrame? frame = null;

@@ -145,16 +145,6 @@ public static class LogBandMapper
         };
     }
 
-    public static float[] AggregateBands(
-        float[] powerSpectrum,
-        BandRange[] ranges,
-        float dbFloor,
-        float dbCeiling,
-        bool useDb,
-        bool useLinearAmplitude = true,
-        float linearBoost = 1f)
-        => AggregateBandsRms(powerSpectrum, ranges, dbFloor, dbCeiling, useDb, useLinearAmplitude, linearBoost);
-
     public static float[] AggregateBandsRms(
         float[] powerSpectrum,
         BandRange[] ranges,

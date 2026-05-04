@@ -45,11 +45,6 @@ public sealed class AnalyzerConfig
 
     public float MaxDecibels { get; init; } = -25f;
 
-    public float DbFloor { get; init; } = -90f;
-
-    // Keep headroom to avoid bars saturating near full scale.
-    public float DbCeiling { get; init; }
-
     public float DisplaySmoothingRise { get; init; } = 0.82f;
 
     public float DisplaySmoothingFall { get; init; } = 0.06f;

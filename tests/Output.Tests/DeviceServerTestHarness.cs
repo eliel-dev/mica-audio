@@ -88,19 +88,11 @@ internal static class DeviceServerTestHarness
             string.Equals(d.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))?.Status;
     }
 
-    public static DeviceControlPlaneState? GetControlPlaneState(DeviceServerHost host, string deviceId)
-    {
-        return host.GetDevicesSnapshot().FirstOrDefault(d =>
-            string.Equals(d.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))?.ControlPlaneState;
-    }
-
     public static async Task<IMqttClient> ConnectMqttClientAsync(
         string host,
         int port,
         string deviceId,
-        string token,
-        string? willPayload = null,
-        string? willTopic = null)
+        string token)
     {
         var client = new MqttClientFactory().CreateMqttClient();
         var optionsBuilder = new MqttClientOptionsBuilder()
@@ -108,9 +100,6 @@ internal static class DeviceServerTestHarness
             .WithClientId(deviceId)
             .WithCredentials(deviceId, token)
             .WithCleanSession(true);
-
-        _ = willPayload;
-        _ = willTopic;
 
         var result = await client.ConnectAsync(optionsBuilder.Build(), CancellationToken.None);
         Assert.Equal(MqttClientConnectResultCode.Success, result.ResultCode);
@@ -224,6 +213,9 @@ internal static class DeviceServerTestHarness
 
     public static string DecodePayload(MqttApplicationMessageReceivedEventArgs args)
     {
-        return Encoding.UTF8.GetString(args.ApplicationMessage.Payload.ToArray());
+        var payload = args.ApplicationMessage.Payload;
+        var bytes = new byte[payload.Length];
+        payload.CopyTo(bytes);
+        return Encoding.UTF8.GetString(bytes);
     }
 }

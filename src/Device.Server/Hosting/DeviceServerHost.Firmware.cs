@@ -1,135 +1,54 @@
-using System.Net;
+using System.IO;
 using Device.Protocol.Models;
 using Microsoft.AspNetCore.Http;
 
 namespace Device.Server.Hosting;
 
-// DOCS: docs/wiki/modules/device-server-protocol.md#modulo-deviceserver-deviceprotocol
-// DOCS: docs/wiki/modules/server-build-and-artifacts.md#modulo-server-build-and-artifacts
-// DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
-// DOCS: docs/handoffs/2026-04-22-device-server-session-state-store.md
 public sealed partial class DeviceServerHost
 {
-    private IResult HandleDeviceFirmwareLatest(HttpContext ctx)
+    private static readonly string[] SupportedFirmwareExtensions = [".bin", ".zip", ".uf2"];
+
+    private static bool IsSupportedFirmwareExtension(string fileName)
     {
-        if (!TryAuthenticate(ctx, AuthContext.HttpApi, out var state))
-        {
-            return Results.Unauthorized();
-        }
-
-        MarkDeviceHttpHeartbeat(state, ctx.Connection.RemoteIpAddress?.ToString());
-
-        if (!TryResolveOfficialFirmware(state.Record, out var package, out _))
-        {
-            return Results.NotFound(new { error = "firmware_not_found" });
-        }
-
-        return Results.Ok(BuildFirmwareReleaseInfo(package));
+        var ext = Path.GetExtension(fileName);
+        return SupportedFirmwareExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase);
     }
 
-    private IResult HandleDeviceFirmwareDownload(HttpContext ctx)
+    private static bool TryResolveOfficialFirmware(DeviceSnapshot snapshot, out DeviceOfficialFirmwarePackage package, out string error)
     {
-        if (!TryAuthenticate(ctx, AuthContext.HttpApi, out var state))
-        {
-            return Results.Unauthorized();
-        }
-
-        MarkDeviceHttpHeartbeat(state, ctx.Connection.RemoteIpAddress?.ToString());
-
-        if (!TryResolveOfficialFirmware(state.Record, out var package, out _))
-        {
-            return Results.NotFound(new { error = "firmware_not_found" });
-        }
-
-        var requestedVersion = NormalizeOptional(ctx.Request.Query["version"].ToString());
-        if (!string.IsNullOrWhiteSpace(requestedVersion)
-            && !string.Equals(requestedVersion, package.FirmwareVersion, StringComparison.OrdinalIgnoreCase))
-        {
-            return Results.NotFound(new { error = "firmware_version_not_found" });
-        }
-
-        var servePath = !string.IsNullOrWhiteSpace(package.OtaFilePath) && File.Exists(package.OtaFilePath)
-            ? package.OtaFilePath
-            : package.FilePath;
-        var serveSha256 = !string.IsNullOrWhiteSpace(package.OtaFilePath) && File.Exists(package.OtaFilePath)
-            ? package.OtaSha256
-            : package.Sha256;
-        var serveSize = !string.IsNullOrWhiteSpace(package.OtaFilePath) && File.Exists(package.OtaFilePath)
-            ? package.OtaFileSizeBytes
-            : package.FileSizeBytes;
-
-        ctx.Response.Headers["X-Firmware-Version"] = package.FirmwareVersion;
-        ctx.Response.Headers["X-Firmware-Sha256"] = serveSha256;
-        ctx.Response.Headers["X-Firmware-Size"] = serveSize.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return Results.File(
-            servePath,
-            contentType: "application/octet-stream",
-            fileDownloadName: Path.GetFileName(servePath),
-            enableRangeProcessing: false);
-    }
-
-    private bool TryResolveOfficialFirmware(DeviceSnapshot snapshot, out DeviceOfficialFirmwarePackage package, out string error)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
         return TryResolveOfficialFirmware(snapshot.BoardModel, snapshot.PanelType, snapshot.Profile, out package, out error);
     }
 
-    private bool TryResolveOfficialFirmware(DeviceRecord record, out DeviceOfficialFirmwarePackage package, out string error)
+    private static bool TryResolveOfficialFirmware(DeviceRecord record, out DeviceOfficialFirmwarePackage package, out string error)
     {
-        ArgumentNullException.ThrowIfNull(record);
         return TryResolveOfficialFirmware(record.BoardModel, record.PanelType, record.Profile, out package, out error);
     }
 
-    private bool TryResolveOfficialFirmware(
+    private static bool TryResolveOfficialFirmware(
         string? boardModel,
         string? panelType,
         string? profile,
         out DeviceOfficialFirmwarePackage package,
-        out string error)
+        out string failureReason)
     {
-        package = default!;
-        error = string.Empty;
-
-        if (firmwareCatalog is null)
-        {
-            error = "firmware_catalog_unavailable";
-            return false;
-        }
-
-        return firmwareCatalog.TryResolveLatest(boardModel, panelType, profile, out package, out error);
+        package = null!;
+        failureReason = "No official firmware catalog is configured.";
+        return false;
     }
 
-    private static DeviceFirmwareReleaseInfo BuildFirmwareReleaseInfo(DeviceOfficialFirmwarePackage package)
+    private static Task<IResult> HandleFirmwareLatestAsync(HttpContext ctx)
     {
-        ArgumentNullException.ThrowIfNull(package);
-        var encodedVersion = WebUtility.UrlEncode(package.FirmwareVersion);
-        var hasOta = !string.IsNullOrWhiteSpace(package.OtaFilePath) && File.Exists(package.OtaFilePath);
-        return new DeviceFirmwareReleaseInfo
-        {
-            FirmwareVersion = package.FirmwareVersion,
-            BoardModel = package.BoardModel,
-            PanelType = package.PanelType,
-            Profile = package.Profile,
-            ControlPlane = package.ControlPlane,
-            Sha256 = hasOta ? package.OtaSha256 : package.Sha256,
-            FileSizeBytes = hasOta ? package.OtaFileSizeBytes : package.FileSizeBytes,
-            DownloadPath = $"/api/v1/device/firmware/download?version={encodedVersion}",
-        };
+        return Task.FromResult(Results.StatusCode(StatusCodes.Status501NotImplemented));
     }
 
-    private void MarkDeviceHttpHeartbeat(DeviceSessionState state, string? remoteIp)
+    private static Task<IResult> HandleFirmwareDownloadAsync(HttpContext ctx)
     {
-        ArgumentNullException.ThrowIfNull(state);
+        return Task.FromResult(Results.StatusCode(StatusCodes.Status501NotImplemented));
+    }
 
-        state.MarkSeen(
-            timeProvider.GetUtcNow(),
-            remoteIp,
-            state.Record.LastKnownRssi,
-            state.Record.FirmwareVersion,
-            state.Record.ActiveAppId,
-            state.Record.ActiveAppName,
-            state.Record.BoardModel,
-            state.Record.PanelType);
-        NotifyDevicesChanged();
+    private static Task HandleFirmwareStreamAsync(HttpContext ctx)
+    {
+        ctx.Response.StatusCode = StatusCodes.Status501NotImplemented;
+        return Task.CompletedTask;
     }
 }

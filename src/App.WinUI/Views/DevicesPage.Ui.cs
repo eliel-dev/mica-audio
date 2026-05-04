@@ -306,12 +306,12 @@ public sealed partial class DevicesPage
 
         ReprovisionWifiButton = new AppBarButton
         {
-            Label = "Reprovisionar Wi-Fi",
-            Icon = new SymbolIcon(Symbol.Setting),
+            Label = "Remover dispositivo",
+            Icon = new SymbolIcon(Symbol.Delete),
             MinWidth = 132,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        ReprovisionWifiButton.Click += OnReprovisionWifiClicked;
+        ReprovisionWifiButton.Click += OnRemoveDeviceClicked;
 
         buttonsStack.Children.Add(TestLedButton);
         buttonsStack.Children.Add(ReprovisionWifiButton);

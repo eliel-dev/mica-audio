@@ -10,7 +10,6 @@ internal static class AudioPipelineCaptureProfile
         return new CaptureConfig
         {
             TargetSampleRate = 48_000,
-            TargetChannels = 1,
             ChannelCapacity = 8,
             BufferMilliseconds = 12,
         };

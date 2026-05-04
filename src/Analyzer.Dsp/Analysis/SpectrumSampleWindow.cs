@@ -58,11 +58,6 @@ internal sealed class SpectrumSampleWindow
         }
     }
 
-    public void Slide(int hopSize)
-    {
-        Advance(hopSize);
-    }
-
     public void Advance(int hopSize)
     {
         var shift = global::System.Math.Min(hopSize, sampleCount);

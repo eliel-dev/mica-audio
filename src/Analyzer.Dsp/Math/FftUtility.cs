@@ -16,19 +16,6 @@ internal static class FftUtility
         return window;
     }
 
-    public static void Forward(Complex[] buffer)
-    {
-        ComplexFftPlan.ForSize(buffer.Length).Forward(buffer);
-    }
-
-    public static float[] PowerSpectrum(Complex[] fftBuffer)
-    {
-        var half = fftBuffer.Length / 2;
-        var spectrum = new float[half + 1];
-        PowerSpectrum(fftBuffer, spectrum);
-        return spectrum;
-    }
-
     public static void PowerSpectrum(ReadOnlySpan<Complex> fftBuffer, Span<float> destination)
     {
         var expectedLength = (fftBuffer.Length / 2) + 1;

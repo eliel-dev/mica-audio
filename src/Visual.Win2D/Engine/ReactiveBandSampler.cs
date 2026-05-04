@@ -17,7 +17,7 @@ public static class ReactiveBandSampler
         if (effectiveCount <= 0)
         {
             previousBands = Array.Empty<float>();
-            return new ReactiveBandSnapshot(ReadOnlySpan<float>.Empty, 0f, 0f, 0f, 0f, 0);
+            return new ReactiveBandSnapshot(ReadOnlySpan<float>.Empty, 0f, 0f, 0f, 0f);
         }
 
         if (previousBands.Length != effectiveCount)
@@ -50,7 +50,7 @@ public static class ReactiveBandSampler
         var mid = AverageRange(previousBands, lowEnd, midEnd);
         var high = AverageRange(previousBands, midEnd, effectiveCount);
 
-        return new ReactiveBandSnapshot(previousBands, low, mid, high, globalLevel, effectiveCount);
+        return new ReactiveBandSnapshot(previousBands, low, mid, high, globalLevel);
     }
 
     private static int ResolveEffectiveCount(int sourceCount, int targetCount, RendererBarCountMode mode)

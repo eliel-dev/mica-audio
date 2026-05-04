@@ -32,8 +32,7 @@ public sealed class StructuredLoggingTests
             activity,
             (AppObservability.DeviceIdKey, "device-1"),
             (AppObservability.CommandIdKey, "cmd-1"),
-            (AppObservability.AppIdKey, "app-1"),
-            (AppObservability.PortNameKey, "COM7"));
+            (AppObservability.AppIdKey, "app-1"));
 
         LogStructuredTest(logger, null);
 
@@ -41,7 +40,6 @@ public sealed class StructuredLoggingTests
         Assert.Equal("device-1", AssertScalar(evt, AppObservability.DeviceIdKey));
         Assert.Equal("cmd-1", AssertScalar(evt, AppObservability.CommandIdKey));
         Assert.Equal("app-1", AssertScalar(evt, AppObservability.AppIdKey));
-        Assert.Equal("COM7", AssertScalar(evt, AppObservability.PortNameKey));
         Assert.False(string.IsNullOrWhiteSpace(AssertScalar(evt, AppObservability.TraceIdKey)));
         Assert.False(string.IsNullOrWhiteSpace(AssertScalar(evt, AppObservability.SpanIdKey)));
     }

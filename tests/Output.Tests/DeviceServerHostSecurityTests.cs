@@ -1,4 +1,3 @@
-using System.IO;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
@@ -1066,49 +1065,6 @@ public sealed class DeviceServerHostSecurityTests
 
         Assert.True(telemetryStamped, "Telemetria nao atualizou LastTelemetryUtc preservando LastAuthUtc no timeout esperado.");
         await CloseWebSocketQuietlyAsync(ws);
-    }
-
-    private static async Task<string> ReceiveWebSocketTextAsync(ClientWebSocket ws, TimeSpan timeout)
-    {
-        using var timeoutCts = new CancellationTokenSource(timeout);
-        var buffer = new byte[2048];
-        using var ms = new MemoryStream();
-        while (true)
-        {
-            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), timeoutCts.Token);
-            if (result.MessageType == WebSocketMessageType.Close)
-            {
-                throw new InvalidOperationException("Socket fechado antes de receber comando.");
-            }
-
-            if (result.Count > 0)
-            {
-                ms.Write(buffer, 0, result.Count);
-            }
-
-            if (result.EndOfMessage)
-            {
-                break;
-            }
-        }
-
-        return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
-    }
-
-    private static async Task SendWebSocketCommandProgressAsync(ClientWebSocket ws, string deviceId, string commandId, bool success)
-    {
-        var payload = JsonSerializer.Serialize(new
-        {
-            type = "command_progress",
-            deviceId,
-            commandId,
-            progressPercent = 100,
-            stage = "done",
-            message = success ? "ok" : "erro",
-            success,
-        });
-
-        await ws.SendAsync(Encoding.UTF8.GetBytes(payload), WebSocketMessageType.Text, true, CancellationToken.None);
     }
 
     private static async Task CloseWebSocketQuietlyAsync(ClientWebSocket ws)

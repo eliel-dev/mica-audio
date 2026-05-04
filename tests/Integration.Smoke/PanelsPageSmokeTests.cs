@@ -1,6 +1,4 @@
 using System.Collections.Generic;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using System.Reflection;
 using App.WinUI.Models.Apps;
 using App.WinUI.Models.Panels;

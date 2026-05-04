@@ -14,14 +14,7 @@ public sealed class AuroraRibbonRenderer : IRenderer, IRendererCapabilitiesProvi
         UsesAnalyzerPipeline = true,
         Controls = new RendererControlSupport
         {
-            SupportsSensitivity = true,
-            SupportsLinearBoost = true,
             SupportsBarCount = true,
-            SupportsFftSize = true,
-            SupportsFftSmoothing = true,
-            SupportsWeightingFilter = true,
-            SupportsFrequencyScale = true,
-            SupportsFrequencyRange = true,
         },
         BarCountMode = RendererBarCountMode.Resampled,
         IntegrationMode = RendererIntegrationMode.Explicit,

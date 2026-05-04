@@ -205,7 +205,7 @@ public sealed partial class DeviceServerHost
         };
     }
 
-    private FirmwareUpdateState ResolveFirmwareUpdateState(DeviceSnapshot snapshot)
+    private static FirmwareUpdateState ResolveFirmwareUpdateState(DeviceSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         if (!TryResolveOfficialFirmware(snapshot, out var package, out _)

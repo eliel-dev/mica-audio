@@ -617,17 +617,17 @@
       postHostMessage({ type: "update-firmware", deviceId: selectedDeviceId });
     };
 
-    const reprovisionHandler = () => {
+    const removeDeviceHandler = () => {
       if (!selectedDeviceId) {
         return;
       }
 
-      postHostMessage({ type: "reprovision-wifi", deviceId: selectedDeviceId });
+      postHostMessage({ type: "remove-device", deviceId: selectedDeviceId });
     };
 
     $("btn-fw").addEventListener("click", updateFirmwareHandler);
     $("btn-led").addEventListener("click", ledHandler);
-    $("btn-rm").addEventListener("click", reprovisionHandler);
+    $("btn-rm").addEventListener("click", removeDeviceHandler);
 
     $("slider-bright").addEventListener("input", (event) => {
       setBrightnessUi(Number(event.target.value));

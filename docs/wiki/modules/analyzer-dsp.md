@@ -70,7 +70,6 @@ Transformar audio PCM em espectro util para visualizacao (`BandsDisplay`) e outp
 - [SpectrumBandLayout](../../../src/Analyzer.Dsp/Analysis/SpectrumBandLayout.cs#L1) - helper interno de layout/agregacao
 - [BandAggregationRange](../../../src/Analyzer.Dsp/Analysis/BandAggregationRange.cs#L1) - plano precomputado de pesos por banda
 - [ComplexFftPlan](../../../src/Analyzer.Dsp/Math/ComplexFftPlan.cs#L1) - plano cacheado de FFT complexa
-- [RealFftFloatPlan](../../../src/Analyzer.Dsp/Math/RealFftFloatPlan.cs#L1) - backend em float para paridade e benchmark
 - [LogBandMapper.CreateMode0Ranges](../../../src/Analyzer.Dsp/Analysis/LogBandMapper.cs#L7) - assinatura: `Mode0BandLayout CreateMode0Ranges(...)`
 - [LogBandMapper.CreateRanges](../../../src/Analyzer.Dsp/Analysis/LogBandMapper.cs#L83) - assinatura: `BandRange[] CreateRanges(...)`
 - [LogBandMapper.AggregateBandsPeak](../../../src/Analyzer.Dsp/Analysis/LogBandMapper.cs#L215) - assinatura: `float[] AggregateBandsPeak(...)`

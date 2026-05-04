@@ -334,7 +334,6 @@ internal static class DefaultPresets
             RendererParameters = parameters,
             Palette = new GradientPalette
             {
-                Name = name,
                 Stops = paletteStops,
             },
         };

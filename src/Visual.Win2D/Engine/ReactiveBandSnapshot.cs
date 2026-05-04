@@ -7,15 +7,13 @@ public readonly ref struct ReactiveBandSnapshot
         float low,
         float mid,
         float high,
-        float globalLevel,
-        int effectiveElementCount)
+        float globalLevel)
     {
         Bands = bands;
         Low = low;
         Mid = mid;
         High = high;
         GlobalLevel = globalLevel;
-        EffectiveElementCount = effectiveElementCount;
     }
 
     public ReadOnlySpan<float> Bands { get; }
@@ -27,6 +25,4 @@ public readonly ref struct ReactiveBandSnapshot
     public float High { get; }
 
     public float GlobalLevel { get; }
-
-    public int EffectiveElementCount { get; }
 }

@@ -42,8 +42,6 @@ public sealed class VisualizerEngine
 
     public IReadOnlyCollection<IRenderer> Renderers => renderers.Values.ToArray();
 
-    public IReadOnlyList<string> RendererKeys => renderers.Keys.OrderBy(x => x).ToArray();
-
     public void Render(CanvasDrawingSession drawingSession, float width, float height, SpectrumFrame frame, PresetDefinition preset, float deltaSeconds)
     {
         // DOCS: docs/wiki/modules/visual-win2d.md#fluxo-de-execucao
@@ -81,18 +79,6 @@ public sealed class VisualizerEngine
         }
 
         return RendererCapabilities.CreateLegacyAssumed();
-    }
-
-    public bool TrySetRenderer(string rendererId, out string normalizedRendererId)
-    {
-        if (renderers.ContainsKey(rendererId))
-        {
-            normalizedRendererId = rendererId;
-            return true;
-        }
-
-        normalizedRendererId = Engine.RendererIds.Bars;
-        return false;
     }
 
     private IRenderer ResolveRenderer(string rendererId)

@@ -10,14 +10,7 @@ public sealed class AudioMotionCloneRenderer : IRenderer, IRendererCapabilitiesP
         UsesAnalyzerPipeline = true,
         Controls = new RendererControlSupport
         {
-            SupportsSensitivity = true,
-            SupportsLinearBoost = true,
             SupportsBarCount = false,
-            SupportsFftSize = true,
-            SupportsFftSmoothing = true,
-            SupportsWeightingFilter = true,
-            SupportsFrequencyScale = true,
-            SupportsFrequencyRange = true,
         },
         BarCountMode = RendererBarCountMode.Native,
         IntegrationMode = RendererIntegrationMode.Explicit,

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Reflection;
 using App.WinUI.Views;
 using BenchmarkDotNet.Attributes;

@@ -18,13 +18,6 @@ public sealed class EnvelopeSmoother
         smoothedState = new float[size];
     }
 
-    public float[] Process(float[] input)
-    {
-        var output = new float[input.Length];
-        Process(input, output);
-        return output;
-    }
-
     public void Process(ReadOnlySpan<float> input, Span<float> destination)
     {
         if (destination.Length != input.Length)
