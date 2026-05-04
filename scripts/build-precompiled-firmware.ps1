@@ -3,6 +3,7 @@
 # DOCS: docs/wiki/reference/code-index.md
 # DOCS: docs/handoffs/2026-04-14-ota-firmware-update-flow-e-hub75-status.md
 # DOCS: docs/handoffs/2026-04-14-versioning-semver-e-ota-stages.md
+# DOCS: docs/handoffs/2026-05-04-esp32s3-ap-portal-rollback.md
 param(
     [switch]$SkipToolInstall,
     [string]$OutputRoot
@@ -13,6 +14,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $firmwareRoot = Join-Path $repoRoot 'firmware/esp32s3-devkitc1'
+$firmwareBuildRoot = Join-Path $firmwareRoot '.pio/build'
 $resolvedOutputRoot = if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     Join-Path $repoRoot 'src/App.WinUI/AppData/Firmware'
 }
@@ -20,7 +22,11 @@ else {
     [System.IO.Path]::GetFullPath($OutputRoot)
 }
 $autoVersionHeaderPath = Join-Path $firmwareRoot 'src/firmware_version.auto.h'
-$target = [pscustomobject]@{ Env = 'esp32s3_devkitc1_dma_exp'; OutputFile = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin'; OtaFile = 'esp32s3-devkitc1-128x64-dma_exp_ota.bin' }
+$target = [pscustomobject]@{
+    Env              = 'esp32s3_devkitc1_dma_exp'
+    OutputFile       = 'esp32s3-devkitc1-128x64-dma_exp_merged.bin'
+    OtaFile          = 'esp32s3-devkitc1-128x64-dma_exp_ota.bin'
+}
 $manifestPath = Join-Path $resolvedOutputRoot 'esp32s3-devkitc1-128x64-dma_exp_merged.manifest.json'
 $platformIoCommand = @()
 
@@ -125,32 +131,61 @@ function Invoke-PioBuild {
     Invoke-Pio -Args @('run', '-e', $Env, '--project-dir', $firmwareRoot) -ErrorMessage "Falha no build do firmware ($Env)"
 }
 
+function Resolve-BootApp0Path {
+    $candidates = @()
+
+    if (-not [string]::IsNullOrWhiteSpace($env:PLATFORMIO_CORE_DIR)) {
+        $candidates += Join-Path $env:PLATFORMIO_CORE_DIR 'packages\framework-arduinoespressif32\tools\partitions\boot_app0.bin'
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        $candidates += Join-Path $env:USERPROFILE '.platformio\packages\framework-arduinoespressif32\tools\partitions\boot_app0.bin'
+    }
+
+    $candidates += Join-Path $firmwareRoot '.pio\packages\framework-arduinoespressif32\tools\partitions\boot_app0.bin'
+
+    foreach ($candidate in $candidates | Select-Object -Unique) {
+        if (Test-Path $candidate) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    throw 'Nao encontrou boot_app0.bin do framework Arduino-ESP32. Execute o build PlatformIO uma vez ou verifique a instalacao do pacote framework-arduinoespressif32.'
+}
+
 function Merge-Firmware {
     param(
         [Parameter(Mandatory)][string]$Env,
         [Parameter(Mandatory)][string]$DestinationPath
     )
 
-    $buildPath = Join-Path $firmwareRoot ".pio/build/$Env"
+    $buildPath = Join-Path $firmwareBuildRoot $Env
     $bootloader = Join-Path $buildPath 'bootloader.bin'
     $partitions = Join-Path $buildPath 'partitions.bin'
+    $bootApp0 = Resolve-BootApp0Path
     $firmware = Join-Path $buildPath 'firmware.bin'
 
-    foreach ($file in @($bootloader, $partitions, $firmware)) {
+    foreach ($file in @($bootloader, $partitions, $bootApp0, $firmware)) {
         if (-not (Test-Path $file)) {
             throw "Build concluido, mas nao encontrou binario esperado: $file"
         }
     }
 
-    Write-Host "[build-precompiled-firmware] Merge iniciado: $Env -> $DestinationPath"
-    Invoke-Pio -Args @(
+    $mergeArgs = @(
         'pkg', 'exec', '-p', 'tool-esptoolpy', '--', 'esptool.py',
         '--chip', 'esp32s3', 'merge_bin',
         '--flash_mode', 'keep', '--flash_freq', 'keep', '--flash_size', 'keep',
         '0x0', $bootloader,
         '0x8000', $partitions,
-        '0x10000', $firmware,
-        '--output', $DestinationPath) -ErrorMessage "Falha no merge do firmware ($Env)"
+        '0xe000', $bootApp0,
+        '0x10000', $firmware
+    )
+
+    $mergeArgs += @('--output', $DestinationPath)
+
+    Write-Host "[build-precompiled-firmware] Merge iniciado: $Env -> $DestinationPath"
+
+    Invoke-Pio -Args $mergeArgs -ErrorMessage "Falha no merge do firmware ($Env)"
 
     if (-not (Test-Path $DestinationPath)) {
         throw "Falha ao gerar merged bin: $DestinationPath"

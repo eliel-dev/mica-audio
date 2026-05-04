@@ -89,9 +89,8 @@
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [Firmware session runtime](../../../firmware/esp32s3-devkitc1/src/mica_session.cpp#L1)
 - [Firmware panels](../../../firmware/esp32s3-devkitc1/src/mica_panels.cpp#L1)
-- [Firmware FS config](../../../firmware/esp32s3-devkitc1/src/mica_fs_config.cpp#L1)
-- [Firmware data/config.json](../../../firmware/esp32s3-devkitc1/data/config.json#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
+- [Firmware build script](../../../scripts/build-precompiled-firmware.ps1#L1)
 
 ## Observacoes Ativas
 

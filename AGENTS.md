@@ -24,6 +24,8 @@ Padronizar execucao de tarefas para reduzir drift e erro em um fluxo solo com IA
 6. Fontes primarias obrigatorias para `ESP32-S3`:
    - `https://docs.espressif.com/projects/esp-idf/en/v5.5.4/esp32s3/index.html`
    - `https://github.com/espressif/esp-idf/blob/v5.5.4/docs/en/index.rst`
+   - `https://docs.espressif.com/projects/esp-idf/en/v5.5.4/esp32s3/api-guides/`
+   - `https://docs.espressif.com/projects/arduino-esp32/en/latest/getting_started.html`
 
 ## Acoes proibidas sem aprovacao explicita
 

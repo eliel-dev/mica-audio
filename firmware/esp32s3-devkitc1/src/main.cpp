@@ -10,7 +10,6 @@
 #include "mica_ota.h"
 #include "mica_panels.h"
 #include "mica_prefs.h"
-#include "mica_fs_config.h"
 #include "mica_provisioning.h"
 #include "mica_session.h"
 
@@ -34,8 +33,8 @@
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-18-provisioned-boot-wifi-before-hub75.md
-// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-05---configuracao-por-arquivo-json-no-fatfs
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-05-04-esp32s3-ap-portal-rollback.md
 
 static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr) {
   gServerHost = prefsGetStringOrDefault("host", "", summary);
@@ -197,18 +196,9 @@ void setup() {
   PrefReadSummary provisioningPrefSummary;
   reloadProvisioningStateFromPrefs(&provisioningPrefSummary);
 
-  const FsConfigResult fsConfig = tryLoadFsConfig();
-  if (fsConfig.loaded) {
-    Serial.println("[boot] config.json carregado do FATFS.");
-  }
-
   bool bootWifiConnected = false;
   bool provisioningIncomplete = isProvisioningIncomplete();
-  bool savedWifiConfigured = prefsGetBoolOrDefault("wifiConfigured", false);
-  if (fsConfig.hasWifi) {
-    savedWifiConfigured = true;
-  }
-  if (provisioningIncomplete && !savedWifiConfigured) {
+  if (provisioningIncomplete) {
     logPrefsMissingSummary("boot_incomplete", provisioningPrefSummary);
     const char* bootReason = resolveProvisioningIncompleteReason();
     Serial.printf(
@@ -233,18 +223,13 @@ void setup() {
 
   loadLightRuntimeStateFromPrefs();
 
-  if ((!provisioningIncomplete || savedWifiConfigured) && !bootWifiConnected) {
+  if (!provisioningIncomplete && !bootWifiConnected) {
     logBootMemorySnapshot("before_saved_wifi_begin");
     WiFi.setAutoReconnect(true);
     WiFi.mode(WIFI_STA);
-    if (fsConfig.hasWifi) {
-      Serial.printf("[wifi_boot] tentando conectar com SSID do config.json: '%s'\n", fsConfig.wifiSsid.c_str());
-      WiFi.begin(fsConfig.wifiSsid.c_str(), fsConfig.wifiPassword.c_str());
-    } else {
-      String savedSsid = prefsGetStringOrDefault("wifiSsid", "");
-      Serial.printf("[wifi_boot] tentando conectar com SSID salvo: '%s'\n", savedSsid.c_str());
-      WiFi.begin();
-    }
+    String savedSsid = prefsGetStringOrDefault("wifiSsid", "");
+    Serial.printf("[wifi_boot] tentando conectar com SSID salvo: '%s'\n", savedSsid.c_str());
+    WiFi.begin();
     gLastWifiReconnectAttemptMs = millis();
 
     unsigned long bootWifiWaitStart = millis();

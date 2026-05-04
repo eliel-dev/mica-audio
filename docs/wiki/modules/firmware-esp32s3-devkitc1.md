@@ -192,23 +192,16 @@
   - so chama `esp_task_wdt_init(...)` quando o TWDT ainda nao existe;
   - isso remove o log repetido `TWDT already initialized` sem desabilitar o watchdog.
 
-## Atualizacao 2026-05 - Configuracao por arquivo JSON no FATFS
+## Atualizacao 2026-05 - Rollback para AP manual
 
-- O firmware passa a suportar leitura de `config.json` da particao `ffat` em todo boot.
-- O arquivo fica em `firmware/esp32s3-devkitc1/data/config.json` e e enviado via `pio run --target uploadfs`.
-- Campos suportados:
-  - `wifi_ssid` / `wifi_password` — credenciais de rede; quando presentes, o firmware conecta diretamente sem abrir o portal AP.
-  - `server_host` / `server_port` — endereco do servidor MicaAudio; quando presentes, substituem valores salvos no NVS.
-  - `device_name` — nome opcional do dispositivo, persistido no NVS.
-- O arquivo e relido a cada boot; nao e renomeado nem deletado, permitindo reconfiguracao rapida por upload de filesystem.
-- Se o arquivo nao existir ou for invalido, o firmware cai no fluxo anterior (portal AP / credenciais salvas no NVS).
-- Implementacao:
-  - `mica_fs_config.h/.cpp` monta `FFat`, parseia JSON com `ArduinoJson` e aplica `Preferences`.
-  - `main.cpp` chama `tryLoadFsConfig()` imediatamente apos `reloadProvisioningStateFromPrefs()`.
-  - `platformio.ini` habilita `board_build.filesystem = fatfs` e `data_dir = data`.
-- DOCS: [mica_fs_config.h](../../../firmware/esp32s3-devkitc1/src/mica_fs_config.h#L1)
-- DOCS: [mica_fs_config.cpp](../../../firmware/esp32s3-devkitc1/src/mica_fs_config.cpp#L1)
-- DOCS: [data/config.json](../../../firmware/esp32s3-devkitc1/data/config.json#L1)
+- O caminho experimental de `config.json` no FATFS foi removido do boot oficial.
+- O firmware volta a abrir o AP `MicaAudio-Setup-xxxx` sempre que o provisioning estiver incompleto.
+- O portal AP permanece o caminho oficial para preencher Wi-Fi, nome do dispositivo e campo `Servidor`.
+- Depois do portal fechar com Wi-Fi conectado, o runtime segue com discovery LAN, auto-registro/reuso de device e conexoes MQTT/WS.
+- O pacote oficial volta a ser apenas firmware generico; nao ha factory BIN local com credenciais Wi-Fi embutidas.
+- DOCS: [main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
+- DOCS: [mica_provisioning.cpp](../../../firmware/esp32s3-devkitc1/src/mica_provisioning.cpp#L1)
+- DOCS: [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L1)
 
 ## Atualizacao 2026-03 - HUB75 128x64 single-canvas mapping
 
@@ -308,7 +301,7 @@
     - `clkphase`
     - `double_buffer`
     - `latch_blanking`
-- O baseline shipping passou a deixar `min_refresh_rate = 60` explicito em vez de depender apenas do default implícito da biblioteca.
+- O baseline shipping passou a deixar `min_refresh_rate = 60` explicito em vez de depender apenas do default implicito da biblioteca.
 - Para isolar a origem fora do runtime do app, o repositorio agora inclui dois envs-oracle da lib HUB75:
   - `esp32s3_devkitc1_dma_oracle_shiftreg`
   - `esp32s3_devkitc1_dma_oracle_fm6124`
