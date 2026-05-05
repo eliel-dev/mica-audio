@@ -27,6 +27,7 @@ RUN dotnet publish src/MicaAudio.Server/MicaAudio.Server.csproj -c Release -o /a
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
 EXPOSE 8080 5273 5274/udp 5275/udp
 ENV MICA_SERVER__LISTENHOST=0.0.0.0
 COPY --from=build /app/publish .
