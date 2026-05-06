@@ -12,6 +12,7 @@
 #include "mica_prefs.h"
 #include "mica_provisioning.h"
 #include "mica_session.h"
+#include "mica_config.h"
 
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-128x64-single-canvas-mapping
@@ -35,10 +36,11 @@
 // DOCS: docs/handoffs/2026-04-18-provisioned-boot-wifi-before-hub75.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 // DOCS: docs/handoffs/2026-05-04-esp32s3-ap-portal-rollback.md
+// DOCS: docs/handoffs/2026-05-05-station-mode-hardcoded-wifi.md
 
 static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr) {
-  gServerHost = prefsGetStringOrDefault("host", "", summary);
-  gServerPort = prefsGetPortOrDefault("port", 5272, summary);
+  gServerHost = prefsGetStringOrDefault("host", MICA_SERVER_HOST, summary);
+  gServerPort = prefsGetPortOrDefault("port", MICA_SERVER_PORT, summary);
   gMqttHost = prefsGetStringOrDefault("mqttHost", "", summary);
   gMqttPort = prefsGetPortOrDefault("mqttPort", 5273, summary);
   gMqttRootTopic = prefsGetStringOrDefault("mqttRootTopic", String(kDefaultMqttRootTopic), summary);
@@ -196,87 +198,50 @@ void setup() {
   PrefReadSummary provisioningPrefSummary;
   reloadProvisioningStateFromPrefs(&provisioningPrefSummary);
 
-  bool bootWifiConnected = false;
-  bool provisioningIncomplete = isProvisioningIncomplete();
-  if (provisioningIncomplete) {
-    logPrefsMissingSummary("boot_incomplete", provisioningPrefSummary);
-    const char* bootReason = resolveProvisioningIncompleteReason();
-    Serial.printf(
-        "[boot] configuracao incompleta; abrindo provisioning AP imediatamente (%s).\n",
-        bootReason);
-    if (gLoopTaskWatchdogSubscribed) {
-      unsubscribeCurrentTaskFromWatchdog();
-      gLoopTaskWatchdogSubscribed = false;
-    }
-
-    (void)startProvisioningPortal(bootReason);
-
-    if (isTaskWatchdogReady()) {
-      subscribeCurrentTaskToWatchdog();
-      gLoopTaskWatchdogSubscribed = true;
-    }
-
-    reloadProvisioningStateFromPrefs();
-    provisioningIncomplete = isProvisioningIncomplete();
-    bootWifiConnected = WiFi.status() == WL_CONNECTED;
-  }
-
   loadLightRuntimeStateFromPrefs();
 
-  if (!provisioningIncomplete && !bootWifiConnected) {
-    logBootMemorySnapshot("before_saved_wifi_begin");
-    WiFi.setAutoReconnect(true);
-    WiFi.mode(WIFI_STA);
-    String savedSsid = prefsGetStringOrDefault("wifiSsid", "");
-    Serial.printf("[wifi_boot] tentando conectar com SSID salvo: '%s'\n", savedSsid.c_str());
-    WiFi.begin();
-    gLastWifiReconnectAttemptMs = millis();
+  bool bootWifiConnected = false;
+  logBootMemorySnapshot("before_wifi_connect");
+  WiFi.setAutoReconnect(true);
+  WiFi.mode(WIFI_STA);
+  Serial.printf("[wifi_boot] conectando em SSID='%s'\n", MICA_WIFI_SSID);
+  WiFi.begin(MICA_WIFI_SSID, MICA_WIFI_PASSWORD);
+  gLastWifiReconnectAttemptMs = millis();
 
-    unsigned long bootWifiWaitStart = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - bootWifiWaitStart) < kWifiBootConnectGraceMs) {
-      processSerialProvisioning();
-      resetTaskWatchdog();
-      delay(120);
-    }
-
-    bootWifiConnected = WiFi.status() == WL_CONNECTED;
-    if (!bootWifiConnected) {
-      const int status = WiFi.status();
-      Serial.printf(
-          "[wifi_boot] falha ao conectar no grace period. status=%d (%s)\n",
-          status,
-          resolveWifiStatusText(status));
-    } else {
-      Serial.printf(
-          "[wifi_boot] conectado. ip=%s mac=%s rssi=%d\n",
-          WiFi.localIP().toString().c_str(),
-          WiFi.macAddress().c_str(),
-          WiFi.RSSI());
-    }
-    logBootMemorySnapshot("after_saved_wifi_grace");
+  unsigned long bootWifiWaitStart = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - bootWifiWaitStart) < kWifiBootConnectGraceMs) {
+    processSerialProvisioning();
+    resetTaskWatchdog();
+    delay(120);
   }
+
+  bootWifiConnected = WiFi.status() == WL_CONNECTED;
+  if (!bootWifiConnected) {
+    const int status = WiFi.status();
+    Serial.printf(
+        "[wifi_boot] falha ao conectar no grace period. status=%d (%s)\n",
+        status,
+        resolveWifiStatusText(status));
+  } else {
+    Serial.printf(
+        "[wifi_boot] conectado. ip=%s mac=%s rssi=%d\n",
+        WiFi.localIP().toString().c_str(),
+        WiFi.macAddress().c_str(),
+        WiFi.RSSI());
+  }
+  logBootMemorySnapshot("after_wifi_connect");
 
   initializeHub75RuntimeFromPrefs();
 
-  if (provisioningIncomplete) {
-    if (bootWifiConnected) {
-      Serial.println("[wifi_connected] Wi-Fi conectado, mas provisioning ainda incompleto apos o portal.");
-      setConnectivityState(kWifiStateConnected, "boot_provisioning_incomplete", true);
-      gWifiDisconnectedSinceMs = 0;
-    } else {
-      Serial.println("[wifi_connecting] provisioning ainda incompleto apos o portal AP.");
-      setConnectivityState(kWifiStateDisconnected, "boot_provisioning_incomplete", true);
-      gWifiDisconnectedSinceMs = millis();
-    }
-  } else if (bootWifiConnected) {
+  if (bootWifiConnected) {
     Serial.println("[wifi_connected] Wi-Fi conectado no boot.");
     setConnectivityState(kWifiStateConnected, "wifi_connected", true);
     gLastWifiReconnectAttemptMs = 0;
     connectMqtt();
     connectWebSocket();
   } else {
-    Serial.println("[wifi_waiting_saved_config] sem Wi-Fi no boot; mantendo STA com credenciais salvas.");
-    setConnectivityState(kWifiStateDisconnected, "wifi_waiting_saved_config", true);
+    Serial.println("[wifi_waiting_retry] sem Wi-Fi no boot; aguardando reconexao.");
+    setConnectivityState(kWifiStateDisconnected, "wifi_waiting_retry", true);
     gWifiDisconnectedSinceMs = millis();
     gLastWifiReconnectAttemptMs = millis();
   }

@@ -5,14 +5,14 @@
 // DOCS: docs/handoffs/2026-04-16-ap-first-wifi-mem-and-copy-logs.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-05-05-station-mode-hardcoded-wifi.md
 
 #include "mica_provisioning.h"
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
-#include <WiFiManager.h>
-
+#include "mica_config.h"
 #include "mica_commands.h"
 #include "mica_globals.h"
 #include "mica_network.h"
@@ -431,63 +431,49 @@ bool startProvisioningPortal(const char* reason) {
   gSerialProvisioningWindowStartedMs = 0;
   (void)publishDeviceLog(
       "warning",
-      "portal",
-      reason == nullptr ? "portal_open" : reason,
-      String("Abrindo portal de provisioning. motivo=") + (reason == nullptr ? "-" : reason),
+      "provisioning",
+      reason == nullptr ? "provisioning_start" : reason,
+      String("Iniciando provisioning. motivo=") + (reason == nullptr ? "-" : reason),
       false);
   cancelPanelsBatchPlayback();
   disconnectMqtt(true);
   gWs.disconnect();
   gLastTelemetryMs = 0;
   setProvisioningPortalActive(true, reason);
-  Serial.printf("[portal_open] motivo=%s\n", reason == nullptr ? "-" : reason);
+  Serial.printf("[provisioning_start] motivo=%s\n", reason == nullptr ? "-" : reason);
 
-  WiFiManager wm;
-  wm.setConfigPortalBlocking(true);
-  wm.setConfigPortalTimeout(0);
-  wm.setConnectTimeout(kWifiConnectAttemptTimeoutMs / 1000UL);
-  wm.setSaveConnectTimeout(kWifiConnectAttemptTimeoutMs / 1000UL);
-
-  String savedHost = prefsGetStringOrDefault("host", "");
-  uint16_t savedPort = prefsGetPortOrDefault("port", 5272);
-  String savedServerBaseUrl = buildServerBaseUrl(savedHost, savedPort);
-  String savedDeviceName = prefsGetStringOrDefault("name", String(kBoardDisplayName));
-
-  WiFiManagerParameter pServer("server", "Servidor", savedServerBaseUrl.c_str(), 96);
-  WiFiManagerParameter pName("name", "Nome dispositivo", savedDeviceName.c_str(), 32);
-
-  wm.addParameter(&pServer);
-  wm.addParameter(&pName);
-
-  String apName = "MicaAudio-Setup-" + String((uint32_t)ESP.getEfuseMac(), HEX).substring(6);
-  Serial.printf("[provisioning] AP=%s reason=%s\n", apName.c_str(), reason == nullptr ? "-" : reason);
-  // Open the AP portal immediately when provisioning is explicitly requested.
-  if (!wm.startConfigPortal(apName.c_str())) {
-    setProvisioningPortalActive(false, "portal_error");
-    setConnectivityState(kWifiStatePortal, "portal_error", true);
-    Serial.println("[provisioning] startConfigPortal retornou false; portal nao foi aberto ou foi encerrado sem conexao.");
+  if (!connectWifiWithTimeout(MICA_WIFI_SSID, MICA_WIFI_PASSWORD, kWifiConnectAttemptTimeoutMs)) {
+    setProvisioningPortalActive(false, "wifi_connect_failed");
+    setConnectivityState(kWifiStateDisconnected, "wifi_connect_failed", true);
+    Serial.println("[provisioning] falha ao conectar Wi-Fi com credenciais hardcoded.");
     return false;
   }
 
   setProvisioningPortalActive(false, "wifi_connected");
-  Serial.println("[portal_close] provisioning encerrado apos conexao Wi-Fi.");
+  Serial.println("[provisioning] Wi-Fi conectado com credenciais hardcoded.");
   gWifiDisconnectedSinceMs = 0;
   gLastWifiReconnectAttemptMs = 0;
   setConnectivityState(kWifiStateConnected, "wifi_connected", true);
-  gPrefs.putBool("wifiConfigured", true);
 
-  gPrefs.putString("name", pName.getValue());
+  String savedHost = prefsGetStringOrDefault("host", "");
+  uint16_t savedPort = prefsGetPortOrDefault("port", 5272);
+  String savedDeviceName = prefsGetStringOrDefault("name", String(kBoardDisplayName));
+
+  String serverBaseUrl = buildServerBaseUrl(savedHost, savedPort);
+  if (serverBaseUrl.length() == 0) {
+    serverBaseUrl = buildServerBaseUrl(MICA_SERVER_HOST, MICA_SERVER_PORT);
+  }
 
   String serverConfigErrorCode;
   String serverConfigErrorMessage;
-  if (!tryApplyProvisioningPortalServer(pServer.getValue(), savedHost, savedPort, serverConfigErrorCode, serverConfigErrorMessage)) {
-    Serial.printf("[provisioning] falha ao aplicar Servidor do portal: %s (%s)\n",
+  if (!tryApplyProvisioningPortalServer(serverBaseUrl, savedHost, savedPort, serverConfigErrorCode, serverConfigErrorMessage)) {
+    Serial.printf("[provisioning] falha ao aplicar Servidor: %s (%s)\n",
         serverConfigErrorMessage.c_str(),
         serverConfigErrorCode.c_str());
     return false;
   }
 
-  Serial.println("[provisioning] Wi-Fi configurado; aguardando auto-registro via discovery LAN.");
+  Serial.println("[provisioning] Configurado; aguardando auto-registro via discovery LAN.");
   return true;
 }
 
