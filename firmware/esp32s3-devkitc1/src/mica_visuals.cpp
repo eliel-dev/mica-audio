@@ -165,7 +165,7 @@ uint8_t sampleBinsAverage(const uint8_t* bins, uint16_t startInclusive, uint16_t
 
 void resetBinsVisualState() {
   memset(gBinsPeakHeights, 0, sizeof(gBinsPeakHeights));
-  memset(gBinsHistory, 0, sizeof(gBinsHistory));
+  memset(gBinsHistory, 0, kBinsHistoryTotalBytes);
   gBinsHistoryHead = 0;
   memset(gLaunchpadPadLevels, 0, sizeof(gLaunchpadPadLevels));
   memset(gLaunchpadTopLevels, 0, sizeof(gLaunchpadTopLevels));
@@ -583,7 +583,7 @@ bool drawFrame128x64() {
   const uint16_t* frame = gFrameRgb565Buffers[frameIndex];
   // Bulk RGB565 path writes the full frame directly into the HUB75 BCM back buffer.
   gMatrix->writeFrameRGB565(frame);
-  memcpy(gMatrixShadowFrames[bufferIndex], frame, sizeof(gFrameRgb565Buffers[0]));
+  memcpy(gMatrixShadowFrames[bufferIndex], frame, kFrameRgb565BufferRowBytes);
   memset(gMatrixShadowBarHeights[bufferIndex], 0, sizeof(gMatrixShadowBarHeights[bufferIndex]));
   gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Frame;
   return commitMatrixFrame();

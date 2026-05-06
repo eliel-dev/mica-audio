@@ -1,7 +1,9 @@
 #include "mica_globals.h"
+#include <esp_heap_caps.h>
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
+// DOCS: docs/handoffs/2026-05-06-firmware-performance-optimization-phases-1-4.md
 
 // ---------------------------------------------------------------------------
 // Library object globals
@@ -42,7 +44,7 @@ uint8_t gLevel = 0;
 uint8_t gBinsFlags = 0;
 uint8_t gStreamBrightness = 255;
 uint8_t gBrightnessCap = kBrightnessDefaultCap;
-uint16_t gFrameRgb565Buffers[2][kMatrixPixelCount] = {};
+uint16_t (*gFrameRgb565Buffers)[kMatrixPixelCount] = nullptr;
 uint8_t gFrameRgb565ActiveIndex = 0;
 
 // ---------------------------------------------------------------------------
@@ -51,6 +53,8 @@ uint8_t gFrameRgb565ActiveIndex = 0;
 unsigned long gLastFrameMs = 0;
 unsigned long gWsDisconnectedSinceMs = 0;
 unsigned long gMqttDisconnectedSinceMs = 0;
+bool gMqttPostConnectPending = false;
+bool gWsAutoReconnectInitialized = false;
 unsigned long gWifiDisconnectedSinceMs = 0;
 unsigned long gLastWifiReconnectAttemptMs = 0;
 unsigned long gLastTelemetryMs = 0;
@@ -188,7 +192,7 @@ uint8_t gRgb6To8Lut[64] = {0};
 // Bins visual state (peak heights, history, launchpad)
 // ---------------------------------------------------------------------------
 uint8_t gBinsPeakHeights[kMatrixWidth] = {0};
-uint8_t gBinsHistory[kMatrixHeight][kMatrixWidth] = {};
+uint8_t (*gBinsHistory)[kMatrixWidth] = nullptr;
 uint8_t gBinsHistoryHead = 0;
 uint8_t gLaunchpadPadLevels[64] = {0};
 uint8_t gLaunchpadTopLevels[8] = {0};
@@ -198,7 +202,7 @@ uint8_t gLastBinsStyleId = 0xFFu;
 // ---------------------------------------------------------------------------
 // Shadow buffer
 // ---------------------------------------------------------------------------
-uint16_t gMatrixShadowFrames[kMatrixShadowBufferCount][kMatrixPixelCount] = {};
+uint16_t (*gMatrixShadowFrames)[kMatrixPixelCount] = nullptr;
 uint8_t gMatrixShadowBarHeights[kMatrixShadowBufferCount][kMatrixWidth] = {};
 MatrixBufferMode gMatrixBufferModes[kMatrixShadowBufferCount] = {
     MatrixBufferMode::Unknown,
@@ -238,3 +242,47 @@ unsigned long gActiveSlowCommandStartedMs = 0;
 #if defined(MICA_PROFILE_DMA_EXP)
 MatrixPanel_I2S_DMA* gMatrix = nullptr;
 #endif
+
+// ---------------------------------------------------------------------------
+// PSRAM buffer allocation
+// ---------------------------------------------------------------------------
+bool initializePsramBuffers() {
+  const size_t frameBytes = 2 * kMatrixPixelCount * sizeof(uint16_t);
+  const size_t shadowBytes = kMatrixShadowBufferCount * kMatrixPixelCount * sizeof(uint16_t);
+  const size_t binsHistoryBytes = static_cast<size_t>(kMatrixHeight) * static_cast<size_t>(kMatrixWidth);
+
+  gFrameRgb565Buffers = static_cast<uint16_t (*)[kMatrixPixelCount]>(
+      heap_caps_malloc(frameBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (gFrameRgb565Buffers == nullptr) {
+    gFrameRgb565Buffers = static_cast<uint16_t (*)[kMatrixPixelCount]>(
+        heap_caps_malloc(frameBytes, MALLOC_CAP_8BIT));
+  }
+  if (gFrameRgb565Buffers == nullptr) {
+    return false;
+  }
+  memset(gFrameRgb565Buffers, 0, frameBytes);
+
+  gMatrixShadowFrames = static_cast<uint16_t (*)[kMatrixPixelCount]>(
+      heap_caps_malloc(shadowBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (gMatrixShadowFrames == nullptr) {
+    gMatrixShadowFrames = static_cast<uint16_t (*)[kMatrixPixelCount]>(
+        heap_caps_malloc(shadowBytes, MALLOC_CAP_8BIT));
+  }
+  if (gMatrixShadowFrames == nullptr) {
+    return false;
+  }
+  memset(gMatrixShadowFrames, 0, shadowBytes);
+
+  gBinsHistory = static_cast<uint8_t (*)[kMatrixWidth]>(
+      heap_caps_malloc(binsHistoryBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (gBinsHistory == nullptr) {
+    gBinsHistory = static_cast<uint8_t (*)[kMatrixWidth]>(
+        heap_caps_malloc(binsHistoryBytes, MALLOC_CAP_8BIT));
+  }
+  if (gBinsHistory == nullptr) {
+    return false;
+  }
+  memset(gBinsHistory, 0, binsHistoryBytes);
+
+  return true;
+}

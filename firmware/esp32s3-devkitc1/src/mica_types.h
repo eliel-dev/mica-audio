@@ -64,7 +64,7 @@ constexpr uint16_t kDefaultMqttPort = 5273;
 constexpr uint16_t kDiscoveryUdpPort = 5275;
 constexpr uint16_t kVisualUdpPort = 5274;
 constexpr size_t kDiscoveryPacketMaxBytes = 1024;
-constexpr uint16_t kMqttConnectSocketTimeoutSeconds = 5;
+constexpr uint16_t kMqttConnectSocketTimeoutSeconds = 1;
 constexpr size_t kVisualUdpFrameHeaderSize = 12;
 constexpr size_t kVisualUdpFrameTagSize = 16;
 constexpr size_t kVisualUdpFrameMaxDatagramSize = kVisualUdpFrameHeaderSize + kStreamFrameSize + kVisualUdpFrameTagSize;
@@ -80,7 +80,7 @@ constexpr unsigned long kSessionOwnerHeartbeatIntervalMs = 2000;
 constexpr unsigned long kSessionOwnerExpiryMs = 6000;
 constexpr unsigned long kSessionLockLeaseDefaultMs = 15000;
 constexpr unsigned long kSessionLockLeaseMaxMs = 15000;
-constexpr unsigned long kSessionLeaseTickMs = 250;
+constexpr unsigned long kSessionLeaseTickMs = 1000;
 
 // ---------------------------------------------------------------------------
 // Matrix dimensions
@@ -134,6 +134,9 @@ constexpr uint8_t kHub75MinRefreshRate = static_cast<uint8_t>(MICA_HUB75_MIN_REF
 constexpr bool kHub75ClockPhaseEnabled = MICA_HUB75_CLKPHASE != 0;
 constexpr uint8_t kHub75TargetPresentFps = 60;
 constexpr uint8_t kMatrixShadowBufferCount = 2;
+constexpr size_t kFrameRgb565BufferRowBytes = kMatrixPixelCount * sizeof(uint16_t);
+constexpr size_t kMatrixShadowFrameRowBytes = kMatrixPixelCount * sizeof(uint16_t);
+constexpr size_t kBinsHistoryTotalBytes = static_cast<size_t>(kMatrixHeight) * static_cast<size_t>(kMatrixWidth);
 constexpr uint32_t kMicrosPerSecond = 1000000UL;
 constexpr uint32_t kHub75TargetPresentIntervalUs =
     (kMicrosPerSecond + kHub75TargetPresentFps - 1u) / kHub75TargetPresentFps;

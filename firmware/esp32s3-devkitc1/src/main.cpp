@@ -110,7 +110,7 @@ void processSignalTimeout() {
     gBinsActiveIndex = 0;
     gLevel = 0;
     gBinsFlags = 0;
-    memset(gFrameRgb565Buffers, 0, sizeof(gFrameRgb565Buffers));
+    memset(gFrameRgb565Buffers, 0, 2 * kFrameRgb565BufferRowBytes);
     gFrameRgb565ActiveIndex = 0;
     portEXIT_CRITICAL(&gStreamBufferMux);
     gFrameModeActive = false;
@@ -186,6 +186,9 @@ void setup() {
   }
 
   gPrefs.begin("micaaudio", false);
+  if (!initializePsramBuffers()) {
+    Serial.println("[boot] FALHA CRITICA: PSRAM buffers nao alocados. Sistema instavel.");
+  }
   initializeControlCommandRuntime();
   if (isTaskWatchdogReady()) {
     subscribeCurrentTaskToWatchdog();

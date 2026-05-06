@@ -26,7 +26,7 @@ constexpr uint8_t kUdpMagic2 = 'C';
 constexpr uint8_t kUdpMagic3 = 'A';
 constexpr uint8_t kUdpVersion = 1;
 constexpr uint8_t kUdpTagSize = 16;
-constexpr uint8_t kMaxUdpPacketsPerPoll = 4;
+constexpr uint8_t kMaxUdpPacketsPerPoll = 2;
 
 uint16_t readLe16(const uint8_t* value) {
   return static_cast<uint16_t>(value[0]) |

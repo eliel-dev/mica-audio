@@ -56,7 +56,7 @@ extern uint8_t gLevel;
 extern uint8_t gBinsFlags;
 extern uint8_t gStreamBrightness;
 extern uint8_t gBrightnessCap;
-extern uint16_t gFrameRgb565Buffers[2][kMatrixPixelCount];
+extern uint16_t (*gFrameRgb565Buffers)[kMatrixPixelCount];
 extern uint8_t gFrameRgb565ActiveIndex;
 
 // ---------------------------------------------------------------------------
@@ -65,6 +65,8 @@ extern uint8_t gFrameRgb565ActiveIndex;
 extern unsigned long gLastFrameMs;
 extern unsigned long gWsDisconnectedSinceMs;
 extern unsigned long gMqttDisconnectedSinceMs;
+extern bool gMqttPostConnectPending;
+extern bool gWsAutoReconnectInitialized;
 extern unsigned long gWifiDisconnectedSinceMs;
 extern unsigned long gLastWifiReconnectAttemptMs;
 extern unsigned long gLastTelemetryMs;
@@ -202,17 +204,16 @@ extern uint8_t gRgb6To8Lut[64];
 // Bins visual state (peak heights, history, launchpad)
 // ---------------------------------------------------------------------------
 extern uint8_t gBinsPeakHeights[kMatrixWidth];
-extern uint8_t gBinsHistory[kMatrixHeight][kMatrixWidth];
+extern uint8_t (*gBinsHistory)[kMatrixWidth];
 extern uint8_t gBinsHistoryHead;
 extern uint8_t gLaunchpadPadLevels[64];
 extern uint8_t gLaunchpadTopLevels[8];
 extern uint8_t gLaunchpadSideLevels[8];
 extern uint8_t gLastBinsStyleId;
-
 // ---------------------------------------------------------------------------
 // Shadow buffer
 // ---------------------------------------------------------------------------
-extern uint16_t gMatrixShadowFrames[kMatrixShadowBufferCount][kMatrixPixelCount];
+extern uint16_t (*gMatrixShadowFrames)[kMatrixPixelCount];
 extern uint8_t gMatrixShadowBarHeights[kMatrixShadowBufferCount][kMatrixWidth];
 extern MatrixBufferMode gMatrixBufferModes[kMatrixShadowBufferCount];
 extern uint8_t gMatrixShadowBackBufferIndex;
@@ -250,3 +251,5 @@ extern unsigned long gActiveSlowCommandStartedMs;
 #if defined(MICA_PROFILE_DMA_EXP)
 extern MatrixPanel_I2S_DMA* gMatrix;
 #endif
+
+bool initializePsramBuffers();

@@ -42,6 +42,7 @@ const char* resolveProvisioningIncompleteReason() {
 }
 
 void sendSerialHello() {
+#if defined(MICA_SERIAL_TELEMETRY)
   JsonDocument hello;
   hello["type"] = "hello";
   hello["protocol"] = kSerialProvisioningProtocol;
@@ -50,6 +51,11 @@ void sendSerialHello() {
   JsonArray caps = hello["capabilities"].to<JsonArray>();
   caps.add("provision");
   sendSerialJson(hello);
+#else
+  (void)gDeviceId;
+  (void)kSerialProvisioningProtocol;
+  (void)kFirmwareVersion;
+#endif
 }
 
 static void sendSerialProgress(const String& requestId, const char* stage, const char* message) {

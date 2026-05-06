@@ -92,6 +92,7 @@ void connectWebSocket();
 // ---------------------------------------------------------------------------
 void onMqttMessage(char* topic, uint8_t* payload, unsigned int length);
 void connectMqtt();
+void processMqttPostConnect();
 
 // ---------------------------------------------------------------------------
 // Network poll

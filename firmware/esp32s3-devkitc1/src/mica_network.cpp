@@ -3,6 +3,7 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
 // DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#shadow-retained-de-sessao
 // DOCS: docs/wiki/modules/device-server-protocol.md#ownership-shadow-e-lock-lease
+// DOCS: docs/handoffs/2026-05-06-firmware-performance-optimization-phases-1-4.md
 // DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
@@ -840,6 +841,7 @@ void updateLoopHealthyPercent(uint32_t loopDurationUs) {
 }
 
 void reportPerfMetrics() {
+#if defined(MICA_SERIAL_TELEMETRY)
   const unsigned long now = millis();
   if (gPerfLastReportMs != 0 && (now - gPerfLastReportMs) < kTelemetryIntervalMs) {
     return;
@@ -882,6 +884,7 @@ void reportPerfMetrics() {
         static_cast<unsigned long>(gPerfPanelsDecodeMaxUs),
         static_cast<unsigned long>(gPerfPanelsPresentMaxUs));
   }
+#endif
 
   gPerfLoopMaxUs = 0;
   gPerfNetworkMaxUs = 0;
@@ -891,7 +894,7 @@ void reportPerfMetrics() {
   gPerfPanelsPresentMaxUs = 0;
   gPerfRenderSkipCount = 0;
   gPerfHub75PresentFramesAtLastReport = gHub75PresentFrames;
-  gPerfLastReportMs = now;
+  gPerfLastReportMs = millis();
 }
 
 void sendTelemetry(bool force) {
@@ -1219,6 +1222,7 @@ void connectWebSocket() {
   gWs.begin(gServerHost.c_str(), gServerPort, path.c_str());
   gWs.onEvent(onWsEvent);
   gWs.setReconnectInterval(kWsAutoReconnectIntervalMs);
+  gWsAutoReconnectInitialized = true;
   resetTaskWatchdog();
   Serial.println("[ws] begin concluido.");
 }
@@ -1264,14 +1268,25 @@ void connectMqtt() {
   }
 
   gMqttDisconnectedSinceMs = 0;
+  gMqttPostConnectPending = true;
   (void)gMqtt.subscribe(buildDeviceMqttTopic("commands").c_str(), 1);
+  Serial.println("[mqtt] conectado (post-connect pendente).");
+}
+
+void processMqttPostConnect() {
+  if (!gMqttPostConnectPending || !gMqtt.connected()) {
+    gMqttPostConnectPending = false;
+    return;
+  }
+
   (void)publishPresence("online");
   (void)publishDeviceLog("info", "mqtt", "connected", "Controle MQTT conectado.", false);
   (void)publishDeviceStats();
   (void)publishClientSessionShadow(millis(), true);
   sendTelemetry(true);
   publishPendingOtaReportIfNeeded();
-  Serial.println("[mqtt] conectado.");
+  gMqttPostConnectPending = false;
+  Serial.println("[mqtt] post-connect concluido.");
 }
 
 
@@ -1299,6 +1314,7 @@ void processNetworkPoll() {
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
   if (!wifiConnected) {
     stopVisualUdpReceiver();
+    gWsAutoReconnectInitialized = false;
     const bool provisioningIncomplete = isProvisioningIncomplete();
     const bool savedWifiConfigured = prefsGetBoolOrDefault("wifiConfigured", false);
     const bool canUseSavedWifi = !provisioningIncomplete || savedWifiConfigured;
@@ -1394,18 +1410,12 @@ void processNetworkPoll() {
       finishNetworkStep();
     }
 
-    if (!gMqtt.connected()) {
-      if (gMqttDisconnectedSinceMs == 0) {
-        gMqttDisconnectedSinceMs = millis();
-      }
-
-      const bool shouldReconnectMqtt = (millis() - gMqttDisconnectedSinceMs) >= kMqttReconnectRetryMs;
-      if (shouldRunNetworkStep(shouldReconnectMqtt)) {
-        connectMqtt();
-        gMqttDisconnectedSinceMs = millis();
+    if (gMqttPostConnectPending) {
+      if (shouldRunNetworkStep(true)) {
+        processMqttPostConnect();
         finishNetworkStep();
       }
-    } else {
+    } else if (gMqtt.connected()) {
       gMqttDisconnectedSinceMs = 0;
 
       const bool telemetryDue =
@@ -1413,6 +1423,17 @@ void processNetworkPoll() {
           && (millis() - gLastTelemetryMs) >= kTelemetryIntervalMs;
       if (shouldRunNetworkStep(telemetryDue)) {
         sendTelemetry(false);
+        finishNetworkStep();
+      }
+    } else {
+      if (gMqttDisconnectedSinceMs == 0) {
+        gMqttDisconnectedSinceMs = millis();
+      }
+
+      const bool shouldReconnectMqtt = (millis() - gMqttDisconnectedSinceMs) >= kMqttReconnectRetryMs;
+      if (shouldRunNetworkStep(shouldReconnectMqtt && !networkBudgetExhausted)) {
+        connectMqtt();
+        gMqttDisconnectedSinceMs = millis();
         finishNetworkStep();
       }
     }
@@ -1424,14 +1445,18 @@ void processNetworkPoll() {
         finishNetworkStep();
       }
 
-      const bool shouldReconnectWs =
-          gWsDisconnectedSinceMs != 0
-          && (millis() - gWsDisconnectedSinceMs) > kWsReconnectRetryMs;
-      if (shouldRunNetworkStep(shouldReconnectWs)) {
-        Serial.println("[ws_disconnected] sem sessao por tempo prolongado; tentando reconectar websocket.");
-        connectWebSocket();
-        gWsDisconnectedSinceMs = millis();
-        finishNetworkStep();
+      if (!gWsAutoReconnectInitialized) {
+        const bool shouldReconnectWs =
+            gWsDisconnectedSinceMs != 0
+            && (millis() - gWsDisconnectedSinceMs) > kWsReconnectRetryMs;
+        if (shouldRunNetworkStep(shouldReconnectWs && !networkBudgetExhausted)) {
+          Serial.println("[ws_disconnected] sem sessao por tempo prolongado; tentando reconectar websocket.");
+          connectWebSocket();
+          gWsDisconnectedSinceMs = millis();
+          finishNetworkStep();
+        }
+      } else {
+        gWsDisconnectedSinceMs = 0;
       }
     } else {
       gWsDisconnectedSinceMs = 0;

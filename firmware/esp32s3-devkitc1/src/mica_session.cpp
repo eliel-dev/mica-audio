@@ -143,7 +143,9 @@ void processClientSessionRuntime(unsigned long nowMs) {
 
   gSessionLastLeaseTickMs = nowMs;
   expireSessionLeases(nowMs);
-  (void)publishClientSessionShadow(nowMs, false);
+  if (gSessionShadowState.dirty) {
+    (void)publishClientSessionShadow(nowMs, false);
+  }
 }
 
 void expireSessionLeases(unsigned long nowMs) {

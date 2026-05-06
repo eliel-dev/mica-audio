@@ -59,7 +59,7 @@ void clearMatrixShadowBuffer(uint8_t bufferIndex) {
     return;
   }
 
-  memset(gMatrixShadowFrames[bufferIndex], 0, sizeof(gMatrixShadowFrames[bufferIndex]));
+  memset(gMatrixShadowFrames[bufferIndex], 0, kMatrixShadowFrameRowBytes);
   memset(gMatrixShadowBarHeights[bufferIndex], 0, sizeof(gMatrixShadowBarHeights[bufferIndex]));
   gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Clear;
 }
