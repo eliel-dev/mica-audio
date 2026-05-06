@@ -1,9 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "ecc-universal",
-    "@tarquinen/opencode-dcp@latest",
     "@morphllm/opencode-morph-plugin",
+    "@tarquinen/opencode-dcp@latest",
+    "opencode-froggy",
+    "opencode-supermemory@latest",
     "opencode-vibeguard"
   ],
   "instructions": [
@@ -14,7 +15,8 @@
     "docs/wiki/ai/consistencia-codex.md",
     "docs/wiki/ai/engineering-advisor.md",
     "docs/wiki/reference/ai-contract.v1.yaml",
-    "docs/wiki/reference/code-index.md"
+    "docs/wiki/reference/code-index.md",
+    ".opencode/node_modules/@morphllm/opencode-morph-plugin/instructions/morph-tools.md"
   ],
   "mcp": {
     "context7": {

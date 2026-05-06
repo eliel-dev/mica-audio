@@ -921,15 +921,19 @@ bool enqueueIncomingControlCommand(ControlCommandSource source, const uint8_t* p
 
 void processQueuedControlCommands() {
   expireSessionLeases(millis());
-  if (gDeferredControlCommand != nullptr && isSlowCommandDomainBusy()) {
-    return;
-  }
 
   for (uint8_t processed = 0; processed < kMaxControlCommandsPerLoop; processed++) {
     ControlCommandEnvelope* envelope = nullptr;
     if (gDeferredControlCommand != nullptr) {
-      envelope = gDeferredControlCommand;
-      gDeferredControlCommand = nullptr;
+      if (isSlowCommandDomainBusy()) {
+        // Deferred command still blocked by slow domain; try queue items instead.
+        if (gControlCommandQueue == nullptr || xQueueReceive(gControlCommandQueue, &envelope, 0) != pdTRUE) {
+          break;
+        }
+      } else {
+        envelope = gDeferredControlCommand;
+        gDeferredControlCommand = nullptr;
+      }
     } else {
       if (gControlCommandQueue == nullptr || xQueueReceive(gControlCommandQueue, &envelope, 0) != pdTRUE) {
         break;
@@ -952,7 +956,12 @@ void processQueuedControlCommands() {
 
     const ControlCommandHandleResult result = handleSessionAwareControlCommand(*envelope, control);
     if (result == ControlCommandHandleResult::Deferred) {
-      gDeferredControlCommand = envelope;
+      if (gDeferredControlCommand != nullptr) {
+        // Already holding a deferred command; discard the new one to avoid losing it.
+        deleteControlCommandEnvelope(envelope);
+      } else {
+        gDeferredControlCommand = envelope;
+      }
       break;
     }
 

@@ -1,0 +1,6 @@
+{
+  // Get your API key from https://app.supermemory.ai
+  // IMPORTANT: Do not commit real API keys to version control.
+  // Use environment variable SUPERMEMORY_API_KEY or keep this file in .gitignore.
+  "apiKey": "${env:SUPERMEMORY_API_KEY}"
+}

@@ -3,6 +3,8 @@ using Device.Protocol.Models;
 using Device.Protocol.Stream;
 using Device.Server.Hosting;
 using MicaAudio.Core.Led;
+
+// DOCS: docs/handoffs/2026-05-06-firmware-performance-optimization-phases-1-4.md
 using MicaAudio.Core.Presets;
 using MicaAudio.Panels;
 using Microsoft.Extensions.Logging;
@@ -18,11 +20,11 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
     private const string PanelsAppId = "panels-hub75";
     private const string PanelsAppName = "Paineis HUB75";
     private const string PanelsMode = "panels";
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(1000d / PanelFrameComposer.TargetFps);
     private static readonly TimeSpan BatchDuration = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan BatchPreloadLead = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan BatchPreloadLead = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(10);
     private static readonly RgbaColor[] BlackFrame = Enumerable
         .Repeat(new RgbaColor(0, 0, 0, 255), LedDefaults.MatrixWidth * LedDefaults.MatrixHeight)
@@ -206,7 +208,7 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
         };
 
         await SaveStatusAsync(status, cancellationToken).ConfigureAwait(false);
-        await ActivatePanelsAppAsync(device, cancellationToken).ConfigureAwait(false);
+        _ = DispatchActivateAppAsync(device.DeviceId, CreateCommandContext(device));
 
         if (device.AnimatedWebpBatchSupported == true)
         {
@@ -228,7 +230,8 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
     {
         var batchState = new PanelsBatchTransportState(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow);
         await QueueNextBatchAsync(session, widgetCount, skippedWidgets, deviceId, batchState, cancellationToken).ConfigureAwait(false);
-        await QueueNextBatchAsync(session, widgetCount, skippedWidgets, deviceId, batchState, cancellationToken).ConfigureAwait(false);
+
+        SendImmediateFrame(session, widgetCount, skippedWidgets, deviceId);
 
         var lastStateCheckUtc = DateTimeOffset.MinValue;
         var lastHeartbeatUtc = DateTimeOffset.MinValue;
@@ -337,7 +340,10 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
         PanelsBatchTransportState state,
         CancellationToken cancellationToken)
     {
+        var encodeStopwatch = Stopwatch.StartNew();
         var encodedBatch = RenderEncodedBatch(session, widgetCount, skippedWidgets, state.NextBatchStartUtc);
+        var encodeMs = encodeStopwatch.ElapsedMilliseconds;
+
         var registration = serverHost.RegisterPanelsBatch(
             deviceId,
             state.PanelsSessionId,
@@ -345,6 +351,8 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
             encodedBatch.Payload,
             encodedBatch.FrameCount,
             encodedBatch.DurationMs);
+
+        LogBatchEncoded(logger, encodedBatch.Payload.Length, encodedBatch.FrameCount, encodeMs);
 
         var payload = new PanelsBatchCommandPayload
         {
@@ -358,18 +366,8 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
             DurationMs = registration.DurationMs,
         };
 
-        var result = await serverHost.SendCommandTrackedAsync(
-                deviceId,
-                DeviceCommandType.QueuePanelsBatch,
-                payload.ToParameters(),
-                CreateCommandContext(ResolveTargetDevice(deviceId)),
-                CommandTimeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-        if (!result.Accepted || !result.Success)
-        {
-            throw new InvalidOperationException(result.ErrorCode ?? result.Message ?? "queue_panels_batch_failed");
-        }
+        var commandContext = CreateCommandContext(ResolveTargetDevice(deviceId));
+        await DispatchBatchCommandAsync(deviceId, payload, commandContext, deviceId, cancellationToken).ConfigureAwait(false);
 
         await SaveStatusAsync(new PanelRuntimeStatusDocument
         {
@@ -383,27 +381,66 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
         state.Advance();
     }
 
-    private async Task ActivatePanelsAppAsync(DeviceSnapshot device, CancellationToken cancellationToken)
+    private async Task DispatchBatchCommandAsync(
+        string deviceId,
+        PanelsBatchCommandPayload payload,
+        DeviceCommandSessionContext commandContext,
+        string logDeviceId,
+        CancellationToken cancellationToken)
     {
-        var result = await serverHost.SendCommandTrackedAsync(
-                device.DeviceId,
-                DeviceCommandType.ActivateApp,
-                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["appId"] = PanelsAppId,
-                    ["displayName"] = PanelsAppName,
-                },
-                CreateCommandContext(device),
-                CommandTimeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!result.Accepted || !result.Success)
+        var queueStopwatch = Stopwatch.StartNew();
+        try
         {
-            throw new InvalidOperationException(result.ErrorCode ?? result.Message ?? "activate_panels_failed");
-        }
+            var result = await serverHost.SendCommandTrackedAsync(
+                    deviceId,
+                    DeviceCommandType.QueuePanelsBatch,
+                    payload.ToParameters(),
+                    commandContext,
+                    CommandTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
 
-        await SendHeartbeatAsync(device.DeviceId, cancellationToken).ConfigureAwait(false);
+            var queueMs = queueStopwatch.ElapsedMilliseconds;
+            LogBatchQueued(logger, queueMs);
+
+            if (!result.Accepted || !result.Success)
+            {
+                LogBatchCommandFailed(logger, result.ErrorCode ?? result.Message ?? "queue_panels_batch_failed", queueMs);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var queueMs = queueStopwatch.ElapsedMilliseconds;
+            LogBatchCommandFailed(logger, ex.Message, queueMs);
+        }
+    }
+
+    private async Task DispatchActivateAppAsync(string deviceId, DeviceCommandSessionContext commandContext)
+    {
+        try
+        {
+            var result = await serverHost.SendCommandTrackedAsync(
+                    deviceId,
+                    DeviceCommandType.ActivateApp,
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["appId"] = PanelsAppId,
+                        ["displayName"] = PanelsAppName,
+                    },
+                    commandContext,
+                    CommandTimeout,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+
+            if (!result.Accepted || !result.Success)
+            {
+                LogActivateAppFailed(logger, result.ErrorCode ?? result.Message ?? "activate_panels_failed");
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogActivateAppFailed(logger, ex.Message);
+        }
     }
 
     private async Task SendHeartbeatAsync(string deviceId, CancellationToken cancellationToken)
@@ -419,6 +456,25 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
                 TimeSpan.FromSeconds(2),
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private void SendImmediateFrame(
+        PanelFrameComposer.PanelCompositionSession session,
+        int widgetCount,
+        IReadOnlyList<string> skippedWidgets,
+        string deviceId)
+    {
+        var frame = RenderFrame(session, widgetCount, skippedWidgets, DateTimeOffset.UtcNow);
+        var rgb565 = new ushort[StreamFrameV2.PixelCount128x64];
+        EncodeToRgb565(frame, rgb565);
+        var context = CreateCommandContext(ResolveTargetDevice(deviceId));
+        var payload = StreamFrameV3.CreateFrame128x64Rgb565(
+            sequence: 0,
+            ownerEpoch: context.OwnerEpoch,
+            timestampQpc: Stopwatch.GetTimestamp(),
+            pixels128x64Rgb565: rgb565,
+            brightness0To255: 255);
+        serverHost.SendFrame(deviceId, payload);
     }
 
     private static PanelsEncodedBatch RenderEncodedBatch(
@@ -578,6 +634,18 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
 
     [LoggerMessage(EventId = 2101, Level = LogLevel.Warning, Message = "Server panel runtime loop failed.")]
     private static partial void LogRuntimeLoopFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 2102, Level = LogLevel.Information, Message = "Batch encoded in {EncodeMs}ms, payload={PayloadBytes} bytes, frames={FrameCount}")]
+    private static partial void LogBatchEncoded(ILogger logger, int payloadBytes, int frameCount, long encodeMs);
+
+    [LoggerMessage(EventId = 2103, Level = LogLevel.Information, Message = "Batch queued in {QueueMs}ms")]
+    private static partial void LogBatchQueued(ILogger logger, long queueMs);
+
+    [LoggerMessage(EventId = 2104, Level = LogLevel.Warning, Message = "Batch command failed: {ErrorCode} ({QueueMs}ms)")]
+    private static partial void LogBatchCommandFailed(ILogger logger, string errorCode, long queueMs);
+
+    [LoggerMessage(EventId = 2105, Level = LogLevel.Warning, Message = "ActivateApp failed: {ErrorCode}")]
+    private static partial void LogActivateAppFailed(ILogger logger, string errorCode);
 }
 
 internal static class DeviceServerHostPanelsCompatibility

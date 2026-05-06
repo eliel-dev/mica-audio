@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "@tarquinen/opencode-dcp@latest",
+    "@morphllm/opencode-morph-plugin",
+    "opencode-supermemory@latest",
+    "opencode-vibeguard",
+    "opencode-froggy"
+  ],
+  "instructions": [
+    "node_modules/@morphllm/opencode-morph-plugin/instructions/morph-tools.md",
+    "instructions/engineering-advisor.md"
+  ]
+}
