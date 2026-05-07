@@ -53,6 +53,7 @@
 - O topico retained `.../shadow` passa a ser a fonte oficial de ownership para observacao multi-cliente.
 - `clientId`, `ownerEpoch` e `lockToken` entram no envelope de comandos session-aware.
 - `session_heartbeat`, `session_lock_acquire` e `session_lock_release` passam a ser comandos canonicos de sessao.
+- `session_heartbeat` com `commandId` publica `commandProgress` final para nao deixar chamadas tracked presas ate timeout.
 - Quando ha owner ativo, o firmware passa a exigir `ownerEpoch` valido no stream owner-bound e descarta payload stale.
 - Quando o owner expira, o fallback do HUB75 passa a usar `ClientDisconnected` com relogio local e mensagem de desconexao.
 
@@ -420,6 +421,7 @@
   - `contentType = image/webp`
   - `frameCount = 30`
   - `durationMs = 1000`
+- `queue_panels_batch` valida esses campos antes de emitir log detalhado do payload; o log de payload usa `Serial.print` tipado, sem `Serial.printf`/varargs com strings vindas do JSON, para evitar `LoadProhibited` antes do ACK tracked.
 - Fluxo do device:
   1. recebe `queue_panels_batch` via MQTT;
   2. baixa o arquivo por `HTTPClient` usando a mesma autenticacao HTTP do device;

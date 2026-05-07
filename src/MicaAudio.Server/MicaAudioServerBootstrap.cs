@@ -90,7 +90,8 @@ public static class MicaAudioServerBootstrap
             sp.GetRequiredService<IPanelLibraryStore>(),
             sp.GetRequiredService<IMediaLibraryStore>(),
             sp.GetRequiredService<IPanelRuntimeStateStore>(),
-            sp.GetRequiredService<IPanelRuntimeStatusStore>()));
+            sp.GetRequiredService<IPanelRuntimeStatusStore>(),
+            sp.GetRequiredService<ILogger<DeviceServerHost>>()));
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
         services.AddSingleton<ServerPanelRuntimeService>();
         services.AddSingleton(sp => new StandaloneDeviceRegistryStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));

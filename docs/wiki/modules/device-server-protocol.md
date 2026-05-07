@@ -40,7 +40,7 @@ Fornecer o control plane HTTP/WS/MQTT do Mica, persistir estado duravel e transp
 5. Operacoes de device usam `RemoteDeviceServerClient`.
 6. Frames administrativos usam `RemoteDeviceFrameTransport`.
 7. Paineis server-capable usam `ServerPanelRuntimeService`.
-8. O servidor envia comandos `activate_app`, `session_heartbeat`, `queue_panels_batch` e frames pelo contrato do device.
+8. O servidor envia `activate_app`, `queue_panels_batch` e, quando necessario no fallback por frames, `session_heartbeat` pelo contrato do device.
 
 ## Admin API Remota
 
@@ -74,7 +74,9 @@ WebSockets admin:
 - `IPanelRuntimeStateStore` fica em `Device.Server.Abstractions`.
 - `StandalonePanelRuntimeStateStore` persiste `StorageRoot/panels/runtime-state.json`.
 - `IPanelRuntimeStatusStore` guarda status em memoria.
-- `ServerPanelRuntimeService` usa `clientId = server-panels` para heartbeat/session context.
+- `ServerPanelRuntimeService` usa `clientId = server-panels` para frame transport owner-bound.
+- No transporte WebP batch, o contrato operacional compativel com a branch funcional e legado: `activate_app` e `queue_panels_batch` sao tracked commands sem `DeviceCommandSessionContext`.
+- Batch WebP deve preparar dois lotes iniciais antes do loop de preload e nao pode ser precedido por frame direto, porque stream binario bruto cancela playback WebP no firmware.
 
 ## Biblioteca Server-First
 
@@ -106,6 +108,8 @@ WebSockets admin:
 - `SendCommandTrackedAsync` usa `DeviceCommandSessionContext` para validar lease antes de despachar comando.
 - Lock temporario (`sessionLockHeld`) impede que outros clientes assumam o device para manutencao ou OTA.
 - `SessionHeartbeatAsync` renova lease do owner ativo.
+- `session_heartbeat` com `commandId` deve publicar `commandProgress` final no firmware; no runtime de paineis do servidor, heartbeat nao faz parte do hot path WebP batch e nunca pode bloquear `queue_panels_batch`.
+- O firmware deve validar todos os campos de `queue_panels_batch` antes de logs detalhados do payload; o log do payload deve evitar `Serial.printf`/varargs com strings vindas do JSON, porque o panic observado caiu em `_svfprintf_r` com `LoadProhibited` antes do ACK final.
 
 ## Referencias De Codigo
 

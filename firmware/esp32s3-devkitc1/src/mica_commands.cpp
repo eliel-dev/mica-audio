@@ -6,6 +6,8 @@
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-17-control-worker-watchdog-and-wifi-heap-regression-fix.md
 // DOCS: docs/handoffs/2026-04-18-provisioned-boot-wifi-before-hub75.md
+// DOCS: docs/handoffs/2026-05-07-panels-batch-firmware-crash-and-remote-contract.md
+// DOCS: docs/handoffs/2026-05-06-panels-heartbeat-nonblocking-batch-runtime.md
 
 #include "mica_commands.h"
 
@@ -123,6 +125,46 @@ static const char* slowCommandKindToName(SlowCommandKind kind) {
     default:
       return "";
   }
+}
+
+static void writePanelsBatchCommandLog(const PanelsBatchDownloadRequest& request) {
+  Serial.print("[cmd] queue_panels_batch session='");
+  Serial.print(request.panelsSessionId);
+  Serial.print("' batchSeq=");
+  Serial.print(static_cast<unsigned long>(request.batchSequence));
+  Serial.print(" frames=");
+  Serial.print(static_cast<unsigned long>(request.frameCount));
+  Serial.print(" dur=");
+  Serial.print(static_cast<unsigned long>(request.durationMs));
+  Serial.print(" url='");
+  Serial.print(request.downloadUrl);
+  Serial.println("'");
+}
+
+static void writePanelsBatchStartLog(const PanelsBatchBuffer& batch, const String& commandId) {
+  Serial.print("[batch] START session='");
+  Serial.print(batch.panelsSessionId);
+  Serial.print("' batchSeq=");
+  Serial.print(static_cast<unsigned long>(batch.batchSequence));
+  Serial.print(" cmdId='");
+  Serial.print(commandId);
+  Serial.println("'");
+}
+
+static void writePanelsBatchFailureLog(const char* stage, const String& errorCode, const String& errorMessage) {
+  Serial.print("[batch] ");
+  Serial.print(stage == nullptr ? "" : stage);
+  Serial.print(" FAIL: ");
+  Serial.print(errorCode);
+  Serial.print(" - ");
+  Serial.println(errorMessage);
+}
+
+static void writePanelsBatchQueuedLog(const PanelsBatchBuffer& batch) {
+  Serial.print("[batch] QUEUE OK session='");
+  Serial.print(batch.panelsSessionId);
+  Serial.print("' batchSeq=");
+  Serial.println(static_cast<unsigned long>(batch.batchSequence));
 }
 
 static bool isSlowCommandDomainBusy() {
@@ -257,6 +299,7 @@ static bool schedulePanelsBatchDownload(
     const char* command) {
   if (isSlowCommandDomainBusy()) {
     if (deferPanelsBatchCommandIfNeeded(command)) {
+      Serial.printf("[cmd] SLOW BUSY+DEFER: activeSlowCommand=%d\n", (int)gActiveSlowCommand);
       return false;
     }
 
@@ -365,6 +408,7 @@ static ControlCommandHandleResult handleControlCommandMessageCore(const JsonDocu
 
   if (command != nullptr && command[0] != '\0') {
     (void)publishDeviceLog("info", "command", command, String("Comando recebido via controle: ") + command);
+    Serial.printf("[cmd_core] command='%s' commandId='%s'\n", command, commandId.c_str());
   }
 
   if (strcmp(command, "enter_provisioning") == 0) {
@@ -496,6 +540,7 @@ static ControlCommandHandleResult handleControlCommandMessageCore(const JsonDocu
   if (strcmp(command, "activate_app") == 0) {
     String appId = parameters["appId"] | "";
     String appName = parameters["displayName"] | "";
+    Serial.printf("[cmd] activate_app appId='%s' displayName='%s'\n", appId.c_str(), appName.c_str());
 
     sendCommandProgress(commandId, 20, "received", "Comando recebido.");
     if (appId.length() == 0) {
@@ -536,13 +581,19 @@ static ControlCommandHandleResult handleControlCommandMessageCore(const JsonDocu
   }
 
   if (strcmp(command, "queue_panels_batch") == 0) {
+    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
+
+    if (parameters.isNull()) {
+      (void)publishDeviceLog("warning", "command", "queue_panels_batch_invalid", "Parametros ausentes para queue_panels_batch.");
+      sendCommandProgress(commandId, 100, "invalid", "Parametros ausentes para queue_panels_batch.", 0);
+      return ControlCommandHandleResult::Handled;
+    }
+
     PanelsBatchDownloadRequest request = {};
     request.panelsSessionId = parameters["panelsSessionId"] | "";
     request.downloadUrl = parameters["downloadUrl"] | "";
     request.expectedSha256 = normalizeLowerHex(parameters["sha256"] | "");
     request.expectedContentType = parameters["contentType"] | "";
-
-    sendCommandProgress(commandId, 20, "received", "Comando recebido.");
 
     if (!gAnimatedWebpBatchSupported) {
       sendCommandProgress(commandId, 100, "unsupported", "Firmware sem suporte ao transporte WebP batch.", 0);
@@ -576,6 +627,8 @@ static ControlCommandHandleResult handleControlCommandMessageCore(const JsonDocu
       return ControlCommandHandleResult::Handled;
     }
 
+    writePanelsBatchCommandLog(request);
+
     if (!schedulePanelsBatchDownload(commandId, request, command)) {
       return ControlCommandHandleResult::Deferred;
     }
@@ -605,8 +658,12 @@ static ControlCommandHandleResult handleSessionAwareControlCommand(
   const bool sameOwnerClient = ownerActive && gSessionShadowState.activeClientId.equals(envelope.clientId);
   const bool sessionAware = isSessionAwareEnvelope(envelope);
   if (!sessionAware) {
+    Serial.printf("[cmd] non-session-aware cmd='%s'\n", command);
     return handleControlCommandMessageCore(control);
   }
+
+  Serial.printf("[cmd] session-aware cmd='%s' clientId='%s' epoch=%u ownerActive=%d sameClient=%d\n",
+                command, envelope.clientId.c_str(), envelope.ownerEpoch, ownerActive, sameOwnerClient);
 
   if (strcmp(command, "session_heartbeat") == 0) {
     ClientSessionMode modeHint = gSessionShadowState.mode;
@@ -626,6 +683,8 @@ static ControlCommandHandleResult handleSessionAwareControlCommand(
     } else if (!isActiveClientOwner(envelope.clientId, envelope.ownerEpoch, nowMs)
                && !(sameOwnerClient && envelope.ownerEpoch == 0u)) {
       rejectSessionCommand(commandId, "stale_owner_epoch", "Heartbeat ignorado para owner antigo.");
+      Serial.printf("[cmd] session_heartbeat REJECTED stale_owner_epoch: clientId='%s' epoch=%u currentEpoch=%u\n",
+                    envelope.clientId.c_str(), envelope.ownerEpoch, gSessionShadowState.activeOwnerEpoch);
       return ControlCommandHandleResult::Handled;
     } else {
       renewActiveClientOwner(nowMs);
@@ -636,6 +695,9 @@ static ControlCommandHandleResult handleSessionAwareControlCommand(
       (void)tryRenewClientLock(envelope.clientId, envelope.lockToken, nowMs);
     }
     (void)publishClientSessionShadow(nowMs, false);
+    if (commandId.length() > 0) {
+      sendCommandProgress(commandId, 100, "heartbeat", "Heartbeat de sessao renovado.", 1);
+    }
     return ControlCommandHandleResult::Handled;
   }
 
@@ -698,11 +760,15 @@ static ControlCommandHandleResult handleSessionAwareControlCommand(
   }
 
   if (!hasActiveClientOwner(nowMs)) {
+    Serial.printf("[cmd] owner ADOPT (no owner): cmd='%s' clientId='%s'\n", command, envelope.clientId.c_str());
     adoptActiveClientOwner(envelope.clientId, nowMs);
   } else if (!isActiveClientOwner(envelope.clientId, envelope.ownerEpoch, nowMs)
              && !(sameOwnerClient && envelope.ownerEpoch == 0u)) {
+    Serial.printf("[cmd] owner STEAL (epoch mismatch): cmd='%s' clientId='%s' epoch=%u currentEpoch=%u\n",
+                  command, envelope.clientId.c_str(), envelope.ownerEpoch, gSessionShadowState.activeOwnerEpoch);
     adoptActiveClientOwner(envelope.clientId, nowMs);
   } else {
+    Serial.printf("[cmd] owner RENEW: cmd='%s' clientId='%s' epoch=%u\n", command, envelope.clientId.c_str(), envelope.ownerEpoch);
     renewActiveClientOwner(nowMs);
   }
 
@@ -722,6 +788,8 @@ static void processPanelsBatchSlowCommand(const SlowCommandRequest& request) {
   batch.frameCount = static_cast<uint16_t>(request.panels.frameCount);
   batch.durationMs = static_cast<uint16_t>(request.panels.durationMs);
 
+  writePanelsBatchStartLog(batch, request.commandId);
+
   String errorCode;
   String errorMessage;
 
@@ -735,6 +803,7 @@ static void processPanelsBatchSlowCommand(const SlowCommandRequest& request) {
           batch,
           errorCode,
           errorMessage)) {
+    writePanelsBatchFailureLog("DOWNLOAD", errorCode, errorMessage);
     clearPanelsBatchBuffer(batch);
     (void)enqueueAsyncDeviceLog("warning", "command", errorCode.c_str(), errorMessage);
     (void)enqueueAsyncCommandProgress(request.commandId, 100, "failed", errorMessage, 0);
@@ -744,9 +813,11 @@ static void processPanelsBatchSlowCommand(const SlowCommandRequest& request) {
     return;
   }
 
+  Serial.printf("[batch] DOWNLOAD OK\n");
   setControlWorkerState(ControlWorkerState::PanelsValidating);
   (void)enqueueAsyncCommandProgress(request.commandId, 70, "validating", "Validando lote WebP...");
   if (!validatePanelsBatchWebp(batch, errorCode, errorMessage)) {
+    writePanelsBatchFailureLog("VALIDATE", errorCode, errorMessage);
     clearPanelsBatchBuffer(batch);
     (void)enqueueAsyncDeviceLog("warning", "command", errorCode.c_str(), errorMessage);
     (void)enqueueAsyncCommandProgress(request.commandId, 100, "failed", errorMessage, 0);
@@ -755,8 +826,11 @@ static void processPanelsBatchSlowCommand(const SlowCommandRequest& request) {
     setControlWorkerState(ControlWorkerState::Idle);
     return;
   }
+
+  Serial.printf("[batch] VALIDATE OK\n");
 
   if (!tryQueuePanelsBatchForPlayback(batch, errorCode, errorMessage)) {
+    writePanelsBatchFailureLog("QUEUE", errorCode, errorMessage);
     clearPanelsBatchBuffer(batch);
     (void)enqueueAsyncDeviceLog("warning", "command", errorCode.c_str(), errorMessage);
     (void)enqueueAsyncCommandProgress(request.commandId, 100, "failed", errorMessage, 0);
@@ -766,6 +840,7 @@ static void processPanelsBatchSlowCommand(const SlowCommandRequest& request) {
     return;
   }
 
+  writePanelsBatchQueuedLog(batch);
   (void)enqueueAsyncCommandProgress(request.commandId, 100, "queued", "Lote WebP de Paineis enfileirado.", 1);
   completeSlowCommand(SlowCommandKind::QueuePanelsBatch);
   setControlWorkerState(ControlWorkerState::Idle);
@@ -887,18 +962,29 @@ void initializeControlCommandRuntime() {
 
 bool enqueueIncomingControlCommand(ControlCommandSource source, const uint8_t* payload, size_t length) {
   if (payload == nullptr || length == 0 || gControlCommandQueue == nullptr) {
+    Serial.printf("[cmd] enqueue DROPPED: nullPayload=%d zeroLen=%d nullQueue=%d\n",
+                  payload == nullptr, length == 0, gControlCommandQueue == nullptr);
     return false;
   }
 
   JsonDocument control;
   if (deserializeJson(control, payload, length) != DeserializationError::Ok) {
+    Serial.printf("[cmd] enqueue DROPPED: JSON parse failed len=%u\n", length);
     return false;
   }
 
   const String command = control["command"] | "";
   if (command.length() == 0) {
+    Serial.printf("[cmd] enqueue DROPPED: empty command field\n");
     return false;
   }
+
+  const String clientId = control["clientId"] | "";
+  const uint32_t ownerEpoch = control["ownerEpoch"] | 0u;
+  Serial.printf("[cmd] enqueue cmd='%s' src=%s clientId='%s' epoch=%u\n",
+                command.c_str(),
+                source == ControlCommandSource::Mqtt ? "MQTT" : "WS",
+                clientId.c_str(), ownerEpoch);
 
   ControlCommandEnvelope* envelope = new ControlCommandEnvelope();
   envelope->source = source;
@@ -911,7 +997,7 @@ bool enqueueIncomingControlCommand(ControlCommandSource source, const uint8_t* p
 
   ControlCommandEnvelope* queuedEnvelope = envelope;
   if (xQueueSend(gControlCommandQueue, &queuedEnvelope, 0) != pdTRUE) {
-    Serial.printf("[control] fila de ingress cheia; comando descartado: %s\n", command.c_str());
+    Serial.printf("[cmd] fila cheia; comando descartado: %s\n", command.c_str());
     deleteControlCommandEnvelope(envelope);
     return false;
   }
@@ -1158,6 +1244,7 @@ void controlWorkerTask(void* parameter) {
 
     subscribeCurrentTaskToWatchdog();
     resetTaskWatchdog();
+    Serial.printf("[worker] kind=%d commandId='%s'\n", (int)request->kind, request->commandId.c_str());
     switch (request->kind) {
       case SlowCommandKind::QueuePanelsBatch:
         processPanelsBatchSlowCommand(*request);

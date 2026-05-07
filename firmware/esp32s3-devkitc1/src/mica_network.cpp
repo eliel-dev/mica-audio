@@ -464,6 +464,7 @@ void sendCommandProgress(
     const String& message,
     int successFlag) {
   if (commandId.isEmpty() || !gMqtt.connected()) {
+    Serial.printf("[cmd_progress] SKIP commandId='%s' mqtt=%d\n", commandId.c_str(), gMqtt.connected() ? 1 : 0);
     return;
   }
 
@@ -481,7 +482,8 @@ void sendCommandProgress(
     progress["success"] = successFlag == 1;
   }
 
-  (void)publishMqttDocument(buildDeviceMqttTopic("command-events"), progress, false);
+  bool published = publishMqttDocument(buildDeviceMqttTopic("command-events"), progress, false);
+  Serial.printf("[cmd_progress] id='%s' stage='%s' pct=%d ok=%d success=%d\n", commandId.c_str(), stage ? stage : "", progressPercent, published ? 1 : 0, successFlag);
   if (successFlag == 0 || successFlag == 1 || progressPercent >= 100) {
     (void)publishDeviceLog(
         successFlag == 0 ? "error" : "info",
@@ -1060,6 +1062,8 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
 
   if (!shouldAcceptOwnedStreamFrame(ownerEpoch, hasOwnerEpoch, millis())) {
     registerInvalidStreamFrame(hasOwnerEpoch ? "owner_epoch_stale" : "owner_epoch_missing");
+    (void)publishDeviceLog("warning", "stream", hasOwnerEpoch ? "owner_epoch_stale" : "owner_epoch_missing",
+                           String("Frame rejected: epoch=") + ownerEpoch + String(" expected=") + gSessionShadowState.activeOwnerEpoch, false);
     return false;
   }
 
@@ -1102,6 +1106,7 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
     gMatrixSignalTimedOut = false;
     if (ownedStream) {
       noteAcceptedOwnedStreamFrame(ownerEpoch, ClientSessionMode::Visualizer, gLastFrameMs);
+      (void)publishDeviceLog("info", "stream", "bins_accepted", String("Bins accepted: epoch=") + ownerEpoch, false);
     }
     markMatrixFrameDirty(true);
     return true;
@@ -1145,6 +1150,7 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
     gMatrixSignalTimedOut = false;
     if (ownedStream) {
       noteAcceptedOwnedStreamFrame(ownerEpoch, ClientSessionMode::Visualizer, gLastFrameMs);
+      (void)publishDeviceLog("info", "stream", "frame_accepted", String("Frame accepted: epoch=") + ownerEpoch, false);
     }
     markMatrixFrameDirty(true);
     return true;
@@ -1160,15 +1166,20 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
 
 void onMqttMessage(char* topic, uint8_t* payload, unsigned int length) {
   if (topic == nullptr || payload == nullptr || length == 0 || gDeviceId.isEmpty()) {
+    Serial.printf("[mqtt_msg] DROPPED: nullTopic=%d nullPayload=%d zeroLen=%d emptyId=%d len=%u\n",
+                  topic == nullptr, payload == nullptr, length == 0, gDeviceId.isEmpty(), length);
     return;
   }
 
+  Serial.printf("[mqtt_msg] recebido topic='%s' len=%u\n", topic, length);
   String expectedTopic = buildDeviceMqttTopic("commands");
   if (!expectedTopic.equals(topic)) {
+    Serial.printf("[mqtt_msg] DROPPED topic mismatch: esperado='%s' recebido='%s'\n", expectedTopic.c_str(), topic);
     return;
   }
 
-  (void)enqueueIncomingControlCommand(ControlCommandSource::Mqtt, payload, length);
+  bool enqueued = enqueueIncomingControlCommand(ControlCommandSource::Mqtt, payload, length);
+  Serial.printf("[mqtt_msg] enqueued=%d\n", enqueued);
 }
 
 // DOCS: docs/wiki/guides/operate-device-lifecycle.md#passos
@@ -1269,7 +1280,9 @@ void connectMqtt() {
 
   gMqttDisconnectedSinceMs = 0;
   gMqttPostConnectPending = true;
-  (void)gMqtt.subscribe(buildDeviceMqttTopic("commands").c_str(), 1);
+  String commandsTopic = buildDeviceMqttTopic("commands");
+  (void)gMqtt.subscribe(commandsTopic.c_str(), 1);
+  Serial.printf("[mqtt] inscrito em topic='%s'\n", commandsTopic.c_str());
   Serial.println("[mqtt] conectado (post-connect pendente).");
 }
 
@@ -1384,6 +1397,8 @@ void processNetworkPoll() {
       if (wifiWasDisconnected) {
         Serial.println("[wifi_reconnected] Wi-Fi reconectado.");
         setConnectivityState(kWifiStateConnected, "wifi_reconnected", true);
+        gWsAutoReconnectInitialized = false;
+        connectWebSocket();
       } else {
         setConnectivityState(kWifiStateConnected, "wifi_connected");
       }

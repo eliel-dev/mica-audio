@@ -157,6 +157,8 @@ void expireSessionLeases(unsigned long nowMs) {
   }
 
   if (hasActiveClientOwner(nowMs) && isExpired(nowMs, gSessionShadowState.activeOwnerExpiresAtMs)) {
+    Serial.printf("[session] owner EXPIRED: clientId='%s' epoch=%u\n",
+                  gSessionShadowState.activeClientId.c_str(), gSessionShadowState.activeOwnerEpoch);
     clearActiveOwnerLeaseInternal();
     clearLockLeaseInternal();
     gSessionShadowState.mode = ClientSessionMode::ClockFallback;
@@ -207,6 +209,9 @@ void adoptActiveClientOwner(const String& clientId, unsigned long nowMs) {
   gSessionShadowState.activeOwnerExpiresAtMs = nowMs + kSessionOwnerExpiryMs;
   gClientDisconnectedFallbackActive = false;
   markSessionMutation(nowMs);
+  Serial.printf("[session] owner_adopted: clientId='%s' epoch=%u expiresIn=%lums\n",
+                clientId.c_str(), gSessionShadowState.activeOwnerEpoch, kSessionOwnerExpiryMs);
+  (void)publishDeviceLog("info", "session", "owner_adopted", String("Owner adopted: clientId=") + clientId + String(" epoch=") + gSessionShadowState.activeOwnerEpoch, false);
 }
 
 void renewActiveClientOwner(unsigned long nowMs) {
@@ -217,6 +222,9 @@ void renewActiveClientOwner(unsigned long nowMs) {
   gSessionShadowState.activeOwnerExpiresAtMs = nowMs + kSessionOwnerExpiryMs;
   gClientDisconnectedFallbackActive = false;
   markSessionMutation(nowMs);
+  Serial.printf("[session] owner_renewed: clientId='%s' epoch=%u\n",
+                gSessionShadowState.activeClientId.c_str(), gSessionShadowState.activeOwnerEpoch);
+  (void)publishDeviceLog("info", "session", "owner_renewed", String("Owner renewed: epoch=") + gSessionShadowState.activeOwnerEpoch + String(" clientId=") + gSessionShadowState.activeClientId, false);
 }
 
 void setClientSessionMode(ClientSessionMode mode, unsigned long nowMs) {

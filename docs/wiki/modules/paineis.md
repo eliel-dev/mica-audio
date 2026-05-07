@@ -53,11 +53,12 @@ A sessao `Paineis` permite criar layouts HUB75 `128x64`, salvar biblioteca/midia
 - Se `enabled=true`, `panelId` e `targetDeviceId` forem validos, o servidor:
   - carrega a biblioteca persistida;
   - cria sessao do compositor compartilhado;
-  - assume `clientId = server-panels`;
-  - envia heartbeat/session context;
   - ativa `panels-hub75` no device;
-  - registra e envia batches `WebP` quando suportado;
+  - registra dois batches `WebP` iniciais quando suportado;
+  - envia `queue_panels_batch` como comando tracked legado no caminho WebP;
   - usa frame transport remoto como fallback tecnico do servidor quando necessario.
+- O caminho WebP batch nao envia frame direto antes do primeiro lote: stream binario bruto cancela o playback WebP no firmware.
+- Heartbeat/session context fica fora do hot path WebP e permanece restrito ao fallback por frame owner-bound.
 - Ao fechar o WinUI, o servidor continua exibindo o ultimo painel server-capable ativo.
 - Se todos os widgets forem client-only ou omitidos, o servidor renderiza fallback simples e reporta `skippedWidgets`.
 
@@ -88,4 +89,5 @@ A sessao `Paineis` permite criar layouts HUB75 `128x64`, salvar biblioteca/midia
 
 ## Handoff
 
+- [2026-05-07 panels batch firmware crash and remote contract](../../handoffs/2026-05-07-panels-batch-firmware-crash-and-remote-contract.md)
 - [2026-04-30 remote-only server panel runtime](../../handoffs/2026-04-30-remote-only-server-panel-runtime.md)

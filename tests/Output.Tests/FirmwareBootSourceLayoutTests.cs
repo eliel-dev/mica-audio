@@ -13,10 +13,10 @@ public sealed class FirmwareBootSourceLayoutTests
         var setupBody = ExtractBetween(source, "void setup()", "void loop()");
 
         Assert.Contains("loadLightRuntimeStateFromPrefs();", setupBody, StringComparison.Ordinal);
-        Assert.Contains("WiFi.begin();", setupBody, StringComparison.Ordinal);
+        Assert.Contains("WiFi.begin(", setupBody, StringComparison.Ordinal);
         Assert.Contains("initializeHub75RuntimeFromPrefs();", setupBody, StringComparison.Ordinal);
 
-        var wifiBeginIndex = setupBody.IndexOf("WiFi.begin();", StringComparison.Ordinal);
+        var wifiBeginIndex = setupBody.IndexOf("WiFi.begin(", StringComparison.Ordinal);
         var hub75InitIndex = setupBody.IndexOf("initializeHub75RuntimeFromPrefs();", StringComparison.Ordinal);
         Assert.True(
             wifiBeginIndex >= 0 && hub75InitIndex > wifiBeginIndex,
@@ -50,6 +50,64 @@ public sealed class FirmwareBootSourceLayoutTests
         Assert.True(
             reconfigureIndex < initIndex,
             "A ordem do TWDT deve ser reconfigure -> init para evitar o log ruidoso de already initialized.");
+    }
+
+    [Fact]
+    public void SessionHeartbeat_ShouldCompleteTrackedCommand()
+    {
+        var repoRoot = ResolveRepoRoot();
+        var commandsPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "mica_commands.cpp");
+        var source = File.ReadAllText(commandsPath, Encoding.UTF8);
+        var heartbeatBody = ExtractBetween(
+            source,
+            "if (strcmp(command, \"session_heartbeat\") == 0)",
+            "if (strcmp(command, \"session_lock_acquire\") == 0)");
+
+        Assert.Contains("sendCommandProgress(commandId, 100, \"heartbeat\"", heartbeatBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void QueuePanelsBatch_ShouldValidateParametersBeforeDetailedLog()
+    {
+        var repoRoot = ResolveRepoRoot();
+        var commandsPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "mica_commands.cpp");
+        var source = File.ReadAllText(commandsPath, Encoding.UTF8);
+        var batchBody = ExtractBetween(
+            source,
+            "if (strcmp(command, \"queue_panels_batch\") == 0)",
+            "if (!schedulePanelsBatchDownload(commandId, request, command))");
+
+        var validationIndex = batchBody.IndexOf("if (request.panelsSessionId.length() == 0", StringComparison.Ordinal);
+        var detailedLogIndex = batchBody.IndexOf("writePanelsBatchCommandLog(request);", StringComparison.Ordinal);
+
+        Assert.True(validationIndex >= 0, "queue_panels_batch deve validar os parametros obrigatorios.");
+        Assert.True(detailedLogIndex >= 0, "queue_panels_batch deve manter log detalhado via helper somente apos validacao.");
+        Assert.True(
+            detailedLogIndex > validationIndex,
+            "O log detalhado de queue_panels_batch nao pode acessar Strings do payload antes da validacao.");
+    }
+
+    [Fact]
+    public void QueuePanelsBatch_ShouldAvoidPrintfForDetailedPayloadLog()
+    {
+        var repoRoot = ResolveRepoRoot();
+        var commandsPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "mica_commands.cpp");
+        var source = File.ReadAllText(commandsPath, Encoding.UTF8);
+        var batchBody = ExtractBetween(
+            source,
+            "if (strcmp(command, \"queue_panels_batch\") == 0)",
+            "if (!schedulePanelsBatchDownload(commandId, request, command))");
+
+        Assert.DoesNotContain("Serial.printf(\"[cmd] queue_panels_batch", batchBody, StringComparison.Ordinal);
+        Assert.Contains("writePanelsBatchCommandLog(request);", batchBody, StringComparison.Ordinal);
+
+        var helperBody = ExtractBetween(
+            source,
+            "static void writePanelsBatchCommandLog(const PanelsBatchDownloadRequest& request)",
+            "static bool isSlowCommandDomainBusy()");
+        Assert.DoesNotContain("printf", helperBody, StringComparison.Ordinal);
+        Assert.Contains("Serial.print(request.panelsSessionId);", helperBody, StringComparison.Ordinal);
+        Assert.Contains("Serial.print(request.downloadUrl);", helperBody, StringComparison.Ordinal);
     }
 
     private static string ResolveRepoRoot()

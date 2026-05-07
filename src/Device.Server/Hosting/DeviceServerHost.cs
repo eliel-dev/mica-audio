@@ -17,6 +17,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using MQTTnet.Server;
 
 namespace Device.Server.Hosting;
@@ -58,7 +60,11 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly IMediaLibraryStore mediaLibraryStore;
     private readonly IPanelRuntimeStateStore panelRuntimeStateStore;
     private readonly IPanelRuntimeStatusStore panelRuntimeStatusStore;
-    private readonly IVisualUdpSender visualUdpSender;
+    // CA1859 suppressed: field must remain IVisualUdpSender to allow test injection via SetVisualUdpSender.
+    #pragma warning disable CA1859
+    private IVisualUdpSender visualUdpSender;
+    #pragma warning restore CA1859
+    private readonly ILogger<DeviceServerHost> logger;
     private readonly DeviceFrameConnectionRegistry frameConnections = new();
     private readonly object adminEventConnectionsGate = new();
     private readonly List<AdminEventConnection> adminEventConnections = new();
@@ -89,32 +95,8 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         IPanelLibraryStore? panelLibraryStore = null,
         IMediaLibraryStore? mediaLibraryStore = null,
         IPanelRuntimeStateStore? panelRuntimeStateStore = null,
-        IPanelRuntimeStatusStore? panelRuntimeStatusStore = null)
-        : this(
-            timeProvider,
-            panelsBatchStore,
-            pairingStore,
-            commandStateStore,
-            sessionStateStore,
-            panelLibraryStore,
-            mediaLibraryStore,
-            panelRuntimeStateStore,
-            panelRuntimeStatusStore,
-            visualUdpSender: null)
-    {
-    }
-
-    internal DeviceServerHost(
-        TimeProvider timeProvider,
-        IPanelsBatchStore? panelsBatchStore,
-        IDevicePairingStore? pairingStore,
-        ICommandStateStore? commandStateStore,
-        ISessionStateStore? sessionStateStore,
-        IPanelLibraryStore? panelLibraryStore = null,
-        IMediaLibraryStore? mediaLibraryStore = null,
-        IPanelRuntimeStateStore? panelRuntimeStateStore = null,
         IPanelRuntimeStatusStore? panelRuntimeStatusStore = null,
-        IVisualUdpSender? visualUdpSender = null)
+        ILogger<DeviceServerHost>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.timeProvider = timeProvider;
@@ -126,7 +108,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         this.mediaLibraryStore = mediaLibraryStore ?? new InMemoryMediaLibraryStore();
         this.panelRuntimeStateStore = panelRuntimeStateStore ?? new InMemoryPanelRuntimeStateStore();
         this.panelRuntimeStatusStore = panelRuntimeStatusStore ?? new InMemoryPanelRuntimeStatusStore();
-        this.visualUdpSender = visualUdpSender ?? new SocketVisualUdpSender();
+        this.visualUdpSender = new SocketVisualUdpSender();
+        this.logger = logger ?? NullLogger<DeviceServerHost>.Instance;
+    }
+
+    internal void SetVisualUdpSender(IVisualUdpSender sender)
+    {
+        visualUdpSender = sender ?? throw new ArgumentNullException(nameof(sender));
     }
 
     public event EventHandler? DevicesChanged;
@@ -791,12 +779,18 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             return;
         }
 
-        if (target?.Socket is not { State: WebSocketState.Open })
+        if (target is null)
         {
+            LogFrameDroppedNoConnection(logger, deviceId);
             return;
         }
 
         target.QueueFrame(framePayload);
+
+        if (target.Socket is not { State: WebSocketState.Open })
+        {
+            LogFrameQueuedNotOpen(logger, deviceId, target.Socket?.State.ToString() ?? "null");
+        }
     }
 
     private bool TrySendVisualFrameOverUdp(DeviceRecord record, bool isOnline, byte[] framePayload)
@@ -1436,6 +1430,12 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
             Utc = timeProvider.GetUtcNow(),
         });
     }
+
+    [LoggerMessage(EventId = 1000, Level = LogLevel.Warning, Message = "SendFrame dropped for {DeviceId}: no frame connection registered.")]
+    private static partial void LogFrameDroppedNoConnection(ILogger logger, string deviceId);
+
+    [LoggerMessage(EventId = 1001, Level = LogLevel.Warning, Message = "SendFrame queued for {DeviceId} but WebSocket not open (state={SocketState}). Frame will be delivered on reconnect.")]
+    private static partial void LogFrameQueuedNotOpen(ILogger logger, string deviceId, string socketState);
 
     private void Log(string message)
     {

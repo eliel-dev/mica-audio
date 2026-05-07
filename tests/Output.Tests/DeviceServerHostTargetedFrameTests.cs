@@ -47,6 +47,7 @@ public sealed class DeviceServerHostTargetedFrameTests
 
         var udpSender = new FakeVisualUdpSender();
         await using var host = CreateHost(store, udpSender);
+        host.SetVisualUdpSender(udpSender);
         SetRuntimeConfig(host, new ServerConfig
         {
             PreferLanUdpVisualTransport = true,
@@ -88,6 +89,7 @@ public sealed class DeviceServerHostTargetedFrameTests
 
         var udpSender = new FakeVisualUdpSender { Result = false };
         await using var host = CreateHost(store, udpSender);
+        host.SetVisualUdpSender(udpSender);
         SetRuntimeConfig(host, new ServerConfig
         {
             PreferLanUdpVisualTransport = true,
@@ -177,8 +179,7 @@ public sealed class DeviceServerHostTargetedFrameTests
             panelsBatchStore: null,
             pairingStore: null,
             commandStateStore: null,
-            sessionStateStore: store,
-            visualUdpSender: udpSender);
+            sessionStateStore: store);
 
     private static byte[] CreateBinsPayload(uint sequence)
     {

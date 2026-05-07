@@ -3,8 +3,6 @@ using Device.Protocol.Models;
 using Device.Protocol.Stream;
 using Device.Server.Hosting;
 using MicaAudio.Core.Led;
-
-// DOCS: docs/handoffs/2026-05-06-firmware-performance-optimization-phases-1-4.md
 using MicaAudio.Core.Presets;
 using MicaAudio.Panels;
 using Microsoft.Extensions.Logging;
@@ -13,6 +11,9 @@ namespace MicaAudio.Server;
 
 // DOCS: docs/wiki/modules/paineis.md#runtime-autonomo-no-servidor
 // DOCS: docs/wiki/modules/device-server-protocol.md#runtime-remoto-de-paineis
+// DOCS: docs/handoffs/2026-05-07-panels-batch-firmware-crash-and-remote-contract.md
+// DOCS: docs/handoffs/2026-05-06-panels-heartbeat-nonblocking-batch-runtime.md
+// DOCS: docs/handoffs/2026-05-06-fix-pipeline-batches-server-await-firmware-fila.md
 // DOCS: docs/handoffs/2026-04-30-remote-only-server-panel-runtime.md
 public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
 {
@@ -208,7 +209,7 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
         };
 
         await SaveStatusAsync(status, cancellationToken).ConfigureAwait(false);
-        _ = DispatchActivateAppAsync(device.DeviceId, CreateCommandContext(device));
+        await ActivatePanelsAppAsync(device, cancellationToken).ConfigureAwait(false);
 
         if (device.AnimatedWebpBatchSupported == true)
         {
@@ -230,20 +231,12 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
     {
         var batchState = new PanelsBatchTransportState(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow);
         await QueueNextBatchAsync(session, widgetCount, skippedWidgets, deviceId, batchState, cancellationToken).ConfigureAwait(false);
-
-        SendImmediateFrame(session, widgetCount, skippedWidgets, deviceId);
+        await QueueNextBatchAsync(session, widgetCount, skippedWidgets, deviceId, batchState, cancellationToken).ConfigureAwait(false);
 
         var lastStateCheckUtc = DateTimeOffset.MinValue;
-        var lastHeartbeatUtc = DateTimeOffset.MinValue;
         while (!cancellationToken.IsCancellationRequested)
         {
             var utcNow = DateTimeOffset.UtcNow;
-            if (utcNow - lastHeartbeatUtc >= HeartbeatInterval)
-            {
-                await SendHeartbeatAsync(deviceId, cancellationToken).ConfigureAwait(false);
-                lastHeartbeatUtc = utcNow;
-            }
-
             if (utcNow - lastStateCheckUtc >= TimeSpan.FromSeconds(1))
             {
                 var latestState = await runtimeStateStore.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -292,7 +285,7 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
             var utcNow = DateTimeOffset.UtcNow;
             if (utcNow - lastHeartbeatUtc >= HeartbeatInterval)
             {
-                await SendHeartbeatAsync(deviceId, cancellationToken).ConfigureAwait(false);
+                DispatchHeartbeat(deviceId, cancellationToken);
                 lastHeartbeatUtc = utcNow;
             }
 
@@ -366,8 +359,7 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
             DurationMs = registration.DurationMs,
         };
 
-        var commandContext = CreateCommandContext(ResolveTargetDevice(deviceId));
-        await DispatchBatchCommandAsync(deviceId, payload, commandContext, deviceId, cancellationToken).ConfigureAwait(false);
+        await DispatchBatchCommandAsync(deviceId, payload, cancellationToken).ConfigureAwait(false);
 
         await SaveStatusAsync(new PanelRuntimeStatusDocument
         {
@@ -384,8 +376,6 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
     private async Task DispatchBatchCommandAsync(
         string deviceId,
         PanelsBatchCommandPayload payload,
-        DeviceCommandSessionContext commandContext,
-        string logDeviceId,
         CancellationToken cancellationToken)
     {
         var queueStopwatch = Stopwatch.StartNew();
@@ -395,7 +385,6 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
                     deviceId,
                     DeviceCommandType.QueuePanelsBatch,
                     payload.ToParameters(),
-                    commandContext,
                     CommandTimeout,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -415,66 +404,59 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
         }
     }
 
-    private async Task DispatchActivateAppAsync(string deviceId, DeviceCommandSessionContext commandContext)
+    private async Task ActivatePanelsAppAsync(DeviceSnapshot device, CancellationToken cancellationToken)
     {
         try
         {
             var result = await serverHost.SendCommandTrackedAsync(
-                    deviceId,
+                    device.DeviceId,
                     DeviceCommandType.ActivateApp,
                     new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
                         ["appId"] = PanelsAppId,
                         ["displayName"] = PanelsAppName,
                     },
-                    commandContext,
                     CommandTimeout,
-                    CancellationToken.None)
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             if (!result.Accepted || !result.Success)
             {
-                LogActivateAppFailed(logger, result.ErrorCode ?? result.Message ?? "activate_panels_failed");
+                throw new InvalidOperationException(result.ErrorCode ?? result.Message ?? "activate_panels_failed");
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogActivateAppFailed(logger, ex.Message);
+            throw;
         }
+
     }
 
-    private async Task SendHeartbeatAsync(string deviceId, CancellationToken cancellationToken)
-    {
-        await serverHost.SendCommandTrackedAsync(
-                deviceId,
-                DeviceCommandType.SessionHeartbeat,
-                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["mode"] = PanelsMode,
-                },
-                CreateCommandContext(ResolveTargetDevice(deviceId)),
-                TimeSpan.FromSeconds(2),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
+    private void DispatchHeartbeat(string deviceId, CancellationToken cancellationToken)
+        => _ = DispatchHeartbeatAsync(deviceId, cancellationToken);
 
-    private void SendImmediateFrame(
-        PanelFrameComposer.PanelCompositionSession session,
-        int widgetCount,
-        IReadOnlyList<string> skippedWidgets,
-        string deviceId)
+    private async Task DispatchHeartbeatAsync(string deviceId, CancellationToken cancellationToken)
     {
-        var frame = RenderFrame(session, widgetCount, skippedWidgets, DateTimeOffset.UtcNow);
-        var rgb565 = new ushort[StreamFrameV2.PixelCount128x64];
-        EncodeToRgb565(frame, rgb565);
-        var context = CreateCommandContext(ResolveTargetDevice(deviceId));
-        var payload = StreamFrameV3.CreateFrame128x64Rgb565(
-            sequence: 0,
-            ownerEpoch: context.OwnerEpoch,
-            timestampQpc: Stopwatch.GetTimestamp(),
-            pixels128x64Rgb565: rgb565,
-            brightness0To255: 255);
-        serverHost.SendFrame(deviceId, payload);
+        try
+        {
+            var result = await serverHost.SendCommandTrackedAsync(
+                    deviceId,
+                    DeviceCommandType.SessionHeartbeat,
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["mode"] = PanelsMode,
+                    },
+                    CreateCommandContext(ResolveTargetDevice(deviceId)),
+                    TimeSpan.FromSeconds(2),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            LogHeartbeatResult(logger, deviceId, result.Accepted, result.Success, result.ErrorCode, result.Message);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogHeartbeatDispatchFailed(logger, ex.Message);
+        }
     }
 
     private static PanelsEncodedBatch RenderEncodedBatch(
@@ -547,6 +529,18 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
 
         lock (gate)
         {
+            if (device?.SessionActiveOwnerEpoch is { } shadowEpoch)
+            {
+                if (shadowEpoch == 0)
+                {
+                    ownerEpochByDeviceId.Remove(deviceId);
+                }
+                else if (ownerEpochByDeviceId.TryGetValue(deviceId, out var cachedEpoch) && shadowEpoch < cachedEpoch)
+                {
+                    ownerEpochByDeviceId.Remove(deviceId);
+                }
+            }
+
             if (device?.SessionActiveOwnerEpoch is { } observedEpoch and > 0
                 && string.Equals(device.SessionActiveClientId, ServerPanelsClientId, StringComparison.OrdinalIgnoreCase))
             {
@@ -646,6 +640,13 @@ public sealed partial class ServerPanelRuntimeService : IAsyncDisposable
 
     [LoggerMessage(EventId = 2105, Level = LogLevel.Warning, Message = "ActivateApp failed: {ErrorCode}")]
     private static partial void LogActivateAppFailed(ILogger logger, string errorCode);
+
+    [LoggerMessage(EventId = 2106, Level = LogLevel.Debug, Message = "Session heartbeat dispatch failed: {ErrorCode}")]
+    private static partial void LogHeartbeatDispatchFailed(ILogger logger, string errorCode);
+
+    [LoggerMessage(EventId = 2107, Level = LogLevel.Debug, Message = "Heartbeat result for {DeviceId}: Accepted={Accepted} Success={Success} ErrorCode={ErrorCode} Message={Message}")]
+    private static partial void LogHeartbeatResult(ILogger logger, string deviceId, bool accepted, bool success, string? errorCode, string? message);
+
 }
 
 internal static class DeviceServerHostPanelsCompatibility
