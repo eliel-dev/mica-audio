@@ -37,7 +37,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Output\Output.csproj" />
     <ProjectReference Include="..\..\src\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Device.Client.Embedded\Device.Client.Embedded.csproj" />
     <ProjectReference Include="..\..\src\Device.Client.Remote\Device.Client.Remote.csproj" />
     <ProjectReference Include="..\..\src\Device.Server\Device.Server.csproj" />
     <ProjectReference Include="..\..\src\MicaAudio.Server\MicaAudio.Server.csproj" />
