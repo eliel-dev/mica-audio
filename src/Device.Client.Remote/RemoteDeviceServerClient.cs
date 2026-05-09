@@ -218,6 +218,54 @@ public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDev
         await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Uploads the active panel definition for the device so MicaAudio.Server
+    /// can keep autonomous widgets (Clock today, more later) alive after the
+    /// WinUI client disconnects. The JSON payload must match the shape of
+    /// Panels.Composition.Models.PanelDefinition.
+    /// </summary>
+    public async Task UploadPanelAsync(string deviceId, string panelJson, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            throw new ArgumentException("deviceId is required.", nameof(deviceId));
+        }
+
+        ArgumentNullException.ThrowIfNull(panelJson);
+
+        var path = $"/api/v1/admin/devices/{Uri.EscapeDataString(deviceId.Trim())}/panel";
+        using var request = new HttpRequestMessage(HttpMethod.Put, path)
+        {
+            Content = new StringContent(panelJson, Encoding.UTF8, "application/json"),
+        };
+
+        using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Removes the stored panel for the device (e.g. when the user picks a
+    /// panel that requires the WinUI client). Returns true when a panel was
+    /// removed, false when none was stored.
+    /// </summary>
+    public async Task<bool> DeletePanelAsync(string deviceId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return false;
+        }
+
+        var path = $"/api/v1/admin/devices/{Uri.EscapeDataString(deviceId.Trim())}/panel";
+        using var response = await httpClient.DeleteAsync(path, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     private async Task RunEventsLoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)

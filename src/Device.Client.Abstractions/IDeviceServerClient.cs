@@ -82,4 +82,19 @@ public interface IDeviceServerClient
         ClearPanelsBatches(deviceId, panelsSessionId);
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Uploads the active panel definition for the device so MicaAudio.Server
+    /// can keep autonomous widgets (Clock today) alive after the WinUI client
+    /// disconnects. Default no-op so that test doubles do not have to care.
+    /// </summary>
+    Task UploadPanelAsync(string deviceId, string panelJson, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    /// <summary>
+    /// Removes the stored panel for the device (e.g. when the user picks a
+    /// panel that requires the WinUI client). Default no-op for tests.
+    /// </summary>
+    Task<bool> DeletePanelAsync(string deviceId, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
 }

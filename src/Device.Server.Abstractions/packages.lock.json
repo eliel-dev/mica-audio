@@ -10,6 +10,15 @@
       },
       "device.protocol": {
         "type": "Project"
+      },
+      "micaaudio.core": {
+        "type": "Project"
+      },
+      "panels.composition": {
+        "type": "Project",
+        "dependencies": {
+          "MicaAudio.Core": "[1.0.0, )"
+        }
       }
     }
   }

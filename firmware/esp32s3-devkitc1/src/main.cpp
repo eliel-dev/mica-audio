@@ -2,6 +2,7 @@
 #include <esp_heap_caps.h>
 #include <esp32s3/rom/rtc.h>
 
+#include "mica_config.h"
 #include "mica_globals.h"
 #include "mica_commands.h"
 #include "mica_display.h"
@@ -11,6 +12,9 @@
 #include "mica_panels.h"
 #include "mica_prefs.h"
 #include "mica_provisioning.h"
+
+// DOCS: docs/handoffs/2026-05-08-remote-only-autonomous-widgets-firmware-sta.md
+// DOCS: docs/adr/0010-remote-only-and-server-side-autonomous-widgets.md
 
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-03---hub75-128x64-single-canvas-mapping
@@ -31,10 +35,15 @@
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-18-provisioned-boot-wifi-before-hub75.md
 
+// STA-hardcoded mode: server endpoint comes from mica_config.h on every boot.
+// MQTT coordinates may still be cached in NVS (populated during the first
+// auto-register call) so a reboot without server reachability can still try
+// MQTT against the last known broker. Device identity (deviceId/token) is the
+// only credential persisted in NVS; it survives across reflashes.
 static void reloadProvisioningStateFromPrefs(PrefReadSummary* summary = nullptr) {
-  gServerHost = prefsGetStringOrDefault("host", "", summary);
-  gServerPort = prefsGetPortOrDefault("port", 5272, summary);
-  gMqttHost = prefsGetStringOrDefault("mqttHost", "", summary);
+  gServerHost = String(MICA_SERVER_HOST);
+  gServerPort = MICA_SERVER_PORT;
+  gMqttHost = prefsGetStringOrDefault("mqttHost", String(MICA_SERVER_HOST), summary);
   gMqttPort = prefsGetPortOrDefault("mqttPort", 5273, summary);
   gMqttRootTopic = prefsGetStringOrDefault("mqttRootTopic", String(kDefaultMqttRootTopic), summary);
   normalizeMqttConfig();
@@ -185,78 +194,46 @@ void setup() {
     gLoopTaskWatchdogSubscribed = true;
   }
 
-  Serial.println("[wifi_connecting] preparando conectividade.");
+  Serial.printf(
+      "[wifi_connecting] preparando STA hardcoded ssid=\"%s\" server=%s:%u\n",
+      MICA_WIFI_SSID,
+      MICA_SERVER_HOST,
+      static_cast<unsigned>(MICA_SERVER_PORT));
   setConnectivityState(kWifiStateConnecting, "boot", true);
 
   PrefReadSummary provisioningPrefSummary;
   reloadProvisioningStateFromPrefs(&provisioningPrefSummary);
 
-  bool bootWifiConnected = false;
-  bool provisioningIncomplete = isProvisioningIncomplete();
-  if (provisioningIncomplete) {
-    logPrefsMissingSummary("boot_incomplete", provisioningPrefSummary);
-    const char* bootReason = resolveProvisioningIncompleteReason();
-    Serial.printf(
-        "[boot] configuracao incompleta; abrindo provisioning AP imediatamente (%s).\n",
-        bootReason);
-    if (gLoopTaskWatchdogSubscribed) {
-      unsubscribeCurrentTaskFromWatchdog();
-      gLoopTaskWatchdogSubscribed = false;
-    }
-
-    (void)startProvisioningPortal(bootReason);
-
-    if (isTaskWatchdogReady()) {
-      subscribeCurrentTaskToWatchdog();
-      gLoopTaskWatchdogSubscribed = true;
-    }
-
-    reloadProvisioningStateFromPrefs();
-    provisioningIncomplete = isProvisioningIncomplete();
-    bootWifiConnected = WiFi.status() == WL_CONNECTED;
-  }
-
   loadLightRuntimeStateFromPrefs();
 
-  if (!provisioningIncomplete && !bootWifiConnected) {
-    logBootMemorySnapshot("before_saved_wifi_begin");
-    WiFi.setAutoReconnect(true);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin();
-    gLastWifiReconnectAttemptMs = millis();
-
-    unsigned long bootWifiWaitStart = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - bootWifiWaitStart) < kWifiBootConnectGraceMs) {
-      processSerialProvisioning();
-      resetTaskWatchdog();
-      delay(120);
-    }
-
-    bootWifiConnected = WiFi.status() == WL_CONNECTED;
-    logBootMemorySnapshot("after_saved_wifi_grace");
-  }
+  // STA hardcoded: bring Wi-Fi up before HUB75 to keep the boot ordering that
+  // the rest of the firmware (network poll, control worker) expects.
+  logBootMemorySnapshot("before_sta_connect");
+  // 30 s is generous enough for a slow access point handshake but still bails
+  // out fast enough to keep the loop watchdog happy if Wi-Fi is offline.
+  constexpr unsigned long kStaBootConnectTimeoutMs = 30000UL;
+  const bool bootWifiConnected = connectStaHardcoded(kStaBootConnectTimeoutMs);
+  logBootMemorySnapshot("after_sta_connect");
 
   initializeHub75RuntimeFromPrefs();
 
-  if (provisioningIncomplete) {
-    if (bootWifiConnected) {
-      Serial.println("[wifi_connected] Wi-Fi conectado, mas provisioning ainda incompleto apos o portal.");
-      setConnectivityState(kWifiStateConnected, "boot_provisioning_incomplete", true);
-      gWifiDisconnectedSinceMs = 0;
+  if (bootWifiConnected) {
+    if (autoRegisterIfNeeded()) {
+      Serial.printf(
+          "[boot_ready] STA conectado e device registrado deviceId=%s.\n",
+          gDeviceId.c_str());
+      gLastWifiReconnectAttemptMs = 0;
+      connectMqtt();
+      connectWebSocket();
     } else {
-      Serial.println("[wifi_connecting] provisioning ainda incompleto apos o portal AP.");
-      setConnectivityState(kWifiStateDisconnected, "boot_provisioning_incomplete", true);
-      gWifiDisconnectedSinceMs = millis();
+      Serial.println(
+          "[boot_pending] STA conectado, mas auto-register falhou; tentaremos novamente nas iteracoes do loop.");
+      setConnectivityState(kWifiStateConnected, "auto_register_pending", true);
+      gWifiDisconnectedSinceMs = 0;
     }
-  } else if (bootWifiConnected) {
-    Serial.println("[wifi_connected] Wi-Fi conectado no boot.");
-    setConnectivityState(kWifiStateConnected, "wifi_connected", true);
-    gLastWifiReconnectAttemptMs = 0;
-    connectMqtt();
-    connectWebSocket();
   } else {
-    Serial.println("[wifi_waiting_saved_config] sem Wi-Fi no boot; mantendo STA com credenciais salvas.");
-    setConnectivityState(kWifiStateDisconnected, "wifi_waiting_saved_config", true);
+    Serial.println("[wifi_waiting_sta_hardcoded] sem Wi-Fi no boot; mantendo retry no loop.");
+    setConnectivityState(kWifiStateDisconnected, "wifi_waiting_sta_hardcoded", true);
     gWifiDisconnectedSinceMs = millis();
     gLastWifiReconnectAttemptMs = millis();
   }

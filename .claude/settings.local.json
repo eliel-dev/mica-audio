@@ -3,7 +3,9 @@
     "allow": [
       "Bash(dotnet restore *)",
       "Bash(dotnet build *)",
-      "Bash(dotnet test *)"
+      "Bash(dotnet test *)",
+      "Bash(powershell -ExecutionPolicy Bypass -File ./scripts/build-precompiled-firmware.ps1 -SkipToolInstall)",
+      "Bash(dotnet sln *)"
     ]
   }
 }

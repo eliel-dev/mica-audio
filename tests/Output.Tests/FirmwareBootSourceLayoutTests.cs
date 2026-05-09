@@ -5,22 +5,29 @@ namespace Output.Tests;
 public sealed class FirmwareBootSourceLayoutTests
 {
     [Fact]
-    public void Setup_ShouldStartSavedWifiBeforeInitializingHub75Runtime()
+    public void Setup_ShouldStartHardcodedWifiBeforeInitializingHub75Runtime()
     {
+        // STA-hardcoded boot: setup() must connect Wi-Fi from mica_config.h
+        // BEFORE bringing up the heavy HUB75 runtime, so the panel comes up
+        // already knowing if it has connectivity. The connect call is wrapped
+        // inside connectStaHardcoded() which internally calls
+        // WiFi.begin(MICA_WIFI_SSID, MICA_WIFI_PASSWORD).
+        // DOCS: docs/handoffs/2026-05-08-remote-only-autonomous-widgets-firmware-sta.md
         var repoRoot = ResolveRepoRoot();
         var mainPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "main.cpp");
         var source = File.ReadAllText(mainPath, Encoding.UTF8);
         var setupBody = ExtractBetween(source, "void setup()", "void loop()");
 
         Assert.Contains("loadLightRuntimeStateFromPrefs();", setupBody, StringComparison.Ordinal);
-        Assert.Contains("WiFi.begin();", setupBody, StringComparison.Ordinal);
+        Assert.Contains("connectStaHardcoded(", setupBody, StringComparison.Ordinal);
         Assert.Contains("initializeHub75RuntimeFromPrefs();", setupBody, StringComparison.Ordinal);
+        Assert.Contains("autoRegisterIfNeeded()", setupBody, StringComparison.Ordinal);
 
-        var wifiBeginIndex = setupBody.IndexOf("WiFi.begin();", StringComparison.Ordinal);
+        var wifiConnectIndex = setupBody.IndexOf("connectStaHardcoded(", StringComparison.Ordinal);
         var hub75InitIndex = setupBody.IndexOf("initializeHub75RuntimeFromPrefs();", StringComparison.Ordinal);
         Assert.True(
-            wifiBeginIndex >= 0 && hub75InitIndex > wifiBeginIndex,
-            "O boot provisionado deve tentar subir o Wi-Fi salvo antes de inicializar o runtime pesado do HUB75.");
+            wifiConnectIndex >= 0 && hub75InitIndex > wifiConnectIndex,
+            "STA hardcoded deve subir o Wi-Fi antes de inicializar o runtime pesado do HUB75.");
     }
 
     [Fact]

@@ -70,6 +70,8 @@ public static class MicaAudioServerBootstrap
         services.AddSingleton<IDevicePairingStore, InMemoryDevicePairingStore>();
         services.AddSingleton<ICommandStateStore, InMemoryCommandStateStore>();
         services.AddSingleton<ISessionStateStore, InMemorySessionStateStore>();
+        services.AddSingleton<IServerPanelStore>(sp =>
+            new FileServerPanelStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
             firmwareCatalog: null,
@@ -80,6 +82,7 @@ public static class MicaAudioServerBootstrap
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
         services.AddSingleton(sp => new StandaloneDeviceRegistryStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
         services.AddHostedService<MicaAudioServerRuntime>();
+        services.AddHostedService<PanelCompositorHostedService>();
     }
 
     private static void NormalizeOptions(MicaAudioServerOptions options)

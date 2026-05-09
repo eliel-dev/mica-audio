@@ -17,6 +17,8 @@ public sealed partial class DeviceServerHost
         api.MapGet("/health", HandleHealth);
         api.MapPost("/pair", (Delegate)HandlePairAsync)
             .RequireRateLimiting(PairRatePolicy);
+        api.MapPost("/auto-register", (Delegate)HandleAutoRegisterAsync)
+            .RequireRateLimiting(PairRatePolicy);
 
         var server = api.MapGroup("/server");
         server.MapGet("/info", HandleServerInfo);
@@ -28,6 +30,9 @@ public sealed partial class DeviceServerHost
         admin.MapPost("/devices/{deviceId}/commands/tracked", (Delegate)HandleAdminTrackedCommandAsync);
         admin.MapPost("/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence:long}", (Delegate)HandleAdminPanelsBatchAsync);
         admin.MapDelete("/panels/batches/{deviceId}", (Delegate)HandleAdminClearPanelsBatches);
+        admin.MapPut("/devices/{deviceId}/panel", (Delegate)HandleAdminUploadPanelAsync);
+        admin.MapGet("/devices/{deviceId}/panel", (Delegate)HandleAdminGetPanel);
+        admin.MapDelete("/devices/{deviceId}/panel", (Delegate)HandleAdminDeletePanel);
 
         var device = api.MapGroup("/device");
         device.MapGet("/config", (Delegate)HandleDeviceConfig);

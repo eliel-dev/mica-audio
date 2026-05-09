@@ -158,6 +158,27 @@ internal sealed class PanelsPlaybackService : IDisposable
         {
             lifecycleGate.Release();
         }
+
+        // Best-effort upload to MicaAudio.Server so autonomous widgets (Clock)
+        // keep rendering after the WinUI client closes. Local playback always
+        // runs as before; failures here only affect the server-side fallback.
+        _ = TrySyncPanelToServerAsync(panelSnapshot, deviceId.Trim());
+    }
+
+    private async Task TrySyncPanelToServerAsync(PanelDefinition panelSnapshot, string deviceId)
+    {
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                panelSnapshot,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            await serverClient.UploadPanelAsync(deviceId, json, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Server might be temporarily unreachable; ignore so local playback
+            // is unaffected. Next StartAsync call will retry the upload.
+        }
     }
 
     public async Task SuspendAsync(CancellationToken cancellationToken = default)

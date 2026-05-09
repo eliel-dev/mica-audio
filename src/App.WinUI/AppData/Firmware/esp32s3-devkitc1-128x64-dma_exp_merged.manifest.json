@@ -1,15 +1,15 @@
 ﻿{
     "schemaVersion":  3,
-    "firmwareVersion":  "v0.0.0-5-g0ffea7d-dirty",
-    "gitSha":  "0ffea7d",
+    "firmwareVersion":  "v0.0.0-2-gd5b11df-dirty",
+    "gitSha":  "d5b11df",
     "profile":  "dma_exp",
     "boardModel":  "esp32s3_devkitc1",
     "panelType":  "hub75_p2_5_128x64_smd2121_scan32",
     "controlPlane":  "mqtt",
-    "builtAtUtc":  "2026-04-17T19:08:06.9840139Z",
-    "sha256":  "e9a799b5445e171d189ef3c07aad45e8c4c1d7f10ca6f460d04aa4d9af854756",
-    "fileSizeBytes":  1591776,
+    "builtAtUtc":  "2026-05-09T01:01:29.1575251Z",
+    "sha256":  "71f4175b6131094b364781fcf14e53528b3c69a5e96c5f21472828b7061b71f5",
+    "fileSizeBytes":  1457424,
     "otaFileName":  "esp32s3-devkitc1-128x64-dma_exp_ota.bin",
-    "otaSha256":  "7aa4e3adbd861320ed718d4b062ac844d9cf6b5557f9b9ccb71ed292dc93b9b7",
-    "otaFileSizeBytes":  1526240
+    "otaSha256":  "93edf4080f988f8e3979971e0bc6ff7af6225f06cb593f8a96c12b7d4b2b5f50",
+    "otaFileSizeBytes":  1391888
 }
