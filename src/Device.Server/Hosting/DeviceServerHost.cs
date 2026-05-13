@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -30,6 +31,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
 // DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-05-12-display-state-gif-panels.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -61,6 +63,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly DeviceFrameConnectionRegistry frameConnections = new();
     private readonly object adminEventConnectionsGate = new();
     private readonly List<AdminEventConnection> adminEventConnections = new();
+
+    // Tracks when the WinUI admin-WS client last sent a frame for each device.
+    // Used by PanelCompositorHostedService to yield rendering when the client
+    // compositor is active, preventing two frame sources from interleaving on
+    // the same device WebSocket.
+    private readonly Dictionary<string, long> lastAdminFrameTimestampByDeviceId =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private DeviceServerRuntimeConfig runtimeConfig = DeviceServerRuntimeConfig.From(new ServerConfig());
     private WebApplication? app;
@@ -159,7 +168,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         DeviceServerObservability.ConfigureOpenTelemetry(builder.Services);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
-            kestrel.Limits.MaxRequestBodySize = Math.Max(localRuntimeConfig.MaxJsonBodyBytes, localRuntimeConfig.MaxMediaUploadBytes);
+            kestrel.Limits.MaxRequestBodySize = Math.Max(
+                localRuntimeConfig.MaxJsonBodyBytes * 64,
+                MaxMediaBodyBytes);
         });
         builder.WebHost.UseUrls($"http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
         builder.Services.AddRateLimiter(options =>
@@ -731,6 +742,77 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         NotifyDevicesChanged();
         Log($"Device removido: {deviceId}");
         return true;
+    }
+
+    /// <summary>
+    /// Returns whether the device currently has a registered, open frame
+    /// connection (i.e. the device's /ws/v1/stream is alive and frames sent
+    /// via <see cref="SendFrame"/> would actually be delivered).
+    /// Used by the server-side compositor to surface "armed but no consumer"
+    /// situations in logs instead of silently dropping frames.
+    /// </summary>
+    public bool HasOpenFrameConnection(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return false;
+        }
+
+        DeviceFrameConnection? target;
+        lock (gate)
+        {
+            frameConnections.TryGetValue(deviceId.Trim(), out target);
+        }
+
+        return target?.Socket is { State: WebSocketState.Open };
+    }
+
+    /// <summary>
+    /// Records that the WinUI admin-WS client just dispatched a frame for
+    /// <paramref name="deviceId"/>. Called by the admin-frames WS handler so
+    /// the server-side compositor knows to yield (see
+    /// <see cref="WasClientCompositorActiveRecently"/>).
+    /// </summary>
+    internal void RecordAdminFrameForDevice(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            lastAdminFrameTimestampByDeviceId[deviceId.Trim()] = Stopwatch.GetTimestamp();
+        }
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the WinUI client compositor sent a
+    /// frame for <paramref name="deviceId"/> within the last
+    /// <paramref name="window"/>. The server-side compositor uses this to skip
+    /// its own rendering and avoid interleaving frames from two sources.
+    /// </summary>
+    public bool WasClientCompositorActiveRecently(string deviceId, TimeSpan window)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId) || window <= TimeSpan.Zero)
+        {
+            return false;
+        }
+
+        long ts;
+        lock (gate)
+        {
+            lastAdminFrameTimestampByDeviceId.TryGetValue(deviceId.Trim(), out ts);
+        }
+
+        if (ts == 0)
+        {
+            return false;
+        }
+
+        var elapsedTicks = Stopwatch.GetTimestamp() - ts;
+        var windowTicks = (long)(window.TotalSeconds * Stopwatch.Frequency);
+        return elapsedTicks < windowTicks;
     }
 
     public void BroadcastFrame(byte[] framePayload)

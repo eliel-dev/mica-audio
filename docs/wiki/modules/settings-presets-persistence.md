@@ -54,7 +54,7 @@ Centralizar configuracoes de sessao, presets e armazenamento em `%AppData%`.
 - [SettingsRepository](../../../src/App.WinUI/Services/SettingsRepository.cs#L6) - assinatura: `internal sealed class SettingsRepository`
 - [PresetRepository](../../../src/App.WinUI/Services/PresetRepository.cs#L6) - assinatura: `internal sealed class PresetRepository`
 - [MainPage Pipeline helpers](../../../src/App.WinUI/Views/MainPage.Pipeline.cs#L1) - assinatura: `public partial class MainPage`
-- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1) - assinatura: `internal sealed class JsonDeviceRegistryStore`
+- [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1) - assinatura: `public sealed class StandaloneDeviceRegistryStore`
 
 ## Backlinks no codigo
 
@@ -127,4 +127,4 @@ A regra de normalizacao garante sempre: `Fresh < Stale < Dormant`.
 O registro persistido de devices agora usa dupla protecao para evitar falso `Nunca conectado`:
 
 - script explicito: `scripts/migrate-device-registry-presence-v1.ps1`
-- fallback automatico em runtime: `DeviceRegistryPresenceNormalizer` + `JsonDeviceRegistryStore`
+- fallback automatico em runtime: `DeviceRegistryPresenceNormalizer` + `StandaloneDeviceRegistryStore`

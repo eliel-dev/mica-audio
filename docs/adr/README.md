@@ -23,4 +23,4 @@ Esta pasta registra Decisoes de Arquitetura (ADR) para governanca tecnica e cont
 
 
 - [0009 - HUB75 128x64 hard cutover DevKitC-1 only](0009-hub75-128x64-hard-cutover-devkitc1-only.md)
-- [0010 - Client-owned LAN data plane](0010-client-owned-lan-data-plane.md)
+10. [0010 - Remote-only e widgets autonomos no servidor](0010-remote-only-and-server-side-autonomous-widgets.md)

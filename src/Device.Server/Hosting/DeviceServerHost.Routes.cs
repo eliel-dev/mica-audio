@@ -18,6 +18,8 @@ public sealed partial class DeviceServerHost
         api.MapGet("/health", HandleHealth);
         api.MapPost("/pair", (Delegate)HandlePairAsync)
             .RequireRateLimiting(PairRatePolicy);
+        api.MapPost("/auto-register", (Delegate)HandleAutoRegisterAsync)
+            .RequireRateLimiting(PairRatePolicy);
 
         var server = api.MapGroup("/server");
         server.MapGet("/info", HandleServerInfo);
@@ -34,9 +36,16 @@ public sealed partial class DeviceServerHost
         admin.MapDelete("/library/media/{mediaId}", (Delegate)HandleAdminDeleteMediaAsync);
         admin.MapPost("/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence:long}", (Delegate)HandleAdminPanelsBatchAsync);
         admin.MapDelete("/panels/batches/{deviceId}", (Delegate)HandleAdminClearPanelsBatches);
+        admin.MapPut("/devices/{deviceId}/panel", (Delegate)HandleAdminUploadPanelAsync);
+        admin.MapGet("/devices/{deviceId}/panel", (Delegate)HandleAdminGetPanel);
+        admin.MapDelete("/devices/{deviceId}/panel", (Delegate)HandleAdminDeletePanel);
+        admin.MapPut("/devices/{deviceId}/media/{mediaId}", (Delegate)HandleAdminUploadMediaAsync);
+        admin.MapDelete("/devices/{deviceId}/media/{mediaId}", (Delegate)HandleAdminDeleteMedia);
+        admin.MapDelete("/devices/{deviceId}/media", (Delegate)HandleAdminDeleteAllMedia);
 
         var device = api.MapGroup("/device");
         device.MapGet("/config", (Delegate)HandleDeviceConfig);
+        device.MapGet("/display-state", (Delegate)HandleDeviceDisplayState);
         device.MapGet("/firmware/latest", (Delegate)HandleDeviceFirmwareLatest);
         device.MapGet("/firmware/download", (Delegate)HandleDeviceFirmwareDownload);
         device.MapGet("/panels/batches/{batchSequence:long}.webp", (Delegate)HandlePanelsBatchDownload);

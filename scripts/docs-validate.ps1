@@ -491,7 +491,7 @@ $docsCoverageTargets = @(
     'src/Device.Server/Hosting/DeviceServerHost.cs',
     'src/Device.Server/Hosting/DeviceServerHost.Advanced.cs',
     'firmware/esp32s3-devkitc1/src/main.cpp',
-    'src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs',
+    'src/Device.Client.Remote/RemoteDeviceServerClient.cs',
     'src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs',
     'src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs',
     'src/App.WinUI/Services/Apps/AppCatalogService.cs',

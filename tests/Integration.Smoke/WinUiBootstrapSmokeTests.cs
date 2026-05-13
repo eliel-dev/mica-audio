@@ -7,10 +7,8 @@ using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using App.WinUI.Views;
 using Device.Client;
-using Device.Client.Embedded;
 using Device.Client.Remote;
 using Device.Protocol.Models;
-using Device.Server.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MicaAudio.Core.Config;
@@ -27,16 +25,8 @@ public sealed class WinUiBootstrapSmokeTests
     {
         var provider = App.WinUI.App.BuildServiceProvider();
 
-        Assert.NotNull(provider.GetService<EmbeddedDeviceServerClient>());
         Assert.NotNull(provider.GetService<IDeviceServerClient>());
-        Assert.NotNull(provider.GetService<IEmbeddedDeviceServerClientRuntime>());
         Assert.NotNull(provider.GetService<IDeviceServerClientRuntime>());
-        Assert.NotNull(provider.GetService<IDeviceServerHost>());
-        Assert.NotNull(provider.GetService<IDeviceClientSessionManager>());
-        Assert.NotNull(provider.GetService<IPanelsBatchStore>());
-        Assert.NotNull(provider.GetService<IDevicePairingStore>());
-        Assert.NotNull(provider.GetService<ICommandStateStore>());
-        Assert.NotNull(provider.GetService<ISessionStateStore>());
         Assert.NotNull(provider.GetService<IDeviceFrameTransport>());
         Assert.NotNull(provider.GetService<DeviceOperationsCoordinator>());
         Assert.NotNull(provider.GetService<IAppCatalogService>());
@@ -54,7 +44,7 @@ public sealed class WinUiBootstrapSmokeTests
     }
 
     [Fact]
-    public async Task BuildServiceProvider_WithRemoteSettings_ShouldResolveRemoteClientAndTransport()
+    public async Task BuildServiceProvider_ShouldResolveRemoteClientAndTransport()
     {
         var root = Path.Combine(Path.GetTempPath(), "mica-audio-winui-bootstrap", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -64,7 +54,6 @@ public sealed class WinUiBootstrapSmokeTests
             options.SettingsFilePath,
             JsonSerializer.Serialize(new AppSettings
             {
-                DeviceServerMode = DeviceServerMode.Remote,
                 RemoteServerBaseAddress = "http://127.0.0.1:5272",
             }));
         var secretStore = new RemoteDeviceServerSecretStore(Options.Create(options));
@@ -75,7 +64,6 @@ public sealed class WinUiBootstrapSmokeTests
         Assert.IsType<RemoteDeviceServerClient>(provider.GetRequiredService<IDeviceServerClient>());
         Assert.IsType<RemoteDeviceFrameTransport>(provider.GetRequiredService<IDeviceFrameTransport>());
         Assert.IsType<RemoteDeviceServerRuntime>(provider.GetRequiredService<IDeviceServerClientRuntime>());
-        Assert.NotNull(provider.GetRequiredService<DeviceServerHost>());
     }
 
     [Fact]
@@ -97,12 +85,10 @@ public sealed class WinUiBootstrapSmokeTests
     {
         var constructor = typeof(PanelsPlaybackService)
             .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-            .Single(ctor => ctor.GetParameters().Length == 7);
+            .Single(ctor => ctor.GetParameters().Length == 6);
 
         Assert.Equal(typeof(IDeviceServerClient), constructor.GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IDeviceFrameTransport), constructor.GetParameters()[1].ParameterType);
-        Assert.Equal(typeof(IDeviceClientSessionManager), constructor.GetParameters()[6].ParameterType);
-        Assert.True(constructor.GetParameters()[6].HasDefaultValue);
     }
 
     [Fact]

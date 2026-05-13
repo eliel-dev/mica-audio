@@ -84,7 +84,7 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 
 - `IDeviceServerHost` permanece como contrato de lifecycle do server embutido e continua implementado por `DeviceServerHost`.
 - `IDeviceFrameTransport`, `IDeviceServerClient` e `PanelsBatchRegistration` vivem em `Device.Client.Abstractions`, que e a dependencia permitida para clients/output.
-- `Device.Client.Embedded` contem `EmbeddedDeviceServerClient`, a adaptacao local que monta `ServerConfig`, faz seed/save do registry e encaminha eventos/comandos/batches para o host embedded.
+- `Device.Client.Remote` contem `RemoteDeviceServerClient`, a adaptacao HTTP/admin que consome `MicaAudio.Server` e encaminha eventos/comandos/batches para o host standalone.
 - `Device.Server.Abstractions` referencia `Device.Client.Abstractions`; `IDeviceServerHost` continua herdando `IDeviceFrameTransport`, mas permanece limitado ao host embedded/lifecycle.
 - O WinUI consome a fronteira app-level (`IDeviceServerClient`) para operacoes de devices e batches de `Paineis`, mantendo o server concreto apenas no composition root.
 - Nao houve alteracao de endpoints, portas, topicos MQTT, autenticacao, DTOs wire ou firmware.
@@ -379,9 +379,9 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 - [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1) - assinatura: `public interface IDeviceFrameTransport`
 - [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1) - assinatura: `public interface IDeviceServerClient`
 - [PanelsBatchRegistration](../../../src/Device.Client.Abstractions/PanelsBatchRegistration.cs#L1) - assinatura: `public sealed record PanelsBatchRegistration`
-- [EmbeddedDeviceServerClient](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L1) - assinatura: `public sealed partial class EmbeddedDeviceServerClient`
-- [EmbeddedDeviceServerClientOptions](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClientOptions.cs#L1) - assinatura: `public sealed class EmbeddedDeviceServerClientOptions`
-- [NetworkInterfaceEmbeddedDevicePublicHostResolver](../../../src/Device.Client.Embedded/NetworkInterfaceEmbeddedDevicePublicHostResolver.cs#L1) - assinatura: `public sealed class NetworkInterfaceEmbeddedDevicePublicHostResolver`
+- [RemoteDeviceServerClient](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1) - assinatura: `public sealed partial class RemoteDeviceServerClient`
+- [RemoteDeviceServerClientOptions](../../../src/Device.Client.Remote/RemoteDeviceServerClientOptions.cs#L1) - assinatura: `public sealed class RemoteDeviceServerClientOptions`
+- [RemoteDeviceFrameTransport](../../../src/Device.Client.Remote/RemoteDeviceFrameTransport.cs#L1) - assinatura: `public sealed class RemoteDeviceFrameTransport`
 - [DeviceServerObservability](../../../src/Device.Server/Hosting/DeviceServerObservability.cs#L1) - assinatura: `internal static class DeviceServerObservability`
 - [DeviceServerRuntimeConfig](../../../src/Device.Server/Hosting/DeviceServerRuntimeConfig.cs#L1) - assinatura: `internal sealed class DeviceServerRuntimeConfig`
 - [DeviceMqttTopics](../../../src/Device.Server/Hosting/DeviceMqttTopics.cs#L1) - assinatura: `internal static class DeviceMqttTopics`
@@ -446,8 +446,8 @@ Fornecer o control plane HTTP/WS/MQTT/UDP do Mica para auto-registro LAN, contro
 - `src/MicaAudio.Server/StandalonePanelLibraryStore.cs`
 - `src/MicaAudio.Server/StandaloneMediaLibraryStore.cs`
 - `src/Device.Server/Hosting/DeviceMqttTopics.cs`
-- `src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs`
-- `src/Device.Client.Embedded/NetworkInterfaceEmbeddedDevicePublicHostResolver.cs`
+- `src/Device.Client.Remote/RemoteDeviceServerClient.cs`
+- `src/Device.Client.Remote/RemoteDeviceFrameTransport.cs`
 - `src/Device.Protocol/Models/PairDeviceRequest.cs`
 - `src/Device.Protocol/Models/PairDeviceResponse.cs`
 - `src/Device.Protocol/Models/MicaDiscoveryRequestV1.cs`

@@ -89,6 +89,34 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\mvvm-validate.ps1
 dotnet build src/App.WinUI/App.WinUI.csproj -c Debug
 ```
+### Arquitetura remote-only e widgets autonomos no servidor (2026-05)
+
+A partir de 2026-05 o WinUI nao hospeda mais o `DeviceServer` em-processo. Toda
+comunicacao com o ESP32 passa pelo `MicaAudio.Server` standalone (Docker ou
+`dotnet run`). O firmware ESP32-S3 conecta direto em modo STA com credenciais
+hardcoded no codigo-fonte e se auto-registra via `POST /api/v1/auto-register`,
+recebendo `deviceId` e `token` deterministicos por MAC.
+
+Widgets autonomos (relogio hoje, clima/GIFs/imagens em iteracoes futuras) sao
+renderizados pelo proprio `MicaAudio.Server` em background, mantendo o painel
+ativo no LED mesmo apos o WinUI fechar. Widgets dependentes do cliente
+(visualizador de audio, metricas do PC) so funcionam enquanto o WinUI esta
+aberto.
+
+- Componentes principais:
+  - `src/Panels.Composition/` (modelos, drawing helpers, compositor server-side)
+  - `src/MicaAudio.Server/PanelCompositorHostedService.cs` (loop 30 FPS server-side)
+  - `src/MicaAudio.Server/FileServerPanelStore.cs` (persistencia por `{StorageRoot}/panels/{deviceId}.json`)
+  - `src/Device.Server/Hosting/DeviceServerHost.AutoRegister.cs` (endpoint auto-register)
+  - `src/Device.Server/Hosting/DeviceServerHost.PanelStore.cs` (PUT/GET/DELETE `/api/v1/admin/devices/{deviceId}/panel`)
+- Configuracao do firmware (Wi-Fi/servidor): copie
+  `firmware/esp32s3-devkitc1/src/mica_config.example.h` para
+  `firmware/esp32s3-devkitc1/src/mica_config.h` (gitignored) e edite
+  `MICA_WIFI_SSID`, `MICA_WIFI_PASSWORD`, `MICA_SERVER_HOST`,
+  `MICA_SERVER_PORT` antes do `pio run`.
+- Decisao registrada em `docs/adr/0010-remote-only-and-server-side-autonomous-widgets.md`.
+- Handoff de migracao: `docs/handoffs/2026-05-08-remote-only-autonomous-widgets-firmware-sta.md`.
+
 ### Seguranca e qualidade (security-first)
 
 Hardening aplicado no runtime e no pipeline:

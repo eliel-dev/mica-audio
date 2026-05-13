@@ -52,7 +52,7 @@ Aplicar uma trilha `security-first` no projeto para reduzir risco real em servid
 
 - [ServerConfig](../../../src/Device.Protocol/Contracts/ServerConfig.cs#L1)
 - [DeviceServerHost.StartAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
-- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
+- [RemoteDeviceServerSecretStore](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerSecretStore.cs#L1)
 - [dependency-vulnerability-gate](../../../scripts/dependency-vulnerability-gate.ps1#L1)
 - [governance workflow](../../../.github/workflows/governance.yml#L1)
 - [codeql workflow](../../../.github/workflows/codeql.yml#L1)

@@ -5,22 +5,29 @@ namespace Output.Tests;
 public sealed class FirmwareBootSourceLayoutTests
 {
     [Fact]
-    public void Setup_ShouldStartSavedWifiBeforeInitializingHub75Runtime()
+    public void Setup_ShouldStartHardcodedWifiBeforeInitializingHub75Runtime()
     {
+        // STA-hardcoded boot: setup() must connect Wi-Fi from mica_config.h
+        // BEFORE bringing up the heavy HUB75 runtime, so the panel comes up
+        // already knowing if it has connectivity. The connect call is wrapped
+        // inside connectStaHardcoded() which internally calls
+        // WiFi.begin(MICA_WIFI_SSID, MICA_WIFI_PASSWORD).
+        // DOCS: docs/handoffs/2026-05-08-remote-only-autonomous-widgets-firmware-sta.md
         var repoRoot = ResolveRepoRoot();
         var mainPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "main.cpp");
         var source = File.ReadAllText(mainPath, Encoding.UTF8);
         var setupBody = ExtractBetween(source, "void setup()", "void loop()");
 
         Assert.Contains("loadLightRuntimeStateFromPrefs();", setupBody, StringComparison.Ordinal);
-        Assert.Contains("WiFi.begin();", setupBody, StringComparison.Ordinal);
+        Assert.Contains("connectStaHardcoded(", setupBody, StringComparison.Ordinal);
         Assert.Contains("initializeHub75RuntimeFromPrefs();", setupBody, StringComparison.Ordinal);
+        Assert.Contains("autoRegisterIfNeeded()", setupBody, StringComparison.Ordinal);
 
-        var wifiBeginIndex = setupBody.IndexOf("WiFi.begin();", StringComparison.Ordinal);
+        var wifiConnectIndex = setupBody.IndexOf("connectStaHardcoded(", StringComparison.Ordinal);
         var hub75InitIndex = setupBody.IndexOf("initializeHub75RuntimeFromPrefs();", StringComparison.Ordinal);
         Assert.True(
-            wifiBeginIndex >= 0 && hub75InitIndex > wifiBeginIndex,
-            "O boot provisionado deve tentar subir o Wi-Fi salvo antes de inicializar o runtime pesado do HUB75.");
+            wifiConnectIndex >= 0 && hub75InitIndex > wifiConnectIndex,
+            "STA hardcoded deve subir o Wi-Fi antes de inicializar o runtime pesado do HUB75.");
     }
 
     [Fact]
@@ -50,6 +57,59 @@ public sealed class FirmwareBootSourceLayoutTests
         Assert.True(
             reconfigureIndex < initIndex,
             "A ordem do TWDT deve ser reconfigure -> init para evitar o log ruidoso de already initialized.");
+    }
+
+    [Fact]
+    public void Loop_ShouldPollDisplayStateAfterSignalTimeoutBeforeRender()
+    {
+        var repoRoot = ResolveRepoRoot();
+        var mainPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "main.cpp");
+        var source = File.ReadAllText(mainPath, Encoding.UTF8);
+        var loopBody = ExtractBetween(source, "void loop()", "  resetTaskWatchdog();");
+
+        Assert.Contains("processSignalTimeout();", loopBody, StringComparison.Ordinal);
+        Assert.Contains("pollDisplayStateIfNeeded();", loopBody, StringComparison.Ordinal);
+        Assert.Contains("processRenderFrame();", loopBody, StringComparison.Ordinal);
+
+        var timeoutIndex = loopBody.IndexOf("processSignalTimeout();", StringComparison.Ordinal);
+        var pollIndex = loopBody.IndexOf("pollDisplayStateIfNeeded();", StringComparison.Ordinal);
+        var renderIndex = loopBody.IndexOf("processRenderFrame();", StringComparison.Ordinal);
+
+        Assert.True(
+            timeoutIndex >= 0 && pollIndex > timeoutIndex && renderIndex > pollIndex,
+            "O firmware deve consultar display-state depois de detectar timeout de frames e antes de renderizar o fallback.");
+    }
+
+    [Fact]
+    public void FirmwareFallback_ShouldUseServerDisplayStateWhenConnectivityIsHealthy()
+    {
+        var repoRoot = ResolveRepoRoot();
+        var displayPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "mica_display.cpp");
+        var source = File.ReadAllText(displayPath, Encoding.UTF8);
+        var resolverBody = ExtractBetween(
+            source,
+            "Hub75FallbackState resolveHub75FallbackCandidate()",
+            "Hub75FallbackState resolveHub75FallbackState");
+
+        Assert.Contains("gServerDisplayState != Hub75FallbackState::None", resolverBody, StringComparison.Ordinal);
+        Assert.Contains("return gServerDisplayState;", resolverBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DrawConnectivityFallback_ShouldRenderServerIdleScreens()
+    {
+        var repoRoot = ResolveRepoRoot();
+        var displayPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "mica_display.cpp");
+        var source = File.ReadAllText(displayPath, Encoding.UTF8);
+        var drawBody = ExtractBetween(
+            source,
+            "bool drawConnectivityFallback(Hub75FallbackState state)",
+            "// ---------------------------------------------------------------------------\r\n// Frame commit");
+
+        Assert.Contains("case Hub75FallbackState::NoModeActive:", drawBody, StringComparison.Ordinal);
+        Assert.Contains("case Hub75FallbackState::FirstRun:", drawBody, StringComparison.Ordinal);
+        Assert.Contains("NENHUM MODO", drawBody, StringComparison.Ordinal);
+        Assert.Contains("ATIVE PAINEL", drawBody, StringComparison.Ordinal);
     }
 
     private static string ResolveRepoRoot()

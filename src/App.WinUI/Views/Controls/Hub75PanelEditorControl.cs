@@ -677,13 +677,21 @@ internal sealed class Hub75PanelEditorControl : Grid, IDisposable
     private static int ClampToMatrixX(double x, LayoutInfo layout)
     {
         var local = (x - layout.OffsetX) / Math.Max(layout.Pitch, 0.0001f);
-        return Math.Clamp((int)Math.Floor(local), 0, LedDefaults.MatrixWidth - 1);
+        // Clamp to [0, MatrixWidth] (not MatrixWidth-1) so that dragging a
+        // resize handle past the right edge of the panel reaches column 128 —
+        // the boundary needed for a full-width widget (width = 128, x = 0).
+        // CalculateNextBounds clamps the final bounds to the panel dimensions,
+        // so the extra +1 here is safe for both resize and move interactions.
+        return Math.Clamp((int)Math.Floor(local), 0, LedDefaults.MatrixWidth);
     }
 
     private static int ClampToMatrixY(double y, LayoutInfo layout)
     {
         var local = (y - layout.OffsetY) / Math.Max(layout.Pitch, 0.0001f);
-        return Math.Clamp((int)Math.Floor(local), 0, LedDefaults.MatrixHeight - 1);
+        // Same rationale as ClampToMatrixX — clamp to MatrixHeight (64) so
+        // a full-height widget (height = 64, y = 0) is reachable by dragging
+        // the bottom handle to the panel edge.
+        return Math.Clamp((int)Math.Floor(local), 0, LedDefaults.MatrixHeight);
     }
 
     private InputCursor ResolveCursor(Hub75PanelWidgetInteractionKind interactionKind)

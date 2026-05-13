@@ -135,6 +135,8 @@ Hub75FallbackState gHub75FallbackPendingState = Hub75FallbackState::None;
 unsigned long gHub75FallbackPendingSinceMs = 0;
 bool gHub75FallbackDirty = false;
 bool gHub75FallbackClearPending = false;
+unsigned long gLastDisplayStatePollMs = 0;
+Hub75FallbackState gServerDisplayState = Hub75FallbackState::None;
 bool gProvisioningLaunchPending = false;
 bool gProvisioningLaunchClearCredentials = false;
 String gProvisioningLaunchCommandId;

@@ -6,7 +6,6 @@ namespace Device.Client;
 // DOCS: docs/wiki/modules/paineis.md#runtime-em-background
 // DOCS: docs/handoffs/2026-04-22-device-client-abstractions.md
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
-// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public interface IDeviceServerClient
 {
     event EventHandler? DevicesChanged;
@@ -43,15 +42,6 @@ public interface IDeviceServerClient
         IReadOnlyDictionary<string, string>? parameters,
         TimeSpan timeout,
         CancellationToken cancellationToken);
-
-    Task<CommandDispatchResult> SendCommandTrackedAsync(
-        string deviceId,
-        DeviceCommandType commandType,
-        IReadOnlyDictionary<string, string>? parameters,
-        DeviceCommandSessionContext? sessionContext,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-        => SendCommandTrackedAsync(deviceId, commandType, parameters, timeout, cancellationToken);
 
     PanelsBatchRegistration RegisterPanelsBatch(
         string deviceId,
@@ -93,22 +83,42 @@ public interface IDeviceServerClient
         return Task.CompletedTask;
     }
 
-    Task<PanelLibraryDocument> GetPanelLibraryAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(new PanelLibraryDocument());
-
-    Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Uploads the active panel definition for the device so MicaAudio.Server
+    /// can keep autonomous widgets (Clock, GIF/Image) alive after the WinUI client
+    /// disconnects. Default no-op so that test doubles do not have to care.
+    /// </summary>
+    Task UploadPanelAsync(string deviceId, string panelJson, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
-    Task<MediaAssetInfo> UploadMediaAsync(
-        string fileName,
-        string contentType,
-        byte[] payload,
-        CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("Media upload is not supported by this device server client.");
+    /// <summary>
+    /// Removes the stored panel for the device (e.g. when the user picks a
+    /// panel that requires the WinUI client). Default no-op for tests.
+    /// </summary>
+    Task<bool> DeletePanelAsync(string deviceId, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
 
-    Task<byte[]?> DownloadMediaAsync(string mediaId, CancellationToken cancellationToken = default)
-        => Task.FromResult<byte[]?>(null);
+    /// <summary>
+    /// Returns the panel currently stored on the server for the device, plus
+    /// its server-side capability classification ("ServerCapable",
+    /// "RequiresClient", "Empty"). Returns <see langword="null"/> when no panel
+    /// is stored. The server is the source of truth: clients should sync local
+    /// UI state with what the server is actually rendering on the device.
+    /// </summary>
+    Task<ServerPanelSnapshot?> GetServerPanelAsync(string deviceId, CancellationToken cancellationToken = default)
+        => Task.FromResult<ServerPanelSnapshot?>(null);
 
-    Task<bool> DeleteMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Uploads a raw media file (GIF/PNG/JPG/BMP) to the server media store so
+    /// gifhub75 widgets can be rendered autonomously. The <paramref name="mediaId"/>
+    /// must include the extension (e.g. "abc123.gif"). Default no-op for tests.
+    /// </summary>
+    Task UploadMediaAsync(string deviceId, string mediaId, byte[] bytes, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    /// <summary>
+    /// Removes a previously uploaded media file. Default no-op for tests.
+    /// </summary>
+    Task<bool> DeleteMediaAsync(string deviceId, string mediaId, CancellationToken cancellationToken = default)
         => Task.FromResult(false);
 }
