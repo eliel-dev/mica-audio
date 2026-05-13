@@ -149,6 +149,8 @@ extern Hub75FallbackState gHub75FallbackPendingState;
 extern unsigned long gHub75FallbackPendingSinceMs;
 extern bool gHub75FallbackDirty;
 extern bool gHub75FallbackClearPending;
+extern unsigned long gLastDisplayStatePollMs;
+extern Hub75FallbackState gServerDisplayState;
 extern bool gProvisioningLaunchPending;
 extern bool gProvisioningLaunchClearCredentials;
 extern String gProvisioningLaunchCommandId;

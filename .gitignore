@@ -12,6 +12,9 @@ tmpclaude-*
 .dotnet-home/
 **/.pio/
 firmware/esp32s3-devkitc1/src/firmware_version.auto.h
+# Local Wi-Fi/server credentials for the firmware. Each developer copies
+# mica_config.example.h to mica_config.h and edits it locally; never commit it.
+firmware/esp32s3-devkitc1/src/mica_config.h
 
 # Logs and diagnostics
 publish-*.log

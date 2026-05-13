@@ -46,8 +46,6 @@ public sealed class AppSettings
 
     public bool AllowLegacyWebSocketQueryToken { get; init; }
 
-    public DeviceServerMode DeviceServerMode { get; init; } = DeviceServerMode.Embedded;
-
     public string RemoteServerBaseAddress { get; init; } = "http://127.0.0.1:5272";
 
     public int WindowWidth { get; init; }

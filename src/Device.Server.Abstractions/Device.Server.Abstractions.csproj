@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Device.Client.Abstractions\Device.Client.Abstractions.csproj" />
     <ProjectReference Include="..\Device.Protocol\Device.Protocol.csproj" />
+    <ProjectReference Include="..\Panels.Composition\Panels.Composition.csproj" />
   </ItemGroup>
 
 </Project>

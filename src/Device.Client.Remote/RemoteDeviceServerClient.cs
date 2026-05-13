@@ -10,9 +10,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Device.Client.Remote;
 
 // DOCS: docs/wiki/modules/app-winui.md#fluxo-de-execucao
-// DOCS: docs/wiki/modules/device-server-protocol.md#admin-api-remota
+// DOCS: docs/wiki/modules/device-server-protocol.md#atualizacao-2026-04-admin-api-e-winui-remote
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
-// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
 public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDeviceServerClientRuntime
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -154,21 +153,11 @@ public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDev
         IReadOnlyDictionary<string, string>? parameters,
         TimeSpan timeout,
         CancellationToken cancellationToken)
-        => await SendCommandTrackedAsync(deviceId, commandType, parameters, sessionContext: null, timeout, cancellationToken).ConfigureAwait(false);
-
-    public async Task<CommandDispatchResult> SendCommandTrackedAsync(
-        string deviceId,
-        DeviceCommandType commandType,
-        IReadOnlyDictionary<string, string>? parameters,
-        DeviceCommandSessionContext? sessionContext,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
     {
         var request = new AdminTrackedCommandRequest
         {
             CommandType = commandType,
             Parameters = parameters is null ? null : new Dictionary<string, string>(parameters, StringComparer.OrdinalIgnoreCase),
-            Session = sessionContext,
             TimeoutMs = Math.Max(1, (int)Math.Ceiling(timeout.TotalMilliseconds)),
         };
 
@@ -229,66 +218,155 @@ public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDev
         await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<PanelLibraryDocument> GetPanelLibraryAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Uploads the active panel definition for the device so MicaAudio.Server
+    /// can keep autonomous widgets (Clock today, more later) alive after the
+    /// WinUI client disconnects. The JSON payload must match the shape of
+    /// Panels.Composition.Models.PanelDefinition.
+    /// </summary>
+    public async Task UploadPanelAsync(string deviceId, string panelJson, CancellationToken cancellationToken = default)
     {
-        using var response = await httpClient.GetAsync("/api/v1/admin/library/panels", cancellationToken).ConfigureAwait(false);
-        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
-        return await ReadRequiredJsonAsync<PanelLibraryDocument>(response, cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task SavePanelLibraryAsync(PanelLibraryDocument document, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(document);
-        using var response = await httpClient.PutAsJsonAsync("/api/v1/admin/library/panels", document, JsonOptions, cancellationToken).ConfigureAwait(false);
-        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task<MediaAssetInfo> UploadMediaAsync(
-        string fileName,
-        string contentType,
-        byte[] payload,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(payload);
-
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            $"/api/v1/admin/library/media?fileName={Uri.EscapeDataString(fileName.Trim())}")
+        if (string.IsNullOrWhiteSpace(deviceId))
         {
-            Content = new ByteArrayContent(payload),
+            throw new ArgumentException("deviceId is required.", nameof(deviceId));
+        }
+
+        ArgumentNullException.ThrowIfNull(panelJson);
+
+        var path = $"/api/v1/admin/devices/{Uri.EscapeDataString(deviceId.Trim())}/panel";
+        using var request = new HttpRequestMessage(HttpMethod.Put, path)
+        {
+            Content = new StringContent(panelJson, Encoding.UTF8, "application/json"),
         };
-        request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(NormalizeContentType(contentType));
 
         using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
-        return await ReadRequiredJsonAsync<MediaAssetInfo>(response, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<byte[]?> DownloadMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Removes the stored panel for the device (e.g. when the user picks a
+    /// panel that requires the WinUI client). Returns true when a panel was
+    /// removed, false when none was stored.
+    /// </summary>
+    public async Task<bool> DeletePanelAsync(string deviceId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(mediaId))
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return false;
+        }
+
+        var path = $"/api/v1/admin/devices/{Uri.EscapeDataString(deviceId.Trim())}/panel";
+        using var response = await httpClient.DeleteAsync(path, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the panel currently stored on the server for the given device,
+    /// or <see langword="null"/> when none is stored. The WinUI uses this on
+    /// startup to reconcile its own UI state with what the server is actually
+    /// rendering on the device (server-as-source-of-truth).
+    /// </summary>
+    public async Task<ServerPanelSnapshot?> GetServerPanelAsync(string deviceId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
         {
             return null;
         }
 
-        using var response = await httpClient.GetAsync($"/api/v1/admin/library/media/{Uri.EscapeDataString(mediaId.Trim())}", cancellationToken).ConfigureAwait(false);
+        var path = $"/api/v1/admin/devices/{Uri.EscapeDataString(deviceId.Trim())}/panel";
+        using var response = await httpClient.GetAsync(path, cancellationToken).ConfigureAwait(false);
+
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return null;
         }
 
         await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
-        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+
+        // Body shape (from DeviceServerHost.PanelStore.cs):
+        //   { deviceId, panel: <PanelDefinition>, capability: "ServerCapable" | ... }
+        // Re-serialize the panel sub-tree so callers receive raw JSON they can
+        // deserialize into their own PanelDefinition shape.
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+
+        var snapshot = new ServerPanelSnapshot
+        {
+            DeviceId = root.TryGetProperty("deviceId", out var idElem) ? (idElem.GetString() ?? deviceId) : deviceId,
+            Capability = root.TryGetProperty("capability", out var capElem) ? (capElem.GetString() ?? string.Empty) : string.Empty,
+        };
+
+        if (root.TryGetProperty("panel", out var panelElem) && panelElem.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            snapshot.PanelJson = panelElem.GetRawText();
+            if (panelElem.TryGetProperty("panelId", out var pidElem))
+            {
+                snapshot.PanelId = pidElem.GetString() ?? string.Empty;
+            }
+            if (panelElem.TryGetProperty("name", out var nameElem))
+            {
+                snapshot.PanelName = nameElem.GetString() ?? string.Empty;
+            }
+            if (panelElem.TryGetProperty("widgets", out var widgetsElem) && widgetsElem.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                snapshot.WidgetCount = widgetsElem.GetArrayLength();
+            }
+        }
+
+        return snapshot;
     }
 
-    public async Task<bool> DeleteMediaAsync(string mediaId, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Uploads a raw media file (GIF/PNG/JPG/BMP) so the server can render
+    /// gifhub75 widgets after the WinUI client disconnects.
+    /// </summary>
+    public async Task UploadMediaAsync(
+        string deviceId,
+        string mediaId,
+        byte[] bytes,
+        CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            throw new ArgumentException("deviceId is required.", nameof(deviceId));
+        }
+
         if (string.IsNullOrWhiteSpace(mediaId))
+        {
+            throw new ArgumentException("mediaId is required.", nameof(mediaId));
+        }
+
+        ArgumentNullException.ThrowIfNull(bytes);
+
+        var path = $"/api/v1/admin/devices/{Uri.EscapeDataString(deviceId.Trim())}/media/{Uri.EscapeDataString(mediaId.Trim())}";
+        using var content = new ByteArrayContent(bytes);
+        using var response = await httpClient.PutAsync(path, content, cancellationToken).ConfigureAwait(false);
+        await EnsureRemoteSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Removes a previously uploaded media file. Returns true when the file
+    /// existed and was deleted, false when it was already absent.
+    /// </summary>
+    public async Task<bool> DeleteMediaAsync(
+        string deviceId,
+        string mediaId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(mediaId))
         {
             return false;
         }
 
-        using var response = await httpClient.DeleteAsync($"/api/v1/admin/library/media/{Uri.EscapeDataString(mediaId.Trim())}", cancellationToken).ConfigureAwait(false);
+        var path = $"/api/v1/admin/devices/{Uri.EscapeDataString(deviceId.Trim())}/media/{Uri.EscapeDataString(mediaId.Trim())}";
+        using var response = await httpClient.DeleteAsync(path, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return false;

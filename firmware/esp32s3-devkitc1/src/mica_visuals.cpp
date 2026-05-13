@@ -578,10 +578,24 @@ bool drawFrame128x64() {
     return false;
   }
 
-  const uint8_t bufferIndex = gMatrixShadowBackBufferIndex;
   const uint8_t frameIndex = gFrameRgb565ActiveIndex;
   const uint16_t* frame = gFrameRgb565Buffers[frameIndex];
-  // Bulk RGB565 path writes the full frame directly into the HUB75 BCM back buffer.
+
+  // Mode-transition flush: if the current back buffer was last used for bars or a
+  // fallback screen (not a GIF frame), write this frame into BOTH DMA buffers so
+  // neither retains bar/fallback pixel residue. Without this, the "other" buffer
+  // would show stale bars content after the next commit, causing ghosting trails.
+  if (gMatrixBufferModes[gMatrixShadowBackBufferIndex] != MatrixBufferMode::Frame) {
+    const uint8_t firstBufIdx = gMatrixShadowBackBufferIndex;
+    gMatrix->writeFrameRGB565(frame);
+    memcpy(gMatrixShadowFrames[firstBufIdx], frame, sizeof(gFrameRgb565Buffers[0]));
+    memset(gMatrixShadowBarHeights[firstBufIdx], 0, sizeof(gMatrixShadowBarHeights[firstBufIdx]));
+    gMatrixBufferModes[firstBufIdx] = MatrixBufferMode::Frame;
+    commitMatrixFrame();  // Flip: DMA shows this buffer; back is now the other (stale) buffer
+  }
+
+  // Normal path: write into the current back buffer and commit.
+  const uint8_t bufferIndex = gMatrixShadowBackBufferIndex;
   gMatrix->writeFrameRGB565(frame);
   memcpy(gMatrixShadowFrames[bufferIndex], frame, sizeof(gFrameRgb565Buffers[0]));
   memset(gMatrixShadowBarHeights[bufferIndex], 0, sizeof(gMatrixShadowBarHeights[bufferIndex]));

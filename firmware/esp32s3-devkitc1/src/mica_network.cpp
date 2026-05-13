@@ -1,34 +1,23 @@
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#atualizacao-2026-04---rollback-para-ap-first-estavel
-// DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#ownership-shadow-e-lock-lease
-// DOCS: docs/wiki/reference/device-telemetry-v2-fields.md#shadow-retained-de-sessao
-// DOCS: docs/wiki/modules/device-server-protocol.md#ownership-shadow-e-lock-lease
-// DOCS: docs/handoffs/2026-04-23-client-owned-lan-data-plane-and-session-ownership.md
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
-// DOCS: docs/handoffs/2026-04-28-zero-code-lan-onboarding.md
+// DOCS: docs/handoffs/2026-05-12-display-state-gif-panels.md
 
 #include "mica_network.h"
 
 #include <esp_heap_caps.h>
 #include <math.h>
-#include <WiFiUdp.h>
 
 #include "mica_display.h"
 #include "mica_globals.h"
 #include "mica_ota.h"
 #include "mica_panels.h"
-#include "mica_prefs.h"
-#include "mica_session.h"
 #include "mica_visual_udp.h"
 
 #include "mica_commands.h"
 #include "mica_provisioning.h"
-
-static WiFiUDP gDiscoveryUdp;
-static bool gDiscoveryUdpStarted = false;
-static unsigned long gLastDiscoveryBroadcastMs = 0;
 
 // ===========================================================================
 // HTTP helpers
@@ -45,17 +34,13 @@ bool postJsonWithAuth(const String& path, JsonDocument& doc) {
     return false;
   }
 
-  http.setConnectTimeout(5000);
-  http.setTimeout(15000);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Device-Id", gDeviceId);
   http.addHeader("X-Device-Token", gToken);
 
   String body;
   serializeJson(doc, body);
-  resetTaskWatchdog();
   int code = http.POST(body);
-  resetTaskWatchdog();
   http.end();
 
   return code >= 200 && code < 300;
@@ -119,189 +104,6 @@ bool beginHttpWithDeviceAuthUrl(HTTPClient& http, const String& url) {
   static const char* kHeaderKeys[] = {"Content-Type"};
   http.collectHeaders(kHeaderKeys, 1);
   return true;
-}
-
-static bool parseServerBaseUrl(const String& rawBaseUrl, String& host, uint16_t& port) {
-  String normalized = rawBaseUrl;
-  normalized.trim();
-  if (normalized.length() == 0) {
-    return false;
-  }
-
-  if (normalized.startsWith("http://")) {
-    normalized = normalized.substring(7);
-  } else if (normalized.startsWith("https://")) {
-    normalized = normalized.substring(8);
-  }
-
-  const int slashIndex = normalized.indexOf('/');
-  if (slashIndex >= 0) {
-    normalized = normalized.substring(0, slashIndex);
-  }
-
-  const int colonIndex = normalized.lastIndexOf(':');
-  if (colonIndex >= 0) {
-    host = normalized.substring(0, colonIndex);
-    const int parsedPort = normalized.substring(colonIndex + 1).toInt();
-    if (parsedPort <= 0 || parsedPort > 65535) {
-      return false;
-    }
-
-    port = static_cast<uint16_t>(parsedPort);
-    return host.length() > 0;
-  }
-
-  host = normalized;
-  port = 5272;
-  return host.length() > 0;
-}
-
-static bool shouldRunLanDiscovery() {
-  return WiFi.status() == WL_CONNECTED
-      && (gDeviceId.isEmpty() || gToken.isEmpty())
-      && !gProvisioningPortalActive;
-}
-
-static void stopLanDiscovery() {
-  if (!gDiscoveryUdpStarted) {
-    return;
-  }
-
-  gDiscoveryUdp.stop();
-  gDiscoveryUdpStarted = false;
-}
-
-static bool ensureLanDiscoveryStarted() {
-  if (gDiscoveryUdpStarted) {
-    return true;
-  }
-
-  if (gDiscoveryUdp.begin(0) == 0) {
-    Serial.println("[discovery] falha ao abrir socket UDP.");
-    return false;
-  }
-
-  gDiscoveryUdpStarted = true;
-  Serial.printf("[discovery] UDP ativo; broadcast_port=%u\n", kDiscoveryUdpPort);
-  return true;
-}
-
-static void sendLanDiscoveryBroadcast(unsigned long now) {
-  if (gLastDiscoveryBroadcastMs != 0 && (now - gLastDiscoveryBroadcastMs) < kDiscoveryRetryMs) {
-    return;
-  }
-
-  if (!ensureLanDiscoveryStarted()) {
-    gLastDiscoveryBroadcastMs = now;
-    return;
-  }
-
-  JsonDocument request;
-  request["protocol"] = "mica.discovery.v1";
-  request["deviceMac"] = WiFi.macAddress();
-  request["deviceName"] = prefsGetStringOrDefault("name", String(kBoardDisplayName));
-  request["firmwareVersion"] = kFirmwareVersion;
-  request["boardModel"] = kBoardModel;
-  request["panelType"] = kPanelType;
-  request["profile"] = kFirmwareProfile;
-
-  String payload;
-  serializeJson(request, payload);
-  resetTaskWatchdog();
-  gDiscoveryUdp.beginPacket(IPAddress(255, 255, 255, 255), kDiscoveryUdpPort);
-  gDiscoveryUdp.write(reinterpret_cast<const uint8_t*>(payload.c_str()), payload.length());
-  gDiscoveryUdp.endPacket();
-  resetTaskWatchdog();
-  gLastDiscoveryBroadcastMs = now;
-  Serial.printf("[discovery] broadcast enviado bytes=%u\n", static_cast<unsigned>(payload.length()));
-}
-
-static void applyLanDiscoveryResponse(JsonDocument& response) {
-  String deviceId = response["deviceId"] | "";
-  String token = response["token"] | "";
-  String httpBase = response["httpBase"] | "";
-  String mqttHost = response["mqttHost"] | "";
-  int mqttPort = response["mqttPort"] | 0;
-  String mqttRootTopic = response["mqttRootTopic"] | "";
-
-  if (deviceId.isEmpty() || token.isEmpty()) {
-    Serial.println("[discovery] resposta sem credenciais.");
-    return;
-  }
-
-  String parsedHost;
-  uint16_t parsedPort = 0;
-  if (httpBase.length() > 0 && parseServerBaseUrl(httpBase, parsedHost, parsedPort)) {
-    gServerHost = parsedHost;
-    gServerPort = parsedPort;
-    gPrefs.putString("host", gServerHost);
-    gPrefs.putString("port", String(gServerPort));
-  }
-
-  gDeviceId = deviceId;
-  gToken = token;
-  gPrefs.putString("deviceId", gDeviceId);
-  gPrefs.putString("token", gToken);
-
-  gMqttHost = mqttHost.length() > 0 ? mqttHost : gServerHost;
-  gMqttPort = mqttPort > 0 ? static_cast<uint16_t>(mqttPort) : kDefaultMqttPort;
-  gMqttRootTopic = mqttRootTopic.length() > 0 ? mqttRootTopic : kDefaultMqttRootTopic;
-  persistMqttConfig();
-
-  stopLanDiscovery();
-  gMqttDisconnectedSinceMs = 0;
-  gWsDisconnectedSinceMs = 0;
-  setConnectivityState(kWifiStateConnected, "discovery_success", true);
-  Serial.printf("[discovery] registrado deviceId=%s http=%s:%u mqtt=%s:%u\n",
-      gDeviceId.c_str(),
-      gServerHost.c_str(),
-      gServerPort,
-      gMqttHost.c_str(),
-      gMqttPort);
-  connectMqtt();
-  connectWebSocket();
-}
-
-static void receiveLanDiscoveryResponse() {
-  if (!gDiscoveryUdpStarted) {
-    return;
-  }
-
-  const int packetSize = gDiscoveryUdp.parsePacket();
-  if (packetSize <= 0) {
-    return;
-  }
-
-  char buffer[kDiscoveryPacketMaxBytes + 1] = {};
-  const int bytesRead = gDiscoveryUdp.read(buffer, kDiscoveryPacketMaxBytes);
-  if (bytesRead <= 0) {
-    return;
-  }
-
-  buffer[bytesRead] = '\0';
-  JsonDocument response;
-  if (deserializeJson(response, buffer) != DeserializationError::Ok) {
-    Serial.println("[discovery] resposta JSON invalida.");
-    return;
-  }
-
-  String protocol = response["protocol"] | "";
-  if (!protocol.equalsIgnoreCase("mica.discovery.v1")) {
-    return;
-  }
-
-  applyLanDiscoveryResponse(response);
-}
-
-static void processLanDiscovery() {
-  if (!shouldRunLanDiscovery()) {
-    stopLanDiscovery();
-    return;
-  }
-
-  const unsigned long now = millis();
-  sendLanDiscoveryBroadcast(now);
-  receiveLanDiscoveryResponse();
 }
 
 // ===========================================================================
@@ -956,23 +758,6 @@ void sendTelemetry(bool force) {
   telemetry["visualUdpSupported"] = true;
   telemetry["visualUdpPort"] = kVisualUdpPort;
   telemetry["visualUdpMode"] = "bins128";
-  telemetry["sessionMode"] = clientSessionModeName(gSessionShadowState.mode);
-  if (hasActiveClientOwner(now)) {
-    telemetry["sessionActiveClientId"] = gSessionShadowState.activeClientId;
-    telemetry["sessionActiveOwnerEpoch"] = gSessionShadowState.activeOwnerEpoch;
-    telemetry["sessionOwnerLeaseRemainingMs"] =
-        static_cast<uint32_t>(gSessionShadowState.activeOwnerExpiresAtMs - now);
-  }
-  const bool sessionLockHeld = gSessionShadowState.lock.held
-      && gSessionShadowState.lock.expiresAtMs > now;
-  telemetry["sessionLockHeld"] = sessionLockHeld;
-  if (sessionLockHeld) {
-    telemetry["sessionLockClientId"] = gSessionShadowState.lock.clientId;
-    telemetry["sessionLockReason"] = gSessionShadowState.lock.reason;
-    telemetry["sessionLockLeaseRemainingMs"] =
-        static_cast<uint32_t>(gSessionShadowState.lock.expiresAtMs - now);
-  }
-  telemetry["sessionFallbackState"] = clientSessionFallbackStateName();
   telemetry["resetReason"] = resetReasonCodeToString(gResetReasonCode);
   telemetry["controlQueueDepth"] = currentControlQueueDepth();
   telemetry["controlWorkerState"] = controlWorkerStateToTelemetry(gControlWorkerState);
@@ -1008,10 +793,7 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
     return false;
   }
 
-  const uint8_t streamVersion = payload[0];
-  const bool legacyStream = streamVersion == kStreamVersion;
-  const bool ownedStream = streamVersion == kStreamVersionOwned;
-  if (!legacyStream && !ownedStream) {
+  if (payload[0] != kStreamVersion) {
     registerInvalidStreamFrame("version_invalid");
     return false;
   }
@@ -1025,24 +807,9 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
                     (static_cast<uint32_t>(payload[5]) << 24);
   }
 
-  uint32_t ownerEpoch = 0;
-  const bool hasOwnerEpoch = ownedStream && len >= 10;
-  if (hasOwnerEpoch) {
-    ownerEpoch = static_cast<uint32_t>(payload[6]) |
-                 (static_cast<uint32_t>(payload[7]) << 8) |
-                 (static_cast<uint32_t>(payload[8]) << 16) |
-                 (static_cast<uint32_t>(payload[9]) << 24);
-  }
-
-  if (!shouldAcceptOwnedStreamFrame(ownerEpoch, hasOwnerEpoch, millis())) {
-    registerInvalidStreamFrame(hasOwnerEpoch ? "owner_epoch_stale" : "owner_epoch_missing");
-    return false;
-  }
-
   const uint8_t messageType = payload[1];
   if (messageType == kStreamBinsMessageType) {
-    const size_t expectedSize = ownedStream ? kStreamFrameV3Size : kStreamFrameSize;
-    if (len < expectedSize) {
+    if (len < kStreamFrameSize) {
       registerInvalidStreamFrame("bins_short");
       return false;
     }
@@ -1061,31 +828,25 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
       gHasStreamLastSequence = true;
     }
 
-    const uint8_t levelOffset = ownedStream ? 18u : 14u;
-    const uint8_t binsOffset = ownedStream ? 19u : 15u;
-    const uint8_t brightnessOffset = ownedStream ? 147u : 143u;
-    const uint8_t flagsOffset = ownedStream ? 148u : 144u;
     const uint8_t nextBinsIndex = static_cast<uint8_t>(gBinsActiveIndex ^ 1u);
     portENTER_CRITICAL(&gStreamBufferMux);
-    gLevel = payload[levelOffset];
-    memcpy(gBinsBuffers[nextBinsIndex], payload + binsOffset, kBinsCount);
+    gLevel = payload[14];
+    memcpy(gBinsBuffers[nextBinsIndex], payload + 15, kBinsCount);
     gBinsActiveIndex = nextBinsIndex;
-    gStreamBrightness = payload[brightnessOffset];
-    gBinsFlags = payload[flagsOffset];
+    gStreamBrightness = payload[143];
+    gBinsFlags = payload[144];
     portEXIT_CRITICAL(&gStreamBufferMux);
     gFrameModeActive = false;
     gLastFrameMs = millis();
     gMatrixSignalTimedOut = false;
-    if (ownedStream) {
-      noteAcceptedOwnedStreamFrame(ownerEpoch, ClientSessionMode::Visualizer, gLastFrameMs);
-    }
+    gServerDisplayState = Hub75FallbackState::None;
+    gLastDisplayStatePollMs = 0;
     markMatrixFrameDirty(true);
     return true;
   }
 
   if (messageType == kStreamFrame128x64Rgb565MessageType) {
-    const size_t expectedSize = ownedStream ? kStreamFrameV3Frame128x64Rgb565Size : kStreamFrame128x64Rgb565Size;
-    if (len < expectedSize) {
+    if (len < kStreamFrame128x64Rgb565Size) {
       registerInvalidStreamFrame("frame_short");
       return false;
     }
@@ -1106,11 +867,9 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
 
     const uint8_t nextFrameIndex = static_cast<uint8_t>(gFrameRgb565ActiveIndex ^ 1u);
     uint16_t* frameBackBuffer = gFrameRgb565Buffers[nextFrameIndex];
-    const uint8_t brightnessOffset = ownedStream ? 18u : 14u;
-    const uint8_t frameOffset = ownedStream ? 19u : 15u;
-    gStreamBrightness = payload[brightnessOffset];
+    gStreamBrightness = payload[14];
     // Payload is already little-endian and ESP32 is little-endian, so we can bulk copy.
-    memcpy(frameBackBuffer, payload + frameOffset, static_cast<size_t>(kMatrixPixelCount) * sizeof(uint16_t));
+    memcpy(frameBackBuffer, payload + 15, static_cast<size_t>(kMatrixPixelCount) * sizeof(uint16_t));
 
     portENTER_CRITICAL(&gStreamBufferMux);
     gFrameRgb565ActiveIndex = nextFrameIndex;
@@ -1119,9 +878,8 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
     gFrameModeActive = true;
     gLastFrameMs = millis();
     gMatrixSignalTimedOut = false;
-    if (ownedStream) {
-      noteAcceptedOwnedStreamFrame(ownerEpoch, ClientSessionMode::Visualizer, gLastFrameMs);
-    }
+    gServerDisplayState = Hub75FallbackState::None;
+    gLastDisplayStatePollMs = 0;
     markMatrixFrameDirty(true);
     return true;
   }
@@ -1194,12 +952,9 @@ void connectWebSocket() {
   String path = "/ws/v1/stream";
   Serial.printf("[ws] conectando em ws://%s:%u%s\n", gServerHost.c_str(), gServerPort, path.c_str());
   setConnectivityState(kWifiStateConnected, "ws_connecting", true, false);
-  resetTaskWatchdog();
   gWs.begin(gServerHost.c_str(), gServerPort, path.c_str());
   gWs.onEvent(onWsEvent);
   gWs.setReconnectInterval(kWsAutoReconnectIntervalMs);
-  resetTaskWatchdog();
-  Serial.println("[ws] begin concluido.");
 }
 
 void connectMqtt() {
@@ -1219,13 +974,11 @@ void connectMqtt() {
   gMqtt.setServer(gMqttHost.c_str(), gMqttPort);
   gMqtt.setCallback(onMqttMessage);
   gMqtt.setBufferSize(kMqttPacketBufferBytes);
-  gMqtt.setSocketTimeout(kMqttConnectSocketTimeoutSeconds);
 
   String presenceTopic = buildDeviceMqttTopic("presence");
   String offlinePayload = buildPresencePayload("offline");
   Serial.printf("[mqtt] conectando em mqtt://%s:%u (%s)\n", gMqttHost.c_str(), gMqttPort, gMqttRootTopic.c_str());
 
-  resetTaskWatchdog();
   const bool connected = gMqtt.connect(
       gDeviceId.c_str(),
       gDeviceId.c_str(),
@@ -1234,11 +987,9 @@ void connectMqtt() {
       1,
       true,
       offlinePayload.c_str());
-  resetTaskWatchdog();
 
   if (!connected) {
     gMqttDisconnectedSinceMs = millis();
-    Serial.printf("[mqtt] falha ao conectar state=%d\n", gMqtt.state());
     return;
   }
 
@@ -1247,10 +998,8 @@ void connectMqtt() {
   (void)publishPresence("online");
   (void)publishDeviceLog("info", "mqtt", "connected", "Controle MQTT conectado.", false);
   (void)publishDeviceStats();
-  (void)publishClientSessionShadow(millis(), true);
   sendTelemetry(true);
   publishPendingOtaReportIfNeeded();
-  Serial.println("[mqtt] conectado.");
 }
 
 
@@ -1279,12 +1028,10 @@ void processNetworkPoll() {
   if (!wifiConnected) {
     stopVisualUdpReceiver();
     const bool provisioningIncomplete = isProvisioningIncomplete();
-    const bool savedWifiConfigured = prefsGetBoolOrDefault("wifiConfigured", false);
-    const bool canUseSavedWifi = !provisioningIncomplete || savedWifiConfigured;
     if (shouldRunNetworkStep(gWifiDisconnectedSinceMs == 0)) {
       gWifiDisconnectedSinceMs = millis();
-      gLastWifiReconnectAttemptMs = canUseSavedWifi ? gWifiDisconnectedSinceMs : 0;
-      if (!canUseSavedWifi) {
+      gLastWifiReconnectAttemptMs = provisioningIncomplete ? 0 : gWifiDisconnectedSinceMs;
+      if (provisioningIncomplete) {
         setConnectivityState(kWifiStateDisconnected, "wifi_disconnected", true);
         Serial.println("[wifi] desconectado, aguardando reconexao.");
       } else {
@@ -1295,7 +1042,7 @@ void processNetworkPoll() {
     }
 
     const bool shouldRetrySavedWifi =
-        canUseSavedWifi
+        !provisioningIncomplete
         && !gProvisioningPortalActive
         && !isProvisioningPortalLaunchPending()
         && gLastWifiReconnectAttemptMs != 0
@@ -1314,7 +1061,6 @@ void processNetworkPoll() {
 
     const bool shouldStartProvisioningFallback =
         provisioningIncomplete
-        && !savedWifiConfigured
         && !gProvisioningPortalActive
         && !isProvisioningPortalLaunchPending()
         && gWifiDisconnectedSinceMs != 0
@@ -1348,10 +1094,6 @@ void processNetworkPoll() {
       } else {
         setConnectivityState(kWifiStateConnected, "wifi_connected");
       }
-      finishNetworkStep();
-    }
-    if (shouldRunNetworkStep(true)) {
-      processLanDiscovery();
       finishNetworkStep();
     }
     if (shouldRunNetworkStep(true)) {
@@ -1414,4 +1156,70 @@ void processNetworkPoll() {
       gWsDisconnectedSinceMs = 0;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Display state polling
+// ---------------------------------------------------------------------------
+void pollDisplayStateIfNeeded() {
+  // Only poll when the signal has timed out and we're connected.
+  if (!gMatrixSignalTimedOut) {
+    gLastDisplayStatePollMs = 0;
+    return;
+  }
+
+  // gWsDisconnectedSinceMs == 0 means WS is stably connected (set to 0 in
+  // WStype_CONNECTED, set to millis() when WS drops). Skip HTTP calls during
+  // reconnect windows to avoid blocking the main loop for TCP connect timeout.
+  if (WiFi.status() != WL_CONNECTED || gWsDisconnectedSinceMs != 0) {
+    return;
+  }
+
+  if (gDeviceId.isEmpty() || gToken.isEmpty() || gServerHost.isEmpty()) {
+    return;
+  }
+
+  const unsigned long nowMs = millis();
+  if (gLastDisplayStatePollMs != 0 && (nowMs - gLastDisplayStatePollMs) < kDisplayStatePollIntervalMs) {
+    return;
+  }
+
+  gLastDisplayStatePollMs = nowMs;
+
+  // Build URL manually and set aggressive timeouts BEFORE begin() so they
+  // apply to the TCP connect phase. beginHttpWithDeviceAuth() sets 5 s/15 s
+  // defaults which block the main loop when the server is unreachable.
+  const String url =
+      "http://" + gServerHost + ":" + String(gServerPort) + "/api/v1/device/display-state";
+  WiFiClient wifiClient;
+  HTTPClient http;
+  http.setConnectTimeout(200);
+  http.setTimeout(300);
+  if (!http.begin(wifiClient, url)) {
+    return;
+  }
+  http.addHeader("X-Device-Id", gDeviceId);
+  http.addHeader("X-Device-Token", gToken);
+
+  const int statusCode = http.GET();
+  if (statusCode == 200) {
+    StaticJsonDocument<128> doc;
+    if (deserializeJson(doc, http.getStream()) == DeserializationError::Ok) {
+      const char* state = doc["state"] | "";
+      Hub75FallbackState newState = Hub75FallbackState::None;
+      if (strcmp(state, "no_mode_active") == 0) {
+        newState = Hub75FallbackState::NoModeActive;
+      } else if (strcmp(state, "first_run") == 0) {
+        newState = Hub75FallbackState::FirstRun;
+      }
+
+      if (gServerDisplayState != newState) {
+        gServerDisplayState = newState;
+        // Force the fallback display to update on the next render tick.
+        gHub75FallbackDirty = true;
+      }
+    }
+  }
+
+  http.end();
 }

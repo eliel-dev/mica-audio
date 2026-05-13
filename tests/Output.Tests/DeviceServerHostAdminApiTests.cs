@@ -6,6 +6,8 @@ using System.Text;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
 using Device.Server.Hosting;
+using MicaAudio.Server;
+using Panels.Composition.Models;
 
 namespace Output.Tests;
 
@@ -153,6 +155,99 @@ public sealed class DeviceServerHostAdminApiTests
     }
 
     [Fact]
+    public async Task DeviceDisplayState_ShouldReportFirstRunActiveAndExplicitlyCleared()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        await using var host = new DeviceServerHost();
+        host.AttachPanelStore(new InMemoryServerPanelStore());
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = DeviceServerTestHarness.GetFreeTcpPort(),
+            RestrictToPrivateNetworks = true,
+            AdminToken = AdminToken,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "display-state-device");
+
+        var firstRun = await GetDisplayStateAsync(client, paired);
+        Assert.Equal("first_run", firstRun.State);
+
+        using var uploadRequest = CreateAdminRequest(HttpMethod.Put, $"/api/v1/admin/devices/{paired.DeviceId}/panel");
+        uploadRequest.Content = JsonContent.Create(CreateClockPanel());
+        using var uploadResponse = await client.SendAsync(uploadRequest);
+        uploadResponse.EnsureSuccessStatusCode();
+
+        var active = await GetDisplayStateAsync(client, paired);
+        Assert.Equal("panel_active", active.State);
+
+        using var deleteRequest = CreateAdminRequest(HttpMethod.Delete, $"/api/v1/admin/devices/{paired.DeviceId}/panel");
+        using var deleteResponse = await client.SendAsync(deleteRequest);
+        deleteResponse.EnsureSuccessStatusCode();
+
+        var cleared = await GetDisplayStateAsync(client, paired);
+        Assert.Equal("no_mode_active", cleared.State);
+    }
+
+    [Fact]
+    public async Task DeviceDisplayState_ShouldTreatExplicitClearWithoutExistingPanelAsNoModeActive()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        await using var host = new DeviceServerHost();
+        host.AttachPanelStore(new InMemoryServerPanelStore());
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = DeviceServerTestHarness.GetFreeTcpPort(),
+            RestrictToPrivateNetworks = true,
+            AdminToken = AdminToken,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var paired = await DeviceServerTestHarness.PairDeviceAsync(host, client, "display-state-empty-clear-device");
+
+        using var deleteRequest = CreateAdminRequest(HttpMethod.Delete, $"/api/v1/admin/devices/{paired.DeviceId}/panel");
+        using var deleteResponse = await client.SendAsync(deleteRequest);
+        deleteResponse.EnsureSuccessStatusCode();
+
+        var cleared = await GetDisplayStateAsync(client, paired);
+        Assert.Equal("no_mode_active", cleared.State);
+    }
+
+    [Fact]
+    public async Task AdminMediaUpload_ShouldAllowMediaPayloadLargerThanJsonLimit()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var storageRoot = Path.Combine(Path.GetTempPath(), "mica-audio-media-tests", Guid.NewGuid().ToString("N"));
+        await using var host = new DeviceServerHost();
+        host.AttachMediaStore(new FileServerMediaStore(storageRoot));
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = DeviceServerTestHarness.GetFreeTcpPort(),
+            RestrictToPrivateNetworks = true,
+            AdminToken = AdminToken,
+            MaxJsonBodyBytes = 1024,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var payload = Enumerable.Repeat((byte)0x47, 2048).ToArray();
+
+        using var request = CreateAdminRequest(HttpMethod.Put, "/api/v1/admin/devices/mp-media/media/large.gif");
+        request.Content = new ByteArrayContent(payload);
+        using var response = await client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task AdminFramesWebSocket_ShouldForwardBroadcastAndTargetedFrames()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();
@@ -216,6 +311,37 @@ public sealed class DeviceServerHostAdminApiTests
         var request = new HttpRequestMessage(method, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AdminToken);
         return request;
+    }
+
+    private static async Task<DeviceDisplayStateResponse> GetDisplayStateAsync(HttpClient client, PairDeviceResponse paired)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/device/display-state");
+        request.Headers.Add("X-Device-Id", paired.DeviceId);
+        request.Headers.Add("X-Device-Token", paired.Token);
+        using var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var state = await response.Content.ReadFromJsonAsync<DeviceDisplayStateResponse>();
+        Assert.NotNull(state);
+        return state!;
+    }
+
+    private static PanelDefinition CreateClockPanel()
+    {
+        return new PanelDefinition
+        {
+            PanelId = "clock-panel",
+            Name = "Clock Panel",
+            Widgets =
+            [
+                new PanelWidgetDefinition
+                {
+                    WidgetId = "clock",
+                    AppId = "analogclock",
+                    Width = 128,
+                    Height = 64,
+                },
+            ],
+        };
     }
 
     private static byte[] BuildFrameEnvelope(bool targeted, string deviceId, byte[] payload)
