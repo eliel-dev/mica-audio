@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -58,6 +59,13 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
     private readonly DeviceFrameConnectionRegistry frameConnections = new();
     private readonly object adminEventConnectionsGate = new();
     private readonly List<AdminEventConnection> adminEventConnections = new();
+
+    // Tracks when the WinUI admin-WS client last sent a frame for each device.
+    // Used by PanelCompositorHostedService to yield rendering when the client
+    // compositor is active, preventing two frame sources from interleaving on
+    // the same device WebSocket.
+    private readonly Dictionary<string, long> lastAdminFrameTimestampByDeviceId =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private DeviceServerRuntimeConfig runtimeConfig = DeviceServerRuntimeConfig.From(new ServerConfig());
     private WebApplication? app;
@@ -507,6 +515,54 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         }
 
         return target?.Socket is { State: WebSocketState.Open };
+    }
+
+    /// <summary>
+    /// Records that the WinUI admin-WS client just dispatched a frame for
+    /// <paramref name="deviceId"/>. Called by the admin-frames WS handler so
+    /// the server-side compositor knows to yield (see
+    /// <see cref="WasClientCompositorActiveRecently"/>).
+    /// </summary>
+    internal void RecordAdminFrameForDevice(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            lastAdminFrameTimestampByDeviceId[deviceId.Trim()] = Stopwatch.GetTimestamp();
+        }
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the WinUI client compositor sent a
+    /// frame for <paramref name="deviceId"/> within the last
+    /// <paramref name="window"/>. The server-side compositor uses this to skip
+    /// its own rendering and avoid interleaving frames from two sources.
+    /// </summary>
+    public bool WasClientCompositorActiveRecently(string deviceId, TimeSpan window)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId) || window <= TimeSpan.Zero)
+        {
+            return false;
+        }
+
+        long ts;
+        lock (gate)
+        {
+            lastAdminFrameTimestampByDeviceId.TryGetValue(deviceId.Trim(), out ts);
+        }
+
+        if (ts == 0)
+        {
+            return false;
+        }
+
+        var elapsedTicks = Stopwatch.GetTimestamp() - ts;
+        var windowTicks = (long)(window.TotalSeconds * Stopwatch.Frequency);
+        return elapsedTicks < windowTicks;
     }
 
     public void BroadcastFrame(byte[] framePayload)

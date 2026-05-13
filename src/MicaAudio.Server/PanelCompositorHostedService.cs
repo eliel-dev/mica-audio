@@ -32,6 +32,12 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
 {
     private static readonly TimeSpan FrameInterval = TimeSpan.FromMilliseconds(1000.0 / ServerSidePanelCompositor.TargetFps);
 
+    // Window within which a recent WinUI client compositor frame causes the
+    // server-side compositor to skip rendering for that device.  200 ms ≈ 6
+    // frames at 30 fps — enough to absorb a late client tick without letting a
+    // single dropped frame restart server rendering prematurely.
+    private static readonly TimeSpan ClientCompositorBackoffWindow = TimeSpan.FromMilliseconds(200);
+
     [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Server-side compositor failed for device {DeviceId}.")]
     private partial void LogDeviceFailure(Exception exception, string deviceId);
 
@@ -142,6 +148,16 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
         {
             // Empty panel: blank frame keeps the last desired state on the matrix.
             // Falling back to the same code path keeps rendering predictable.
+        }
+
+        // Yield to the WinUI client compositor when it is actively sending
+        // frames for this device. Both sources write to the same WebSocket so
+        // interleaving produces the "two panels at once" ghosting effect.
+        // The 200 ms backoff covers ~6 frames at 30 fps; the server resumes
+        // automatically as soon as the client stops sending (e.g. app closed).
+        if (host.WasClientCompositorActiveRecently(deviceId, ClientCompositorBackoffWindow))
+        {
+            return;
         }
 
         var cached = GetOrBuildCompositor(deviceId, panel);

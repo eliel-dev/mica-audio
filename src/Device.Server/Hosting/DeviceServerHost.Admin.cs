@@ -387,6 +387,9 @@ public sealed partial class DeviceServerHost
                 BroadcastFrame(payload);
                 return true;
             case 1 when !string.IsNullOrWhiteSpace(deviceId):
+                // Mark this device as having an active WinUI client compositor so
+                // PanelCompositorHostedService yields rendering for the next 200 ms.
+                RecordAdminFrameForDevice(deviceId);
                 SendFrame(deviceId, payload);
                 return true;
             default:
