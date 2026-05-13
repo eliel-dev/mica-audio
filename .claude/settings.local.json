@@ -9,7 +9,15 @@
       "Bash(taskkill /F /IM VBCSCompiler.exe)",
       "Bash(curl -s -H \"Authorization: Bearer devtoken\" http://192.168.1.16:5272/api/v1/admin/devices)",
       "Bash(dir \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.WinUI\\\\AppData\\\\Firmware\")",
-      "PowerShell(cd \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\"; powershell -ExecutionPolicy Bypass -File ./scripts/build-precompiled-firmware.ps1 -SkipToolInstall 2>&1 | Select-Object -Last 60)"
+      "PowerShell(cd \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\"; powershell -ExecutionPolicy Bypass -File ./scripts/build-precompiled-firmware.ps1 -SkipToolInstall 2>&1 | Select-Object -Last 60)",
+      "Bash(gh pr *)",
+      "PowerShell(gh pr view 59 --repo eliel-dev/mica-audio 2>&1)",
+      "PowerShell(cd \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\"; git merge-tree $\\(git merge-base origin/main origin/Funcionando100\\) origin/main origin/Funcionando100 2>&1 | Select-String \"^CONFLICT|^conflict|<<<<<<\" | Select-Object -First 20)",
+      "Bash(git checkout *)",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
