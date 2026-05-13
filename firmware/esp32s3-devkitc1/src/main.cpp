@@ -14,6 +14,7 @@
 #include "mica_provisioning.h"
 
 // DOCS: docs/handoffs/2026-05-08-remote-only-autonomous-widgets-firmware-sta.md
+// DOCS: docs/handoffs/2026-05-12-display-state-gif-panels.md
 // DOCS: docs/adr/0010-remote-only-and-server-side-autonomous-widgets.md
 
 // DOCS: docs/wiki/modules/firmware-esp32s3-devkitc1.md#fluxo-de-execucao
@@ -122,6 +123,10 @@ void processSignalTimeout() {
     gPendingMatrixPresentCountsAsApplied = false;
     markMatrixFrameDirty(false);
   }
+
+  // When signal has timed out and connectivity is up, poll the server for the
+  // correct idle screen ("no_mode_active" vs "first_run" vs normal).
+  pollDisplayStateIfNeeded();
 }
 
 bool processRenderFrame() {

@@ -85,7 +85,7 @@ public interface IDeviceServerClient
 
     /// <summary>
     /// Uploads the active panel definition for the device so MicaAudio.Server
-    /// can keep autonomous widgets (Clock today) alive after the WinUI client
+    /// can keep autonomous widgets (Clock, GIF/Image) alive after the WinUI client
     /// disconnects. Default no-op so that test doubles do not have to care.
     /// </summary>
     Task UploadPanelAsync(string deviceId, string panelJson, CancellationToken cancellationToken = default)
@@ -96,5 +96,29 @@ public interface IDeviceServerClient
     /// panel that requires the WinUI client). Default no-op for tests.
     /// </summary>
     Task<bool> DeletePanelAsync(string deviceId, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    /// <summary>
+    /// Returns the panel currently stored on the server for the device, plus
+    /// its server-side capability classification ("ServerCapable",
+    /// "RequiresClient", "Empty"). Returns <see langword="null"/> when no panel
+    /// is stored. The server is the source of truth: clients should sync local
+    /// UI state with what the server is actually rendering on the device.
+    /// </summary>
+    Task<ServerPanelSnapshot?> GetServerPanelAsync(string deviceId, CancellationToken cancellationToken = default)
+        => Task.FromResult<ServerPanelSnapshot?>(null);
+
+    /// <summary>
+    /// Uploads a raw media file (GIF/PNG/JPG/BMP) to the server media store so
+    /// gifhub75 widgets can be rendered autonomously. The <paramref name="mediaId"/>
+    /// must include the extension (e.g. "abc123.gif"). Default no-op for tests.
+    /// </summary>
+    Task UploadMediaAsync(string deviceId, string mediaId, byte[] bytes, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    /// <summary>
+    /// Removes a previously uploaded media file. Default no-op for tests.
+    /// </summary>
+    Task<bool> DeleteMediaAsync(string deviceId, string mediaId, CancellationToken cancellationToken = default)
         => Task.FromResult(false);
 }

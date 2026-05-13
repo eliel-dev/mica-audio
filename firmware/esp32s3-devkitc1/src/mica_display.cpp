@@ -4,6 +4,8 @@
 #include <WiFi.h>
 #include <soc/soc_caps.h>
 
+// DOCS: docs/handoffs/2026-05-12-display-state-gif-panels.md
+
 // ---------------------------------------------------------------------------
 // Fallback state name
 // ---------------------------------------------------------------------------
@@ -17,6 +19,10 @@ const char* hub75FallbackStateName(Hub75FallbackState state) {
       return "portal";
     case Hub75FallbackState::Updating:
       return "updating";
+    case Hub75FallbackState::NoModeActive:
+      return "no_mode_active";
+    case Hub75FallbackState::FirstRun:
+      return "first_run";
     case Hub75FallbackState::None:
     default:
       return "none";
@@ -469,6 +475,15 @@ void drawConnectivityFallbackIcon(Hub75FallbackState state, uint16_t accentColor
       gMatrix->drawLine(kIconCenterX - 11, kIconTopY + 14, kIconCenterX - 3, kIconTopY + 10, accentColor);
       gMatrix->drawLine(kIconCenterX + 3, kIconTopY + 10, kIconCenterX + 11, kIconTopY + 14, accentColor);
       break;
+    case Hub75FallbackState::NoModeActive:
+      gMatrix->drawRect(kIconCenterX - 11, kIconTopY + 2, 22, 12, neutralColor);
+      gMatrix->drawFastHLine(kIconCenterX - 6, kIconTopY + 8, 12, accentColor);
+      break;
+    case Hub75FallbackState::FirstRun:
+      gMatrix->drawRect(kIconCenterX - 11, kIconTopY + 2, 22, 12, neutralColor);
+      gMatrix->drawFastHLine(kIconCenterX - 6, kIconTopY + 8, 12, accentColor);
+      gMatrix->drawFastVLine(kIconCenterX, kIconTopY + 3, 10, accentColor);
+      break;
     case Hub75FallbackState::None:
     default:
       break;
@@ -536,6 +551,10 @@ Hub75FallbackState resolveHub75FallbackCandidate() {
 
   if (!gWs.isConnected()) {
     return Hub75FallbackState::NoServer;
+  }
+
+  if (gServerDisplayState != Hub75FallbackState::None) {
+    return gServerDisplayState;
   }
 
   return Hub75FallbackState::None;
@@ -621,6 +640,16 @@ bool drawConnectivityFallback(Hub75FallbackState state) {
       title = "SETUP WIFI";
       subtitle = "Conecte no portal";
       accent = {96, 220, 255};
+      break;
+    case Hub75FallbackState::NoModeActive:
+      title = "SEM MODO";
+      subtitle = "Ative um painel";
+      accent = {96, 220, 180};
+      break;
+    case Hub75FallbackState::FirstRun:
+      title = "OLA!";
+      subtitle = "Abra MicaAudio";
+      accent = {100, 220, 100};
       break;
     case Hub75FallbackState::Updating:
 #if defined(MICA_PROFILE_DMA_EXP)

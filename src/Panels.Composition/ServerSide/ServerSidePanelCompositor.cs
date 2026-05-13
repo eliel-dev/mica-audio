@@ -23,7 +23,18 @@ public sealed class ServerSidePanelCompositor : IDisposable
 
     public PanelDefinition Panel => panel.Clone();
 
-    public static ServerSidePanelCompositor? TryCreate(PanelDefinition? sourcePanel)
+    /// <summary>
+    /// Builds a compositor from <paramref name="sourcePanel"/>.
+    /// </summary>
+    /// <param name="sourcePanel">Panel definition to render.</param>
+    /// <param name="mediaDirectory">
+    /// Directory that contains uploaded media files for the device
+    /// (typically <c>{StorageRoot}/media/{deviceId}/</c>). Required for
+    /// <c>gifhub75</c> widgets; ignored for clock-only panels.
+    /// </param>
+    public static ServerSidePanelCompositor? TryCreate(
+        PanelDefinition? sourcePanel,
+        string? mediaDirectory = null)
     {
         if (sourcePanel is null)
         {
@@ -48,13 +59,40 @@ public sealed class ServerSidePanelCompositor : IDisposable
                 case "analogclock":
                     runtimes.Add(new ServerClockWidgetRuntime(widget, normalized.Width, normalized.Height));
                     break;
+
+                case "gifhub75":
+                    // CA2000: use try-finally so the runtime is disposed if
+                    // ownership transfer to `runtimes` is interrupted by an exception.
+                    ServerGifWidgetRuntime? gifRuntime = null;
+                    try
+                    {
+                        gifRuntime = ServerGifWidgetRuntime.TryCreate(widget, mediaDirectory);
+                        if (gifRuntime is null)
+                        {
+                            // Media file missing or not yet uploaded — treat as RequiresClient
+                            // so the device does not receive a blank frame.
+                            foreach (var r in runtimes)
+                            {
+                                r.Dispose();
+                            }
+                            return null;
+                        }
+                        runtimes.Add(gifRuntime);
+                        gifRuntime = null; // ownership transferred to runtimes list
+                    }
+                    finally
+                    {
+                        gifRuntime?.Dispose();
+                    }
+                    break;
+
                 default:
                     // Any non-server-capable widget should have been rejected above by the
                     // capability classifier; if a new widget id is added without updating
                     // the classifier, fail loudly so we do not silently drop frames.
-                    foreach (var runtime in runtimes)
+                    foreach (var r in runtimes)
                     {
-                        runtime.Dispose();
+                        r.Dispose();
                     }
                     return null;
             }

@@ -3,6 +3,7 @@
 // DOCS: docs/handoffs/2026-04-17-firmware-control-worker-hardening.md
 // DOCS: docs/handoffs/2026-04-18-wifi-reconnect-persistence-after-reset.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-05-12-display-state-gif-panels.md
 
 #include "mica_network.h"
 
@@ -838,6 +839,8 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
     gFrameModeActive = false;
     gLastFrameMs = millis();
     gMatrixSignalTimedOut = false;
+    gServerDisplayState = Hub75FallbackState::None;
+    gLastDisplayStatePollMs = 0;
     markMatrixFrameDirty(true);
     return true;
   }
@@ -875,6 +878,8 @@ bool applyStreamBinaryFrame(const uint8_t* payload, size_t len, bool cancelPanel
     gFrameModeActive = true;
     gLastFrameMs = millis();
     gMatrixSignalTimedOut = false;
+    gServerDisplayState = Hub75FallbackState::None;
+    gLastDisplayStatePollMs = 0;
     markMatrixFrameDirty(true);
     return true;
   }
@@ -1151,4 +1156,70 @@ void processNetworkPoll() {
       gWsDisconnectedSinceMs = 0;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Display state polling
+// ---------------------------------------------------------------------------
+void pollDisplayStateIfNeeded() {
+  // Only poll when the signal has timed out and we're connected.
+  if (!gMatrixSignalTimedOut) {
+    gLastDisplayStatePollMs = 0;
+    return;
+  }
+
+  // gWsDisconnectedSinceMs == 0 means WS is stably connected (set to 0 in
+  // WStype_CONNECTED, set to millis() when WS drops). Skip HTTP calls during
+  // reconnect windows to avoid blocking the main loop for TCP connect timeout.
+  if (WiFi.status() != WL_CONNECTED || gWsDisconnectedSinceMs != 0) {
+    return;
+  }
+
+  if (gDeviceId.isEmpty() || gToken.isEmpty() || gServerHost.isEmpty()) {
+    return;
+  }
+
+  const unsigned long nowMs = millis();
+  if (gLastDisplayStatePollMs != 0 && (nowMs - gLastDisplayStatePollMs) < kDisplayStatePollIntervalMs) {
+    return;
+  }
+
+  gLastDisplayStatePollMs = nowMs;
+
+  // Build URL manually and set aggressive timeouts BEFORE begin() so they
+  // apply to the TCP connect phase. beginHttpWithDeviceAuth() sets 5 s/15 s
+  // defaults which block the main loop when the server is unreachable.
+  const String url =
+      "http://" + gServerHost + ":" + String(gServerPort) + "/api/v1/device/display-state";
+  WiFiClient wifiClient;
+  HTTPClient http;
+  http.setConnectTimeout(200);
+  http.setTimeout(300);
+  if (!http.begin(wifiClient, url)) {
+    return;
+  }
+  http.addHeader("X-Device-Id", gDeviceId);
+  http.addHeader("X-Device-Token", gToken);
+
+  const int statusCode = http.GET();
+  if (statusCode == 200) {
+    StaticJsonDocument<128> doc;
+    if (deserializeJson(doc, http.getStream()) == DeserializationError::Ok) {
+      const char* state = doc["state"] | "";
+      Hub75FallbackState newState = Hub75FallbackState::None;
+      if (strcmp(state, "no_mode_active") == 0) {
+        newState = Hub75FallbackState::NoModeActive;
+      } else if (strcmp(state, "first_run") == 0) {
+        newState = Hub75FallbackState::FirstRun;
+      }
+
+      if (gServerDisplayState != newState) {
+        gServerDisplayState = newState;
+        // Force the fallback display to update on the next render tick.
+        gHub75FallbackDirty = true;
+      }
+    }
+  }
+
+  http.end();
 }

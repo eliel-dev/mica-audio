@@ -59,6 +59,59 @@ public sealed class FirmwareBootSourceLayoutTests
             "A ordem do TWDT deve ser reconfigure -> init para evitar o log ruidoso de already initialized.");
     }
 
+    [Fact]
+    public void Loop_ShouldPollDisplayStateAfterSignalTimeoutBeforeRender()
+    {
+        var repoRoot = ResolveRepoRoot();
+        var mainPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "main.cpp");
+        var source = File.ReadAllText(mainPath, Encoding.UTF8);
+        var loopBody = ExtractBetween(source, "void loop()", "  resetTaskWatchdog();");
+
+        Assert.Contains("processSignalTimeout();", loopBody, StringComparison.Ordinal);
+        Assert.Contains("pollDisplayStateIfNeeded();", loopBody, StringComparison.Ordinal);
+        Assert.Contains("processRenderFrame();", loopBody, StringComparison.Ordinal);
+
+        var timeoutIndex = loopBody.IndexOf("processSignalTimeout();", StringComparison.Ordinal);
+        var pollIndex = loopBody.IndexOf("pollDisplayStateIfNeeded();", StringComparison.Ordinal);
+        var renderIndex = loopBody.IndexOf("processRenderFrame();", StringComparison.Ordinal);
+
+        Assert.True(
+            timeoutIndex >= 0 && pollIndex > timeoutIndex && renderIndex > pollIndex,
+            "O firmware deve consultar display-state depois de detectar timeout de frames e antes de renderizar o fallback.");
+    }
+
+    [Fact]
+    public void FirmwareFallback_ShouldUseServerDisplayStateWhenConnectivityIsHealthy()
+    {
+        var repoRoot = ResolveRepoRoot();
+        var displayPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "mica_display.cpp");
+        var source = File.ReadAllText(displayPath, Encoding.UTF8);
+        var resolverBody = ExtractBetween(
+            source,
+            "Hub75FallbackState resolveHub75FallbackCandidate()",
+            "Hub75FallbackState resolveHub75FallbackState");
+
+        Assert.Contains("gServerDisplayState != Hub75FallbackState::None", resolverBody, StringComparison.Ordinal);
+        Assert.Contains("return gServerDisplayState;", resolverBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DrawConnectivityFallback_ShouldRenderServerIdleScreens()
+    {
+        var repoRoot = ResolveRepoRoot();
+        var displayPath = Path.Combine(repoRoot, "firmware", "esp32s3-devkitc1", "src", "mica_display.cpp");
+        var source = File.ReadAllText(displayPath, Encoding.UTF8);
+        var drawBody = ExtractBetween(
+            source,
+            "bool drawConnectivityFallback(Hub75FallbackState state)",
+            "// ---------------------------------------------------------------------------\r\n// Frame commit");
+
+        Assert.Contains("case Hub75FallbackState::NoModeActive:", drawBody, StringComparison.Ordinal);
+        Assert.Contains("case Hub75FallbackState::FirstRun:", drawBody, StringComparison.Ordinal);
+        Assert.Contains("NENHUM MODO", drawBody, StringComparison.Ordinal);
+        Assert.Contains("ATIVE PAINEL", drawBody, StringComparison.Ordinal);
+    }
+
     private static string ResolveRepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

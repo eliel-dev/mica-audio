@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Device.Protocol.Models;
 using Microsoft.AspNetCore.Http;
 using Panels.Composition.Models;
 using Panels.Composition.ServerSide;
@@ -149,5 +150,28 @@ public sealed partial class DeviceServerHost
         var removed = panelStore.Remove(deviceId);
         Log($"Panel removal for device {deviceId} (existed={removed}).");
         return Results.Ok(new { deviceId, removed });
+    }
+
+    private IResult HandleDeviceDisplayState(HttpContext ctx)
+    {
+        if (!TryAuthenticate(ctx, AuthContext.HttpApi, out var state))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (panelStore is null)
+        {
+            return Results.Ok(new DeviceDisplayStateResponse { State = "first_run" });
+        }
+
+        var displayState = panelStore.GetDisplayState(state.Record.DeviceId);
+        var stateString = displayState switch
+        {
+            DevicePanelDisplayState.Active => "panel_active",
+            DevicePanelDisplayState.ExplicitlyCleared => "no_mode_active",
+            _ => "first_run",
+        };
+
+        return Results.Ok(new DeviceDisplayStateResponse { State = stateString });
     }
 }

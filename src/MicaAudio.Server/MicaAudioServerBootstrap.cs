@@ -72,6 +72,8 @@ public static class MicaAudioServerBootstrap
         services.AddSingleton<ISessionStateStore, InMemorySessionStateStore>();
         services.AddSingleton<IServerPanelStore>(sp =>
             new FileServerPanelStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
+        services.AddSingleton<IServerMediaStore>(sp =>
+            new FileServerMediaStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
         services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
             TimeProvider.System,
             firmwareCatalog: null,

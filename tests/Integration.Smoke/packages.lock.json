@@ -839,6 +839,7 @@
       "panels.composition": {
         "type": "Project",
         "dependencies": {
+          "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
           "MicaAudio.Core": "[1.0.0, )"
         }
       },

@@ -40,17 +40,15 @@
 ## Atualizacao 2026-04 - Composition Root Do Server Embutido
 
 - `App.BuildServiceProvider()` continua sendo o unico ponto que conhece a implementacao concreta do server local.
-- `DeviceServerHost` permanece embutido no processo WinUI e agora recebe `IPanelsBatchStore`, `IDevicePairingStore`, `ICommandStateStore` e `ISessionStateStore` pelo composition root.
+- `DeviceServerHost` permanece como host do servidor standalone e recebe `IPanelsBatchStore`, `IDevicePairingStore`, `ICommandStateStore` e `ISessionStateStore` pelo composition root do servidor.
 - Os registros default sao `IPanelsBatchStore -> InMemoryPanelsBatchStore`, `IDevicePairingStore -> InMemoryDevicePairingStore`, `ICommandStateStore -> InMemoryCommandStateStore` e `ISessionStateStore -> InMemorySessionStateStore`, preservando batches `WebP`, pairing, comandos tracked e sessoes efemeras apenas em memoria sem alterar URLs, autenticacao ou payloads.
-- `IDeviceServerClient`, `IEmbeddedDeviceServerClientRuntime` e `IDeviceFrameTransport` continuam resolvidos pelas fronteiras de client/embedded ja existentes.
+- `IDeviceServerClient`, `IDeviceServerClientRuntime` e `IDeviceFrameTransport` continuam resolvidos pelas fronteiras de client remoto ja existentes.
 
 ## Atualizacao 2026-04 - WinUI Remote Full Visual Client
 
-- O modo default continua `Embedded`, mas `AppSettings.DeviceServerMode` permite alternar para `Remote` em `Configuracoes`.
+- O modo oficial passou a ser remote-only, apontando para `MicaAudio.Server`.
 - `AppSettings.RemoteServerBaseAddress` guarda a URL do `MicaAudio.Server`; o admin token fica fora do `settings.json`, protegido por DPAPI em `remote-server-secrets.json`.
-- `App.BuildServiceProvider()` escolhe no startup entre:
-  - `EmbeddedDeviceServerClient + DeviceServerHost` para o modo local;
-  - `RemoteDeviceServerClient + RemoteDeviceFrameTransport + RemoteDeviceServerRuntime` para o modo remoto.
+- `App.BuildServiceProvider()` registra `RemoteDeviceServerClient + RemoteDeviceFrameTransport + RemoteDeviceServerRuntime`.
 - `App.StartDeviceIntegrationAsync` agora usa `IDeviceServerClientRuntime`, preservando o lifecycle comum entre embedded e remote.
 - Trocar modo/URL/token exige restart nesta entrega.
 
@@ -340,7 +338,7 @@
 ## Atualizacao 2026-03 - Link do dashboard do device para celular
 
 - A `DevicesPage` agora oferece `Copiar link do dashboard` na barra superior.
-- O link compartilhavel usa o host LAN resolvido pelo `IDeviceServerClient` implementado por `EmbeddedDeviceServerClient`, preserva a porta local do host e fixa o device selecionado em `/dashboard?deviceId=<id>`.
+- O link compartilhavel usa o host resolvido pelo `IDeviceServerClient` implementado por `RemoteDeviceServerClient`, preserva a porta anunciada do servidor e fixa o device selecionado em `/dashboard?deviceId=<id>`.
 - O dashboard embutido continua em `127.0.0.1 + embedded=1`; apenas o link externo usa o host de rede local.
 - No navegador externo, o dashboard entra em modo leitura para nao expor controles que dependem da bridge do `WebView2`.
 
@@ -368,7 +366,7 @@
 - [ObservabilityOptions](../../../src/App.WinUI/Infrastructure/Observability/ObservabilityOptions.cs#L1)
 - [ExternalHttpClients](../../../src/App.WinUI/Infrastructure/Http/ExternalHttpClients.cs#L1)
 - [App](../../../src/App.WinUI/App.xaml.cs#L1)
-- [EmbeddedDeviceServerClient](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L1)
+- [RemoteDeviceServerClient](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1)
 - [IPanelsBatchStore](../../../src/Device.Server.Abstractions/Hosting/IPanelsBatchStore.cs#L1)
 - [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
 - [IDevicePairingStore](../../../src/Device.Server.Abstractions/Hosting/IDevicePairingStore.cs#L1)
@@ -377,8 +375,8 @@
 - [InMemoryCommandStateStore](../../../src/Device.Server/Hosting/InMemoryCommandStateStore.cs#L1)
 - [ISessionStateStore](../../../src/Device.Server.Abstractions/Hosting/ISessionStateStore.cs#L1)
 - [InMemorySessionStateStore](../../../src/Device.Server/Hosting/InMemorySessionStateStore.cs#L1)
-- [AppEmbeddedDeviceServerSettingsProvider](../../../src/App.WinUI/Services/Devices/AppEmbeddedDeviceServerSettingsProvider.cs#L1)
-- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
+- [RemoteDeviceServerSecretStore](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerSecretStore.cs#L1)
+- [RemoteDeviceServerClientOptions](../../../src/Device.Client.Remote/RemoteDeviceServerClientOptions.cs#L1)
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [AppCatalogService](../../../src/App.WinUI/Services/Apps/AppCatalogService.cs#L1)
 - [AppModifierStateStore](../../../src/App.WinUI/Services/Apps/AppModifierStateStore.cs#L1)

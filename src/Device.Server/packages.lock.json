@@ -53,6 +53,19 @@
           "Serilog": "4.2.0"
         }
       },
+      "Magick.NET-Q8-AnyCPU": {
+        "type": "Transitive",
+        "resolved": "14.12.0",
+        "contentHash": "YGEgNTZ6DaMhXgJYLClRrmEe6CMsEL5E8hy4c2iH/aEmj41ojFAtA/PIXYH1AOYINNEUX/83nLp/y5obt9P/vw==",
+        "dependencies": {
+          "Magick.NET.Core": "14.12.0"
+        }
+      },
+      "Magick.NET.Core": {
+        "type": "Transitive",
+        "resolved": "14.12.0",
+        "contentHash": "QPyuk1Lxp1xgSTP8xomnoZjeOtUeTSoeSuEckhGaUAi6GdZ5d2PmZqzr0O4m/zPbC4So/yg5rr2QO4vYD6fB5g=="
+      },
       "MQTTnet": {
         "type": "Transitive",
         "resolved": "5.1.0.1559",
@@ -102,6 +115,7 @@
       "panels.composition": {
         "type": "Project",
         "dependencies": {
+          "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
           "MicaAudio.Core": "[1.0.0, )"
         }
       }

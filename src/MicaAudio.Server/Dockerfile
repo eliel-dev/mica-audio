@@ -28,5 +28,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 EXPOSE 8080 5273 5274/udp
 ENV MICA_SERVER__LISTENHOST=0.0.0.0
+# Persistent data root — panels JSON + uploaded media (GIF/image).
+# Must match the volume mount point in docker-compose.yml.
+# Override with MICA_SERVER__STORAGEROOT if using a different mount.
+ENV MICA_SERVER__STORAGEROOT=/app/data
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "MicaAudio.Server.dll"]

@@ -24,4 +24,24 @@ public interface IServerPanelStore
 
     /// <summary>Enumerates all device ids that currently have a stored panel.</summary>
     IReadOnlyCollection<string> EnumerateDeviceIds();
+
+    /// <summary>
+    /// Returns the display state the ESP32 should show for this device.
+    /// <list type="bullet">
+    ///   <item><see cref="DevicePanelDisplayState.NeverSet"/> — no panel ever uploaded; firmware shows first-run screen.</item>
+    ///   <item><see cref="DevicePanelDisplayState.Active"/> — panel stored and being rendered.</item>
+    ///   <item><see cref="DevicePanelDisplayState.ExplicitlyCleared"/> — client explicitly removed the panel; firmware shows "no mode active".</item>
+    /// </list>
+    /// </summary>
+    DevicePanelDisplayState GetDisplayState(string deviceId);
+}
+
+public enum DevicePanelDisplayState
+{
+    /// <summary>No panel has ever been uploaded for this device.</summary>
+    NeverSet,
+    /// <summary>A panel is stored and the compositor is (or will be) rendering it.</summary>
+    Active,
+    /// <summary>The client explicitly cleared the panel via DELETE; the device should show an idle screen.</summary>
+    ExplicitlyCleared,
 }

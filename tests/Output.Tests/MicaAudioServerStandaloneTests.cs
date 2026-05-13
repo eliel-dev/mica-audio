@@ -1,6 +1,7 @@
 using System.Xml.Linq;
 using Device.Protocol.Contracts;
 using Device.Protocol.Models;
+using Device.Server.Hosting;
 using MicaAudio.Server;
 using Microsoft.Extensions.Configuration;
 
@@ -132,6 +133,21 @@ public sealed class MicaAudioServerStandaloneTests
         Assert.Equal(record.Name, loadedRecord.Name);
         Assert.Equal(record.BoardModel, loadedRecord.BoardModel);
         Assert.Equal(record.PanelType, loadedRecord.PanelType);
+    }
+
+    [Fact]
+    public void FileServerPanelStore_ShouldPersistExplicitClearWithoutExistingPanel()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mica-audio-server-tests", Guid.NewGuid().ToString("N"));
+        var store = new FileServerPanelStore(root);
+
+        var removed = store.Remove("mp-empty");
+
+        Assert.False(removed);
+        Assert.Equal(DevicePanelDisplayState.ExplicitlyCleared, store.GetDisplayState("mp-empty"));
+
+        var reloaded = new FileServerPanelStore(root);
+        Assert.Equal(DevicePanelDisplayState.ExplicitlyCleared, reloaded.GetDisplayState("mp-empty"));
     }
 
     [Fact]

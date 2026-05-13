@@ -6,6 +6,7 @@ using Panels.Composition.Models;
 namespace MicaAudio.Server;
 
 // DOCS: docs/handoffs/2026-05-08-remote-only-autonomous-widgets-firmware-sta.md
+// DOCS: docs/handoffs/2026-05-12-display-state-gif-panels.md
 //
 // Filesystem-backed mirror of the in-memory store. One JSON file per device
 // under {StorageRoot}/panels/. The cache is hot in memory after the first
@@ -54,6 +55,13 @@ public sealed class FileServerPanelStore : IServerPanelStore
         var path = ResolvePath(deviceId);
         var json = JsonSerializer.Serialize(snapshot, JsonOptions);
         File.WriteAllText(path, json);
+
+        // Panel upload cancels any prior explicit-clear tombstone.
+        var clearedPath = ResolveClearedPath(deviceId);
+        if (File.Exists(clearedPath))
+        {
+            File.Delete(clearedPath);
+        }
     }
 
     public bool Remove(string deviceId)
@@ -71,6 +79,11 @@ public sealed class FileServerPanelStore : IServerPanelStore
             existed = true;
         }
 
+        // Write tombstone so the ESP32 can distinguish "explicitly cleared"
+        // from "never had a panel" on the next display-state query. A DELETE is
+        // an explicit clear even when there was no panel file to remove.
+        File.WriteAllText(ResolveClearedPath(deviceId), string.Empty);
+
         return existed;
     }
 
@@ -79,12 +92,35 @@ public sealed class FileServerPanelStore : IServerPanelStore
         return cache.Keys.ToArray();
     }
 
+    public DevicePanelDisplayState GetDisplayState(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return DevicePanelDisplayState.NeverSet;
+        }
+
+        if (cache.ContainsKey(deviceId))
+        {
+            return DevicePanelDisplayState.Active;
+        }
+
+        return File.Exists(ResolveClearedPath(deviceId))
+            ? DevicePanelDisplayState.ExplicitlyCleared
+            : DevicePanelDisplayState.NeverSet;
+    }
+
     private string ResolvePath(string deviceId)
     {
         // Sanitize: only allow [A-Za-z0-9_-]. Anything else gets replaced so we
         // never write outside panelsDirectory regardless of the deviceId source.
         var sanitized = SanitizeFileName(deviceId);
         return Path.Combine(panelsDirectory, sanitized + ".json");
+    }
+
+    private string ResolveClearedPath(string deviceId)
+    {
+        var sanitized = SanitizeFileName(deviceId);
+        return Path.Combine(panelsDirectory, sanitized + ".cleared");
     }
 
     private static string SanitizeFileName(string deviceId)

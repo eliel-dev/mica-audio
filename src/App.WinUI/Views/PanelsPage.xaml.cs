@@ -292,8 +292,68 @@ public sealed partial class PanelsPage : Page, IDisposable
         await SelectPanelAsync(initialPanelId, saveDirty: false, refreshPreview: false);
         RebuildPanelsGallery();
         QueueInitialGalleryPosterBatch();
+
+        // Server is source of truth: discover any panel currently rendering
+        // server-side BEFORE the gallery card states are computed, so panels
+        // already running on the device show as "ativo" right after load.
+        await SyncServerActivePanelsAsync().ConfigureAwait(true);
+
         UpdateGalleryCardStates();
         ClearEditorPreview();
+    }
+
+    /// <summary>
+    /// Asks the server which panel (if any) is currently being rendered for
+    /// each known device, and surfaces the result via PanelsPlaybackService so
+    /// the gallery cards reflect the truth — not just what THIS WinUI session
+    /// happens to have started locally.
+    /// </summary>
+    private async Task SyncServerActivePanelsAsync()
+    {
+        try
+        {
+            var deviceIds = currentState.DeviceListSnapshot
+                .Select(d => d.DeviceId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (deviceIds.Length == 0)
+            {
+                return;
+            }
+
+            var ok = await playbackService.RefreshServerStateAsync(deviceIds).ConfigureAwait(true);
+            if (!ok)
+            {
+                SetStatus("Servidor parcialmente indisponivel; alguns paineis podem nao refletir o estado real.", isError: false);
+                return;
+            }
+
+            // Surface a friendly status when something is already running.
+            foreach (var deviceId in deviceIds)
+            {
+                var serverInfo = playbackService.GetServerActivePanelFor(deviceId);
+                if (serverInfo is null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(serverInfo.Capability, "ServerCapable", StringComparison.OrdinalIgnoreCase))
+                {
+                    SetStatus($"Servidor renderizando '{serverInfo.PanelName}' em {deviceId} (autonomo).");
+                }
+                else
+                {
+                    SetStatus($"Painel '{serverInfo.PanelName}' armazenado em {deviceId} (precisa do cliente para renderizar).");
+                }
+                break; // mostrar apenas o primeiro para nao spammar a status bar
+            }
+        }
+        catch (Exception ex)
+        {
+            App.ReportError("PanelsPage.SyncServerActivePanelsAsync failed", ex);
+        }
     }
 
     private async Task CreatePanelAsync()
@@ -531,10 +591,16 @@ public sealed partial class PanelsPage : Page, IDisposable
     private void OnDeviceOpsStateChanged(object? sender, EventArgs e)
     {
         var state = deviceOps.GetStateSnapshot();
-        _ = DispatcherQueue.TryEnqueue(() =>
+        _ = DispatcherQueue.TryEnqueue(async () =>
         {
             currentState = state;
             ApplyDevices(state.DeviceListSnapshot);
+            UpdateGalleryCardStates();
+
+            // Refresh server-side panel state whenever the device list changes
+            // (e.g. a device connects after the page was already loaded) so that
+            // SuspendAsync can find and stop server-capable panels when needed.
+            await SyncServerActivePanelsAsync().ConfigureAwait(true);
             UpdateGalleryCardStates();
         });
     }
@@ -1359,15 +1425,31 @@ public sealed partial class PanelsPage : Page, IDisposable
 
             state.Name = panel.Name;
             state.WidgetCount = panel.Widgets.Count;
-            state.IsActive = string.Equals(panel.PanelId, activePanelId, StringComparison.OrdinalIgnoreCase);
+
+            var isLocallyActive = string.Equals(panel.PanelId, activePanelId, StringComparison.OrdinalIgnoreCase);
+            var isServerActive  = !isLocallyActive && playbackService.IsServerActivePanel(panel.PanelId);
+            state.IsActive   = isLocallyActive || isServerActive;
             state.CanActivate = state.IsActive || canActivateNewPanel;
-            state.Subtitle = state.IsActive
-                ? $"Ativo em {activeDeviceId}"
-                : $"{panel.Widgets.Count} widget(s)";
-            state.Frame = state.IsActive
-                ? playbackService.GetLatestFrame()
-                    ?? (panelThumbnailCache.TryGetValue(state.PanelId, out var activePoster) ? activePoster : EmptyFrame)
-                : (panelThumbnailCache.TryGetValue(state.PanelId, out var poster) ? poster : EmptyFrame);
+
+            if (isLocallyActive)
+            {
+                state.Subtitle = $"Ativo em {activeDeviceId}";
+                state.Frame = playbackService.GetLatestFrame()
+                    ?? (panelThumbnailCache.TryGetValue(state.PanelId, out var activePoster) ? activePoster : EmptyFrame);
+            }
+            else if (isServerActive)
+            {
+                var serverDeviceId = playbackService.GetServerActiveDeviceFor(panel.PanelId);
+                state.Subtitle = string.IsNullOrWhiteSpace(serverDeviceId)
+                    ? "Ativo no servidor"
+                    : $"Ativo no servidor ({serverDeviceId})";
+                state.Frame = panelThumbnailCache.TryGetValue(state.PanelId, out var serverPoster) ? serverPoster : EmptyFrame;
+            }
+            else
+            {
+                state.Subtitle = $"{panel.Widgets.Count} widget(s)";
+                state.Frame = panelThumbnailCache.TryGetValue(state.PanelId, out var poster) ? poster : EmptyFrame;
+            }
         }
     }
 
@@ -1972,9 +2054,20 @@ public sealed partial class PanelsPage : Page, IDisposable
             return;
         }
 
-        if (IsActivePanel(panelId))
+        // Check local loop first; fall back to server-only stop when needed.
+        var localActive = playbackService.GetActivePanelSnapshot();
+        var isLocallyActive = localActive is not null
+            && string.Equals(localActive.PanelId, panelId, StringComparison.OrdinalIgnoreCase);
+
+        if (isLocallyActive)
         {
-            await StopPlaybackAsync();
+            await StopPlaybackAsync();      // stops local loop + deletes from server
+        }
+        else if (playbackService.IsServerActivePanel(panelId))
+        {
+            await playbackService.DeleteServerPanelForPanel(panelId);
+            UpdateGalleryCardStates();
+            SetStatus("Painel desativado no servidor.");
         }
         else
         {
@@ -1990,8 +2083,17 @@ public sealed partial class PanelsPage : Page, IDisposable
     private bool IsActivePanel(string panelId)
     {
         var activePanel = playbackService.GetActivePanelSnapshot();
-        return activePanel is not null
-            && string.Equals(activePanel.PanelId, panelId, StringComparison.OrdinalIgnoreCase);
+        if (activePanel is not null
+            && string.Equals(activePanel.PanelId, panelId, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Server is the source of truth: even if THIS WinUI session has not
+        // started a local playback loop, treat panels rendered autonomously
+        // by the server as "active" so the gallery shows the correct state
+        // when the user reopens the app.
+        return playbackService.IsServerActivePanel(panelId);
     }
 
     private bool IsRetainedPanel(string panelId)

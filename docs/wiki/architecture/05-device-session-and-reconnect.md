@@ -25,12 +25,12 @@ Explicar ciclo de sessao dos dispositivos (pareamento, online, heartbeat, reconn
 - [DeviceServerHost.StartAsync](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L37) - assinatura: `Task StartAsync(ServerConfig, CancellationToken)`
 - [DeviceServerHost.GetDevicesSnapshot](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L156) - assinatura: `IReadOnlyList<DeviceSnapshot> GetDevicesSnapshot()`
 - [DeviceServerHost.Advanced handlers](../../../src/Device.Server/Hosting/DeviceServerHost.Advanced.cs#L63) - assinatura: `Task HandleIncomingWsTextAsync(...)`
-- [EmbeddedDeviceServerClient.StartAsync](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L62) - assinatura: `Task StartAsync(CancellationToken)`
+- [RemoteDeviceServerClient.StartAsync](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L54) - assinatura: `Task StartAsync(CancellationToken)`
 - [DeviceOperationsCoordinator.ApplyDevices path](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L160) - assinatura: `private void ApplyDevices(IReadOnlyList<DeviceSnapshot> devices)`
 
 ## Backlinks no codigo
 
-- `src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs`
+- `src/Device.Client.Remote/RemoteDeviceServerClient.cs`
 - `src/Device.Server/Hosting/DeviceServerHost.cs`
 
 ## Atualizacao 2026-03 - Lifecycle de Device Leve

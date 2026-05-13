@@ -69,7 +69,7 @@ Pontos principais do cutover HUB75 128x64:
 - [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1)
 - [IDeviceServerClientRuntime](../../../src/Device.Client.Abstractions/IDeviceServerClientRuntime.cs#L1)
 - [IDeviceFrameTransport](../../../src/Device.Client.Abstractions/IDeviceFrameTransport.cs#L1)
-- [EmbeddedDeviceServerClient](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L1)
+- [RemoteDeviceServerClient](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1)
 - [RemoteDeviceServerClient](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1)
 - [RemoteDeviceFrameTransport](../../../src/Device.Client.Remote/RemoteDeviceFrameTransport.cs#L1)
 - [RemoteDeviceServerRuntime](../../../src/Device.Client.Remote/RemoteDeviceServerRuntime.cs#L1)
@@ -110,9 +110,9 @@ Pontos de estado e visibilidade de devices:
 
 - [DeviceOperationsCoordinator](../../../src/App.WinUI/Services/Devices/DeviceOperationsCoordinator.cs#L1)
 - [IDeviceServerClient](../../../src/Device.Client.Abstractions/IDeviceServerClient.cs#L1)
-- [EmbeddedDeviceServerClient](../../../src/Device.Client.Embedded/EmbeddedDeviceServerClient.cs#L1)
-- [IEmbeddedDeviceServerClientRuntime](../../../src/Device.Client.Embedded/IEmbeddedDeviceServerClientRuntime.cs#L1)
-- [AppEmbeddedDeviceServerSettingsProvider](../../../src/App.WinUI/Services/Devices/AppEmbeddedDeviceServerSettingsProvider.cs#L1)
+- [RemoteDeviceServerClient](../../../src/Device.Client.Remote/RemoteDeviceServerClient.cs#L1)
+- [RemoteDeviceServerRuntime](../../../src/Device.Client.Remote/RemoteDeviceServerRuntime.cs#L1)
+- [RemoteDeviceServerSecretStore](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerSecretStore.cs#L1)
 - [DeviceRefreshCoordinator](../../../src/App.WinUI/Services/Devices/DeviceRefreshCoordinator.cs#L1)
 - [DeviceCommandDispatcher](../../../src/App.WinUI/Services/Devices/DeviceCommandDispatcher.cs#L1)
 - [DeviceCommandTracker](../../../src/App.WinUI/Services/Devices/DeviceCommandTracker.cs#L1)
@@ -122,7 +122,7 @@ Pontos de estado e visibilidade de devices:
 - [DeviceLifecycleThresholdProvider](../../../src/App.WinUI/Services/Devices/DeviceLifecycleThresholdProvider.cs#L1)
 - [DeviceListVisibilityPolicy](../../../src/App.WinUI/Services/Devices/DeviceListVisibilityPolicy.cs#L1)
 - [DeviceListRenderDiff](../../../src/App.WinUI/Services/Devices/DeviceListRenderDiff.cs#L1)
-- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
+- [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [DeviceServerHost dashboard](../../../src/Device.Server/Hosting/DeviceServerHost.Dashboard.cs#L1)
 - [DeviceServerHost MQTT](../../../src/Device.Server/Hosting/DeviceServerHost.Mqtt.cs#L1)
@@ -162,7 +162,7 @@ Observacoes ativas:
 - O snapshot tambem diferencia `LegacyOnly` para firmware que ainda usa WS-texto/HTTP no control plane.
 - O hot path visual continua em `Esp32S3LedOutput -> IDeviceFrameTransport -> DeviceServerHost.BroadcastFrame/SendFrame`; por default sai por `/ws/v1/stream`, com UDP LAN opt-in para `Bins128` quando o device anuncia capability e `PreferLanUdpVisualTransport=true`.
 - Os contratos consumidos por clients (`IDeviceServerClient`, `IDeviceFrameTransport`, `PanelsBatchRegistration`) vivem em `Device.Client.Abstractions`; `Device.Server.Abstractions` fica restrito ao host embedded/lifecycle.
-- A implementacao local desses contratos vive em `Device.Client.Embedded`; o WinUI registra `EmbeddedDeviceServerClient` como `IDeviceServerClient` e `IEmbeddedDeviceServerClientRuntime`, mantendo `DeviceServerHost` apenas no composition root.
+- A implementacao remota desses contratos vive em `Device.Client.Remote`; o WinUI registra `RemoteDeviceServerClient` como `IDeviceServerClient` e `RemoteDeviceServerRuntime` como runtime, mantendo `DeviceServerHost` no servidor standalone.
 - O storage efemero de batches `WebP` vive atras de `IPanelsBatchStore`; o runtime embedded registra `InMemoryPanelsBatchStore` como default, preservando payload em memoria e limite de `4` batches por device.
 - O estado efemero de pairing vive atras de `IDevicePairingStore`; o runtime embedded registra `InMemoryDevicePairingStore`, preservando pair codes de uso unico, TTL e tentativas por IP.
 - O estado efemero de comandos tracked vive atras de `ICommandStateStore`; o runtime embedded registra `InMemoryCommandStateStore`, preservando progresso, timeout e resultado final em memoria.

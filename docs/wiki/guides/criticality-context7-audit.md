@@ -204,6 +204,6 @@ os status acima incluem inferencia tecnica a partir das referencias Context7 e d
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L2) - assinatura: `default_envs = esp32s3_devkitc1_dma_exp`
 - [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L37) - assinatura: `Resolve-PlatformIoCommand`
 - [PrecompiledFirmwareService.cs](../../../src/App.WinUI/Services/Firmware/PrecompiledFirmwareService.cs#L21) - assinatura: `FileName = "esp32s3-devkitc1-128x64-dma_exp_merged.bin"`
-- [JsonDeviceRegistryStore.cs](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L13) - assinatura: `TokenCipherPrefix = "dpapi:v1:"`
+- [RemoteDeviceServerSecretStore.cs](../../../src/App.WinUI/Services/Devices/RemoteDeviceServerSecretStore.cs#L13) - assinatura: `TokenCipherPrefix = "dpapi:v1:"`
 - [StreamFrameV2Tests.cs](../../../tests/Output.Tests/StreamFrameV2Tests.cs#L8) - assinatura: `CreateBins128_ShouldGenerateExpectedLayout`
 - [Hub75VisualizerSessionServiceTests.cs](../../../tests/Output.Tests/Hub75VisualizerSessionServiceTests.cs#L33) - assinatura: `Disable_ShouldRestorePreviousApp_WhenDeviceIsOnline`

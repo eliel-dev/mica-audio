@@ -28,6 +28,7 @@ namespace Device.Server.Hosting;
 // DOCS: docs/handoffs/2026-04-22-winui-remote-full-visual-client.md
 // DOCS: docs/handoffs/2026-04-22-micaudio-server-docker-advertised-endpoints.md
 // DOCS: docs/handoffs/2026-04-23-micaudio-visual-transport-optimization.md
+// DOCS: docs/handoffs/2026-05-12-display-state-gif-panels.md
 public sealed partial class DeviceServerHost : IDeviceServerHost
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -145,7 +146,9 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         DeviceServerObservability.ConfigureOpenTelemetry(builder.Services);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
-            kestrel.Limits.MaxRequestBodySize = localRuntimeConfig.MaxJsonBodyBytes;
+            kestrel.Limits.MaxRequestBodySize = Math.Max(
+                localRuntimeConfig.MaxJsonBodyBytes * 64,
+                MaxMediaBodyBytes);
         });
         builder.WebHost.UseUrls($"http://{localRuntimeConfig.ListenHost}:{localRuntimeConfig.Port}");
         builder.Services.AddRateLimiter(options =>
@@ -481,6 +484,29 @@ public sealed partial class DeviceServerHost : IDeviceServerHost
         NotifyDevicesChanged();
         Log($"Device removido: {deviceId}");
         return true;
+    }
+
+    /// <summary>
+    /// Returns whether the device currently has a registered, open frame
+    /// connection (i.e. the device's /ws/v1/stream is alive and frames sent
+    /// via <see cref="SendFrame"/> would actually be delivered).
+    /// Used by the server-side compositor to surface "armed but no consumer"
+    /// situations in logs instead of silently dropping frames.
+    /// </summary>
+    public bool HasOpenFrameConnection(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return false;
+        }
+
+        DeviceFrameConnection? target;
+        lock (gate)
+        {
+            frameConnections.TryGetValue(deviceId.Trim(), out target);
+        }
+
+        return target?.Socket is { State: WebSocketState.Open };
     }
 
     public void BroadcastFrame(byte[] framePayload)

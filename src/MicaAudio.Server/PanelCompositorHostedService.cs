@@ -10,6 +10,7 @@ using Panels.Composition.ServerSide;
 namespace MicaAudio.Server;
 
 // DOCS: docs/handoffs/2026-05-08-remote-only-autonomous-widgets-firmware-sta.md
+// DOCS: docs/handoffs/2026-05-12-display-state-gif-panels.md
 // DOCS: docs/adr/0010-remote-only-and-server-side-autonomous-widgets.md
 //
 // Background worker that keeps server-capable panels rendering on the LED
@@ -37,10 +38,18 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
     [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "Server-side compositor armed for device {DeviceId} (panelId={PanelId} widgets={WidgetCount}).")]
     private partial void LogCompositorArmed(string deviceId, string panelId, int widgetCount);
 
+    [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Server-side compositor: device {DeviceId} has no open frame connection — frames being dropped (state for {Seconds}s).")]
+    private partial void LogNoFrameConnection(string deviceId, double seconds);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "Server-side compositor: streaming resumed to {DeviceId} (after {Seconds}s gap).")]
+    private partial void LogFrameConnectionResumed(string deviceId, double seconds);
+
     private readonly DeviceServerHost host;
     private readonly IServerPanelStore panelStore;
+    private readonly IServerMediaStore? mediaStore;
     private readonly ILogger<PanelCompositorHostedService> logger;
     private readonly Dictionary<string, CachedCompositor> compositorsByDeviceId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DeviceFrameDeliveryState> frameDeliveryStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly RgbaColor[] frameScratchRgba = new RgbaColor[StreamFrameV2.PixelCount128x64];
     private readonly ushort[] frameScratchRgb565 = new ushort[StreamFrameV2.PixelCount128x64];
     private uint sequence;
@@ -48,15 +57,21 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
     public PanelCompositorHostedService(
         DeviceServerHost host,
         IServerPanelStore panelStore,
-        ILogger<PanelCompositorHostedService> logger)
+        ILogger<PanelCompositorHostedService> logger,
+        IServerMediaStore? mediaStore = null)
     {
         this.host = host ?? throw new ArgumentNullException(nameof(host));
         this.panelStore = panelStore ?? throw new ArgumentNullException(nameof(panelStore));
         this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        this.mediaStore = mediaStore;
 
-        // Make sure DeviceServerHost can find the store when serving the
-        // PUT/GET/DELETE panel endpoints.
+        // Make sure DeviceServerHost can find the stores when serving the
+        // PUT/GET/DELETE panel + media endpoints.
         host.AttachPanelStore(panelStore);
+        if (mediaStore is not null)
+        {
+            host.AttachMediaStore(mediaStore);
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -135,6 +150,13 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
             return;
         }
 
+        // Track delivery health: log a single warning when the device's stream
+        // WebSocket goes away (so frames sent silently land in /dev/null) and
+        // another when it comes back. Without this the only symptom from
+        // outside is "the panel just stops" with no hint why.
+        var hasConnection = host.HasOpenFrameConnection(deviceId);
+        UpdateFrameDeliveryHealth(deviceId, now, hasConnection);
+
         cached.Compositor.RenderFrameInto(now, frameScratchRgba);
         EncodeRgb565(frameScratchRgba, frameScratchRgb565);
 
@@ -145,6 +167,63 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
             brightness0To255: 255);
 
         host.SendFrame(deviceId, payload);
+    }
+
+    private void UpdateFrameDeliveryHealth(string deviceId, DateTimeOffset now, bool hasConnection)
+    {
+        if (!frameDeliveryStates.TryGetValue(deviceId, out var state))
+        {
+            // First tick for this device: bootstrap state but only emit a log
+            // if we are starting in the bad state (so user sees it immediately).
+            state = new DeviceFrameDeliveryState
+            {
+                IsConnected = hasConnection,
+                LastTransitionUtc = now,
+                LastWarningUtc = now - TimeSpan.FromMinutes(1),
+            };
+            frameDeliveryStates[deviceId] = state;
+
+            if (!hasConnection)
+            {
+                LogNoFrameConnection(deviceId, 0);
+                state.LastWarningUtc = now;
+            }
+            return;
+        }
+
+        if (state.IsConnected != hasConnection)
+        {
+            // State change: emit one log line per transition.
+            var elapsed = (now - state.LastTransitionUtc).TotalSeconds;
+            if (hasConnection)
+            {
+                LogFrameConnectionResumed(deviceId, elapsed);
+            }
+            else
+            {
+                LogNoFrameConnection(deviceId, 0);
+                state.LastWarningUtc = now;
+            }
+
+            state.IsConnected = hasConnection;
+            state.LastTransitionUtc = now;
+            return;
+        }
+
+        // No change. If still disconnected, repeat the warning every 30s
+        // so a long-running outage stays visible in the logs.
+        if (!hasConnection && (now - state.LastWarningUtc) > TimeSpan.FromSeconds(30))
+        {
+            LogNoFrameConnection(deviceId, (now - state.LastTransitionUtc).TotalSeconds);
+            state.LastWarningUtc = now;
+        }
+    }
+
+    private sealed class DeviceFrameDeliveryState
+    {
+        public bool IsConnected { get; set; }
+        public DateTimeOffset LastTransitionUtc { get; set; }
+        public DateTimeOffset LastWarningUtc { get; set; }
     }
 
     private CachedCompositor? GetOrBuildCompositor(string deviceId, PanelDefinition panel)
@@ -158,7 +237,10 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
         cached?.Compositor.Dispose();
         compositorsByDeviceId.Remove(deviceId);
 
-        var compositor = ServerSidePanelCompositor.TryCreate(panel);
+        // Pass the device-specific media directory so gifhub75 runtimes can
+        // locate their uploaded files.  Null-safe: clock-only panels ignore it.
+        var mediaDirectory = mediaStore?.GetMediaDirectory(deviceId);
+        var compositor = ServerSidePanelCompositor.TryCreate(panel, mediaDirectory);
         if (compositor is null)
         {
             return null;

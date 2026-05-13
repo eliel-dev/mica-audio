@@ -68,7 +68,7 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 ## Persistencia local
 
 - `DeviceSnapshot` e `DeviceRecord` carregam os campos v2 para uso em UI e store.
-- `JsonDeviceRegistryStore` faz round-trip desses campos no `devices.json`.
+- `StandaloneDeviceRegistryStore` faz round-trip desses campos no `devices.json` do servidor standalone.
 - Em offline, a UI pode mostrar o ultimo snapshot conhecido sem depender de nova telemetria.
 
 ## Consumo no dashboard por device
@@ -113,6 +113,6 @@ Definir o contrato de telemetria v2 entre firmware, protocolo, servidor e App.Wi
 - [DeviceRecord](../../../src/Device.Protocol/Models/DeviceRecord.cs#L1)
 - [DeviceServerHost](../../../src/Device.Server/Hosting/DeviceServerHost.cs#L1)
 - [VisualUdpFrameV1](../../../src/Device.Protocol/Stream/VisualUdpFrameV1.cs#L1)
-- [JsonDeviceRegistryStore](../../../src/App.WinUI/Services/Devices/JsonDeviceRegistryStore.cs#L1)
+- [StandaloneDeviceRegistryStore](../../../src/MicaAudio.Server/StandaloneDeviceRegistryStore.cs#L1)
 - [DeviceMetricsFormatter](../../../src/App.WinUI/Services/Devices/DeviceMetricsFormatter.cs#L1)
 - [DevicesPage](../../../src/App.WinUI/Views/DevicesPage.xaml.cs#L1)

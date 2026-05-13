@@ -46,6 +46,7 @@ constexpr unsigned long kSerialHelloIntervalMs = 3000;
 constexpr unsigned long kSerialProvisioningBootGraceMs = 60000;
 constexpr unsigned long kMatrixSignalTimeoutMs = 15000;
 constexpr unsigned long kConnectivityFallbackDebounceMs = 1000;
+constexpr unsigned long kDisplayStatePollIntervalMs = 5000;
 constexpr size_t kSerialInputMaxLength = 1024;
 constexpr unsigned long kWifiConnectAttemptTimeoutMs = 20000;
 constexpr uint32_t kHealthyLoopThresholdUs = 25000;
@@ -239,6 +240,8 @@ enum class Hub75FallbackState : uint8_t {
   NoServer = 2,
   Portal = 3,
   Updating = 4,
+  NoModeActive = 5,  // server reported no panel active (client explicitly cleared)
+  FirstRun = 6,      // device never had a panel
 };
 
 enum class Hub75BinsVisualStyle : uint8_t {
