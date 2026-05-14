@@ -30,6 +30,7 @@ class AppSettings @Inject constructor(
         private val KEY_VISUALIZER_BOOST = floatPreferencesKey("visualizer_boost")
         private val KEY_VISUALIZER_RISE = floatPreferencesKey("visualizer_rise")
         private val KEY_VISUALIZER_FALL = floatPreferencesKey("visualizer_fall")
+        private val KEY_VISUALIZER_MAX_FREQ = floatPreferencesKey("visualizer_max_freq")
 
         const val DEFAULT_SERVER_URL = "http://192.168.1.100:5272"
         const val DEFAULT_DARK_MODE = "system"
@@ -67,6 +68,11 @@ class AppSettings @Inject constructor(
         prefs[KEY_VISUALIZER_FALL] ?: 0.3f
     }
 
+    /** Frequência máxima analisada (Hz). Default 1000 Hz — igual ao preset "Centered Lines" do Windows. */
+    val visualizerMaxFreq: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[KEY_VISUALIZER_MAX_FREQ] ?: 1000f
+    }
+
     suspend fun setServerUrl(url: String) {
         context.dataStore.edit { it[KEY_SERVER_URL] = url.trim() }
     }
@@ -97,5 +103,9 @@ class AppSettings @Inject constructor(
 
     suspend fun setVisualizerFall(value: Float) {
         context.dataStore.edit { it[KEY_VISUALIZER_FALL] = value }
+    }
+
+    suspend fun setVisualizerMaxFreq(value: Float) {
+        context.dataStore.edit { it[KEY_VISUALIZER_MAX_FREQ] = value }
     }
 }

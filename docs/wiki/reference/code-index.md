@@ -204,6 +204,22 @@ Pontos centrais de runtime do visualizer e payload:
 - [VisualizerAnalyzerConfigFactory](../../../src/App.WinUI/Services/Visualizer/VisualizerAnalyzerConfigFactory.cs#L1)
 - [AppSettingsDomainService](../../../src/App.WinUI/Services/AppSettingsDomainService.cs#L1)
 
+Pontos Android do visualizer AudioMotion Clone:
+
+- [Android AudioMotionCloneAnalyzer](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/audio/AudioMotionCloneAnalyzer.kt#L1)
+- [Android VisualFrameRateLimiter](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/audio/VisualFrameRateLimiter.kt#L1)
+- [Android AudioCaptureService](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/audio/AudioCaptureService.kt#L1)
+- [Android VisualStreamFrameEncoder](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/websocket/VisualStreamFrameEncoder.kt#L1)
+- [Android VisualStreamSocket](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/websocket/VisualStreamSocket.kt#L1)
+- [Android VisualizerScreen](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/visualizer/VisualizerScreen.kt#L1)
+- [Android VisualizerViewModel](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/visualizer/VisualizerViewModel.kt#L1)
+
+Observacoes Android do visualizer:
+
+- O cliente Android usa `MediaProjection`/`AudioPlaybackCapture` para publicar `StreamFrameV2` tipo `Bins128` com `flags=0x11` (`MirrorLines` + `Rainbow`) pelo envelope admin existente, sem alterar o contrato wire.
+- O modo Android e fixo em `AudioMotion Clone` e reaproveita os defaults calibrados do Windows: `48 kHz`, FFT `2048`, hop `256`, escala Bark, weighting B, normalizacao linear e envelope calibrado.
+- A captura Android processa o hop calibrado, mas limita publicacao e preview a `60 FPS`; o socket descarta frame quando ha backlog visual para preservar tempo real.
+
 Pontos centrais do runtime de pipeline no app:
 
 - [AudioPipelineCoordinator](../../../src/App.WinUI/Services/AudioPipelineCoordinator.cs#L1)

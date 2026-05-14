@@ -95,4 +95,6 @@ dependencies {
     implementation(libs.core.ktx)
     implementation(libs.activity.compose)
     implementation(libs.core.splashscreen)
+
+    testImplementation(libs.junit)
 }

@@ -32,7 +32,14 @@
       "PowerShell($javaLocations = @\\(\"C:\\\\Program Files\\\\Java\", \"C:\\\\Program Files\\\\Eclipse Adoptium\", \"C:\\\\Program Files\\\\OpenJDK\", \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"\\); foreach \\($loc in $javaLocations\\) { if \\(Test-Path $loc\\) { Get-ChildItem $loc | Select-Object FullName } })",
       "Bash(where java *)",
       "Bash(ls \"C:\\\\Users\\\\eliels\\\\AppData\\\\Local\\\\Android\\\\Sdk\" 2>/dev/null | head -20)",
-      "PowerShell(Get-ChildItem \"C:\\\\Program Files\" -ErrorAction SilentlyContinue | Where-Object {$_.Name -match \"jdk|java|eclipse|temurin|openjdk\"} | Select-Object FullName)"
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\" -ErrorAction SilentlyContinue | Where-Object {$_.Name -match \"jdk|java|eclipse|temurin|openjdk\"} | Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\" -Directory)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(grep -E \"\\\\.\\(cs|kt\\)$\")",
+      "Bash(\"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\\\\bin\\\\java.exe\" -jar \"C:\\\\Users\\\\eliels\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\tools\\\\bin\\\\..\\\\lib\\\\gradle-launcher-8.11.1.jar\" --project-dir . assembleDebug)",
+      "Bash(set \"JAVA_HOME=C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\")",
+      "Bash(.\\\\gradlew.bat assembleDebug)",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; Set-Location \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.Android\"; .\\\\gradlew assembleDebug 2>&1 | Select-Object -Last 50)"
     ]
   }
 }

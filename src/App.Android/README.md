@@ -32,5 +32,13 @@ No primeiro run, vá em **Config** (tab inferior) e configure:
 
 ## Escopo
 
-Este cliente é focado em **gerenciamento remoto**. Captura de áudio
-(WASAPI loopback) é exclusiva do cliente Windows (`App.WinUI`).
+Este cliente e focado em **gerenciamento remoto** e tambem possui captura
+local para o visualizador fixo **AudioMotion Clone**. No Android, a captura usa
+`MediaProjection`/`AudioPlaybackCapture` e publica `StreamFrameV2` `Bins128`
+com `flags=0x11` para espelhar o visual calibrado do Windows. O cliente
+Windows continua usando WASAPI loopback.
+
+Observacao: o Android exige o consentimento de `MediaProjection` para capturar
+audio reproduzido por outros apps, mesmo quando o app usa apenas
+`AudioPlaybackCapture`. O cliente Android nao cria `VirtualDisplay` nem envia
+frames de video; usa somente o audio retornado pelo sistema.

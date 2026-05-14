@@ -11,11 +11,13 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.micaaudio.android.data.websocket.VisualStreamSocket
-import com.micaaudio.android.data.settings.AppSettings
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import javax.inject.Inject
-import kotlin.math.*
+import kotlin.math.roundToInt
+
+// DOCS: docs/wiki/modules/visual-win2d.md#audiomotion-clone
+// DOCS: docs/wiki/reference/ws-protocol-v2.md#mensagem-tipo-1---bins128
 
 @AndroidEntryPoint
 class AudioCaptureService : Service() {
@@ -26,9 +28,6 @@ class AudioCaptureService : Service() {
     @Inject
     lateinit var spectrumState: SpectrumState
 
-    @Inject
-    lateinit var appSettings: AppSettings
-
     private var mediaProjection: MediaProjection? = null
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
@@ -38,8 +37,9 @@ class AudioCaptureService : Service() {
     companion object {
         private const val NOTIFICATION_ID = 101
         private const val CHANNEL_ID = "audio_capture"
-        private const val SAMPLE_RATE = 44100
-        private const val BUFFER_SIZE = 1024 * 4
+        private const val SAMPLE_RATE = AudioMotionCloneAnalyzer.SampleRate
+        private const val BUFFER_SIZE = AudioMotionCloneAnalyzer.FftSize * 4
+        private const val READ_SAMPLE_COUNT = AudioMotionCloneAnalyzer.HopSize
 
         var isRunning = false
             private set
@@ -113,10 +113,16 @@ class AudioCaptureService : Service() {
                 .build()
 
             try {
+                val minimumBufferSize = AudioRecord.getMinBufferSize(
+                    SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                ).coerceAtLeast(BUFFER_SIZE)
+
                 audioRecord = AudioRecord.Builder()
                     .setAudioPlaybackCaptureConfig(config)
                     .setAudioFormat(format)
-                    .setBufferSizeInBytes(BUFFER_SIZE)
+                    .setBufferSizeInBytes(minimumBufferSize)
                     .build()
 
                 if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
@@ -129,74 +135,40 @@ class AudioCaptureService : Service() {
                 visualStreamSocket.start()
 
                 captureJob = scope.launch {
-                    val buffer = ShortArray(1024)
-                    val fft = FloatArray(1024 * 2)
-
-                    var currentRise = 0.8f
-                    var currentFall = 0.3f
-                    var currentGain = 2.0f
-                    var currentBoost = 1.5f
-
-                    launch { appSettings.visualizerRise.collect { currentRise = it } }
-                    launch { appSettings.visualizerFall.collect { currentFall = it } }
-                    launch { appSettings.visualizerGain.collect { currentGain = it } }
-                    launch { appSettings.visualizerBoost.collect { currentBoost = it } }
-
-                    val smoother = EnvelopeSmoother(rise = currentRise, fall = currentFall)
-                    val smoothedBins = FloatArray(128)
+                    val analyzer = AudioMotionCloneAnalyzer()
+                    val frameLimiter = VisualFrameRateLimiter()
+                    val buffer = ShortArray(READ_SAMPLE_COUNT)
+                    val byteBins = ByteArray(128)
 
                     while (isActive) {
                         val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
                         if (read > 0) {
-                            val fftSize = 1024
-                            // 1. Hann Window & Padding
-                            for (i in 0 until fftSize) {
-                                if (i < read) {
-                                    val window = 0.5f * (1f - cos(2f * PI.toFloat() * i / (fftSize - 1)))
-                                    fft[i * 2] = buffer[i].toFloat() / 32768f * window
-                                } else {
-                                    fft[i * 2] = 0f
+                            analyzer.process(buffer, read)?.let { frame ->
+                                if (!frameLimiter.shouldEmit(System.nanoTime())) {
+                                    return@let
                                 }
-                                fft[i * 2 + 1] = 0f
-                            }
 
-                            // 2. Perform FFT
-                            performFft(fft, fftSize)
+                                spectrumState.updateBins(frame.bins128)
 
-                            // 3. Magnitudes
-                            val magnitudes = FloatArray(fftSize / 2)
-                            for (i in 0 until fftSize / 2) {
-                                magnitudes[i] = sqrt(fft[i * 2] * fft[i * 2] + fft[i * 2 + 1] * fft[i * 2 + 1])
-                            }
+                                val level = (frame.level * 255f)
+                                    .roundToInt()
+                                    .coerceIn(0, 255)
 
-                            // 4. Log Mapping (Functional Parity)
-                            val rawBins = LogBandMapper.calculateBins(
-                                magnitudes = magnitudes,
-                                sampleRate = SAMPLE_RATE,
-                                fftSize = fftSize,
-                                gain = currentGain,
-                                linearBoost = currentBoost
-                            )
+                                for (index in byteBins.indices) {
+                                    byteBins[index] = (frame.bins128[index].coerceIn(0f, 1f) * 255f)
+                                        .roundToInt()
+                                        .coerceIn(0, 255)
+                                        .toByte()
+                                }
 
-                            // 5. Smoothing
-                            smoother.rise = currentRise
-                            smoother.fall = currentFall
-                            smoother.process(rawBins, smoothedBins)
-
-                            // 6. UI Update
-                            spectrumState.updateBins(smoothedBins.copyOf())
-
-                            // 7. Send to server
-                            val avgLevel = (smoothedBins.average() * 255).toInt().coerceIn(0, 255)
-                            val byteBins = ByteArray(128) { (smoothedBins[it] * 255).toInt().toByte() }
-
-                            targetDeviceId?.let { deviceId ->
-                                visualStreamSocket.sendBins128(
-                                    deviceId = deviceId,
-                                    bins = byteBins,
-                                    level = avgLevel,
-                                    brightness = 255
-                                )
+                                targetDeviceId?.let { deviceId ->
+                                    visualStreamSocket.sendBins128(
+                                        deviceId = deviceId,
+                                        bins = byteBins,
+                                        level = level,
+                                        brightness = 255,
+                                    )
+                                }
                             }
                         } else if (read == AudioRecord.ERROR_INVALID_OPERATION || read == AudioRecord.ERROR_BAD_VALUE) {
                             break
@@ -206,53 +178,6 @@ class AudioCaptureService : Service() {
             } catch (e: Exception) {
                 stopSelf()
             }
-        }
-    }
-
-    private fun performFft(data: FloatArray, n: Int) {
-        var j = 0
-        for (i in 0 until n) {
-            if (i < j) {
-                val tempR = data[i * 2]
-                val tempI = data[i * 2 + 1]
-                data[i * 2] = data[j * 2]
-                data[i * 2 + 1] = data[j * 2 + 1]
-                data[j * 2] = tempR
-                data[j * 2 + 1] = tempI
-            }
-            var m = n shr 1
-            while (m >= 1 && j >= m) {
-                j -= m
-                m = m shr 1
-            }
-            j += m
-        }
-
-        var m = 2
-        while (m <= n) {
-            val theta = -2f * PI.toFloat() / m
-            val wR = cos(theta)
-            val wI = sin(theta)
-            var i = 0
-            while (i < n) {
-                var wr = 1f
-                var wi = 0f
-                for (k in 0 until m / 2) {
-                    val r = data[(i + k + m / 2) * 2]
-                    val im = data[(i + k + m / 2) * 2 + 1]
-                    val tr = wr * r - wi * im
-                    val ti = wr * im + wi * r
-                    data[(i + k + m / 2) * 2] = data[(i + k) * 2] - tr
-                    data[(i + k + m / 2) * 2 + 1] = data[(i + k) * 2 + 1] - ti
-                    data[(i + k) * 2] += tr
-                    data[(i + k) * 2 + 1] += ti
-                    val nextWr = wr * wR - wi * wI
-                    wi = wr * wI + wi * wR
-                    wr = nextWr
-                }
-                i += m
-            }
-            m = m shl 1
         }
     }
 

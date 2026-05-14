@@ -10,31 +10,54 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.SettingsInputComponent
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.micaaudio.android.ui.theme.MicaPrimary
-import com.micaaudio.android.ui.theme.MicaSecondary
-import java.util.Locale
+
+// DOCS: docs/wiki/modules/visual-win2d.md#audiomotion-clone
+// DOCS: docs/wiki/reference/ws-protocol-v2.md#mensagem-tipo-1---bins128
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,15 +69,13 @@ fun VisualizerScreen(
     val context = LocalContext.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
+        contract = ActivityResultContracts.RequestPermission(),
     ) { isGranted ->
-        if (isGranted) {
-            viewModel.toggleVisualizer()
-        }
+        if (isGranted) viewModel.toggleVisualizer()
     }
 
     val mediaProjectionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
+        contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             viewModel.onMediaProjectionGranted(result.resultCode, result.data!!)
@@ -67,9 +88,6 @@ fun VisualizerScreen(
         if (state.needsMediaProjection) {
             val mpManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                // Android 14+: We must use MediaProjectionConfig to indicate usage.
-                // Although there isn't a direct "audio-only" config method,
-                // using createConfigForUserChoice() is the standard for modern APIs.
                 val config = MediaProjectionConfig.createConfigForUserChoice()
                 mpManager.createScreenCaptureIntent(config)
             } else {
@@ -79,26 +97,10 @@ fun VisualizerScreen(
         }
     }
 
-    if (state.showFftConfig) {
-        FftConfigSheet(
-            state = state,
-            onDismiss = { viewModel.toggleFftConfig(false) },
-            onSmoothingChange = { viewModel.setFftSmoothing(it) },
-        )
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Visualizador", fontWeight = FontWeight.Bold) },
-                actions = {
-                    IconButton(onClick = { viewModel.toggleSensitivityDialog(true) }) {
-                        Icon(Icons.Default.Tune, "Sensibilidade")
-                    }
-                    IconButton(onClick = { viewModel.toggleFftConfig(true) }) {
-                        Icon(Icons.Default.Equalizer, "Config FFT")
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -111,55 +113,30 @@ fun VisualizerScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            // Spectrum Canvas
             Card(
-                modifier = Modifier.fillMaxWidth().height(200.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.Black),
             ) {
-                Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 16.dp)) {
-                    val width = size.width
-                    val height = size.height
-                    val barWidth = width / bins.size.toFloat()
-                    bins.forEachIndexed { index, value ->
-                        val barHeight = value * height
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(MicaSecondary, MicaPrimary),
-                                startY = height - barHeight,
-                                endY = height,
-                            ),
-                            topLeft = Offset(index * barWidth, height - barHeight),
-                            size = Size(barWidth * 0.8f, barHeight),
-                        )
-                    }
-                }
+                AudioMotionPreview(
+                    bins = bins,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 6.dp, vertical = 10.dp),
+                )
             }
 
-            // Preset navigation row
             if (state.isVisualizerActive || state.selectedDeviceId != null) {
-                Row(
+                Text(
+                    text = "AudioMotion Clone",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    IconButton(onClick = { viewModel.previousPreset() }) {
-                        Icon(Icons.Default.SkipPrevious, "Preset anterior")
-                    }
-                    val presetLabel = state.devices.find { it.deviceId == state.selectedDeviceId }?.activeAppName ?: "—"
-                    Text(
-                        presetLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
-                    IconButton(onClick = { viewModel.nextPreset() }) {
-                        Icon(Icons.Default.SkipNext, "Próximo preset")
-                    }
-                }
+                )
             }
 
-            // HUB75 Mode Toggle
             Button(
                 onClick = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -168,19 +145,21 @@ fun VisualizerScreen(
                         permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = if (state.isVisualizerActive)
+                colors = if (state.isVisualizerActive) {
                     ButtonDefaults.buttonColors(containerColor = MicaPrimary)
-                else
-                    ButtonDefaults.filledTonalButtonColors(),
+                } else {
+                    ButtonDefaults.filledTonalButtonColors()
+                },
             ) {
                 Icon(Icons.Default.SettingsInputComponent, null)
                 Spacer(Modifier.width(8.dp))
                 Text(if (state.isVisualizerActive) "HUB75: ON" else "Modo HUB75")
             }
 
-            // Brightness slider
             if (state.selectedDeviceId != null) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -189,29 +168,19 @@ fun VisualizerScreen(
                     }
                     Slider(
                         value = state.brightness.toFloat(),
-                        onValueChange = {},
-                        onValueChangeFinished = { },
+                        onValueChange = { viewModel.setBrightness(it.toInt()) },
                         valueRange = 0f..255f,
                     )
                 }
             }
 
-            if (state.showSensitivityDialog) {
-                SensitivityDialog(
-                    state = state,
-                    onDismiss = { viewModel.toggleSensitivityDialog(false) },
-                    onGainChange = { viewModel.setGain(it) },
-                    onLinearBoostChange = { viewModel.setLinearBoost(it) },
-                    onRiseChange = { viewModel.setRiseSpeed(it) },
-                    onFallChange = { viewModel.setFallSpeed(it) },
-                    onReset = { viewModel.resetSensitivity() },
-                )
-            }
-
-            // Device selector
             if (state.devices.isNotEmpty()) {
                 Column {
-                    Text("Dispositivo Alvo", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Dispositivo Alvo",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Spacer(Modifier.height(8.dp))
                     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                         state.devices.forEachIndexed { index, device ->
@@ -220,7 +189,11 @@ fun VisualizerScreen(
                                 onClick = { viewModel.selectDevice(device.deviceId) },
                                 shape = SegmentedButtonDefaults.itemShape(index, state.devices.size),
                             ) {
-                                Text(device.name.ifBlank { device.deviceId.take(6) }, maxLines = 1)
+                                Text(
+                                    text = device.name.ifBlank { device.deviceId.take(6) },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
                     }
@@ -231,76 +204,61 @@ fun VisualizerScreen(
 }
 
 @Composable
-fun SensitivityDialog(
-    state: VisualizerUiState,
-    onDismiss: () -> Unit,
-    onGainChange: (Float) -> Unit,
-    onLinearBoostChange: (Float) -> Unit,
-    onRiseChange: (Float) -> Unit,
-    onFallChange: (Float) -> Unit,
-    onReset: () -> Unit
+private fun AudioMotionPreview(
+    bins: FloatArray,
+    modifier: Modifier = Modifier,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Configurar Sensibilidade", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Gain
-                SensitivitySlider(label = "Ganho (Input)", value = state.gain, range = 0.5f..5f, onValueChange = onGainChange)
-                // Linear Boost
-                SensitivitySlider(label = "Linear Boost", value = state.linearBoost, range = 1f..4f, onValueChange = onLinearBoostChange)
-                // Rise
-                SensitivitySlider(label = "Velocidade Subida", value = state.riseSpeed, range = 0.1f..1f, onValueChange = onRiseChange)
-                // Fall
-                SensitivitySlider(label = "Velocidade Descida", value = state.fallSpeed, range = 0.05f..1f, onValueChange = onFallChange)
+    Canvas(modifier = modifier) {
+        val binCount = bins.size.coerceAtMost(128)
+        if (binCount == 0) return@Canvas
 
-                TextButton(
-                    onClick = onReset,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("RESTAURAR PADRÕES")
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("FECHAR") }
-        }
-    )
-}
+        val width = size.width
+        val height = size.height
+        val midY = height * 0.5f
+        val slotWidth = width / binCount.toFloat()
+        val lineWidth = (slotWidth * 0.45f).coerceIn(1.5f, 4f)
+        val heightScale = 0.78f
 
-@Composable
-fun SensitivitySlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-            Text(String.format(Locale.US, "%.2f", value), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-        }
-        Slider(value = value, onValueChange = onValueChange, valueRange = range)
-    }
-}
+        for (index in 0 until binCount) {
+            val value = bins[index].coerceIn(0f, 1f)
+            val halfHeight = (value * midY * heightScale).coerceAtMost(midY - 1f)
+            if (halfHeight < 0.5f) continue
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FftConfigSheet(
-    state: VisualizerUiState,
-    onDismiss: () -> Unit,
-    onSmoothingChange: (Float) -> Unit,
-) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text("Configuração FFT", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            SensitivitySlider(
-                label = "Suavização (Smoothing)",
-                value = state.fftSmoothing,
-                range = 0.1f..0.99f,
-                onValueChange = onSmoothingChange,
+            val centerX = (index * slotWidth) + (slotWidth * 0.5f)
+            drawLine(
+                color = rainbowColorForColumn(index, binCount),
+                start = Offset(centerX, midY - halfHeight),
+                end = Offset(centerX, midY + halfHeight),
+                strokeWidth = lineWidth,
             )
         }
     }
+}
+
+private fun rainbowColorForColumn(index: Int, count: Int): Color {
+    if (count <= 1) return rgbColor(255, 0, 0)
+
+    val hue = (index * 255) / (count - 1)
+    val region = hue / 43
+    val remainder = (hue - region * 43) * 6
+    val q = 255 - remainder
+    val t = remainder
+
+    return when (region) {
+        0 -> rgbColor(255, t, 0)
+        1 -> rgbColor(q, 255, 0)
+        2 -> rgbColor(0, 255, t)
+        3 -> rgbColor(0, q, 255)
+        4 -> rgbColor(t, 0, 255)
+        else -> rgbColor(255, 0, q)
+    }
+}
+
+private fun rgbColor(red: Int, green: Int, blue: Int): Color {
+    return Color(
+        red = red.coerceIn(0, 255) / 255f,
+        green = green.coerceIn(0, 255) / 255f,
+        blue = blue.coerceIn(0, 255) / 255f,
+        alpha = 1f,
+    )
 }
