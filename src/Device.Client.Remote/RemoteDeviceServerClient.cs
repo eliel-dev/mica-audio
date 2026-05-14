@@ -376,6 +376,80 @@ public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDev
         return true;
     }
 
+    // ── Panel catalog ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Fetches the full panel catalog from the server as raw JSON.
+    /// Returns null when the server is unreachable.
+    /// </summary>
+    public async Task<string?> GetPanelCatalogJsonAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await httpClient.GetAsync("/api/v1/admin/panels", cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Creates or updates a panel in the server catalog.
+    /// Returns true on success.
+    /// </summary>
+    public async Task<bool> UpsertCatalogPanelAsync(string panelId, string panelJson, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(panelId) || string.IsNullOrWhiteSpace(panelJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            var path = $"/api/v1/admin/panels/{Uri.EscapeDataString(panelId.Trim())}";
+            using var request = new HttpRequestMessage(HttpMethod.Put, path)
+            {
+                Content = new StringContent(panelJson, Encoding.UTF8, "application/json"),
+            };
+            using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes a panel from the server catalog.
+    /// Returns true when it existed and was removed.
+    /// </summary>
+    public async Task<bool> DeleteCatalogPanelAsync(string panelId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(panelId))
+        {
+            return false;
+        }
+
+        try
+        {
+            var path = $"/api/v1/admin/panels/{Uri.EscapeDataString(panelId.Trim())}";
+            using var response = await httpClient.DeleteAsync(path, cancellationToken).ConfigureAwait(false);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async Task RunEventsLoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)

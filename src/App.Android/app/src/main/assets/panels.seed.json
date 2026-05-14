@@ -1,0 +1,47 @@
+{
+  "panels": [
+    {
+      "panelId": "p-relogio-full",
+      "name": "Relogio Cheio",
+      "width": 128,
+      "height": 64,
+      "widgets": [
+        {
+          "widgetId": "w1",
+          "appId": "analogclock",
+          "x": 0,
+          "y": 0,
+          "width": 128,
+          "height": 64,
+          "zIndex": 1
+        }
+      ]
+    },
+    {
+      "panelId": "p-dashboard-1",
+      "name": "Dashboard Mix",
+      "width": 128,
+      "height": 64,
+      "widgets": [
+        {
+          "widgetId": "w1",
+          "appId": "analogclock",
+          "x": 0,
+          "y": 0,
+          "width": 64,
+          "height": 64,
+          "zIndex": 1
+        },
+        {
+          "widgetId": "w2",
+          "appId": "gifhub75",
+          "x": 64,
+          "y": 0,
+          "width": 64,
+          "height": 64,
+          "zIndex": 2
+        }
+      ]
+    }
+  ]
+}

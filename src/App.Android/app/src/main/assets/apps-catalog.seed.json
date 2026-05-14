@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 2,
+  "apps": [
+    {
+      "id": "analogclock",
+      "name": "Relogio",
+      "summary": "Relogio digital HUB75",
+      "description": "Exibe a hora de Brasilia com watchfaces inspiradas em mostradores de smartwatch.",
+      "author": "Mica Audio",
+      "packageName": "analogclock",
+      "fileName": "analogclock.star",
+      "recommendedIntervalMinutes": 0,
+      "category": "relogio",
+      "preview": {
+        "kind": "clock",
+        "speed": 1
+      },
+      "modifiers": [
+        {
+          "key": "format24h",
+          "label": "Formato 24h",
+          "type": "Toggle",
+          "description": "Alterna entre 24h e 12h.",
+          "required": false,
+          "defaultToggle": true
+        },
+        {
+          "key": "watchfaceStyle",
+          "label": "Estilo da watchface",
+          "type": "Select",
+          "description": "Define o estilo visual dos digitos.",
+          "defaultValue": "pixel",
+          "required": true,
+          "options": [
+            {
+              "label": "Pixel",
+              "value": "pixel"
+            },
+            {
+              "label": "Segmentado",
+              "value": "segment"
+            },
+            {
+              "label": "Arredondado",
+              "value": "rounded"
+            }
+          ]
+        },
+        {
+          "key": "fontColor",
+          "label": "Cor da fonte",
+          "type": "Select",
+          "description": "Paleta pronta para os digitos no painel.",
+          "defaultValue": "cyan",
+          "required": true,
+          "options": [
+            {
+              "label": "Ciano",
+              "value": "cyan"
+            },
+            {
+              "label": "Branco",
+              "value": "white"
+            },
+            {
+              "label": "Verde",
+              "value": "green"
+            },
+            {
+              "label": "Amarelo",
+              "value": "yellow"
+            },
+            {
+              "label": "Laranja",
+              "value": "orange"
+            },
+            {
+              "label": "Magenta",
+              "value": "magenta"
+            }
+          ]
+        }
+      ],
+      "runtime": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "gifhub75",
+      "name": "GIF",
+      "summary": "GIF por arquivo local",
+      "description": "Executa GIF no desktop com stream HUB75 128x64 para devices conectados (12 FPS fixos).",
+      "author": "Mica Audio",
+      "packageName": "gifhub75",
+      "fileName": "gifhub75.star",
+      "recommendedIntervalMinutes": 0,
+      "category": "midia",
+      "preview": {
+        "kind": "gif",
+        "speed": 1
+      },
+      "modifiers": [
+        {
+          "key": "sourceType",
+          "label": "Tipo",
+          "type": "Select",
+          "description": "Arquivo unico ou apresentacao de slides.",
+          "defaultValue": "file",
+          "required": true,
+          "options": [
+            {
+              "label": "Arquivo unico",
+              "value": "file"
+            },
+            {
+              "label": "Apresentacao de slides",
+              "value": "slideshow"
+            }
+          ]
+        },
+        {
+          "key": "scaleMode",
+          "label": "Ajuste de imagem",
+          "type": "Select",
+          "description": "Como a imagem e redimensionada para os 128x64 pixels do painel.",
+          "defaultValue": "fit",
+          "required": true,
+          "options": [
+            {
+              "label": "Proporcional (barras pretas)",
+              "value": "fit"
+            },
+            {
+              "label": "Preencher (cortar bordas)",
+              "value": "fill"
+            },
+            {
+              "label": "Esticar (distorce)",
+              "value": "stretch"
+            }
+          ]
+        },
+        {
+          "key": "slideshowInterval",
+          "label": "Intervalo",
+          "type": "Select",
+          "description": "Tempo antes de trocar para a proxima imagem.",
+          "defaultValue": "10s",
+          "required": false,
+          "options": [
+            { "label": "5 segundos",  "value": "5s"    },
+            { "label": "10 segundos", "value": "10s"   },
+            { "label": "30 segundos", "value": "30s"   },
+            { "label": "1 minuto",    "value": "1min"  },
+            { "label": "5 minutos",   "value": "5min"  },
+            { "label": "10 minutos",  "value": "10min" }
+          ]
+        },
+        {
+          "key": "slideshowShuffle",
+          "label": "Embaralhar",
+          "type": "Toggle",
+          "description": "Alterna a ordem das imagens aleatoriamente.",
+          "defaultValue": "false",
+          "required": false
+        }
+      ],
+      "runtime": {
+        "kind": "gifhub75"
+      }
+    }
+  ]
+}

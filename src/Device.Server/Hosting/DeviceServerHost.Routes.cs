@@ -28,8 +28,13 @@ public sealed partial class DeviceServerHost
         admin.MapPost("/pairing-codes", (Delegate)HandleAdminCreatePairingCodeAsync);
         admin.MapDelete("/devices/{deviceId}", (Delegate)HandleAdminRemoveDevice);
         admin.MapPost("/devices/{deviceId}/commands/tracked", (Delegate)HandleAdminTrackedCommandAsync);
-        admin.MapPost("/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence:long}", (Delegate)HandleAdminPanelsBatchAsync);
+        admin.MapGet("/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence:long}", (Delegate)HandleAdminPanelsBatchAsync);
         admin.MapDelete("/panels/batches/{deviceId}", (Delegate)HandleAdminClearPanelsBatches);
+        admin.MapGet("/panels", (Delegate)HandleAdminListAllPanels);
+        admin.MapPost("/panels", (Delegate)HandleAdminCreateCatalogPanelAsync);
+        admin.MapGet("/panels/{panelId}", (Delegate)HandleAdminGetCatalogPanel);
+        admin.MapPut("/panels/{panelId}", (Delegate)HandleAdminUpdateCatalogPanelAsync);
+        admin.MapDelete("/panels/{panelId}", (Delegate)HandleAdminDeleteCatalogPanel);
         admin.MapPut("/devices/{deviceId}/panel", (Delegate)HandleAdminUploadPanelAsync);
         admin.MapGet("/devices/{deviceId}/panel", (Delegate)HandleAdminGetPanel);
         admin.MapDelete("/devices/{deviceId}/panel", (Delegate)HandleAdminDeletePanel);

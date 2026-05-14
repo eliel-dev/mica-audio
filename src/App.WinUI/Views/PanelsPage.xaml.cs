@@ -293,6 +293,13 @@ public sealed partial class PanelsPage : Page, IDisposable
         RebuildPanelsGallery();
         QueueInitialGalleryPosterBatch();
 
+        // Sync all local panels to the server catalog on startup so the server
+        // catalog is always in sync with what the Windows client has locally.
+        foreach (var panel in storeDocument.Panels)
+        {
+            playbackService.FireSyncCatalogPanel(panel);
+        }
+
         // Server is source of truth: discover any panel currently rendering
         // server-side BEFORE the gallery card states are computed, so panels
         // already running on the device show as "ativo" right after load.
@@ -368,6 +375,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         storeDocument.Panels.Add(panel);
         storeDocument.LastSelectedPanelId = panel.PanelId;
         await panelsStore.SaveAsync(storeDocument);
+        playbackService.FireSyncCatalogPanel(panel);
         InvalidatePanelPoster(panel.PanelId);
         RebuildPanelsGallery();
         _ = QueuePosterGenerationAsync(panel.PanelId, force: true);
@@ -423,6 +431,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         storeDocument.Panels.Add(duplicate);
         storeDocument.LastSelectedPanelId = duplicate.PanelId;
         await panelsStore.SaveAsync(storeDocument);
+        playbackService.FireSyncCatalogPanel(duplicate);
         InvalidatePanelPoster(duplicate.PanelId);
         RebuildPanelsGallery();
         _ = QueuePosterGenerationAsync(duplicate.PanelId, force: true);
@@ -461,6 +470,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         }
 
         storeDocument.Panels.RemoveAll(panel => string.Equals(panel.PanelId, panelId, StringComparison.OrdinalIgnoreCase));
+        playbackService.FireDeleteCatalogPanel(panelId);
         InvalidatePanelPoster(panelId);
 
         if (storeDocument.Panels.Count == 0)
@@ -516,6 +526,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         currentPanel.UpdatedAtUtc = DateTimeOffset.UtcNow;
         storeDocument.LastSelectedPanelId = currentPanel.PanelId;
         await panelsStore.SaveAsync(storeDocument);
+        playbackService.FireSyncCatalogPanel(currentPanel);
 
         dirty = false;
         InvalidatePanelPoster(currentPanel.PanelId);

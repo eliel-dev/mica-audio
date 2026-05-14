@@ -40,6 +40,36 @@ public sealed partial class DeviceServerHost
     /// </summary>
     public IServerPanelStore? PanelStore => panelStore;
 
+    private IResult HandleAdminListAllPanels(HttpContext ctx)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        // Catalog is the authoritative source when configured.
+        if (panelCatalogStore is not null)
+        {
+            return Results.Ok(BuildCatalogSummary());
+        }
+
+        // Fallback: return per-device active panels (legacy behavior).
+        if (panelStore is null)
+        {
+            return Results.Json(
+                new { error = "panel_store_not_configured" },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var deviceIds = panelStore.EnumerateDeviceIds();
+        var panels = deviceIds
+            .Select(id => panelStore.TryGet(id))
+            .Where(p => p is not null)
+            .ToList();
+
+        return Results.Ok(panels);
+    }
+
     private async Task<IResult> HandleAdminUploadPanelAsync(HttpContext ctx, string deviceId)
     {
         if (TryRejectAdminRequest(ctx, out var rejected))
@@ -84,6 +114,10 @@ public sealed partial class DeviceServerHost
         var capability = PanelServerCapabilityClassifier.Classify(panel);
 
         panelStore.Save(deviceId, panel);
+
+        // Also keep the global catalog in sync so all clients can discover it.
+        panelCatalogStore?.Upsert(panel);
+
         Log($"Panel uploaded for device {deviceId} ({panel.Widgets.Count} widget(s), capability={capability}).");
         return Results.Ok(new
         {

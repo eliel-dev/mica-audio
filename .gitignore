@@ -27,9 +27,25 @@ TestResults/
 # IDE/user files
 .vs/
 .vscode/
+.idea/
 *.user
 *.suo
 *.userosscache
 *.sln.docstates
+*.iml
+
+# Android/Gradle
+.gradle/
+**/build/
+local.properties
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aar
+*.jks
+*.keystore
+*.artifact.md
+
 # NuGet lock files permanecem versionados (reproducibilidade/supply chain)
 !**/packages.lock.json

@@ -121,4 +121,32 @@ public interface IDeviceServerClient
     /// </summary>
     Task<bool> DeleteMediaAsync(string deviceId, string mediaId, CancellationToken cancellationToken = default)
         => Task.FromResult(false);
+
+    // ── Panel catalog ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the raw JSON array from GET /api/v1/admin/panels — the full
+    /// server panel catalog including activeOnDeviceId annotations. Returns
+    /// null when the server is unreachable or returns a non-success status.
+    /// Default no-op for tests (returns null).
+    /// </summary>
+    Task<string?> GetPanelCatalogJsonAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>(null);
+
+    /// <summary>
+    /// Creates or updates a panel in the server catalog (PUT /panels/{panelId}).
+    /// The <paramref name="panelJson"/> must match the shape of
+    /// <c>Panels.Composition.Models.PanelDefinition</c>.
+    /// Returns true on success. Default no-op for tests (returns false).
+    /// </summary>
+    Task<bool> UpsertCatalogPanelAsync(string panelId, string panelJson, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    /// <summary>
+    /// Removes a panel from the server catalog (DELETE /panels/{panelId}).
+    /// Returns true when the panel existed and was removed.
+    /// Default no-op for tests (returns false).
+    /// </summary>
+    Task<bool> DeleteCatalogPanelAsync(string panelId, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
 }

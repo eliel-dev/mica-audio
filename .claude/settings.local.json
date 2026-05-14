@@ -9,7 +9,30 @@
       "Bash(taskkill /F /IM VBCSCompiler.exe)",
       "Bash(curl -s -H \"Authorization: Bearer devtoken\" http://192.168.1.16:5272/api/v1/admin/devices)",
       "Bash(dir \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.WinUI\\\\AppData\\\\Firmware\")",
-      "PowerShell(cd \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\"; powershell -ExecutionPolicy Bypass -File ./scripts/build-precompiled-firmware.ps1 -SkipToolInstall 2>&1 | Select-Object -Last 60)"
+      "PowerShell(cd \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\"; powershell -ExecutionPolicy Bypass -File ./scripts/build-precompiled-firmware.ps1 -SkipToolInstall 2>&1 | Select-Object -Last 60)",
+      "Bash(New-Item -ItemType Directory -Path \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.Android\\\\app\\\\src\\\\main\\\\assets\" -Force)",
+      "Bash(Out-Null)",
+      "Bash(Copy-Item \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.WinUI\\\\AppData\\\\apps-catalog.seed.json\" \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.Android\\\\app\\\\src\\\\main\\\\assets\\\\apps-catalog.seed.json\")",
+      "Bash(Write-Output \"Done\")",
+      "PowerShell(New-Item -ItemType Directory -Path \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.Android\\\\app\\\\src\\\\main\\\\assets\" -Force)",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.WinUI\\\\AppData\\\\apps-catalog.seed.json\" \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.Android\\\\app\\\\src\\\\main\\\\assets\\\\apps-catalog.seed.json\")",
+      "PowerShell($env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; Set-Location \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\src\\\\App.Android\"; .\\\\gradlew assembleDebug --warning-mode=none 2>&1 | Select-Object -Last 80)",
+      "Bash(xargs grep -l \"api/v1/admin/panels\")",
+      "Bash(xargs grep -l \"MapGet.*panels\")",
+      "Bash(xargs grep -l \"HandleAdminListAllPanels\\\\|HandleAdminGetPanel\")",
+      "Bash(./gradlew assembleDebug --quiet)",
+      "Bash(cmd /c \"gradlew.bat assembleDebug --quiet 2>&1\")",
+      "PowerShell($javaPath = Get-ChildItem \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\\\\bin\\\\java.exe\" -ErrorAction SilentlyContinue; if \\($javaPath\\) { $javaPath.FullName } else { \"not found\" })",
+      "Bash(xargs grep -l \"RemoteDeviceServer\\\\|panels\\\\|Panels\")",
+      "Bash(xargs grep -l \"api/v1/admin/panel\")",
+      "Bash(xargs grep -l \"Route\\\\|MapGet\\\\|MapPost\")",
+      "Bash(xargs grep -l \"panels\\\\|panel store\")",
+      "Bash(xargs grep -l \"panel\")",
+      "Bash(./gradlew assembleDebug --no-daemon -q)",
+      "PowerShell($javaLocations = @\\(\"C:\\\\Program Files\\\\Java\", \"C:\\\\Program Files\\\\Eclipse Adoptium\", \"C:\\\\Program Files\\\\OpenJDK\", \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"\\); foreach \\($loc in $javaLocations\\) { if \\(Test-Path $loc\\) { Get-ChildItem $loc | Select-Object FullName } })",
+      "Bash(where java *)",
+      "Bash(ls \"C:\\\\Users\\\\eliels\\\\AppData\\\\Local\\\\Android\\\\Sdk\" 2>/dev/null | head -20)",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\" -ErrorAction SilentlyContinue | Where-Object {$_.Name -match \"jdk|java|eclipse|temurin|openjdk\"} | Select-Object FullName)"
     ]
   }
 }

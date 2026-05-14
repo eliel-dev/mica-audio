@@ -19,6 +19,8 @@ internal sealed class PanelsPlaybackService : IDisposable
 {
     private static readonly bool EnableBatchPerfLogging =
         AppContext.TryGetSwitch("MicaAudio.Panels.BatchPerfLogging", out var enabled) && enabled;
+    private static readonly System.Text.Json.JsonSerializerOptions WebJsonOptions =
+        new(System.Text.Json.JsonSerializerDefaults.Web);
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(1000d / PanelsFrameComposer.TargetFps);
     private static readonly TimeSpan BatchDuration = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan BatchPreloadLead = TimeSpan.FromMilliseconds(250);
@@ -372,6 +374,60 @@ internal sealed class PanelsPlaybackService : IDisposable
         if (!string.IsNullOrWhiteSpace(deviceId))
         {
             await TryDeleteServerPanelForDeviceAsync(deviceId).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Fire-and-forget: upserts the panel into the server-side catalog so all
+    /// clients can discover it. Serializes using the WinUI PanelDefinition shape.
+    /// Swallows exceptions so callers are never blocked.
+    /// </summary>
+    public void FireSyncCatalogPanel(PanelDefinition panel)
+    {
+        if (panel is null)
+        {
+            return;
+        }
+
+        _ = TrySyncCatalogPanelAsync(panel);
+    }
+
+    private async Task TrySyncCatalogPanelAsync(PanelDefinition panel)
+    {
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(panel, WebJsonOptions);
+            await serverClient.UpsertCatalogPanelAsync(panel.PanelId, json, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Server may be unreachable; ignore.
+        }
+    }
+
+    /// <summary>
+    /// Fire-and-forget: removes the panel from the server-side catalog.
+    /// Swallows exceptions.
+    /// </summary>
+    public void FireDeleteCatalogPanel(string panelId)
+    {
+        if (string.IsNullOrWhiteSpace(panelId))
+        {
+            return;
+        }
+
+        _ = TryDeleteCatalogPanelAsync(panelId);
+    }
+
+    private async Task TryDeleteCatalogPanelAsync(string panelId)
+    {
+        try
+        {
+            await serverClient.DeleteCatalogPanelAsync(panelId, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Server may be unreachable; ignore.
         }
     }
 

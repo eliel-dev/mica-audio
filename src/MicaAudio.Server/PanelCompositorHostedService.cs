@@ -52,6 +52,7 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
 
     private readonly DeviceServerHost host;
     private readonly IServerPanelStore panelStore;
+    private readonly IServerPanelCatalogStore? panelCatalogStore;
     private readonly IServerMediaStore? mediaStore;
     private readonly ILogger<PanelCompositorHostedService> logger;
     private readonly Dictionary<string, CachedCompositor> compositorsByDeviceId = new(StringComparer.OrdinalIgnoreCase);
@@ -64,12 +65,14 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
         DeviceServerHost host,
         IServerPanelStore panelStore,
         ILogger<PanelCompositorHostedService> logger,
-        IServerMediaStore? mediaStore = null)
+        IServerMediaStore? mediaStore = null,
+        IServerPanelCatalogStore? panelCatalogStore = null)
     {
         this.host = host ?? throw new ArgumentNullException(nameof(host));
         this.panelStore = panelStore ?? throw new ArgumentNullException(nameof(panelStore));
         this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
         this.mediaStore = mediaStore;
+        this.panelCatalogStore = panelCatalogStore;
 
         // Make sure DeviceServerHost can find the stores when serving the
         // PUT/GET/DELETE panel + media endpoints.
@@ -77,6 +80,11 @@ internal sealed partial class PanelCompositorHostedService : BackgroundService
         if (mediaStore is not null)
         {
             host.AttachMediaStore(mediaStore);
+        }
+
+        if (panelCatalogStore is not null)
+        {
+            host.AttachPanelCatalogStore(panelCatalogStore);
         }
     }
 
