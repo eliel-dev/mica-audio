@@ -3,6 +3,7 @@ package com.micaaudio.android.data.audio
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.media.*
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -80,7 +81,11 @@ class AudioCaptureService : Service() {
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
 
-            startForeground(NOTIFICATION_ID, notification)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
 
             startCapture(resultCode, data)
         } else {
@@ -113,6 +118,11 @@ class AudioCaptureService : Service() {
                     .setAudioFormat(format)
                     .setBufferSizeInBytes(BUFFER_SIZE)
                     .build()
+
+                if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                    stopSelf()
+                    return
+                }
 
                 audioRecord?.startRecording()
                 isRunning = true
@@ -168,14 +178,10 @@ class AudioCaptureService : Service() {
                                 linearBoost = currentBoost
                             )
 
-                            // Re-init smoother if speeds changed significantly (simplified)
-                            // In WinUI it's dynamic, here we'll just use the variables in the process loop if we update EnvelopeSmoother
-
                             // 5. Smoothing
                             smoother.rise = currentRise
                             smoother.fall = currentFall
                             smoother.process(rawBins, smoothedBins)
-                            // ...
 
                             // 6. UI Update
                             spectrumState.updateBins(smoothedBins.copyOf())
@@ -192,6 +198,8 @@ class AudioCaptureService : Service() {
                                     brightness = 255
                                 )
                             }
+                        } else if (read == AudioRecord.ERROR_INVALID_OPERATION || read == AudioRecord.ERROR_BAD_VALUE) {
+                            break
                         }
                     }
                 }

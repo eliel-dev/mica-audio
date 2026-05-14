@@ -4,7 +4,9 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -64,7 +66,16 @@ fun VisualizerScreen(
     LaunchedEffect(state.needsMediaProjection) {
         if (state.needsMediaProjection) {
             val mpManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            mediaProjectionLauncher.launch(mpManager.createScreenCaptureIntent())
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Android 14+: We must use MediaProjectionConfig to indicate usage.
+                // Although there isn't a direct "audio-only" config method,
+                // using createConfigForUserChoice() is the standard for modern APIs.
+                val config = MediaProjectionConfig.createConfigForUserChoice()
+                mpManager.createScreenCaptureIntent(config)
+            } else {
+                mpManager.createScreenCaptureIntent()
+            }
+            mediaProjectionLauncher.launch(intent)
         }
     }
 
