@@ -104,6 +104,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ai-governance-check.ps1
 - [Glossario](reference/glossary.md)
 - [AI contract (YAML)](reference/ai-contract.v1.yaml)
 - [AI contract schema](reference/ai-contract.schema.json)
+- [Relatorio de SDKs da comunidade](reference/community-sdks-report.md)
 
 ### Templates
 - [Template de modulo](_templates/module-page-template.md)
