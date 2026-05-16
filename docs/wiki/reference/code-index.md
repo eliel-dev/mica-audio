@@ -32,6 +32,7 @@ Pontos principais do cutover HUB75 128x64:
 - [AppLogStore](../../../src/App.WinUI/Services/Logging/AppLogStore.cs#L1)
 - [Firmware main.cpp](../../../firmware/esp32s3-devkitc1/src/main.cpp#L1)
 - [platformio.ini](../../../firmware/esp32s3-devkitc1/platformio.ini#L1)
+- [Relatório FreeRTOS — vantagens, desvantagens e proposta de arquitetura](../reports/freertos-analysis.md#L1)
 - [Board local N16R8](../../../firmware/esp32s3-devkitc1/boards/mica_esp32_s3_devkitc1_n16r8.json#L1)
 - [Particao local 3MB APP / 9.9MB FATFS](../../../firmware/esp32s3-devkitc1/partitions/mica_app3M_fat9M_16MB.csv#L1)
 - [build-precompiled-firmware.ps1](../../../scripts/build-precompiled-firmware.ps1#L1)
