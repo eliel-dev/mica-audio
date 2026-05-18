@@ -28,7 +28,7 @@ public sealed partial class DeviceServerHost
         admin.MapPost("/pairing-codes", (Delegate)HandleAdminCreatePairingCodeAsync);
         admin.MapDelete("/devices/{deviceId}", (Delegate)HandleAdminRemoveDevice);
         admin.MapPost("/devices/{deviceId}/commands/tracked", (Delegate)HandleAdminTrackedCommandAsync);
-        admin.MapGet("/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence:long}", (Delegate)HandleAdminPanelsBatchAsync);
+        admin.MapPost("/panels/batches/{deviceId}/{panelsSessionId}/{batchSequence:long}", (Delegate)HandleAdminPanelsBatchAsync);
         admin.MapDelete("/panels/batches/{deviceId}", (Delegate)HandleAdminClearPanelsBatches);
         admin.MapGet("/panels", (Delegate)HandleAdminListAllPanels);
         admin.MapPost("/panels", (Delegate)HandleAdminCreateCatalogPanelAsync);
@@ -38,9 +38,13 @@ public sealed partial class DeviceServerHost
         admin.MapPut("/devices/{deviceId}/panel", (Delegate)HandleAdminUploadPanelAsync);
         admin.MapGet("/devices/{deviceId}/panel", (Delegate)HandleAdminGetPanel);
         admin.MapDelete("/devices/{deviceId}/panel", (Delegate)HandleAdminDeletePanel);
+        admin.MapGet("/devices/{deviceId}/media", (Delegate)HandleAdminListMedia);
+        admin.MapGet("/devices/{deviceId}/media/{mediaId}", (Delegate)HandleAdminDownloadMedia);
         admin.MapPut("/devices/{deviceId}/media/{mediaId}", (Delegate)HandleAdminUploadMediaAsync);
         admin.MapDelete("/devices/{deviceId}/media/{mediaId}", (Delegate)HandleAdminDeleteMedia);
         admin.MapDelete("/devices/{deviceId}/media", (Delegate)HandleAdminDeleteAllMedia);
+        admin.MapGet("/giphy/search", (Delegate)HandleAdminGiphySearchAsync);
+        admin.MapPut("/giphy/apikey", (Delegate)HandleAdminSetGiphyApiKeyAsync);
 
         var device = api.MapGroup("/device");
         device.MapGet("/config", (Delegate)HandleDeviceConfig);

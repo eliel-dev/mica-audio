@@ -207,8 +207,10 @@ Pontos centrais de runtime do visualizer e payload:
 Pontos Android do visualizer AudioMotion Clone:
 
 - [Android AudioMotionCloneAnalyzer](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/audio/AudioMotionCloneAnalyzer.kt#L1)
+- [Android AudioProcessor](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/audio/AudioProcessor.kt#L1)
 - [Android VisualFrameRateLimiter](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/audio/VisualFrameRateLimiter.kt#L1)
 - [Android AudioCaptureService](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/audio/AudioCaptureService.kt#L1)
+- [Android AppSettings](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/settings/AppSettings.kt#L1)
 - [Android VisualStreamFrameEncoder](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/websocket/VisualStreamFrameEncoder.kt#L1)
 - [Android VisualStreamSocket](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/websocket/VisualStreamSocket.kt#L1)
 - [Android VisualizerScreen](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/visualizer/VisualizerScreen.kt#L1)
@@ -216,9 +218,9 @@ Pontos Android do visualizer AudioMotion Clone:
 
 Observacoes Android do visualizer:
 
-- O cliente Android usa `MediaProjection`/`AudioPlaybackCapture` para publicar `StreamFrameV2` tipo `Bins128` com `flags=0x11` (`MirrorLines` + `Rainbow`) pelo envelope admin existente, sem alterar o contrato wire.
-- O modo Android e fixo em `AudioMotion Clone` e reaproveita os defaults calibrados do Windows: `48 kHz`, FFT `2048`, hop `256`, escala Bark, weighting B, normalizacao linear e envelope calibrado.
-- A captura Android processa o hop calibrado, mas limita publicacao e preview a `60 FPS`; o socket descarta frame quando ha backlog visual para preservar tempo real.
+- O cliente Android usa `android.media.audiofx.Visualizer` na sessao 0 para capturar o mix de saida com permissao `RECORD_AUDIO`; nao abre prompt de compartilhamento de tela.
+- O preview Android fica sempre visivel, aplica barras centradas com queda por gravidade e usa a mesma paleta rainbow/mirror do payload `StreamFrameV2` tipo `Bins128` com `flags=0x11`.
+- A captura Android atualiza os alvos de FFT no ritmo do Android Visualizer, mas o loop de preview/publicacao roda a `60 FPS`, reaproveita buffers e aplica smoothing configuravel antes de enviar.
 
 Pontos centrais do runtime de pipeline no app:
 
@@ -299,6 +301,11 @@ Pontos centrais da sessao de paineis HUB75:
 - [PanelsBatchEntry](../../../src/Device.Server.Abstractions/Hosting/PanelsBatchEntry.cs#L1)
 - [InMemoryPanelsBatchStore](../../../src/Device.Server/Hosting/InMemoryPanelsBatchStore.cs#L1)
 - [DeviceServerHost.PanelsBatches](../../../src/Device.Server/Hosting/DeviceServerHost.PanelsBatches.cs#L1)
+- [DeviceServerHost.MediaStore](../../../src/Device.Server/Hosting/DeviceServerHost.MediaStore.cs#L1)
+- [Android PanelsViewModel](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/panels/PanelsViewModel.kt#L1)
+- [Android PanelEditorScreen](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/panels/PanelEditorScreen.kt#L1)
+- [Android WidgetConfigScreen](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/panels/WidgetConfigScreen.kt#L1)
+- [Android PanelRepository](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/repository/PanelRepository.kt#L1)
 
 Observacoes ativas dos paineis:
 
@@ -317,3 +324,6 @@ Observacoes ativas dos paineis:
 - Se o device anunciar `animatedWebpBatchSupported`, `PanelsPlaybackService` passa a gerar lotes `WebP` animados de `1 s / 30 frames`, publicados via `queue_panels_batch` e baixados do `Device.Server` por HTTP autenticado.
 - `DeviceServerHost.PanelsBatches` agora delega persistencia efemera a `IPanelsBatchStore`; a implementacao default `InMemoryPanelsBatchStore` mantem um `panelsSessionId` ativo por device, calcula `SHA-256` no registro e retem os `4` batches mais recentes por device.
 - O fallback para `Frame128x64` continuo continua automatico quando o device nao suporta batches ou quando o enfileiramento/download falha.
+- O Android edita paineis do catalogo do servidor, salva `updatedAtUtc`, entra no editor em landscape, move widgets com long press e redimensiona por alcas nas bordas/cantos.
+- A midia `gifhub75` tem endpoint admin de download por `mediaId`; o Android sincroniza um cache local e mostra a biblioteca em grade com thumbs antes de baixar novamente.
+- O WinUI importa paineis do catalogo do servidor no carregamento, para paineis criados no Android aparecerem tambem no cliente Windows.

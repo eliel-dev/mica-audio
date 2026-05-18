@@ -7,7 +7,7 @@ dos dispositivos ESP32 HUB75 via `MicaAudio.Server`.
 
 ## Build
 
-Requer Android SDK com API level 35. Abra este diretório no Android Studio
+Requer Android SDK com API level 36. Abra este diretório no Android Studio
 ou use CLI:
 
 ```bash
@@ -25,7 +25,7 @@ No primeiro run, vá em **Config** (tab inferior) e configure:
 ## Funcionalidades
 
 - **Devices**: lista, parear, controlar brilho, test LED, remover
-- **Painéis**: visualizar/remover painel ativo, listar widgets
+- **Painéis**: catalogo compartilhado, editor touch com mover/redimensionar widgets, grade/cache de midia GIF
 - **Apps**: catálogo de widgets, ativar apps nos devices
 - **Monitor**: telemetria em tempo real, logs via WebSocket
 - **Config**: servidor, token, tema (dark/light/system)
@@ -34,11 +34,11 @@ No primeiro run, vá em **Config** (tab inferior) e configure:
 
 Este cliente e focado em **gerenciamento remoto** e tambem possui captura
 local para o visualizador fixo **AudioMotion Clone**. No Android, a captura usa
-`MediaProjection`/`AudioPlaybackCapture` e publica `StreamFrameV2` `Bins128`
-com `flags=0x11` para espelhar o visual calibrado do Windows. O cliente
-Windows continua usando WASAPI loopback.
+`android.media.audiofx.Visualizer` na sessao 0 com a permissao `RECORD_AUDIO`,
+sem prompt de compartilhamento de tela. O app publica `StreamFrameV2` `Bins128`
+com `flags=0x11`, preview local sempre visivel e loop de emissao a 60 FPS para
+espelhar o visual calibrado do Windows.
 
-Observacao: o Android exige o consentimento de `MediaProjection` para capturar
-audio reproduzido por outros apps, mesmo quando o app usa apenas
-`AudioPlaybackCapture`. O cliente Android nao cria `VirtualDisplay` nem envia
-frames de video; usa somente o audio retornado pelo sistema.
+O cliente Windows continua usando WASAPI loopback. A biblioteca de midia dos
+widgets GIF e sincronizada com o servidor e cacheada localmente no Android para
+evitar download repetido.

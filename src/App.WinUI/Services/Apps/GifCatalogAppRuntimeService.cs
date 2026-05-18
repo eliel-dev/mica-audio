@@ -215,7 +215,7 @@ internal sealed class GifCatalogAppRuntimeService : IDisposable
         }
     }
 
-    private async Task StartFromBytesCoreAsync(byte[] gifBytes, GifScaleMode scaleMode, string sourceLabel, CancellationToken cancellationToken)
+    internal async Task StartFromBytesCoreAsync(byte[] gifBytes, GifScaleMode scaleMode, string sourceLabel, CancellationToken cancellationToken)
     {
         CancelPendingLoad();
         loadCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

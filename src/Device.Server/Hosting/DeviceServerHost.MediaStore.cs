@@ -11,6 +11,7 @@ namespace Device.Server.Hosting;
 // autonomously.
 //
 // Routes (registered in DeviceServerHost.Routes.cs):
+//   GET    /api/v1/admin/devices/{deviceId}/media/{mediaId}  - download a media file
 //   PUT    /api/v1/admin/devices/{deviceId}/media/{mediaId}  — upsert a media file
 //   DELETE /api/v1/admin/devices/{deviceId}/media/{mediaId}  — remove one file
 //   DELETE /api/v1/admin/devices/{deviceId}/media            — remove all media for device
@@ -40,6 +41,72 @@ public sealed partial class DeviceServerHost
     }
 
     public IServerMediaStore? MediaStore => mediaStore;
+
+    private IResult HandleAdminListMedia(HttpContext ctx, string deviceId)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        if (mediaStore is null)
+        {
+            return Results.Json(
+                new { error = "media_store_not_configured" },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return Results.BadRequest(new { error = "missing_device_id" });
+        }
+
+        var mediaIds = mediaStore.ListMediaIds(deviceId);
+        return Results.Ok(new { deviceId, mediaIds });
+    }
+
+    private IResult HandleAdminDownloadMedia(HttpContext ctx, string deviceId, string mediaId)
+    {
+        if (TryRejectAdminRequest(ctx, out var rejected))
+        {
+            return rejected;
+        }
+
+        if (mediaStore is null)
+        {
+            return Results.Json(
+                new { error = "media_store_not_configured" },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return Results.BadRequest(new { error = "missing_device_id" });
+        }
+
+        if (string.IsNullOrWhiteSpace(mediaId))
+        {
+            return Results.BadRequest(new { error = "missing_media_id" });
+        }
+
+        var sanitizedMediaId = SanitizeMediaFileName(mediaId);
+        if (string.IsNullOrEmpty(sanitizedMediaId))
+        {
+            return Results.BadRequest(new { error = "invalid_media_id" });
+        }
+
+        var mediaPath = mediaStore.TryResolvePath(deviceId, sanitizedMediaId);
+        if (string.IsNullOrEmpty(mediaPath))
+        {
+            return Results.NotFound(new { error = "media_not_found" });
+        }
+
+        return Results.File(
+            mediaPath,
+            contentType: GetMediaContentType(sanitizedMediaId),
+            fileDownloadName: sanitizedMediaId,
+            enableRangeProcessing: true);
+    }
 
     private async Task<IResult> HandleAdminUploadMediaAsync(HttpContext ctx, string deviceId, string mediaId)
     {
@@ -196,5 +263,17 @@ public sealed partial class DeviceServerHost
 
         var sanitized = sb.ToString().TrimStart('.');
         return string.IsNullOrEmpty(sanitized) ? string.Empty : sanitized;
+    }
+
+    private static string GetMediaContentType(string mediaId)
+    {
+        return Path.GetExtension(mediaId).ToLowerInvariant() switch
+        {
+            ".gif" => "image/gif",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".bmp" => "image/bmp",
+            _ => "application/octet-stream",
+        };
     }
 }

@@ -11,7 +11,10 @@ import javax.inject.Singleton
  */
 @Singleton
 class SpectrumState @Inject constructor() {
-    private val _bins = MutableStateFlow(FloatArray(128))
+    // Empty initial state — actual size is determined by the audio capture service
+    // (currentBarCount from AppSettings). This prevents the canvas from rendering
+    // 128 empty slots while waiting for the first FFT frame.
+    private val _bins = MutableStateFlow(FloatArray(0))
     val bins: StateFlow<FloatArray> = _bins.asStateFlow()
 
     fun updateBins(newBins: FloatArray) {

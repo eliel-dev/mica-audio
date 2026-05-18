@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using App.WinUI.Services;
 using App.WinUI.Services.Devices;
 using MicaAudio.Core.Presets;
@@ -22,6 +25,8 @@ public sealed partial class SettingsPage : Page
     private PasswordBox remoteAdminTokenBox = null!;
     private TextBlock micaBackdropStatusText = null!;
     private TextBlock deviceServerStatusText = null!;
+    private PasswordBox giphyApiKeyBox = null!;
+    private TextBlock giphyApiKeyStatusText = null!;
     private TextBlock errorLogsPathText = null!;
     private TextBlock errorLogsStatusText = null!;
 
@@ -51,15 +56,20 @@ public sealed partial class SettingsPage : Page
         {
             currentSettings = settingsDomainService.Migrate(await settingsRepository.LoadAsync());
             var adminToken = await remoteSecretStore.LoadAdminTokenAsync();
+            var giphyKey = await remoteSecretStore.LoadGiphyApiKeyAsync();
             suppressMicaBackdropChanged = true;
             micaBackdropToggle.IsOn = currentSettings.UseMicaBackdrop;
             remoteServerBaseAddressBox.Text = currentSettings.RemoteServerBaseAddress;
             remoteAdminTokenBox.Password = adminToken;
+            giphyApiKeyBox.Password = giphyKey;
             suppressMicaBackdropChanged = false;
             micaBackdropStatusText.Text = BuildMicaBackdropStatusText(
                 currentSettings.UseMicaBackdrop,
                 App.MainWindow?.SystemBackdrop is MicaBackdrop);
             deviceServerStatusText.Text = BuildDeviceServerStatusText(currentSettings.RemoteServerBaseAddress);
+            giphyApiKeyStatusText.Text = string.IsNullOrWhiteSpace(giphyKey)
+                ? "Nenhuma chave GIPHY configurada."
+                : "Chave GIPHY carregada.";
         }
         catch (Exception ex)
         {
@@ -67,9 +77,11 @@ public sealed partial class SettingsPage : Page
             micaBackdropToggle.IsOn = true;
             remoteServerBaseAddressBox.Text = "http://127.0.0.1:5272";
             remoteAdminTokenBox.Password = string.Empty;
+            giphyApiKeyBox.Password = string.Empty;
             suppressMicaBackdropChanged = false;
             micaBackdropStatusText.Text = "Nao foi possivel carregar esta preferencia. O app manteve a aparencia atual.";
             deviceServerStatusText.Text = "Nao foi possivel carregar as preferencias do servidor.";
+            giphyApiKeyStatusText.Text = "Nao foi possivel carregar a chave GIPHY.";
             App.ReportError("SettingsPage.LoadGeneralSettingsAsync failed", ex);
         }
     }
@@ -215,6 +227,7 @@ public sealed partial class SettingsPage : Page
         });
         contentStack.Children.Add(BuildWindowAppearanceCard());
         contentStack.Children.Add(BuildDeviceServerCard());
+        contentStack.Children.Add(BuildGiphyCard());
         contentStack.Children.Add(BuildErrorLogsCard());
 
         scrollViewer.Content = contentStack;
@@ -247,6 +260,94 @@ public sealed partial class SettingsPage : Page
             "Quando desativado, o app usa uma superficie solida em vez do material Mica.",
             micaBackdropToggle,
             micaBackdropStatusText);
+    }
+
+    private Border BuildGiphyCard()
+    {
+        giphyApiKeyBox = new PasswordBox
+        {
+            Header = "Chave de API GIPHY",
+            PlaceholderText = "Cole sua chave de API aqui",
+            MinWidth = 320,
+        };
+
+        var saveButton = new Button
+        {
+            Content = "Salvar chave GIPHY",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Style = Application.Current.Resources["AppChromeButtonStyle"] as Style,
+        };
+        saveButton.Click += OnSaveGiphySettingsClicked;
+
+        giphyApiKeyStatusText = new TextBlock
+        {
+            Opacity = 0.72,
+            TextWrapping = TextWrapping.Wrap,
+            Text = "Carregando...",
+        };
+
+        return CreateCard(
+            "GIPHY",
+            "Chave de API do GIPHY para busca de GIFs animados. Salva localmente com criptografia DPAPI. Ao salvar, o app tenta configurar o servidor automaticamente — assim a busca funciona sem reiniciar o servidor.",
+            giphyApiKeyBox,
+            saveButton,
+            giphyApiKeyStatusText);
+    }
+
+    private async void OnSaveGiphySettingsClicked(object sender, RoutedEventArgs e)
+    {
+        var key = giphyApiKeyBox.Password;
+        try
+        {
+            await remoteSecretStore.SaveGiphyApiKeyAsync(key);
+            giphyApiKeyStatusText.Text = string.IsNullOrWhiteSpace(key)
+                ? "Chave GIPHY removida."
+                : "Chave GIPHY salva localmente.";
+
+            await TryPushGiphyApiKeyToServerAsync(key);
+        }
+        catch (Exception ex)
+        {
+            giphyApiKeyStatusText.Text = "Nao foi possivel salvar a chave GIPHY.";
+            App.ReportError("SettingsPage.OnSaveGiphySettingsClicked failed", ex);
+        }
+    }
+
+    private async Task TryPushGiphyApiKeyToServerAsync(string apiKey)
+    {
+        var baseAddress = remoteServerBaseAddressBox.Text.Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(baseAddress))
+        {
+            return;
+        }
+
+        try
+        {
+            var adminToken = await remoteSecretStore.LoadAdminTokenAsync();
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            using var request = new HttpRequestMessage(HttpMethod.Put, $"{baseAddress}/api/v1/admin/giphy/apikey");
+            if (!string.IsNullOrEmpty(adminToken))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+            }
+
+            var body = JsonSerializer.Serialize(new { apiKey });
+            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+            using var response = await client.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                giphyApiKeyStatusText.Text += " Servidor configurado.";
+            }
+            else
+            {
+                giphyApiKeyStatusText.Text += $" Servidor retornou {(int)response.StatusCode} — configure MICA_SERVER__GiphyApiKey manualmente se necessario.";
+            }
+        }
+        catch
+        {
+            giphyApiKeyStatusText.Text += " Servidor nao acessivel — configure MICA_SERVER__GiphyApiKey manualmente se necessario.";
+        }
     }
 
     private Border BuildErrorLogsCard()

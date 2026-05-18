@@ -216,11 +216,11 @@ data class FirmwareManifestResponse(
     val otaFileSizeBytes: Long = 0,
 )
 
-// ── App Catalog ──────────────────────────────────────────────────────────────
+// ── Widget Catalog ────────────────────────────────────────────────────────────
 
 @Serializable
-data class AppsResponse(
-    val apps: List<AppCatalogItem> = emptyList(),
+data class WidgetsResponse(
+    val apps: List<WidgetDefinition> = emptyList(),
 )
 
 @Serializable
@@ -229,13 +229,13 @@ data class PanelsSeedDocument(
 )
 
 @Serializable
-data class AppCatalogDocument(
+data class WidgetCatalogDocument(
     val schemaVersion: Int = 0,
-    val apps: List<AppCatalogItem> = emptyList(),
+    val apps: List<WidgetDefinition> = emptyList(),
 )
 
 @Serializable
-data class AppCatalogItem(
+data class WidgetDefinition(
     val id: String = "",
     val name: String = "",
     val summary: String = "",
@@ -243,12 +243,12 @@ data class AppCatalogItem(
     val category: String = "",
     val packageName: String = "",
     val recommendedIntervalMinutes: Int = 0,
-    val modifiers: List<AppModifierDefinition> = emptyList(),
-    val runtime: AppRuntimeDefinition? = null,
+    val modifiers: List<WidgetModifier> = emptyList(),
+    val runtime: WidgetRuntime? = null,
 )
 
 @Serializable
-data class AppModifierDefinition(
+data class WidgetModifier(
     val key: String = "",
     val label: String = "",
     val type: ModifierFieldType = ModifierFieldType.Text,
@@ -257,11 +257,11 @@ data class AppModifierDefinition(
     val placeholder: String? = null,
     val defaultValue: String? = null,
     val defaultToggle: Boolean? = null,
-    val options: List<AppModifierOption> = emptyList(),
+    val options: List<WidgetModifierOption> = emptyList(),
 )
 
 @Serializable
-data class AppModifierOption(
+data class WidgetModifierOption(
     val label: String = "",
     val value: String = "",
 )
@@ -276,8 +276,33 @@ enum class ModifierFieldType {
 }
 
 @Serializable
-data class AppRuntimeDefinition(
+data class WidgetRuntime(
     val kind: String = "none",
+)
+
+// ── Media ────────────────────────────────────────────────────────────────────
+
+@Serializable
+data class MediaListResponse(
+    val deviceId: String = "",
+    val mediaIds: List<String> = emptyList(),
+)
+
+// ── GIPHY ─────────────────────────────────────────────────────────────────────
+
+@Serializable
+data class GiphySearchResponse(
+    val items: List<GiphyItem> = emptyList(),
+    val total: Int = 0,
+    val offset: Int = 0,
+)
+
+@Serializable
+data class GiphyItem(
+    val id: String = "",
+    val title: String = "",
+    val previewUrl: String = "",
+    val gifUrl: String = "",
 )
 
 // ── Panels Batches ──────────────────────────────────────────────────────────

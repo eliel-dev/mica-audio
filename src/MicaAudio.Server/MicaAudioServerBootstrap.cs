@@ -76,13 +76,22 @@ public static class MicaAudioServerBootstrap
             new FileServerPanelCatalogStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
         services.AddSingleton<IServerMediaStore>(sp =>
             new FileServerMediaStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
-        services.AddSingleton<DeviceServerHost>(sp => new DeviceServerHost(
-            TimeProvider.System,
-            firmwareCatalog: null,
-            sp.GetRequiredService<IPanelsBatchStore>(),
-            sp.GetRequiredService<IDevicePairingStore>(),
-            sp.GetRequiredService<ICommandStateStore>(),
-            sp.GetRequiredService<ISessionStateStore>()));
+        services.AddSingleton<DeviceServerHost>(sp =>
+        {
+            var host = new DeviceServerHost(
+                TimeProvider.System,
+                firmwareCatalog: null,
+                sp.GetRequiredService<IPanelsBatchStore>(),
+                sp.GetRequiredService<IDevicePairingStore>(),
+                sp.GetRequiredService<ICommandStateStore>(),
+                sp.GetRequiredService<ISessionStateStore>());
+            var opts = sp.GetRequiredService<MicaAudioServerOptions>();
+            if (!string.IsNullOrWhiteSpace(opts.GiphyApiKey))
+            {
+                host.AttachGiphyApiKey(opts.GiphyApiKey);
+            }
+            return host;
+        });
         services.AddSingleton<IDeviceServerHost>(sp => sp.GetRequiredService<DeviceServerHost>());
         services.AddSingleton(sp => new StandaloneDeviceRegistryStore(sp.GetRequiredService<MicaAudioServerOptions>().StorageRoot));
         services.AddHostedService<MicaAudioServerRuntime>();

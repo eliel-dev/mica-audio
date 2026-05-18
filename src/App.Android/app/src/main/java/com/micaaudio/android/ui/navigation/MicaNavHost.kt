@@ -1,6 +1,7 @@
 package com.micaaudio.android.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -13,6 +14,7 @@ import com.micaaudio.android.ui.screens.devices.DeviceDetailScreen
 import com.micaaudio.android.ui.screens.devices.DevicesScreen
 import com.micaaudio.android.ui.screens.panels.PanelEditorScreen
 import com.micaaudio.android.ui.screens.panels.PanelsScreen
+import com.micaaudio.android.ui.screens.panels.WidgetConfigScreen
 import com.micaaudio.android.ui.screens.settings.SettingsScreen
 import com.micaaudio.android.ui.screens.visualizer.VisualizerScreen
 
@@ -45,9 +47,56 @@ fun MicaNavHost(
             )
         }
 
+        composable(MicaDestination.Panels.route) {
+            PanelsScreen(
+                onEditPanel = { panelId ->
+                    navController.navigate("panel_editor/$panelId")
+                },
+                onCreatePanel = { panelId ->
+                    navController.navigate("panel_editor/$panelId")
+                },
+            )
+        }
+
+        composable(
+            route = "panel_editor/{panelId}",
+            arguments = listOf(navArgument("panelId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val panelId = backStackEntry.arguments?.getString("panelId") ?: return@composable
+            PanelEditorScreen(
+                panelId = panelId,
+                onNavigateBack = { navController.popBackStack() },
+                onWidgetConfig = { widgetId ->
+                    navController.navigate("widget_config/$panelId/$widgetId")
+                },
+            )
+        }
+
+        composable(
+            route = "widget_config/{panelId}/{widgetId}",
+            arguments = listOf(
+                navArgument("panelId") { type = NavType.StringType },
+                navArgument("widgetId") { type = NavType.StringType },
+            ),
+        ) { backStackEntry ->
+            val panelId = backStackEntry.arguments?.getString("panelId") ?: return@composable
+            val widgetId = backStackEntry.arguments?.getString("widgetId") ?: return@composable
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry("panel_editor/$panelId")
+            }
+            val viewModel: com.micaaudio.android.ui.screens.panels.PanelsViewModel =
+                androidx.hilt.navigation.compose.hiltViewModel(parentEntry)
+            WidgetConfigScreen(
+                widgetId = widgetId,
+                deviceId = viewModel.uiState.value.selectedDeviceId ?: "",
+                viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() },
+            )
+        }
+
         composable(MicaDestination.Apps.route) {
             AppCatalogScreen(
-                onAppDetail = { appId -> navController.navigate("app_detail/$appId") },
+                onAppClick = { appId -> navController.navigate("app_detail/$appId") },
             )
         }
 
@@ -58,25 +107,6 @@ fun MicaNavHost(
             val appId = backStackEntry.arguments?.getString("appId") ?: return@composable
             AppDetailScreen(
                 appId = appId,
-                onNavigateBack = { navController.popBackStack() },
-            )
-        }
-
-        composable(MicaDestination.Panels.route) {
-            PanelsScreen(
-                onEditPanel = { deviceId ->
-                    navController.navigate("panel_editor/$deviceId")
-                },
-            )
-        }
-
-        composable(
-            route = "panel_editor/{deviceId}",
-            arguments = listOf(navArgument("deviceId") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            val deviceId = backStackEntry.arguments?.getString("deviceId") ?: return@composable
-            PanelEditorScreen(
-                deviceId = deviceId,
                 onNavigateBack = { navController.popBackStack() },
             )
         }

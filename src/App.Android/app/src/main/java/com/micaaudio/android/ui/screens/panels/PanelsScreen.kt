@@ -8,7 +8,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DevicesOther
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,10 +34,12 @@ import com.micaaudio.android.ui.theme.MicaPrimary
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PanelsScreen(
-    onEditPanel: (deviceId: String) -> Unit = {},
+    onEditPanel: (panelId: String) -> Unit = {},
+    onCreatePanel: (panelId: String) -> Unit = {},
     viewModel: PanelsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var pendingDeleteEntry by remember { mutableStateOf<com.micaaudio.android.data.api.CatalogPanelResponse?>(null) }
 
     // Sort catalog by panel name
     val panelEntries = remember(state.catalogPanels) {
@@ -53,6 +61,27 @@ fun PanelsScreen(
             title = { Text("Sucesso") },
             text = { Text(state.successMessage!!) },
             confirmButton = { TextButton(onClick = { viewModel.dismissMessage() }) { Text("OK") } },
+        )
+    }
+
+    // Delete confirmation dialog
+    if (pendingDeleteEntry != null) {
+        val entry = pendingDeleteEntry!!
+        AlertDialog(
+            onDismissRequest = { pendingDeleteEntry = null },
+            title = { Text("Excluir painel") },
+            text = { Text("Excluir '${entry.panel.name}' do catálogo? Esta ação não pode ser desfeita.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deletePanel(entry.panel.panelId, entry.activeOnDeviceId)
+                        pendingDeleteEntry = null
+                    },
+                ) { Text("Excluir", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteEntry = null }) { Text("Cancelar") }
+            },
         )
     }
 
@@ -88,6 +117,11 @@ fun PanelsScreen(
     }
 
     Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(onClick = { viewModel.createPanel(onCreatePanel) }) {
+                Icon(Icons.Default.Add, "Novo painel")
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -167,6 +201,8 @@ fun PanelsScreen(
                         device = device,
                         isConnected = isConnected,
                         onActivate = { viewModel.requestActivate(entry.panel) },
+                        onEdit = { onEditPanel(entry.panel.panelId) },
+                        onDelete = { pendingDeleteEntry = entry },
                     )
                 }
             }
@@ -180,6 +216,8 @@ private fun ServerPanelCard(
     device: DeviceSnapshot?,
     isConnected: Boolean,
     onActivate: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     val panel = entry.panel
     val capability = entry.capability
@@ -276,15 +314,32 @@ private fun ServerPanelCard(
 
             Spacer(Modifier.height(12.dp))
 
-            // ── Ativar button ─────────────────────────────────────────────────
-            Button(
-                onClick = onActivate,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Ativar no dispositivo")
+            // ── Actions ───────────────────────────────────────────────────────
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onEdit,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Editar")
+                }
+                Button(
+                    onClick = onActivate,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Ativar")
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete, null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         }
     }

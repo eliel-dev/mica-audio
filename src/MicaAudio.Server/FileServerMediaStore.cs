@@ -102,6 +102,27 @@ public sealed class FileServerMediaStore : IServerMediaStore
         return count;
     }
 
+    public IReadOnlyList<string> ListMediaIds(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return [];
+        }
+
+        var dir = GetMediaDirectory(deviceId);
+        if (!Directory.Exists(dir))
+        {
+            return [];
+        }
+
+        return Directory
+            .EnumerateFiles(dir, "*", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private string ResolvePath(string deviceId, string mediaId)
     {
         return Path.Combine(mediaRoot, SanitizeSegment(deviceId), SanitizeSegment(mediaId));

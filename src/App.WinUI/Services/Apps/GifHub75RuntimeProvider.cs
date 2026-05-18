@@ -1,5 +1,6 @@
 using App.WinUI.Models.Apps;
 using App.WinUI.Services.Gif;
+using App.WinUI.Views.Dialogs;
 using MicaAudio.Core.Presets;
 using System.Runtime.InteropServices;
 
@@ -23,6 +24,7 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
         host.GifRuntimeService.StatusChanged += OnStatusChanged;
         host.GifRuntimeService.FrameUpdated += OnFrameUpdated;
         host.OpenFileButton.Click += OnOpenFileClicked;
+        host.GiphyButton.Click += OnGiphyButtonClicked;
     }
 
     public void OnSelected(AppCatalogItem item)
@@ -105,6 +107,7 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
         }
 
         host.OpenFileButton.Click -= OnOpenFileClicked;
+        host.GiphyButton.Click -= OnGiphyButtonClicked;
         host.GifRuntimeService.StatusChanged -= OnStatusChanged;
         host.GifRuntimeService.FrameUpdated -= OnFrameUpdated;
 
@@ -120,6 +123,49 @@ internal sealed class GifHub75RuntimeProvider : IAppRuntimeProvider
         }
         catch (COMException)
         {
+        }
+    }
+
+    private async void OnGiphyButtonClicked(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (host is null)
+        {
+            return;
+        }
+
+        var xamlRoot = host.GetXamlRoot();
+        if (xamlRoot is null)
+        {
+            host.SetStatus("Interface não disponível para abrir o diálogo GIPHY.");
+            return;
+        }
+
+        var dialog = new GiphySearchDialog(host.GiphySearchService, xamlRoot);
+        await dialog.ShowAsync();
+
+        if (dialog.SelectedItem is null)
+        {
+            return;
+        }
+
+        host.SetStatus("Baixando GIF do GIPHY…");
+        var bytes = await GiphySearchService.DownloadGifBytesAsync(dialog.SelectedItem.GifUrl, CancellationToken.None).ConfigureAwait(true);
+        if (bytes is null || bytes.Length == 0)
+        {
+            host.SetStatus("Falha ao baixar o GIF selecionado.");
+            return;
+        }
+
+        var values = await host.ResolveCurrentValuesAsync().ConfigureAwait(true);
+        var scale = host.ResolveScaleMode() ?? GifScaleMode.Fit;
+
+        try
+        {
+            await host.GifRuntimeService.StartFromBytesCoreAsync(bytes, scale, dialog.SelectedItem.Title, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            host.SetStatus($"Erro ao exibir GIF: {ex.Message}");
         }
     }
 

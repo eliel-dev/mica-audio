@@ -257,7 +257,8 @@ public partial class App : Application
             sp.GetRequiredService<PanelsFrameComposer>(),
             sp.GetRequiredService<PanelsPlaybackService>(),
             sp.GetRequiredService<Hub75VisualizerSessionService>(),
-            sp.GetRequiredService<CityAutocompleteService>()));
+            sp.GetRequiredService<CityAutocompleteService>(),
+            sp.GetRequiredService<RemoteDeviceServerSecretStore>()));
 
         services.AddTransient<SettingsPage>(sp => new SettingsPage(
             sp.GetRequiredService<SettingsRepository>(),

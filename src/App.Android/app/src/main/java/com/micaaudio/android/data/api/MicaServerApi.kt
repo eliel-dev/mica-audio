@@ -10,7 +10,10 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
+// DOCS: docs/wiki/modules/device-server-protocol.md#atualizacao-2026-04-admin-api-e-winui-remote
+// DOCS: docs/wiki/modules/paineis.md#editor-hub75
 /**
  * Retrofit interface mapping 1:1 to the MicaAudio.Server Admin REST API.
  * Mirrors the surface of RemoteDeviceServerClient from Device.Client.Remote.
@@ -80,6 +83,18 @@ interface MicaServerApi {
 
     // ── Media ───────────────────────────────────────────────────────────────
 
+    @GET("/api/v1/admin/devices/{deviceId}/media")
+    suspend fun listMedia(
+        @Path("deviceId") deviceId: String,
+    ): Response<ResponseBody>
+
+    @Streaming
+    @GET("/api/v1/admin/devices/{deviceId}/media/{mediaId}")
+    suspend fun downloadMedia(
+        @Path("deviceId") deviceId: String,
+        @Path("mediaId") mediaId: String,
+    ): Response<ResponseBody>
+
     @PUT("/api/v1/admin/devices/{deviceId}/media/{mediaId}")
     suspend fun uploadMedia(
         @Path("deviceId") deviceId: String,
@@ -125,8 +140,17 @@ interface MicaServerApi {
         @Query("profile") profile: String,
     ): Response<FirmwareManifestResponse>
 
-    // ── Apps ────────────────────────────────────────────────────────────────
+    // ── Widget catalog ───────────────────────────────────────────────────────
 
-    @GET("/api/v1/admin/apps")
-    suspend fun getApps(): Response<AppsResponse>
+    @GET("/api/v1/admin/widgets")
+    suspend fun getWidgets(): Response<WidgetsResponse>
+
+    // ── GIPHY search proxy ───────────────────────────────────────────────────
+
+    @GET("/api/v1/admin/giphy/search")
+    suspend fun searchGiphy(
+        @Query("q") q: String,
+        @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int = 0,
+    ): Response<GiphySearchResponse>
 }

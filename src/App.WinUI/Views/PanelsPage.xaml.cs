@@ -9,6 +9,7 @@ using App.WinUI.Services.Devices;
 using App.WinUI.Services.Panels;
 using App.WinUI.ViewModels;
 using App.WinUI.Views.Controls;
+using App.WinUI.Views.Dialogs;
 using Device.Protocol.Models;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
@@ -40,6 +41,7 @@ public sealed partial class PanelsPage : Page, IDisposable
     private readonly PanelsFrameComposer frameComposer;
     private readonly PanelsPlaybackService playbackService;
     private readonly Hub75VisualizerSessionService hub75VisualizerSessionService;
+    private readonly RemoteDeviceServerSecretStore secretStore;
     private readonly AppModifierEditorHost modifierEditor;
 
     private readonly List<AppCatalogItem> catalogItems = [];
@@ -77,7 +79,8 @@ public sealed partial class PanelsPage : Page, IDisposable
         PanelsFrameComposer frameComposer,
         PanelsPlaybackService playbackService,
         Hub75VisualizerSessionService hub75VisualizerSessionService,
-        CityAutocompleteService cityService)
+        CityAutocompleteService cityService,
+        RemoteDeviceServerSecretStore secretStore)
     {
         this.viewModel = viewModel;
         this.deviceOps = deviceOps;
@@ -87,6 +90,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         this.frameComposer = frameComposer;
         this.playbackService = playbackService;
         this.hub75VisualizerSessionService = hub75VisualizerSessionService;
+        this.secretStore = secretStore;
         modifierEditor = new AppModifierEditorHost(cityService, message => SetStatus(message, isError: true));
         modifierEditor.ModifierChanged += OnWidgetModifierChanged;
 
@@ -287,6 +291,11 @@ public sealed partial class PanelsPage : Page, IDisposable
             }
         }
 
+        if (await MergeServerCatalogPanelsAsync(loadedDocument).ConfigureAwait(true))
+        {
+            await panelsStore.SaveAsync(loadedDocument);
+        }
+
         storeDocument = loadedDocument;
         var initialPanelId = storeDocument.LastSelectedPanelId ?? storeDocument.Panels.First().PanelId;
         await SelectPanelAsync(initialPanelId, saveDirty: false, refreshPreview: false);
@@ -307,6 +316,91 @@ public sealed partial class PanelsPage : Page, IDisposable
 
         UpdateGalleryCardStates();
         ClearEditorPreview();
+    }
+
+    private async Task<bool> MergeServerCatalogPanelsAsync(PanelsStoreDocument document)
+    {
+        try
+        {
+            var catalogJson = await playbackService.GetCatalogJsonAsync(pageLifetimeCts?.Token ?? CancellationToken.None).ConfigureAwait(true);
+            if (string.IsNullOrWhiteSpace(catalogJson))
+            {
+                return false;
+            }
+
+            var jsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+            {
+                PropertyNameCaseInsensitive = true,
+            };
+
+            var changed = false;
+            using var catalog = System.Text.Json.JsonDocument.Parse(catalogJson);
+            if (catalog.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            foreach (var entry in catalog.RootElement.EnumerateArray())
+            {
+                if (!entry.TryGetProperty("panel", out var panelElement)
+                    || panelElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var panelJson = NormalizeRemotePanelJson(panelElement);
+                var remotePanel = System.Text.Json.JsonSerializer.Deserialize<PanelDefinition>(panelJson, jsonOptions);
+                if (remotePanel is null)
+                {
+                    continue;
+                }
+
+                remotePanel.Normalize();
+                var localIndex = document.Panels.FindIndex(panel =>
+                    string.Equals(panel.PanelId, remotePanel.PanelId, StringComparison.OrdinalIgnoreCase));
+                if (localIndex < 0)
+                {
+                    document.Panels.Add(remotePanel);
+                    changed = true;
+                    continue;
+                }
+
+                if (remotePanel.UpdatedAtUtc > document.Panels[localIndex].UpdatedAtUtc)
+                {
+                    document.Panels[localIndex] = remotePanel;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                document.Panels = document.Panels
+                    .OrderBy(panel => panel.Name, StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+            }
+
+            return changed;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string NormalizeRemotePanelJson(System.Text.Json.JsonElement panelElement)
+    {
+        var panelJson = panelElement.GetRawText();
+        if (panelElement.TryGetProperty("updatedAtUtc", out var updatedAt)
+            && updatedAt.ValueKind == System.Text.Json.JsonValueKind.String
+            && string.IsNullOrWhiteSpace(updatedAt.GetString()))
+        {
+            panelJson = panelJson.Replace(
+                "\"updatedAtUtc\":\"\"",
+                $"\"updatedAtUtc\":\"{DateTimeOffset.MinValue:O}\"",
+                StringComparison.Ordinal);
+        }
+
+        return panelJson;
     }
 
     /// <summary>
@@ -749,6 +843,46 @@ public sealed partial class PanelsPage : Page, IDisposable
         UpdateWidgetSourceUi();
         MarkDirty("Fonte do widget GIF atualizada.");
         await RefreshPreviewSessionAsync();
+    }
+
+    private async void OnGifGiphyButtonClicked(object sender, RoutedEventArgs e)
+    {
+        if (selectedWidget is null || !string.Equals(selectedWidget.AppId, "gifhub75", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var xamlRoot = XamlRoot;
+        if (xamlRoot is null)
+        {
+            return;
+        }
+
+        var adminToken = await secretStore.LoadAdminTokenAsync().ConfigureAwait(true);
+        var giphyService = new GiphySearchService(deviceOps.GetServerBaseAddress(), adminToken);
+        var dialog = new GiphySearchDialog(giphyService, xamlRoot);
+        await dialog.ShowAsync();
+
+        if (dialog.SelectedItem is null)
+        {
+            return;
+        }
+
+        SetStatus("Baixando GIF do GIPHY…");
+        var bytes = await GiphySearchService.DownloadGifBytesAsync(dialog.SelectedItem.GifUrl).ConfigureAwait(true);
+        if (bytes is null || bytes.Length == 0)
+        {
+            SetStatus("Falha ao baixar o GIF selecionado.", isError: true);
+            return;
+        }
+
+        var tempPath = Path.Combine(Path.GetTempPath(), $"mica_giphy_{dialog.SelectedItem.Id}.gif");
+        await File.WriteAllBytesAsync(tempPath, bytes).ConfigureAwait(true);
+
+        selectedWidget.RuntimeState["sourcePath"] = tempPath;
+        UpdateWidgetSourceUi();
+        MarkDirty($"GIF do GIPHY selecionado: {dialog.SelectedItem.Title}");
+        await RefreshPreviewSessionAsync().ConfigureAwait(false);
     }
 
     private async void OnEditorMoveSelectedWidgetBackwardRequested(object? sender, EventArgs e)
@@ -1527,7 +1661,10 @@ public sealed partial class PanelsPage : Page, IDisposable
             return;
         }
 
-        GifSourceButton.Content = ResolveSelectedSourceType() ? "Selecionar pasta" : "Selecionar arquivo";
+        var isSlideshow = ResolveSelectedSourceType();
+        GifSourceButton.Content = isSlideshow ? "Selecionar pasta" : "Selecionar arquivo";
+        // GIPHY only makes sense for single-GIF mode (not slideshow)
+        GifGiphyButton.Visibility = isSlideshow ? Visibility.Collapsed : Visibility.Visible;
         GifSourcePathText.Text = selectedWidget!.RuntimeState.TryGetValue("sourcePath", out var path)
             ? path
             : string.Empty;
@@ -2284,4 +2421,5 @@ public sealed partial class PanelsPage : Page, IDisposable
         bool IsSupported,
         string? BadgeLabel,
         IReadOnlyDictionary<string, string>? PreviewValues);
+
 }

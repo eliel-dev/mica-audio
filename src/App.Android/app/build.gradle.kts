@@ -96,5 +96,9 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.core.splashscreen)
 
+    // Coil
+    implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
+
     testImplementation(libs.junit)
 }

@@ -12,7 +12,12 @@ internal sealed class RemoteDeviceServerSecretStore
 {
     private const string TokenCipherPrefix = "dpapi:v1:";
 
-    private static readonly byte[] TokenEntropy = Encoding.UTF8.GetBytes("MicaAudio.RemoteDeviceServer.AdminToken.v1");
+    private static readonly byte[] AdminTokenEntropy =
+        Encoding.UTF8.GetBytes("MicaAudio.RemoteDeviceServer.AdminToken.v1");
+
+    private static readonly byte[] GiphyApiKeyEntropy =
+        Encoding.UTF8.GetBytes("MicaAudio.GiphyApiKey.v1");
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -25,46 +30,48 @@ internal sealed class RemoteDeviceServerSecretStore
         filePath = ResolvePath(options.Value);
     }
 
+    // ── Admin token ────────────────────────────────────────────────────────
+
     public Task<string> LoadAdminTokenAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(LoadAdminToken(filePath));
 
     public async Task SaveAdminTokenAsync(string token, CancellationToken cancellationToken = default)
     {
+        var current = LoadDocument(filePath);
+        await SaveDocumentAsync(
+            current with { AdminTokenProtected = EncryptSecret(token, AdminTokenEntropy) },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    // ── GIPHY API key ──────────────────────────────────────────────────────
+
+    public Task<string> LoadGiphyApiKeyAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(LoadGiphyApiKey(filePath));
+
+    public async Task SaveGiphyApiKeyAsync(string apiKey, CancellationToken cancellationToken = default)
+    {
+        var current = LoadDocument(filePath);
+        await SaveDocumentAsync(
+            current with { GiphyApiKeyProtected = EncryptSecret(apiKey, GiphyApiKeyEntropy) },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    // ── Helpers (instance) ─────────────────────────────────────────────────
+
+    private async Task SaveDocumentAsync(RemoteDeviceServerSecretDocument document, CancellationToken cancellationToken)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
-        var document = new RemoteDeviceServerSecretDocument
-        {
-            AdminTokenProtected = EncryptToken(token),
-        };
         await using var fs = File.Create(filePath);
         await JsonSerializer.SerializeAsync(fs, document, JsonOptions, cancellationToken).ConfigureAwait(false);
     }
 
-    internal static string LoadAdminToken(string filePath)
-    {
-        if (!File.Exists(filePath))
-        {
-            return string.Empty;
-        }
+    // ── Helpers (static) ───────────────────────────────────────────────────
 
-        try
-        {
-            using var fs = File.OpenRead(filePath);
-            var document = JsonSerializer.Deserialize<RemoteDeviceServerSecretDocument>(fs, JsonOptions);
-            return DecryptToken(document?.AdminTokenProtected);
-        }
-        catch (JsonException)
-        {
-            return string.Empty;
-        }
-        catch (IOException)
-        {
-            return string.Empty;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return string.Empty;
-        }
-    }
+    internal static string LoadAdminToken(string filePath)
+        => DecryptSecret(LoadDocument(filePath).AdminTokenProtected, AdminTokenEntropy);
+
+    internal static string LoadGiphyApiKey(string filePath)
+        => DecryptSecret(LoadDocument(filePath).GiphyApiKeyProtected, GiphyApiKeyEntropy);
 
     internal static string ResolvePath(MicaAudioOptions options)
     {
@@ -76,34 +83,62 @@ internal sealed class RemoteDeviceServerSecretStore
         return Path.Combine(options.AppDataRoot, "remote-server-secrets.json");
     }
 
-    private static string EncryptToken(string token)
+    private static RemoteDeviceServerSecretDocument LoadDocument(string filePath)
     {
-        if (string.IsNullOrWhiteSpace(token))
+        if (!File.Exists(filePath))
         {
-            return string.Empty;
-        }
-
-        var clearBytes = Encoding.UTF8.GetBytes(token.Trim());
-        var encryptedBytes = ProtectedData.Protect(clearBytes, TokenEntropy, DataProtectionScope.CurrentUser);
-        return TokenCipherPrefix + Convert.ToBase64String(encryptedBytes);
-    }
-
-    private static string DecryptToken(string? tokenProtected)
-    {
-        if (string.IsNullOrWhiteSpace(tokenProtected))
-        {
-            return string.Empty;
-        }
-
-        if (!tokenProtected.StartsWith(TokenCipherPrefix, StringComparison.Ordinal))
-        {
-            return tokenProtected;
+            return new RemoteDeviceServerSecretDocument();
         }
 
         try
         {
-            var encryptedBytes = Convert.FromBase64String(tokenProtected[TokenCipherPrefix.Length..]);
-            var clearBytes = ProtectedData.Unprotect(encryptedBytes, TokenEntropy, DataProtectionScope.CurrentUser);
+            using var fs = File.OpenRead(filePath);
+            return JsonSerializer.Deserialize<RemoteDeviceServerSecretDocument>(fs, JsonOptions)
+                   ?? new RemoteDeviceServerSecretDocument();
+        }
+        catch (JsonException)
+        {
+            return new RemoteDeviceServerSecretDocument();
+        }
+        catch (IOException)
+        {
+            return new RemoteDeviceServerSecretDocument();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new RemoteDeviceServerSecretDocument();
+        }
+    }
+
+    private static string EncryptSecret(string value, byte[] entropy)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var clearBytes = Encoding.UTF8.GetBytes(value.Trim());
+        var encryptedBytes = ProtectedData.Protect(clearBytes, entropy, DataProtectionScope.CurrentUser);
+        return TokenCipherPrefix + Convert.ToBase64String(encryptedBytes);
+    }
+
+    private static string DecryptSecret(string? protectedValue, byte[] entropy)
+    {
+        if (string.IsNullOrWhiteSpace(protectedValue))
+        {
+            return string.Empty;
+        }
+
+        if (!protectedValue.StartsWith(TokenCipherPrefix, StringComparison.Ordinal))
+        {
+            // Legacy plain-text value — return as-is for backward compatibility.
+            return protectedValue;
+        }
+
+        try
+        {
+            var encryptedBytes = Convert.FromBase64String(protectedValue[TokenCipherPrefix.Length..]);
+            var clearBytes = ProtectedData.Unprotect(encryptedBytes, entropy, DataProtectionScope.CurrentUser);
             return Encoding.UTF8.GetString(clearBytes);
         }
         catch (FormatException)
@@ -116,8 +151,9 @@ internal sealed class RemoteDeviceServerSecretStore
         }
     }
 
-    private sealed class RemoteDeviceServerSecretDocument
+    private sealed record RemoteDeviceServerSecretDocument
     {
         public string? AdminTokenProtected { get; init; }
+        public string? GiphyApiKeyProtected { get; init; }
     }
 }

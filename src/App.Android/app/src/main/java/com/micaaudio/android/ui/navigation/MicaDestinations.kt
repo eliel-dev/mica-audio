@@ -25,17 +25,17 @@ enum class MicaDestination(
         selectedIcon = Icons.Filled.Equalizer,
         unselectedIcon = Icons.Outlined.Equalizer,
     ),
+    Apps(
+        route = "apps",
+        label = "Apps",
+        selectedIcon = Icons.Filled.Apps,
+        unselectedIcon = Icons.Outlined.Apps,
+    ),
     Devices(
         route = "devices",
         label = "Dispositivos",
         selectedIcon = Icons.Filled.Devices,
         unselectedIcon = Icons.Outlined.Devices,
-    ),
-    Apps(
-        route = "apps",
-        label = "Widgets",
-        selectedIcon = Icons.Filled.Apps,
-        unselectedIcon = Icons.Outlined.Apps,
     ),
     Panels(
         route = "panels",

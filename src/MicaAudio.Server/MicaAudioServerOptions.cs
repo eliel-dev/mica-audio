@@ -57,6 +57,13 @@ public sealed class MicaAudioServerOptions
 
     public string StorageRoot { get; set; } = GetDefaultStorageRoot();
 
+    /// <summary>
+    /// GIPHY API key used by the server to proxy GIF search requests.
+    /// Configure via environment variable <c>MICA_SERVER__GiphyApiKey</c>.
+    /// When empty, the /api/v1/admin/giphy/search endpoint returns 503.
+    /// </summary>
+    public string GiphyApiKey { get; set; } = string.Empty;
+
     private static string GetDefaultStorageRoot()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);

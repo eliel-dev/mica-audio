@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mica-mockup",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:\\Users\\eliels\\AppData\\Local\\Temp\\mica-mockup\\dist\\server.cjs"
+      ],
+      "port": 3099
+    }
+  ]
+}

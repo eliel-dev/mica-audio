@@ -2,24 +2,27 @@ package com.micaaudio.android.ui.screens.panels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.micaaudio.android.data.api.AppCatalogItem
 import com.micaaudio.android.data.api.CatalogPanelResponse
 import com.micaaudio.android.data.api.DeviceSnapshot
 import com.micaaudio.android.data.api.PanelDefinition
 import com.micaaudio.android.data.api.PanelWidgetDefinition
 import com.micaaudio.android.data.api.ServerPanelResponse
-import com.micaaudio.android.data.repository.AppCatalogRepository
+import com.micaaudio.android.data.api.WidgetDefinition
 import com.micaaudio.android.data.repository.DeviceRepository
 import com.micaaudio.android.data.repository.PanelRepository
+import com.micaaudio.android.data.repository.WidgetCatalogRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 
+// DOCS: docs/wiki/modules/paineis.md#editor-hub75
+// DOCS: docs/wiki/modules/device-server-protocol.md#atualizacao-2026-04-admin-api-e-winui-remote
 data class PanelsUiState(
     /** All panels in the server catalog (from GET /api/v1/admin/panels). */
     val catalogPanels: List<CatalogPanelResponse> = emptyList(),
@@ -39,17 +42,21 @@ data class PanelsUiState(
     val panelResponse: ServerPanelResponse? = null,
     val isPanelLoading: Boolean = false,
     val selectedWidgetId: String? = null,
-    val availableApps: List<AppCatalogItem> = emptyList(),
+    val availableWidgets: List<WidgetDefinition> = emptyList(),
 
     // Kept for editor: per-device panels fetched on demand
     val devicePanels: Map<String, ServerPanelResponse?> = emptyMap(),
+
+    val deviceMedia: List<String> = emptyList(),
+    val deviceMediaCache: Map<String, String> = emptyMap(),
+    val isMediaLoading: Boolean = false,
 )
 
 @HiltViewModel
 class PanelsViewModel @Inject constructor(
     private val deviceRepository: DeviceRepository,
     private val panelRepository: PanelRepository,
-    private val catalogRepository: AppCatalogRepository,
+    private val catalogRepository: WidgetCatalogRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PanelsUiState())
@@ -62,8 +69,8 @@ class PanelsViewModel @Inject constructor(
 
     private fun loadCatalog() {
         viewModelScope.launch {
-            catalogRepository.getCatalog().onSuccess { apps ->
-                _uiState.update { it.copy(availableApps = apps) }
+            catalogRepository.getWidgets().onSuccess { widgets ->
+                _uiState.update { it.copy(availableWidgets = widgets) }
             }
         }
     }
@@ -105,6 +112,45 @@ class PanelsViewModel @Inject constructor(
     }
 
     // ── Gallery actions ───────────────────────────────────────────────────────
+
+    fun createPanel(onCreated: (String) -> Unit) {
+        val newPanel = PanelDefinition(
+            panelId = UUID.randomUUID().toString(),
+            name = "Novo Painel",
+            width = 128,
+            height = 64,
+            updatedAtUtc = Instant.now().toString(),
+        )
+        viewModelScope.launch {
+            panelRepository.upsertCatalogPanel(newPanel)
+                .onSuccess {
+                    _uiState.update { state ->
+                        state.copy(catalogPanels = state.catalogPanels + CatalogPanelResponse(panel = newPanel))
+                    }
+                    onCreated(newPanel.panelId)
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(error = "Erro ao criar painel: ${e.message}") }
+                }
+        }
+    }
+
+    fun deletePanel(panelId: String, activeOnDeviceId: String?) {
+        viewModelScope.launch {
+            if (!activeOnDeviceId.isNullOrBlank()) {
+                panelRepository.deletePanel(activeOnDeviceId)
+            }
+            panelRepository.deleteCatalogPanel(panelId)
+                .onSuccess {
+                    _uiState.update { state ->
+                        state.copy(catalogPanels = state.catalogPanels.filter { it.panel.panelId != panelId })
+                    }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(error = "Erro ao excluir painel: ${e.message}") }
+                }
+        }
+    }
 
     /**
      * Request activation of a panel.
@@ -168,6 +214,44 @@ class PanelsViewModel @Inject constructor(
 
     // ── Editor navigation ────────────────────────────────────────────────────
 
+    /** Called by PanelEditorScreen via LaunchedEffect(panelId). Loads panel from catalog. */
+    fun selectPanel(panelId: String) {
+        val entry = _uiState.value.catalogPanels.firstOrNull { it.panel.panelId == panelId }
+        if (entry != null) {
+            _uiState.update {
+                it.copy(
+                    selectedDeviceId = entry.activeOnDeviceId,
+                    panelResponse = ServerPanelResponse(
+                        deviceId = entry.activeOnDeviceId ?: "",
+                        panel = entry.panel,
+                    ),
+                    isPanelLoading = false,
+                )
+            }
+        } else {
+            // Catalog not yet loaded — try server
+            viewModelScope.launch {
+                _uiState.update { it.copy(isPanelLoading = true) }
+                panelRepository.getCatalogPanel(panelId)
+                    .onSuccess { panel ->
+                        if (panel != null) {
+                            _uiState.update {
+                                it.copy(
+                                    panelResponse = ServerPanelResponse(panel = panel),
+                                    isPanelLoading = false,
+                                )
+                            }
+                        } else {
+                            _uiState.update { it.copy(isPanelLoading = false, error = "Painel não encontrado.") }
+                        }
+                    }
+                    .onFailure { e ->
+                        _uiState.update { it.copy(isPanelLoading = false, error = "Falha ao carregar painel: ${e.message}") }
+                    }
+            }
+        }
+    }
+
     /** Called by PanelEditorScreen via LaunchedEffect(deviceId). */
     fun selectDevice(deviceId: String) {
         _uiState.update { it.copy(selectedDeviceId = deviceId) }
@@ -217,6 +301,13 @@ class PanelsViewModel @Inject constructor(
 
     // ── Editor widget operations ─────────────────────────────────────────────
 
+    fun updatePanelName(name: String) {
+        _uiState.update { state ->
+            val panel = state.panelResponse?.panel ?: return@update state
+            state.copy(panelResponse = state.panelResponse.copy(panel = panel.copy(name = name)))
+        }
+    }
+
     fun selectWidget(widgetId: String?) {
         _uiState.update { it.copy(selectedWidgetId = widgetId) }
     }
@@ -229,6 +320,38 @@ class PanelsViewModel @Inject constructor(
                     x = (w.x + dx.toInt()).coerceIn(0, panel.width - w.width),
                     y = (w.y + dy.toInt()).coerceIn(0, panel.height - w.height),
                 ) else w
+            }
+            state.copy(panelResponse = state.panelResponse.copy(panel = panel.copy(widgets = updated)))
+        }
+    }
+
+    fun resizeWidget(
+        widgetId: String,
+        leftDelta: Int,
+        topDelta: Int,
+        rightDelta: Int,
+        bottomDelta: Int,
+    ) {
+        _uiState.update { state ->
+            val panel = state.panelResponse?.panel ?: return@update state
+            val updated = panel.widgets.map { w ->
+                if (w.widgetId != widgetId) return@map w
+
+                val minSize = 4
+                val desiredLeft = (w.x + leftDelta).coerceIn(0, w.x + w.width - minSize)
+                val desiredTop = (w.y + topDelta).coerceIn(0, w.y + w.height - minSize)
+                val leftShift = desiredLeft - w.x
+                val topShift = desiredTop - w.y
+
+                val desiredWidth = (w.width - leftShift + rightDelta).coerceIn(minSize, panel.width - desiredLeft)
+                val desiredHeight = (w.height - topShift + bottomDelta).coerceIn(minSize, panel.height - desiredTop)
+
+                w.copy(
+                    x = desiredLeft,
+                    y = desiredTop,
+                    width = desiredWidth,
+                    height = desiredHeight,
+                )
             }
             state.copy(panelResponse = state.panelResponse.copy(panel = panel.copy(widgets = updated)))
         }
@@ -257,11 +380,16 @@ class PanelsViewModel @Inject constructor(
     fun addWidget(appId: String) {
         _uiState.update { state ->
             val panel = state.panelResponse?.panel ?: return@update state
+            val app = state.availableWidgets.firstOrNull { it.id == appId }
+            val defaultConfig = app?.modifiers?.associate { m ->
+                m.key to (m.defaultValue ?: if (m.defaultToggle == true) "true" else "")
+            }?.filterValues { it.isNotEmpty() } ?: emptyMap()
             val newWidget = PanelWidgetDefinition(
                 widgetId = UUID.randomUUID().toString(),
                 appId = appId,
-                x = 0, y = 0, width = 32, height = 32,
+                x = 0, y = 0, width = 64, height = 32,
                 zIndex = (panel.widgets.maxOfOrNull { it.zIndex } ?: 0) + 1,
+                configValues = defaultConfig,
             )
             state.copy(
                 selectedWidgetId = newWidget.widgetId,
@@ -270,35 +398,64 @@ class PanelsViewModel @Inject constructor(
         }
     }
 
+    fun loadMediaForDevice(deviceId: String) {
+        if (deviceId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isMediaLoading = true) }
+            panelRepository.listMedia(deviceId)
+                .onSuccess { ids ->
+                    val cached = panelRepository.syncMediaCache(deviceId, ids).getOrElse { emptyMap() }
+                    _uiState.update {
+                        it.copy(
+                            deviceMedia = ids,
+                            deviceMediaCache = cached.mapValues { entry -> entry.value.absolutePath },
+                            isMediaLoading = false,
+                        )
+                    }
+                }
+                .onFailure { _uiState.update { it.copy(isMediaLoading = false) } }
+        }
+    }
+
+    fun uploadMedia(deviceId: String, mediaId: String, bytes: ByteArray) {
+        if (deviceId.isBlank()) {
+            _uiState.update { it.copy(error = "Selecione ou ative um dispositivo antes de enviar mídia.") }
+            return
+        }
+        viewModelScope.launch {
+            panelRepository.uploadMedia(deviceId, mediaId, bytes)
+                .onSuccess { loadMediaForDevice(deviceId) }
+                .onFailure { e -> _uiState.update { it.copy(error = "Erro ao enviar mídia: ${e.message}") } }
+        }
+    }
+
     /**
-     * Save panel to the server — uploads to device store AND upserts to catalog.
-     * The catalog upsert is a side-effect inside HandleAdminUploadPanelAsync on the server.
+     * Save panel to the server catalog, and if it's active on a device, push there too.
      */
     fun savePanel() {
-        val deviceId = _uiState.value.selectedDeviceId ?: return
-        val panel = _uiState.value.panelResponse?.panel ?: return
+        val panel = _uiState.value.panelResponse?.panel?.copy(updatedAtUtc = Instant.now().toString()) ?: return
+        val deviceId = _uiState.value.selectedDeviceId
         viewModelScope.launch {
             _uiState.update { it.copy(isPanelLoading = true) }
-            panelRepository.uploadPanel(deviceId, panel)
+            panelRepository.upsertCatalogPanel(panel)
                 .onSuccess {
+                    // Also push to device if panel is active on one
+                    if (!deviceId.isNullOrBlank()) {
+                        panelRepository.uploadPanel(deviceId, panel)
+                    }
                     _uiState.update { state ->
-                        val updatedDevice = state.devicePanels + (deviceId to
-                            ServerPanelResponse(deviceId = deviceId, panel = panel))
-                        // Also reflect the update in catalog list (upsert or add).
                         val panelInCatalog = state.catalogPanels.any { it.panel.panelId == panel.panelId }
                         val updatedCatalog = if (panelInCatalog) {
                             state.catalogPanels.map { entry ->
-                                if (entry.panel.panelId == panel.panelId)
-                                    entry.copy(panel = panel, activeOnDeviceId = deviceId)
-                                else entry
+                                if (entry.panel.panelId == panel.panelId) entry.copy(panel = panel) else entry
                             }
                         } else {
-                            state.catalogPanels + CatalogPanelResponse(panel = panel, activeOnDeviceId = deviceId)
+                            state.catalogPanels + CatalogPanelResponse(panel = panel)
                         }
                         state.copy(
                             isPanelLoading = false,
                             successMessage = "Painel salvo!",
-                            devicePanels = updatedDevice,
+                            panelResponse = state.panelResponse?.copy(panel = panel),
                             catalogPanels = updatedCatalog,
                         )
                     }

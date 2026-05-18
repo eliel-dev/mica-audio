@@ -45,4 +45,10 @@ public interface IServerMediaStore
     /// Returns the number of files deleted.
     /// </summary>
     int RemoveAll(string deviceId);
+
+    /// <summary>
+    /// Returns the mediaIds (filenames) of all media files stored for the device.
+    /// Returns an empty list when the device has no media.
+    /// </summary>
+    IReadOnlyList<string> ListMediaIds(string deviceId);
 }

@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
+using App.WinUI.Views.Dialogs;
 
 namespace App.WinUI.Views;
 
@@ -130,6 +131,9 @@ public sealed partial class AppsPage
         var host = new AppRuntimeHost
         {
             OpenFileButton = GifOpenFileButton,
+            GiphyButton = GifGiphyButton,
+            GiphySearchService = new GiphySearchService(deviceOps.GetServerBaseAddress(), string.Empty),
+            GetXamlRoot = () => XamlRoot,
             DispatcherQueue = DispatcherQueue,
             GifRuntimeService = gifRuntimeService,
             PickImageFileAsync = PickImageFileAsync,
@@ -212,6 +216,7 @@ public sealed partial class AppsPage
     {
         var visible = IsGifFileModeSelected();
         GifOpenFileButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        GifGiphyButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         if (visible)
         {
             GifOpenFileButton.Content = IsSlideshow() ? "Selecionar Pasta" : "Selecionar Arquivo";

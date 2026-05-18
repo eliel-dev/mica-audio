@@ -1,8 +1,11 @@
 package com.micaaudio.android.data.repository
 
 import com.micaaudio.android.data.api.CommandDispatchResult
+import com.micaaudio.android.data.api.GiphySearchResponse
 import okhttp3.RequestBody
 import com.micaaudio.android.data.api.CreatePairingCodeRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.micaaudio.android.data.api.DeviceCommandProgressMessage
 import com.micaaudio.android.data.api.DeviceLogMessage
 import com.micaaudio.android.data.api.DeviceSnapshot
@@ -138,5 +141,23 @@ class DeviceRepository @Inject constructor(
         body: RequestBody,
     ): Result<Boolean> = runCatching {
         api.uploadMedia(deviceId, mediaId, body).isSuccessful
+    }
+
+    // ── GIPHY ────────────────────────────────────────────────────────────────
+
+    suspend fun searchGiphy(q: String): Result<GiphySearchResponse> = runCatching {
+        val response = api.searchGiphy(q)
+        if (!response.isSuccessful) throw Exception("Erro na busca GIPHY: ${response.code()}")
+        response.body() ?: throw Exception("Resposta vazia do servidor")
+    }
+
+    /**
+     * Downloads GIF bytes directly from the GIPHY CDN.
+     * CDN URLs do not require authentication — called on IO dispatcher.
+     */
+    suspend fun downloadGifBytes(url: String): Result<ByteArray> = runCatching {
+        withContext(Dispatchers.IO) {
+            java.net.URL(url).readBytes()
+        }
     }
 }

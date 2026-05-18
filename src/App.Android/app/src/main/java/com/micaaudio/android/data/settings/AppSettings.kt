@@ -6,7 +6,10 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.micaaudio.android.data.audio.FrequencyScale
+import com.micaaudio.android.data.audio.WeightingFilter
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +19,8 @@ import javax.inject.Singleton
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "mica_settings")
 
+// DOCS: docs/wiki/modules/visual-win2d.md#audiomotion-clone
+// DOCS: docs/wiki/modules/paineis.md#editor-hub75
 @Singleton
 class AppSettings @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -30,7 +35,12 @@ class AppSettings @Inject constructor(
         private val KEY_VISUALIZER_BOOST = floatPreferencesKey("visualizer_boost")
         private val KEY_VISUALIZER_RISE = floatPreferencesKey("visualizer_rise")
         private val KEY_VISUALIZER_FALL = floatPreferencesKey("visualizer_fall")
+        private val KEY_VISUALIZER_FFT_SMOOTHING = floatPreferencesKey("visualizer_fft_smoothing")
         private val KEY_VISUALIZER_MAX_FREQ = floatPreferencesKey("visualizer_max_freq")
+        private val KEY_VISUALIZER_BAR_COUNT = intPreferencesKey("visualizer_bar_count")
+        private val KEY_VISUALIZER_MIN_FREQ = floatPreferencesKey("visualizer_min_freq")
+        private val KEY_VISUALIZER_FREQ_SCALE = stringPreferencesKey("visualizer_freq_scale")
+        private val KEY_VISUALIZER_WEIGHTING = stringPreferencesKey("visualizer_weighting")
 
         const val DEFAULT_SERVER_URL = "http://192.168.1.100:5272"
         const val DEFAULT_DARK_MODE = "system"
@@ -68,9 +78,36 @@ class AppSettings @Inject constructor(
         prefs[KEY_VISUALIZER_FALL] ?: 0.3f
     }
 
+    /** FFT temporal smoothing — 0.09 matches the Windows "Centered Lines" preset default. */
+    val visualizerFftSmoothing: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[KEY_VISUALIZER_FFT_SMOOTHING] ?: 0.09f
+    }
+
     /** Frequência máxima analisada (Hz). Default 1000 Hz — igual ao preset "Centered Lines" do Windows. */
     val visualizerMaxFreq: Flow<Float> = context.dataStore.data.map { prefs ->
         prefs[KEY_VISUALIZER_MAX_FREQ] ?: 1000f
+    }
+
+    /** Número de barras exibidas. Default 71 — igual ao Windows "Centered Lines". */
+    val visualizerBarCount: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[KEY_VISUALIZER_BAR_COUNT] ?: 71
+    }
+
+    /** Frequência mínima analisada (Hz). Default 20 Hz. */
+    val visualizerMinFreq: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[KEY_VISUALIZER_MIN_FREQ] ?: 20f
+    }
+
+    /** Escala de frequência. Default Bark — psicoacusticamente mais precisa. */
+    val visualizerFreqScale: Flow<FrequencyScale> = context.dataStore.data.map { prefs ->
+        FrequencyScale.entries.firstOrNull { it.name == prefs[KEY_VISUALIZER_FREQ_SCALE] }
+            ?: FrequencyScale.Bark
+    }
+
+    /** Filtro de ponderação. Default B — igual ao Windows "Centered Lines". */
+    val visualizerWeighting: Flow<WeightingFilter> = context.dataStore.data.map { prefs ->
+        WeightingFilter.entries.firstOrNull { it.name == prefs[KEY_VISUALIZER_WEIGHTING] }
+            ?: WeightingFilter.B
     }
 
     suspend fun setServerUrl(url: String) {
@@ -105,7 +142,27 @@ class AppSettings @Inject constructor(
         context.dataStore.edit { it[KEY_VISUALIZER_FALL] = value }
     }
 
+    suspend fun setVisualizerFftSmoothing(value: Float) {
+        context.dataStore.edit { it[KEY_VISUALIZER_FFT_SMOOTHING] = value }
+    }
+
     suspend fun setVisualizerMaxFreq(value: Float) {
         context.dataStore.edit { it[KEY_VISUALIZER_MAX_FREQ] = value }
+    }
+
+    suspend fun setVisualizerBarCount(value: Int) {
+        context.dataStore.edit { it[KEY_VISUALIZER_BAR_COUNT] = value }
+    }
+
+    suspend fun setVisualizerMinFreq(value: Float) {
+        context.dataStore.edit { it[KEY_VISUALIZER_MIN_FREQ] = value }
+    }
+
+    suspend fun setVisualizerFreqScale(scale: FrequencyScale) {
+        context.dataStore.edit { it[KEY_VISUALIZER_FREQ_SCALE] = scale.name }
+    }
+
+    suspend fun setVisualizerWeighting(filter: WeightingFilter) {
+        context.dataStore.edit { it[KEY_VISUALIZER_WEIGHTING] = filter.name }
     }
 }

@@ -2,6 +2,7 @@ package com.micaaudio.android.data.repository
 
 import android.content.Context
 import com.micaaudio.android.data.api.CatalogPanelResponse
+import com.micaaudio.android.data.api.MediaListResponse
 import com.micaaudio.android.data.api.MicaServerApi
 import com.micaaudio.android.data.api.PanelDefinition
 import com.micaaudio.android.data.api.PanelsSeedDocument
@@ -10,9 +11,12 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// DOCS: docs/wiki/modules/paineis.md#editor-hub75
+// DOCS: docs/wiki/modules/device-server-protocol.md#atualizacao-2026-04-admin-api-e-winui-remote
 @Singleton
 class PanelRepository @Inject constructor(
     private val api: MicaServerApi,
@@ -61,6 +65,15 @@ class PanelRepository @Inject constructor(
         response.isSuccessful
     }
 
+    suspend fun listMedia(deviceId: String): Result<List<String>> = runCatching {
+        val response = api.listMedia(deviceId)
+        if (!response.isSuccessful) {
+            throw Exception("Server returned ${response.code()}: ${response.errorBody()?.string()}")
+        }
+        val body = response.body()?.string() ?: return@runCatching emptyList()
+        json.decodeFromString<MediaListResponse>(body).mediaIds
+    }
+
     suspend fun uploadMedia(
         deviceId: String,
         mediaId: String,
@@ -71,11 +84,63 @@ class PanelRepository @Inject constructor(
         if (!response.isSuccessful) {
             throw Exception("Media upload failed: ${response.code()}")
         }
+        val cached = cacheFileFor(deviceId, mediaId)
+        cached.parentFile?.mkdirs()
+        cached.writeBytes(bytes)
     }
 
     suspend fun deleteMedia(deviceId: String, mediaId: String): Result<Boolean> = runCatching {
         val response = api.deleteMedia(deviceId, mediaId)
+        cacheFileFor(deviceId, mediaId).delete()
         response.isSuccessful
+    }
+
+    suspend fun getCachedMediaFile(deviceId: String, mediaId: String): Result<File> = runCatching {
+        val cached = cacheFileFor(deviceId, mediaId)
+        if (cached.isFile && cached.length() > 0) {
+            return@runCatching cached
+        }
+
+        val response = api.downloadMedia(deviceId, mediaId)
+        if (!response.isSuccessful) {
+            throw Exception("Media download failed: ${response.code()}")
+        }
+
+        val body = response.body() ?: throw Exception("Empty media body")
+        cached.parentFile?.mkdirs()
+
+        val temp = File(cached.parentFile, "${cached.name}.tmp")
+        body.byteStream().use { input ->
+            temp.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+
+        if (cached.exists()) {
+            cached.delete()
+        }
+        if (!temp.renameTo(cached)) {
+            temp.copyTo(cached, overwrite = true)
+            temp.delete()
+        }
+
+        cached
+    }
+
+    suspend fun syncMediaCache(deviceId: String, mediaIds: List<String>): Result<Map<String, File>> = runCatching {
+        val expected = mediaIds.map(::sanitizeFileName).toSet()
+        val deviceCacheDir = mediaCacheDir(deviceId)
+        if (deviceCacheDir.isDirectory) {
+            deviceCacheDir.listFiles()?.forEach { file ->
+                if (file.isFile && file.name !in expected && !file.name.endsWith(".tmp")) {
+                    file.delete()
+                }
+            }
+        }
+
+        mediaIds.associateWith { mediaId ->
+            getCachedMediaFile(deviceId, mediaId).getOrThrow()
+        }
     }
 
     // ── Panel catalog ─────────────────────────────────────────────────────────
@@ -126,5 +191,23 @@ class PanelRepository @Inject constructor(
     suspend fun deleteCatalogPanel(panelId: String): Result<Boolean> = runCatching {
         val response = api.deleteCatalogPanel(panelId)
         response.isSuccessful
+    }
+
+    private fun cacheFileFor(deviceId: String, mediaId: String): File {
+        return File(mediaCacheDir(deviceId), sanitizeFileName(mediaId))
+    }
+
+    private fun mediaCacheDir(deviceId: String): File {
+        return File(context.cacheDir, "mica-media/${sanitizeFileName(deviceId)}")
+    }
+
+    private fun sanitizeFileName(value: String): String {
+        val sanitized = buildString(value.length) {
+            value.trim().forEach { ch ->
+                append(if (ch.isLetterOrDigit() || ch == '.' || ch == '-' || ch == '_') ch else '_')
+            }
+        }.trimStart('.')
+
+        return sanitized.ifBlank { "media" }
     }
 }

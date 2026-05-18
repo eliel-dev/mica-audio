@@ -1,8 +1,8 @@
 [versions]
-agp = "8.13.2"
-kotlin = "2.1.0"
-ksp = "2.1.0-1.0.29"
-hilt = "2.53.1"
+agp = "9.2.1"
+kotlin = "2.2.10"
+ksp = "2.2.10-2.0.2"
+hilt = "2.57"
 compose-bom = "2025.01.01"
 compose-navigation = "2.8.6"
 hilt-navigation-compose = "1.2.0"
@@ -16,6 +16,7 @@ core-ktx = "1.18.0"
 activity-compose = "1.13.0"
 core-splashscreen = "1.2.0"
 junit = "4.13.2"
+coil = "2.7.0"
 
 [libraries]
 # Compose BOM
@@ -60,6 +61,10 @@ core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
 core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "core-splashscreen" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+
+# Coil
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coil-gif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coil" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

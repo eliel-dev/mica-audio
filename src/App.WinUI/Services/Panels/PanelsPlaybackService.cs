@@ -392,6 +392,11 @@ internal sealed class PanelsPlaybackService : IDisposable
         _ = TrySyncCatalogPanelAsync(panel);
     }
 
+    public Task<string?> GetCatalogJsonAsync(CancellationToken cancellationToken = default)
+    {
+        return serverClient.GetPanelCatalogJsonAsync(cancellationToken);
+    }
+
     private async Task TrySyncCatalogPanelAsync(PanelDefinition panel)
     {
         try

@@ -42,6 +42,7 @@ public sealed partial class PanelsPage
     private StackPanel WidgetModifiersPanel = null!;
     private Button DeleteWidgetButton = null!;
     private Button GifSourceButton = null!;
+    private Button GifGiphyButton = null!;
     private TextBox GifSourcePathText = null!;
     private Border WidgetSourceCard = null!;
 
@@ -371,6 +372,13 @@ public sealed partial class PanelsPage
         Grid.SetRow(widgetActionsPanel, 1);
         layout.Children.Add(widgetActionsPanel);
 
+        GifGiphyButton = new Button
+        {
+            Content = "Buscar no GIPHY",
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        GifGiphyButton.Click += OnGifGiphyButtonClicked;
+
         WidgetSourceCard = CreateCard(new StackPanel
         {
             Spacing = 8,
@@ -391,6 +399,7 @@ public sealed partial class PanelsPage
                     Content = "Selecionar arquivo",
                     HorizontalAlignment = HorizontalAlignment.Left,
                 }),
+                GifGiphyButton,
             },
         });
         GifSourceButton.Click += OnGifSourceButtonClicked;

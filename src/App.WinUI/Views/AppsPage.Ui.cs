@@ -20,6 +20,7 @@ public sealed partial class AppsPage
     private TextBlock ModifiersHintText = null!;
     private StackPanel ModifiersPanel = null!;
     private Button GifOpenFileButton = null!;
+    private Button GifGiphyButton = null!;
     private Button InstallButton = null!;
     private Button SaveModifiersButton = null!;
 
@@ -167,6 +168,7 @@ public sealed partial class AppsPage
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actionsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         InstallButton = new Button { Content = "Instalar" };
         InstallButton.Click += OnInstallClicked;
@@ -180,12 +182,20 @@ public sealed partial class AppsPage
             Visibility = Visibility.Collapsed,
         };
 
+        GifGiphyButton = new Button
+        {
+            Content = "GIPHY",
+            Visibility = Visibility.Collapsed,
+        };
+
         Grid.SetColumn(SaveModifiersButton, 1);
         Grid.SetColumn(GifOpenFileButton, 2);
+        Grid.SetColumn(GifGiphyButton, 3);
 
         actionsGrid.Children.Add(InstallButton);
         actionsGrid.Children.Add(SaveModifiersButton);
         actionsGrid.Children.Add(GifOpenFileButton);
+        actionsGrid.Children.Add(GifGiphyButton);
 
         var actionsCard = CreateCard(actionsGrid);
         Grid.SetRow(actionsCard, 3);

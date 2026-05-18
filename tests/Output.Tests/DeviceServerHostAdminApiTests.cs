@@ -248,6 +248,39 @@ public sealed class DeviceServerHostAdminApiTests
     }
 
     [Fact]
+    public async Task AdminMediaDownload_ShouldReturnStoredPayload()
+    {
+        var port = DeviceServerTestHarness.GetFreeTcpPort();
+        var storageRoot = Path.Combine(Path.GetTempPath(), "mica-audio-media-tests", Guid.NewGuid().ToString("N"));
+        await using var host = new DeviceServerHost();
+        host.AttachMediaStore(new FileServerMediaStore(storageRoot));
+        await host.StartAsync(new ServerConfig
+        {
+            ListenHost = "127.0.0.1",
+            PublicHost = "127.0.0.1",
+            Port = port,
+            MqttPort = DeviceServerTestHarness.GetFreeTcpPort(),
+            RestrictToPrivateNetworks = true,
+            AdminToken = AdminToken,
+        });
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var payload = "GIF89a-test"u8.ToArray();
+
+        using var upload = CreateAdminRequest(HttpMethod.Put, "/api/v1/admin/devices/mp-media/media/preview.gif");
+        upload.Content = new ByteArrayContent(payload);
+        using var uploadResponse = await client.SendAsync(upload);
+        uploadResponse.EnsureSuccessStatusCode();
+
+        using var download = CreateAdminRequest(HttpMethod.Get, "/api/v1/admin/devices/mp-media/media/preview.gif");
+        using var downloadResponse = await client.SendAsync(download);
+
+        downloadResponse.EnsureSuccessStatusCode();
+        Assert.Equal("image/gif", downloadResponse.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(payload, await downloadResponse.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
     public async Task AdminFramesWebSocket_ShouldForwardBroadcastAndTargetedFrames()
     {
         var port = DeviceServerTestHarness.GetFreeTcpPort();

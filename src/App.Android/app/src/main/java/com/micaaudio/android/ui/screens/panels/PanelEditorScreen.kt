@@ -1,16 +1,24 @@
 package com.micaaudio.android.ui.screens.panels
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,28 +26,41 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.micaaudio.android.data.api.AppCatalogItem
 import com.micaaudio.android.data.api.PanelWidgetDefinition
+import com.micaaudio.android.data.api.WidgetDefinition
 import com.micaaudio.android.ui.theme.MicaPrimary
 
+// DOCS: docs/wiki/modules/paineis.md#editor-hub75
 private const val SCALE = 2f // 1 pixel = 2 dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PanelEditorScreen(
-    deviceId: String,
+    panelId: String,
     onNavigateBack: () -> Unit,
+    onWidgetConfig: (widgetId: String) -> Unit = {},
     viewModel: PanelsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showWidgetPicker by remember { mutableStateOf(false) }
+    val activity = LocalContext.current as? Activity
 
-    LaunchedEffect(deviceId) { viewModel.selectDevice(deviceId) }
+    LaunchedEffect(panelId) { viewModel.selectPanel(panelId) }
+    DisposableEffect(activity) {
+        val previousOrientation = activity?.requestedOrientation
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        onDispose {
+            if (previousOrientation != null) {
+                activity?.requestedOrientation = previousOrientation
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -88,9 +109,9 @@ fun PanelEditorScreen(
                     .background(Color.Black)
                     .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                     .pointerInput(panel?.widgets) {
-                        detectDragGestures(
+                        detectDragGesturesAfterLongPress(
                             onDragStart = { offset ->
-                                val widgets = panel?.widgets ?: return@detectDragGestures
+                                val widgets = panel?.widgets ?: return@detectDragGesturesAfterLongPress
                                 dragWidgetId = widgets.firstOrNull { w ->
                                     val wx = w.x * SCALE
                                     val wy = w.y * SCALE
@@ -104,7 +125,7 @@ fun PanelEditorScreen(
                                 if (dragWidgetId != null) viewModel.selectWidget(dragWidgetId)
                             },
                             onDrag = { _, dragAmount ->
-                                val id = dragWidgetId ?: return@detectDragGestures
+                                val id = dragWidgetId ?: return@detectDragGesturesAfterLongPress
                                 dragAccX += dragAmount.x / SCALE
                                 dragAccY += dragAmount.y / SCALE
                                 val dx = dragAccX.toInt()
@@ -126,6 +147,7 @@ fun PanelEditorScreen(
                         modifier = Modifier
                             .offset(x = (widget.x * SCALE).dp, y = (widget.y * SCALE).dp)
                             .size(width = (widget.width * SCALE).dp, height = (widget.height * SCALE).dp)
+                            .clickable { viewModel.selectWidget(widget.widgetId) }
                             .background(if (isSelected) MicaPrimary.copy(alpha = 0.6f) else MicaPrimary.copy(alpha = 0.3f))
                             .border(if (isSelected) 1.dp else 0.5.dp, MicaPrimary),
                         contentAlignment = Alignment.Center,
@@ -135,9 +157,25 @@ fun PanelEditorScreen(
                             color = Color.White,
                             fontSize = 8.sp,
                         )
+                        if (isSelected) {
+                            ResizeHandles(
+                                widgetId = widget.widgetId,
+                                onResize = viewModel::resizeWidget,
+                            )
+                        }
                     }
                 }
             }
+
+            OutlinedTextField(
+                value = panel?.name ?: "",
+                onValueChange = { viewModel.updatePanelName(it) },
+                label = { Text("Nome do painel") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                singleLine = true,
+            )
 
             Text(
                 "Widgets no Layout",
@@ -159,8 +197,10 @@ fun PanelEditorScreen(
                         WidgetEditorItem(
                             widget = widget,
                             isSelected = widget.widgetId == state.selectedWidgetId,
-                            onSelect = { viewModel.selectWidget(widget.widgetId) },
-                            onUpdate = { viewModel.updateWidget(it) },
+                            onSelect = {
+                                viewModel.selectWidget(widget.widgetId)
+                                onWidgetConfig(widget.widgetId)
+                            },
                             onDelete = { viewModel.removeWidget(widget.widgetId) },
                         )
                     }
@@ -171,7 +211,7 @@ fun PanelEditorScreen(
 
     if (showWidgetPicker) {
         WidgetPickerSheet(
-            apps = state.availableApps,
+            widgets = state.availableWidgets,
             onDismiss = { showWidgetPicker = false },
             onWidgetSelected = { appId ->
                 viewModel.addWidget(appId)
@@ -182,11 +222,87 @@ fun PanelEditorScreen(
 }
 
 @Composable
+private fun BoxScope.ResizeHandles(
+    widgetId: String,
+    onResize: (String, Int, Int, Int, Int) -> Unit,
+) {
+    ResizeHandle.values().forEach { handle ->
+        ResizeHandleDot(
+            handle = handle,
+            modifier = Modifier.align(handle.alignment),
+            onDragDelta = { dx, dy ->
+                onResize(
+                    widgetId,
+                    if (handle.left) dx else 0,
+                    if (handle.top) dy else 0,
+                    if (handle.right) dx else 0,
+                    if (handle.bottom) dy else 0,
+                )
+            },
+        )
+    }
+}
+
+@Composable
+private fun BoxScope.ResizeHandleDot(
+    handle: ResizeHandle,
+    modifier: Modifier = Modifier,
+    onDragDelta: (Int, Int) -> Unit,
+) {
+    var dragAccX by remember { mutableFloatStateOf(0f) }
+    var dragAccY by remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier = modifier
+            .size(if (handle.isCorner) 18.dp else 14.dp)
+            .background(MaterialTheme.colorScheme.surface, CircleShape)
+            .border(1.dp, MicaPrimary, CircleShape)
+            .pointerInput(handle) {
+                detectDragGestures(
+                    onDragStart = {
+                        dragAccX = 0f
+                        dragAccY = 0f
+                    },
+                    onDrag = { _, dragAmount ->
+                        dragAccX += dragAmount.x / SCALE
+                        dragAccY += dragAmount.y / SCALE
+                        val dx = dragAccX.toInt()
+                        val dy = dragAccY.toInt()
+                        if (dx != 0 || dy != 0) {
+                            onDragDelta(dx, dy)
+                            dragAccX -= dx
+                            dragAccY -= dy
+                        }
+                    },
+                )
+            },
+    )
+}
+
+private enum class ResizeHandle(
+    val alignment: Alignment,
+    val left: Boolean = false,
+    val top: Boolean = false,
+    val right: Boolean = false,
+    val bottom: Boolean = false,
+) {
+    TopStart(Alignment.TopStart, left = true, top = true),
+    Top(Alignment.TopCenter, top = true),
+    TopEnd(Alignment.TopEnd, right = true, top = true),
+    End(Alignment.CenterEnd, right = true),
+    BottomEnd(Alignment.BottomEnd, right = true, bottom = true),
+    Bottom(Alignment.BottomCenter, bottom = true),
+    BottomStart(Alignment.BottomStart, left = true, bottom = true),
+    Start(Alignment.CenterStart, left = true);
+
+    val isCorner: Boolean get() = (left || right) && (top || bottom)
+}
+
+@Composable
 fun WidgetEditorItem(
     widget: PanelWidgetDefinition,
     isSelected: Boolean,
     onSelect: () -> Unit,
-    onUpdate: (PanelWidgetDefinition) -> Unit,
     onDelete: () -> Unit,
 ) {
     Card(
@@ -198,41 +314,24 @@ fun WidgetEditorItem(
                 MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Widgets, null, tint = MicaPrimary, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(widget.appId.uppercase(), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = widget.x.toString(),
-                    onValueChange = { onUpdate(widget.copy(x = it.toIntOrNull() ?: 0)) },
-                    label = { Text("X") }, modifier = Modifier.weight(1f), singleLine = true,
-                )
-                OutlinedTextField(
-                    value = widget.y.toString(),
-                    onValueChange = { onUpdate(widget.copy(y = it.toIntOrNull() ?: 0)) },
-                    label = { Text("Y") }, modifier = Modifier.weight(1f), singleLine = true,
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Widgets, null, tint = MicaPrimary, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(widget.appId, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(
+                    "x=${widget.x} y=${widget.y}  ${widget.width}×${widget.height}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = widget.width.toString(),
-                    onValueChange = { onUpdate(widget.copy(width = it.toIntOrNull() ?: 1)) },
-                    label = { Text("Largura") }, modifier = Modifier.weight(1f), singleLine = true,
-                )
-                OutlinedTextField(
-                    value = widget.height.toString(),
-                    onValueChange = { onUpdate(widget.copy(height = it.toIntOrNull() ?: 1)) },
-                    label = { Text("Altura") }, modifier = Modifier.weight(1f), singleLine = true,
-                )
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(4.dp))
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -241,14 +340,14 @@ fun WidgetEditorItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WidgetPickerSheet(
-    apps: List<AppCatalogItem>,
+    widgets: List<WidgetDefinition>,
     onDismiss: () -> Unit,
     onWidgetSelected: (String) -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(bottom = 32.dp)) {
             Text("Escolha um Widget", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
-            if (apps.isEmpty()) {
+            if (widgets.isEmpty()) {
                 val fallback = listOf("analogclock" to "Relógio", "gifhub75" to "GIF Player", "visualizer" to "Visualizador")
                 fallback.forEach { (id, name) ->
                     ListItem(
@@ -259,12 +358,12 @@ fun WidgetPickerSheet(
                     )
                 }
             } else {
-                apps.forEach { app ->
+                widgets.forEach { widget ->
                     ListItem(
-                        headlineContent = { Text(app.name) },
-                        supportingContent = { Text("${app.category} · ${app.summary}") },
+                        headlineContent = { Text(widget.name) },
+                        supportingContent = { Text("${widget.category} · ${widget.summary}") },
                         leadingContent = { Icon(Icons.Default.AddCircle, null, tint = MicaPrimary) },
-                        modifier = Modifier.clickable { onWidgetSelected(app.id) },
+                        modifier = Modifier.clickable { onWidgetSelected(widget.id) },
                     )
                 }
             }
