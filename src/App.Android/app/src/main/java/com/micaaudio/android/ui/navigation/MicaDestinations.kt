@@ -1,12 +1,10 @@
 package com.micaaudio.android.ui.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Equalizer
@@ -24,12 +22,6 @@ enum class MicaDestination(
         label = "Visual",
         selectedIcon = Icons.Filled.Equalizer,
         unselectedIcon = Icons.Outlined.Equalizer,
-    ),
-    Apps(
-        route = "apps",
-        label = "Apps",
-        selectedIcon = Icons.Filled.Apps,
-        unselectedIcon = Icons.Outlined.Apps,
     ),
     Devices(
         route = "devices",

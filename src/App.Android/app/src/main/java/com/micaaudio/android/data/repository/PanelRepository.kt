@@ -65,13 +65,13 @@ class PanelRepository @Inject constructor(
         response.isSuccessful
     }
 
-    suspend fun listMedia(deviceId: String): Result<List<String>> = runCatching {
+    suspend fun listMedia(deviceId: String): Result<MediaListResponse> = runCatching {
         val response = api.listMedia(deviceId)
         if (!response.isSuccessful) {
             throw Exception("Server returned ${response.code()}: ${response.errorBody()?.string()}")
         }
-        val body = response.body()?.string() ?: return@runCatching emptyList()
-        json.decodeFromString<MediaListResponse>(body).mediaIds
+        val body = response.body()?.string() ?: return@runCatching MediaListResponse(deviceId = deviceId)
+        json.decodeFromString<MediaListResponse>(body)
     }
 
     suspend fun uploadMedia(

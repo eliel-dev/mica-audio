@@ -16,6 +16,7 @@ import javax.inject.Inject
 data class SettingsUiState(
     val serverUrl: String = AppSettings.DEFAULT_SERVER_URL,
     val adminToken: String = "",
+    val giphyApiKey: String = "",
     val darkMode: String = "system",
     val dynamicColor: Boolean = true,
     val isSaving: Boolean = false,
@@ -48,6 +49,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            appSettings.giphyApiKey.collect { key ->
+                _uiState.update { it.copy(giphyApiKey = key) }
+            }
+        }
+        viewModelScope.launch {
             appSettings.darkMode.collect { mode ->
                 _uiState.update { it.copy(darkMode = mode) }
             }
@@ -68,6 +74,10 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(adminToken = token) }
     }
 
+    fun updateGiphyApiKey(key: String) {
+        _uiState.update { it.copy(giphyApiKey = key) }
+    }
+
     fun updateDarkMode(mode: String) {
         viewModelScope.launch { appSettings.setDarkMode(mode) }
     }
@@ -81,7 +91,8 @@ class SettingsViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true, isSuccess = false) }
             appSettings.setServerUrl(_uiState.value.serverUrl)
             appSettings.setAdminToken(_uiState.value.adminToken)
-            _uiState.update { it.copy(isSaving = false, isSuccess = true, testResult = "Conexão salva com sucesso!") }
+            appSettings.setGiphyApiKey(_uiState.value.giphyApiKey)
+            _uiState.update { it.copy(isSaving = false, isSuccess = true, testResult = "Configurações salvas!") }
 
             // Reset success icon after 2 seconds
             kotlinx.coroutines.delay(2000)

@@ -5,6 +5,7 @@ using App.WinUI.Models.Panels;
 using App.WinUI.Services.Gif;
 using MicaAudio.Core.Led;
 using MicaAudio.Core.Presets;
+using PanelsCompositionServerSide = global::Panels.Composition.ServerSide;
 
 namespace App.WinUI.Services.Panels;
 
@@ -178,7 +179,7 @@ internal sealed class PanelsFrameComposer
     {
         private readonly PanelWidgetDefinition widget;
         private readonly bool use24Hour;
-        private readonly RgbaColor color;
+        private readonly string mostrador;
 
         public ClockWidgetRuntime(PanelWidgetDefinition widget)
         {
@@ -187,7 +188,10 @@ internal sealed class PanelsFrameComposer
             use24Hour = !widget.ConfigValues.TryGetValue("format24h", out var raw24h)
                 || !bool.TryParse(raw24h, out var parsed24h)
                 || parsed24h;
-            color = ResolveClockColor(widget.ConfigValues.TryGetValue("fontColor", out var rawColor) ? rawColor : null);
+            mostrador = widget.ConfigValues.TryGetValue("mostrador", out var rawMostrador)
+                && !string.IsNullOrWhiteSpace(rawMostrador)
+                ? rawMostrador
+                : "cyberterminal";
         }
 
         public string WidgetId => widget.WidgetId;
@@ -197,41 +201,17 @@ internal sealed class PanelsFrameComposer
         public void Render(DateTimeOffset utcNow, RgbaColor[] targetFrame, int panelWidth, int panelHeight)
         {
             var now = TimeZoneInfo.ConvertTime(utcNow, BrasiliaTimeZone).DateTime;
-            var format = use24Hour ? "HH:mm" : "hh:mm";
-            var timeText = now.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
-            var timeWidth = Math.Max(1, (timeText.Length * 6) - 1);
-            var timeX = widget.X + Math.Max(0, (widget.Width - timeWidth) / 2);
-            var timeY = widget.Y + Math.Max(0, Math.Min(widget.Height - 7, Math.Max(0, (widget.Height / 2) - 7)));
-
-            PanelsMatrixDrawHelpers.DrawText5x7(targetFrame, panelWidth, panelHeight, timeX, timeY, timeText, color);
-
-            if (!use24Hour && widget.Height >= 16)
-            {
-                var period = now.ToString("tt", System.Globalization.CultureInfo.InvariantCulture).ToUpperInvariant();
-                var periodWidth = Math.Max(1, (period.Length * 6) - 1);
-                var periodX = widget.X + Math.Max(0, widget.Width - periodWidth - 1);
-                PanelsMatrixDrawHelpers.DrawText5x7(targetFrame, panelWidth, panelHeight, periodX, widget.Y + 1, period, new RgbaColor(192, 204, 228, 255));
-            }
-
-            if (widget.Height >= 20)
-            {
-                PanelsMatrixDrawHelpers.DrawText5x7(targetFrame, panelWidth, panelHeight, widget.X + 1, widget.Y + widget.Height - 8, "BRT", new RgbaColor(150, 185, 225, 255));
-            }
-
-            if (widget.Height >= 10 && widget.Width >= 12)
-            {
-                var progressWidth = Math.Clamp((int)Math.Round(((now.Second + 1) / 60d) * Math.Max(1, widget.Width - 2)), 0, Math.Max(1, widget.Width - 2));
-                for (var offset = 0; offset < progressWidth; offset++)
-                {
-                    PanelsMatrixDrawHelpers.DrawPixel(
-                        targetFrame,
-                        panelWidth,
-                        panelHeight,
-                        widget.X + 1 + offset,
-                        widget.Y + widget.Height - 1,
-                        ResolveSpectrumColor(offset / (float)Math.Max(1, widget.Width - 2)));
-                }
-            }
+            PanelsCompositionServerSide.WatchfaceLibrary.Render(
+                mostrador,
+                targetFrame,
+                panelWidth,
+                panelHeight,
+                widget.X,
+                widget.Y,
+                widget.Width,
+                widget.Height,
+                now,
+                use24Hour);
         }
 
         public void Dispose()
@@ -761,29 +741,6 @@ internal sealed class PanelsFrameComposer
                 targetPixels[(targetY * targetWidth) + targetX] = sourcePixels[(sourceY * sourceWidth) + sourceX];
             }
         }
-    }
-
-    private static RgbaColor ResolveClockColor(string? colorKey)
-    {
-        return colorKey?.Trim().ToLowerInvariant() switch
-        {
-            "white" => new RgbaColor(255, 255, 255, 255),
-            "green" => new RgbaColor(70, 255, 135, 255),
-            "yellow" => new RgbaColor(255, 225, 85, 255),
-            "orange" => new RgbaColor(255, 153, 67, 255),
-            "magenta" => new RgbaColor(255, 95, 230, 255),
-            "cyan" => new RgbaColor(74, 222, 255, 255),
-            _ => new RgbaColor(74, 222, 255, 255),
-        };
-    }
-
-    private static RgbaColor ResolveSpectrumColor(float fraction)
-    {
-        var t = Math.Clamp(fraction, 0f, 1f);
-        var r = (byte)Math.Clamp(65f + (170f * t), 0f, 255f);
-        var g = (byte)Math.Clamp(150f + (95f * (1f - MathF.Abs((2f * t) - 1f))), 0f, 255f);
-        var b = (byte)Math.Clamp(45f + (170f * (1f - t)), 0f, 255f);
-        return new RgbaColor(r, g, b, 255);
     }
 
     private static GifScaleMode ParseGifScaleMode(string? raw)

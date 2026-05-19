@@ -28,6 +28,7 @@ class AppSettings @Inject constructor(
     companion object {
         private val KEY_SERVER_URL = stringPreferencesKey("server_url")
         private val KEY_ADMIN_TOKEN = stringPreferencesKey("admin_token")
+        private val KEY_GIPHY_API_KEY = stringPreferencesKey("giphy_api_key")
         private val KEY_DARK_MODE = stringPreferencesKey("dark_mode") // "system", "dark", "light"
         private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
 
@@ -52,6 +53,10 @@ class AppSettings @Inject constructor(
 
     val adminToken: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_ADMIN_TOKEN] ?: ""
+    }
+
+    val giphyApiKey: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_GIPHY_API_KEY] ?: ""
     }
 
     val darkMode: Flow<String> = context.dataStore.data.map { prefs ->
@@ -116,6 +121,10 @@ class AppSettings @Inject constructor(
 
     suspend fun setAdminToken(token: String) {
         context.dataStore.edit { it[KEY_ADMIN_TOKEN] = token.trim() }
+    }
+
+    suspend fun setGiphyApiKey(key: String) {
+        context.dataStore.edit { it[KEY_GIPHY_API_KEY] = key.trim() }
     }
 
     suspend fun setDarkMode(mode: String) {

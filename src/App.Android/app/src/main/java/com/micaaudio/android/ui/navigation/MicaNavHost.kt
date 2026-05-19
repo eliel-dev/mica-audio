@@ -8,8 +8,6 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.micaaudio.android.ui.screens.apps.AppCatalogScreen
-import com.micaaudio.android.ui.screens.apps.AppDetailScreen
 import com.micaaudio.android.ui.screens.devices.DeviceDetailScreen
 import com.micaaudio.android.ui.screens.devices.DevicesScreen
 import com.micaaudio.android.ui.screens.panels.PanelEditorScreen
@@ -63,12 +61,20 @@ fun MicaNavHost(
             arguments = listOf(navArgument("panelId") { type = NavType.StringType }),
         ) { backStackEntry ->
             val panelId = backStackEntry.arguments?.getString("panelId") ?: return@composable
+            // Share the gallery ViewModel so edits aren't lost when the editor
+            // back-stack entry is removed and so the catalog stays in sync.
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(MicaDestination.Panels.route)
+            }
+            val viewModel: com.micaaudio.android.ui.screens.panels.PanelsViewModel =
+                androidx.hilt.navigation.compose.hiltViewModel(parentEntry)
             PanelEditorScreen(
                 panelId = panelId,
                 onNavigateBack = { navController.popBackStack() },
                 onWidgetConfig = { widgetId ->
                     navController.navigate("widget_config/$panelId/$widgetId")
                 },
+                viewModel = viewModel,
             )
         }
 
@@ -81,8 +87,9 @@ fun MicaNavHost(
         ) { backStackEntry ->
             val panelId = backStackEntry.arguments?.getString("panelId") ?: return@composable
             val widgetId = backStackEntry.arguments?.getString("widgetId") ?: return@composable
+            // Same shared ViewModel as the editor — panels route is the single owner.
             val parentEntry = remember(backStackEntry) {
-                navController.getBackStackEntry("panel_editor/$panelId")
+                navController.getBackStackEntry(MicaDestination.Panels.route)
             }
             val viewModel: com.micaaudio.android.ui.screens.panels.PanelsViewModel =
                 androidx.hilt.navigation.compose.hiltViewModel(parentEntry)
@@ -90,23 +97,6 @@ fun MicaNavHost(
                 widgetId = widgetId,
                 deviceId = viewModel.uiState.value.selectedDeviceId ?: "",
                 viewModel = viewModel,
-                onNavigateBack = { navController.popBackStack() },
-            )
-        }
-
-        composable(MicaDestination.Apps.route) {
-            AppCatalogScreen(
-                onAppClick = { appId -> navController.navigate("app_detail/$appId") },
-            )
-        }
-
-        composable(
-            route = "app_detail/{appId}",
-            arguments = listOf(navArgument("appId") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            val appId = backStackEntry.arguments?.getString("appId") ?: return@composable
-            AppDetailScreen(
-                appId = appId,
                 onNavigateBack = { navController.popBackStack() },
             )
         }

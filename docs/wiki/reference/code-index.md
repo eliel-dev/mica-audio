@@ -291,6 +291,7 @@ Pontos centrais da sessao de paineis HUB75:
 - [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
 - [PanelsMediaCache](../../../src/App.WinUI/Services/Panels/PanelsMediaCache.cs#L1)
 - [PanelsAnimatedWebpEncoder](../../../src/App.WinUI/Services/Panels/PanelsAnimatedWebpEncoder.cs#L1)
+- [WatchfaceLibrary](../../../src/Panels.Composition/ServerSide/WatchfaceLibrary.cs#L1)
 - [PanelsMatrixDrawHelpers](../../../src/App.WinUI/Services/Panels/PanelsMatrixDrawHelpers.cs#L1)
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [PanelsDeviceSessionService](../../../src/App.WinUI/Services/Devices/PanelsDeviceSessionService.cs#L1)
@@ -305,6 +306,7 @@ Pontos centrais da sessao de paineis HUB75:
 - [Android PanelsViewModel](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/panels/PanelsViewModel.kt#L1)
 - [Android PanelEditorScreen](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/panels/PanelEditorScreen.kt#L1)
 - [Android WidgetConfigScreen](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/panels/WidgetConfigScreen.kt#L1)
+- [Android WatchfaceMostradoresTab](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/panels/WatchfaceMostradoresTab.kt#L1)
 - [Android PanelRepository](../../../src/App.Android/app/src/main/java/com/micaaudio/android/data/repository/PanelRepository.kt#L1)
 
 Observacoes ativas dos paineis:
@@ -313,7 +315,7 @@ Observacoes ativas dos paineis:
 - A sessao agora abre em galeria de cards com miniaturas HUB75 `128x64`, toggle `Ativo` por card e editor dedicado dentro da mesma `PanelsPage`.
 - O editor trabalha com um unico framebuffer `128x64` e sobreposicao por `ZIndex`; a biblioteca lateral e o ponto unico de descoberta/configuracao de widgets.
 - A biblioteca de `Paineis` usa busca + cards do catalogo compartilhado, reaproveita drafts `__local__|appId` como defaults de widget e desabilita itens ainda sem renderer HUB75.
-- Os widgets atuais do compositor sao `analogclock` e `gifhub75`.
+- Os widgets atuais do compositor sao `analogclock` e `gifhub75`; `analogclock` usa `WatchfaceLibrary` para 9 mostradores HUB75 proceduralmente animados em canvas logico `128x64`.
 - A galeria de `Paineis` agora e `static first`: abre com posters lazy, sem compor todos os cards no `Loaded` e sem preview animado local por default.
 - O editor entra com preview desligado; a animacao local so e criada quando o usuario ativa o toggle `Preview`.
 - `PanelsFrameComposer.CreatePosterAsync(...)` e `PanelsMediaCache` separam poster de playback e reutilizam decodificacao de midia para evitar churn de RAM/CPU.

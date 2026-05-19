@@ -123,6 +123,27 @@ public sealed class FileServerMediaStore : IServerMediaStore
             .ToList();
     }
 
+    public IReadOnlyDictionary<string, long> GetMediaSizes(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return new Dictionary<string, long>();
+        }
+
+        var dir = GetMediaDirectory(deviceId);
+        if (!Directory.Exists(dir))
+        {
+            return new Dictionary<string, long>();
+        }
+
+        return Directory
+            .EnumerateFiles(dir, "*", SearchOption.TopDirectoryOnly)
+            .ToDictionary(
+                f => Path.GetFileName(f)!,
+                f => new FileInfo(f).Length,
+                StringComparer.OrdinalIgnoreCase);
+    }
+
     private string ResolvePath(string deviceId, string mediaId)
     {
         return Path.Combine(mediaRoot, SanitizeSegment(deviceId), SanitizeSegment(mediaId));

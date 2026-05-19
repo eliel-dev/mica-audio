@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using MicaAudio.Core.Presets;
+using Panels.Composition.ServerSide;
 using Windows.UI;
 
 namespace App.WinUI.Views.Controls.Renderers;
@@ -16,31 +17,39 @@ internal sealed class ClockPreviewRenderer : IAppPreviewRenderer
         Hub75PreviewHelper.DrawPanel(context, out var ox, out var oy, out var pitch, out var ledSize);
 
         var use24h = !bool.TryParse(context.GetConfigValue("format24h"), out var parsedFormat24) || parsedFormat24;
-        var watchface = ClockFontRenderer.ResolveStyle(context.GetConfigValue("watchfaceStyle"));
-        var mainColor = ClockFontRenderer.ResolveColor(context.GetConfigValue("fontColor"), context.IsSelected);
-
+        var mostrador = context.GetConfigValue("mostrador") ?? "cyberterminal";
         var now = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, BrasiliaTimeZone).DateTime;
-        var showColon = (now.Second % 2) == 0;
-        var format = use24h ? "HH:mm" : "hh:mm";
-        var timeText = now.ToString(showColon ? format : format.Replace(':', ' '), CultureInfo.InvariantCulture);
 
-        ClockFontRenderer.DrawTime(ds, ox, oy, pitch, ledSize, timeText, watchface, mainColor);
+        RenderMostradorPreview(ds, ox, oy, pitch, ledSize, mostrador, now, use24h);
+    }
 
-        if (!use24h)
+    private static void RenderMostradorPreview(
+        Microsoft.Graphics.Canvas.CanvasDrawingSession ds,
+        float ox,
+        float oy,
+        float pitch,
+        float ledSize,
+        string mostrador,
+        DateTime now,
+        bool use24h)
+    {
+        // Render into a 128×64 RGBA buffer using the shared library, then blit
+        // each pixel onto the canvas via the existing helper so the LED look is preserved.
+        var w = Hub75PreviewHelper.PanelWidth;
+        var h = Hub75PreviewHelper.PanelHeight;
+        var frame = new RgbaColor[w * h];
+        // Background already black by default (RgbaColor default = 0,0,0,0)
+        // But our library reads/writes via PanelsMatrixDrawHelpers which fills black explicitly.
+
+        WatchfaceLibrary.Render(mostrador, frame, w, h, 0, 0, w, h, now, use24h);
+
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
         {
-            var period = now.ToString("tt", CultureInfo.InvariantCulture).ToUpperInvariant();
-            Hub75PreviewHelper.DrawText5x7(ds, ox, oy, pitch, ledSize, 51, 2, period, Color.FromArgb(255, 192, 204, 228));
-        }
-
-        Hub75PreviewHelper.DrawText5x7(ds, ox, oy, pitch, ledSize, 2, 24, "BRT", Color.FromArgb(255, 150, 185, 225));
-
-        var sec = now.Second;
-        var progress = (int)Math.Round(((sec + 1) / 60f) * (Hub75PreviewHelper.PanelWidth - 4));
-        for (var x = 2; x < 2 + progress; x++)
-        {
-            var hue = (x - 2) / (float)Math.Max(1, Hub75PreviewHelper.PanelWidth - 4);
-            var color = AppPreviewDrawHelpers.RainbowByFraction(hue);
-            Hub75PreviewHelper.DrawPixel(ds, ox, oy, pitch, ledSize, x, 30, color, glow: false);
+            var px = frame[y * w + x];
+            if (px.A == 0 && px.R == 0 && px.G == 0 && px.B == 0) continue;
+            var color = Color.FromArgb(px.A == 0 ? (byte)255 : px.A, px.R, px.G, px.B);
+            Hub75PreviewHelper.DrawPixel(ds, ox, oy, pitch, ledSize, x, y, color, glow: false);
         }
     }
 

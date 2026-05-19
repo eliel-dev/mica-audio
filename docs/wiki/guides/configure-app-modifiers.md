@@ -23,6 +23,11 @@ Explicar como configurar widgets derivados do catalogo HUB75 dentro da sessao `P
 - Widgets baseados em clima continuam usando `CityAutocompleteService` e `OpenMeteoForecastClient` via DI.
 - O editor compartilhado de modifiers (`AppModifierEditorHost`) continua normalizando valores de cidade e mensagens de erro de autocomplete.
 
+## Apps Relogio
+
+- O app `analogclock` usa o modifier `mostrador` para selecionar um dos 9 estilos HUB75 renderizados pelo compositor: `cyberterminal`, `flipclock`, `neotokyo`, `relogiochuva`, `aurora`, `gridscifi`, `retroambar`, `cosmico` e `monocromatico`.
+- O renderer C#/WinUI e a aba Android de `Mostradores` preservam o mesmo canvas logico `128x64`; widgets menores recebem uma copia reescalada desse frame.
+
 ## Referencias de codigo
 
 - [PanelsPage](../../../src/App.WinUI/Views/PanelsPage.xaml.cs#L1)

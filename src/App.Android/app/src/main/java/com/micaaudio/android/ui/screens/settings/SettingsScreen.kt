@@ -30,6 +30,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showToken by remember { mutableStateOf(false) }
+    var showGiphyKey by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
@@ -92,6 +93,22 @@ fun SettingsScreen(
                             }
                         },
                         visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    OutlinedTextField(
+                        value = state.giphyApiKey,
+                        onValueChange = { viewModel.updateGiphyApiKey(it) },
+                        label = { Text("GIPHY API Key") },
+                        placeholder = { Text("Chave de API do GIPHY") },
+                        leadingIcon = { Icon(Icons.Default.Gif, null) },
+                        trailingIcon = {
+                            IconButton(onClick = { showGiphyKey = !showGiphyKey }) {
+                                Icon(if (showGiphyKey) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Toggle visibilidade")
+                            }
+                        },
+                        visualTransformation = if (showGiphyKey) VisualTransformation.None else PasswordVisualTransformation(),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )

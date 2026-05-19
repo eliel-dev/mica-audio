@@ -1,7 +1,9 @@
 package com.micaaudio.android.ui.screens.panels
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,6 +15,7 @@ import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DevicesOther
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -22,7 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -30,6 +37,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.micaaudio.android.data.api.CatalogPanelResponse
 import com.micaaudio.android.data.api.DeviceSnapshot
 import com.micaaudio.android.ui.theme.MicaPrimary
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +52,7 @@ fun PanelsScreen(
     viewModel: PanelsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var pendingDeleteEntry by remember { mutableStateOf<com.micaaudio.android.data.api.CatalogPanelResponse?>(null) }
+    var pendingDeleteEntry by remember { mutableStateOf<CatalogPanelResponse?>(null) }
 
     // Sort catalog by panel name
     val panelEntries = remember(state.catalogPanels) {
@@ -188,7 +201,12 @@ fun PanelsScreen(
 
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    top = 16.dp,
+                    end = 16.dp,
+                    bottom = 80.dp // Espaço extra para o FAB não cobrir o Switch do último card
+                ),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(panelEntries, key = { it.panel.panelId }) { entry ->
@@ -196,10 +214,19 @@ fun PanelsScreen(
                     val isConnected = entry.activeOnDeviceId != null &&
                         entry.activeOnDeviceId in state.connectedDeviceIds
 
+                    // Se o painel não estiver ativo, tentamos usar o ID do dispositivo selecionado
+                    // ou do primeiro da lista para buscar as mídias da prévia.
+                    val previewDeviceId = entry.activeOnDeviceId
+                        ?: state.selectedDeviceId
+                        ?: state.devices.firstOrNull()?.deviceId
+
                     ServerPanelCard(
                         entry = entry,
                         device = device,
                         isConnected = isConnected,
+                        previewDeviceId = previewDeviceId,
+                        serverUrl = state.serverUrl,
+                        authToken = state.authToken,
                         onActivate = { viewModel.requestActivate(entry.panel) },
                         onEdit = { onEditPanel(entry.panel.panelId) },
                         onDelete = { pendingDeleteEntry = entry },
@@ -211,16 +238,140 @@ fun PanelsScreen(
 }
 
 @Composable
+private fun PanelPreview(
+    widgets: List<com.micaaudio.android.data.api.PanelWidgetDefinition>,
+    panelWidth: Int,
+    panelHeight: Int,
+    serverUrl: String,
+    authToken: String,
+    previewDeviceId: String?,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(panelWidth.toFloat() / panelHeight.toFloat())
+            .background(Color.Black, RoundedCornerShape(4.dp))
+            .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+    ) {
+        val scaleX = maxWidth.value / panelWidth
+        val scaleY = maxHeight.value / panelHeight
+        val scale = minOf(scaleX, scaleY)
+
+        widgets.sortedBy { it.zIndex }.forEach { widget ->
+            WidgetPreview(
+                widget = widget,
+                scale = scale,
+                serverUrl = serverUrl,
+                authToken = authToken,
+                deviceId = previewDeviceId
+            )
+        }
+    }
+}
+
+@Composable
+private fun WidgetPreview(
+    widget: com.micaaudio.android.data.api.PanelWidgetDefinition,
+    scale: Float,
+    serverUrl: String,
+    authToken: String,
+    deviceId: String?
+) {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .offset(x = (widget.x * scale).dp, y = (widget.y * scale).dp)
+            .size(width = (widget.width * scale).dp, height = (widget.height * scale).dp)
+            .clip(RoundedCornerShape((1 * scale).dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            widget.appId == "gifhub75" -> {
+                val mediaIds = remember(widget.runtimeState) {
+                    widget.runtimeState["mediaIds"]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                        ?: widget.runtimeState["mediaId"]?.takeIf { it.isNotEmpty() }?.let { listOf(it) }
+                        ?: emptyList()
+                }
+
+                var currentIndex by remember { mutableIntStateOf(0) }
+
+                if (mediaIds.size > 1) {
+                    LaunchedEffect(mediaIds) {
+                        while (true) {
+                            kotlinx.coroutines.delay(3000) // Troca a cada 3 segundos
+                            currentIndex = (currentIndex + 1) % mediaIds.size
+                        }
+                    }
+                }
+
+                val mediaId = mediaIds.getOrNull(currentIndex)
+
+                if (!mediaId.isNullOrBlank() && !deviceId.isNullOrBlank() && serverUrl.isNotBlank()) {
+                    val imageUrl = "$serverUrl/api/v1/admin/devices/$deviceId/media/$mediaId"
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .setHeader("Authorization", "Bearer $authToken")
+                            .crossfade(enable = true)
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize().background(MicaPrimary.copy(alpha = 0.3f))) {
+                        Icon(
+                            Icons.Default.Dashboard,
+                            null,
+                            modifier = Modifier.size((12 * scale).dp),
+                            tint = Color.White.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            }
+
+            widget.appId.contains("clock") -> {
+                val time = remember { LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")) }
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color(0xFF001F3F)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        time,
+                        color = Color.Cyan,
+                        fontSize = (widget.height * scale * 0.5f).sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            else -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MicaPrimary.copy(alpha = 0.4f))
+                        .border(0.5.dp, MicaPrimary.copy(alpha = 0.6f))
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ServerPanelCard(
     entry: CatalogPanelResponse,
     device: DeviceSnapshot?,
     isConnected: Boolean,
+    previewDeviceId: String?,
+    serverUrl: String,
+    authToken: String,
     onActivate: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val panel = entry.panel
-    val capability = entry.capability
     val deviceLabel = when {
         device != null -> device.name.ifBlank { device.deviceId.take(12) }
         entry.activeOnDeviceId != null -> entry.activeOnDeviceId.take(12)
@@ -228,7 +379,9 @@ private fun ServerPanelCard(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onEdit),
         colors = CardDefaults.cardColors(
             containerColor = if (isConnected)
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
@@ -236,110 +389,98 @@ private fun ServerPanelCard(
                 MaterialTheme.colorScheme.surfaceContainer,
         ),
         border = if (isConnected)
-            CardDefaults.outlinedCardBorder().copy(brush = SolidColor(MicaPrimary.copy(alpha = 0.5f)), width = 1.dp)
+            CardDefaults.outlinedCardBorder()
+                .copy(brush = SolidColor(MicaPrimary.copy(alpha = 0.5f)), width = 1.dp)
         else null,
     ) {
-        Column(Modifier.padding(16.dp)) {
-
-            // ── Panel name + active badge ─────────────────────────────────────
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Dashboard, null,
-                    modifier = Modifier.size(20.dp),
-                    tint = if (isConnected) MicaPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        Column(Modifier.padding(12.dp)) {
+            // ── Preview area with Options button ──────────────────────────────
+            Box(modifier = Modifier.fillMaxWidth()) {
+                PanelPreview(
+                    widgets = panel.widgets,
+                    panelWidth = panel.width,
+                    panelHeight = panel.height,
+                    serverUrl = serverUrl,
+                    authToken = authToken,
+                    previewDeviceId = previewDeviceId
                 )
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(panel.name.ifBlank { "Painel" }, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text(
-                        buildString {
-                            append("${panel.widgets.size} widget(s)  ·  ${panel.width}×${panel.height}px")
-                            if (capability.isNotBlank()) append("  ·  $capability")
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (isConnected) {
-                    Surface(shape = RoundedCornerShape(4.dp), color = MicaPrimary) {
-                        Text(
-                            "ATIVO",
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
+
+                var showMenu by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "Opções",
+                            tint = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Excluir", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            onClick = {
+                                showMenu = false
+                                onDelete()
+                            }
                         )
                     }
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-            Spacer(Modifier.height(10.dp))
-
-            // ── Device info ───────────────────────────────────────────────────
-            if (deviceLabel != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(8.dp).clip(CircleShape)
-                            .background(if (isConnected) Color(0xFF4CAF50) else Color(0xFF9E9E9E)),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Icon(
-                        Icons.Default.DevicesOther, null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        deviceLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        if (isConnected) "Online" else "Offline",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isConnected) Color(0xFF4CAF50)
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    )
-                }
-            } else {
-                Text(
-                    "Não ativo em nenhum dispositivo",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                )
-            }
-
             Spacer(Modifier.height(12.dp))
 
-            // ── Actions ───────────────────────────────────────────────────────
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = onEdit,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Editar")
-                }
-                Button(
-                    onClick = onActivate,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Ativar")
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Default.Delete, null,
-                        tint = MaterialTheme.colorScheme.error,
+            // ── Panel info + Status ──────────────────────────────────────────
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        panel.name.ifBlank { "Painel" },
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
                     )
+                    if (deviceLabel != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isConnected) Color(0xFF4CAF50) else Color(0xFF9E9E9E)),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                deviceLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
+
+                Switch(
+                    checked = isConnected,
+                    onCheckedChange = { onActivate() },
+                    thumbContent = if (isConnected) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    } else null
+                )
             }
         }
     }

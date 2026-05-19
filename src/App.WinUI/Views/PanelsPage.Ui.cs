@@ -30,6 +30,8 @@ public sealed partial class PanelsPage
     private Hub75PanelEditorControl EditorCanvas = null!;
     private ComboBox TargetDeviceCombo = null!;
     private TextBlock StatusTextBlock = null!;
+    private TextBlock MediaStorageTextBlock = null!;
+    private Button DeleteMediaButton = null!;
     private Button NewPanelButton = null!;
     private Button EditorBackButton = null!;
     private Button EditorSaveButton = null!;
@@ -65,15 +67,34 @@ public sealed partial class PanelsPage
         RootLayout.Children.Add(GalleryHeader);
         RootLayout.Children.Add(EditorHeader);
 
+        var statusRow = new Grid { ColumnSpacing = 16 };
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        statusRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
         StatusTextBlock = new TextBlock
         {
             Text = "Paineis: pronto",
             Opacity = 0.82,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 2),
+            VerticalAlignment = VerticalAlignment.Center,
         };
-        Grid.SetRow(StatusTextBlock, 1);
-        RootLayout.Children.Add(StatusTextBlock);
+        Grid.SetColumn(StatusTextBlock, 0);
+        statusRow.Children.Add(StatusTextBlock);
+
+        MediaStorageTextBlock = new TextBlock
+        {
+            Text = string.Empty,
+            Opacity = 0.65,
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Collapsed,
+        };
+        Grid.SetColumn(MediaStorageTextBlock, 1);
+        statusRow.Children.Add(MediaStorageTextBlock);
+
+        Grid.SetRow(statusRow, 1);
+        RootLayout.Children.Add(statusRow);
 
         GalleryView = BuildGalleryView();
         EditorView = BuildEditorView();
@@ -379,6 +400,14 @@ public sealed partial class PanelsPage
         };
         GifGiphyButton.Click += OnGifGiphyButtonClicked;
 
+        DeleteMediaButton = new Button
+        {
+            Content = "Excluir do servidor",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Visibility = Visibility.Collapsed,
+        };
+        DeleteMediaButton.Click += OnDeleteMediaFromServerClicked;
+
         WidgetSourceCard = CreateCard(new StackPanel
         {
             Spacing = 8,
@@ -400,6 +429,7 @@ public sealed partial class PanelsPage
                     HorizontalAlignment = HorizontalAlignment.Left,
                 }),
                 GifGiphyButton,
+                DeleteMediaButton,
             },
         });
         GifSourceButton.Click += OnGifSourceButtonClicked;

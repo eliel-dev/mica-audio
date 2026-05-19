@@ -25,59 +25,22 @@
           "defaultToggle": true
         },
         {
-          "key": "watchfaceStyle",
-          "label": "Estilo da watchface",
+          "key": "mostrador",
+          "label": "Mostrador",
           "type": "Select",
-          "description": "Define o estilo visual dos digitos.",
-          "defaultValue": "pixel",
+          "description": "Escolha o estilo visual completo do relogio.",
+          "defaultValue": "cyberterminal",
           "required": true,
           "options": [
-            {
-              "label": "Pixel",
-              "value": "pixel"
-            },
-            {
-              "label": "Segmentado",
-              "value": "segment"
-            },
-            {
-              "label": "Arredondado",
-              "value": "rounded"
-            }
-          ]
-        },
-        {
-          "key": "fontColor",
-          "label": "Cor da fonte",
-          "type": "Select",
-          "description": "Paleta pronta para os digitos no painel.",
-          "defaultValue": "cyan",
-          "required": true,
-          "options": [
-            {
-              "label": "Ciano",
-              "value": "cyan"
-            },
-            {
-              "label": "Branco",
-              "value": "white"
-            },
-            {
-              "label": "Verde",
-              "value": "green"
-            },
-            {
-              "label": "Amarelo",
-              "value": "yellow"
-            },
-            {
-              "label": "Laranja",
-              "value": "orange"
-            },
-            {
-              "label": "Magenta",
-              "value": "magenta"
-            }
+            { "label": "Cyber Terminal",         "value": "cyberterminal"  },
+            { "label": "Flip Clock Retro",       "value": "flipclock"      },
+            { "label": "Neo Tokyo Night",        "value": "neotokyo"       },
+            { "label": "Relogio Chuva",          "value": "relogiochuva"   },
+            { "label": "Aurora Minimalista",     "value": "aurora"         },
+            { "label": "Grid Sci-Fi",            "value": "gridscifi"      },
+            { "label": "Retro Ambar",            "value": "retroambar"     },
+            { "label": "Cosmico",                "value": "cosmico"        },
+            { "label": "Monocromatico",          "value": "monocromatico"  }
           ]
         }
       ],
@@ -87,9 +50,9 @@
     },
     {
       "id": "gifhub75",
-      "name": "GIF",
-      "summary": "GIF por arquivo local",
-      "description": "Executa GIF no desktop com stream HUB75 128x64 para devices conectados (12 FPS fixos).",
+      "name": "Imagem/GIF",
+      "summary": "Imagens e GIFs locais",
+      "description": "Exibe imagens (PNG, JPG, BMP) ou GIFs animados no painel HUB75 128x64.",
       "author": "Mica Audio",
       "packageName": "gifhub75",
       "fileName": "gifhub75.star",
@@ -100,24 +63,6 @@
         "speed": 1
       },
       "modifiers": [
-        {
-          "key": "sourceType",
-          "label": "Tipo",
-          "type": "Select",
-          "description": "Arquivo unico ou apresentacao de slides.",
-          "defaultValue": "file",
-          "required": true,
-          "options": [
-            {
-              "label": "Arquivo unico",
-              "value": "file"
-            },
-            {
-              "label": "Apresentacao de slides",
-              "value": "slideshow"
-            }
-          ]
-        },
         {
           "key": "scaleMode",
           "label": "Ajuste de imagem",

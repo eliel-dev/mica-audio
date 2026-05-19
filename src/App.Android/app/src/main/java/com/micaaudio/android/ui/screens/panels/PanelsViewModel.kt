@@ -49,7 +49,16 @@ data class PanelsUiState(
 
     val deviceMedia: List<String> = emptyList(),
     val deviceMediaCache: Map<String, String> = emptyMap(),
+    /** Per-file sizes from the server (mediaId → bytes). */
+    val mediaFileSizes: Map<String, Long> = emptyMap(),
+    /** Sum of all media file sizes on the server for the selected device (bytes). */
+    val mediaTotalBytes: Long = 0L,
     val isMediaLoading: Boolean = false,
+    val serverUrl: String = "",
+    val authToken: String = "",
+    val giphyApiKey: String = "",
+    val giphyResults: List<com.micaaudio.android.data.api.GiphyItem> = emptyList(),
+    val isGiphyLoading: Boolean = false,
 )
 
 @HiltViewModel
@@ -57,12 +66,28 @@ class PanelsViewModel @Inject constructor(
     private val deviceRepository: DeviceRepository,
     private val panelRepository: PanelRepository,
     private val catalogRepository: WidgetCatalogRepository,
+    private val appSettings: com.micaaudio.android.data.settings.AppSettings,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PanelsUiState())
     val uiState: StateFlow<PanelsUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            appSettings.serverUrl.collect { url ->
+                _uiState.update { it.copy(serverUrl = url.trimEnd('/')) }
+            }
+        }
+        viewModelScope.launch {
+            appSettings.adminToken.collect { token ->
+                _uiState.update { it.copy(authToken = token) }
+            }
+        }
+        viewModelScope.launch {
+            appSettings.giphyApiKey.collect { key ->
+                _uiState.update { it.copy(giphyApiKey = key) }
+            }
+        }
         refresh()
         loadCatalog()
     }
@@ -179,6 +204,11 @@ class PanelsViewModel @Inject constructor(
      * Upload the panel to the device and switch to the panels app.
      * This also upserts the panel to the server catalog (server-side upsert
      * happens automatically inside HandleAdminUploadPanelAsync on the server).
+     *
+     * Panels whose widgets are not server-capable (e.g. visualizer, weather) need
+     * the WinUI client to be connected and streaming frames; without it the device
+     * will show a blank screen. A warning is appended to the success message so
+     * the user knows why the panel may not render without Windows.
      */
     fun activatePanel(panel: PanelDefinition, deviceId: String) {
         _uiState.update { it.copy(pendingActivatePanel = null) }
@@ -190,6 +220,14 @@ class PanelsViewModel @Inject constructor(
                         commandType = 6,
                         parameters = mapOf("appId" to "panels"),
                     )
+                    val capability = classifyPanelCapability(panel)
+                    val note = when (capability) {
+                        PanelCapability.RequiresClient ->
+                            "\n⚠️ Este painel contém widgets que precisam do cliente Windows para renderizar."
+                        PanelCapability.GifWithoutMedia ->
+                            "\n⚠️ Widget GIF sem mídia carregada no servidor — ative primeiro pelo Windows."
+                        PanelCapability.ServerCapable -> ""
+                    }
                     // Update catalog entry to reflect new activeOnDeviceId.
                     _uiState.update { state ->
                         val updated = state.catalogPanels.map { entry ->
@@ -199,13 +237,33 @@ class PanelsViewModel @Inject constructor(
                                 entry.copy(activeOnDeviceId = null)
                             else entry
                         }
-                        state.copy(successMessage = "Painel '${panel.name}' ativado!", catalogPanels = updated)
+                        state.copy(successMessage = "Painel '${panel.name}' ativado!$note", catalogPanels = updated)
                     }
                 }
                 .onFailure { e ->
                     _uiState.update { it.copy(error = "Erro ao ativar: ${e.message}") }
                 }
         }
+    }
+
+    // ── Capability classification (mirrors PanelServerCapabilityClassifier.cs) ─
+
+    private enum class PanelCapability { ServerCapable, GifWithoutMedia, RequiresClient }
+
+    private fun classifyPanelCapability(panel: PanelDefinition): PanelCapability {
+        if (panel.widgets.isEmpty()) return PanelCapability.ServerCapable
+        for (widget in panel.widgets) {
+            when (widget.appId.trim().lowercase()) {
+                "analogclock" -> continue
+                "gifhub75" -> {
+                    val hasMediaId = !widget.runtimeState["mediaId"].isNullOrBlank()
+                    val hasMediaIds = !widget.runtimeState["mediaIds"].isNullOrBlank()
+                    if (!hasMediaId && !hasMediaIds) return PanelCapability.GifWithoutMedia
+                }
+                else -> return PanelCapability.RequiresClient
+            }
+        }
+        return PanelCapability.ServerCapable
     }
 
     fun dismissMessage() {
@@ -337,7 +395,7 @@ class PanelsViewModel @Inject constructor(
             val updated = panel.widgets.map { w ->
                 if (w.widgetId != widgetId) return@map w
 
-                val minSize = 4
+                val minSize = 15
                 val desiredLeft = (w.x + leftDelta).coerceIn(0, w.x + w.width - minSize)
                 val desiredTop = (w.y + topDelta).coerceIn(0, w.y + w.height - minSize)
                 val leftShift = desiredLeft - w.x
@@ -354,6 +412,33 @@ class PanelsViewModel @Inject constructor(
                 )
             }
             state.copy(panelResponse = state.panelResponse.copy(panel = panel.copy(widgets = updated)))
+        }
+    }
+
+    fun moveWidgetLayer(widgetId: String, up: Boolean) {
+        _uiState.update { state ->
+            val panel = state.panelResponse?.panel ?: return@update state
+            val widgets = panel.widgets.toMutableList()
+            val index = widgets.indexOfFirst { it.widgetId == widgetId }
+            if (index == -1) return@update state
+
+            val newIndex = if (up) index + 1 else index - 1
+            if (newIndex !in widgets.indices) return@update state
+
+            // Swap positions
+            val item = widgets.removeAt(index)
+            widgets.add(newIndex, item)
+
+            // Re-assign z-indices based on list position (higher index = front)
+            val updatedWidgets = widgets.mapIndexed { i, w ->
+                w.copy(zIndex = i)
+            }
+
+            state.copy(
+                panelResponse = state.panelResponse.copy(
+                    panel = panel.copy(widgets = updatedWidgets)
+                )
+            )
         }
     }
 
@@ -403,17 +488,42 @@ class PanelsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isMediaLoading = true) }
             panelRepository.listMedia(deviceId)
-                .onSuccess { ids ->
+                .onSuccess { response ->
+                    val ids = response.mediaIds
                     val cached = panelRepository.syncMediaCache(deviceId, ids).getOrElse { emptyMap() }
                     _uiState.update {
                         it.copy(
                             deviceMedia = ids,
                             deviceMediaCache = cached.mapValues { entry -> entry.value.absolutePath },
+                            mediaFileSizes = response.fileSizes,
+                            mediaTotalBytes = response.totalBytes,
                             isMediaLoading = false,
                         )
                     }
                 }
                 .onFailure { _uiState.update { it.copy(isMediaLoading = false) } }
+        }
+    }
+
+    fun deleteMedia(deviceId: String, mediaId: String) {
+        if (deviceId.isBlank() || mediaId.isBlank()) return
+        viewModelScope.launch {
+            panelRepository.deleteMedia(deviceId, mediaId)
+                .onSuccess {
+                    // Optimistically remove from local list; reload fetches authoritative sizes.
+                    _uiState.update { state ->
+                        state.copy(
+                            deviceMedia = state.deviceMedia.filter { it != mediaId },
+                            deviceMediaCache = state.deviceMediaCache - mediaId,
+                            mediaFileSizes = state.mediaFileSizes - mediaId,
+                        )
+                    }
+                    // Reload authoritative sizes from server
+                    loadMediaForDevice(deviceId)
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(error = "Erro ao excluir mídia: ${e.message}") }
+                }
         }
     }
 
@@ -429,10 +539,53 @@ class PanelsViewModel @Inject constructor(
         }
     }
 
+    fun setGiphyApiKey(key: String) {
+        viewModelScope.launch {
+            appSettings.setGiphyApiKey(key)
+        }
+    }
+
+    fun searchGiphy(query: String) {
+        if (query.isBlank()) {
+            _uiState.update { it.copy(giphyResults = emptyList()) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isGiphyLoading = true) }
+            val result = deviceRepository.searchGiphy(query)
+            result.onSuccess { response ->
+                _uiState.update { it.copy(giphyResults = response.items, isGiphyLoading = false) }
+            }.onFailure { e ->
+                _uiState.update { it.copy(isGiphyLoading = false, error = "GIPHY Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun importGiphyToDevice(deviceId: String, item: com.micaaudio.android.data.api.GiphyItem) {
+        if (deviceId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isMediaLoading = true) }
+            // 1. Download bytes from GIPHY
+            val bytesResult = deviceRepository.downloadGifBytes(item.gifUrl)
+            val bytes = bytesResult.getOrElse {
+                _uiState.update { it.copy(isMediaLoading = false, error = "Falha ao baixar GIF do GIPHY") }
+                return@launch
+            }
+            // 2. Upload to Mica Device
+            val mediaId = "giphy-${item.id}.gif"
+            uploadMedia(deviceId, mediaId, bytes)
+        }
+    }
+
     /**
      * Save panel to the server catalog, and if it's active on a device, push there too.
+     *
+     * [onSaved] is invoked on the main thread after the catalog write succeeds.
+     * Pass [onNavigateBack] here so navigation only fires after the HTTP call
+     * completes — calling it synchronously after this function would cancel the
+     * coroutine when the back-stack entry is removed.
      */
-    fun savePanel() {
+    fun savePanel(onSaved: (() -> Unit)? = null) {
         val panel = _uiState.value.panelResponse?.panel?.copy(updatedAtUtc = Instant.now().toString()) ?: return
         val deviceId = _uiState.value.selectedDeviceId
         viewModelScope.launch {
@@ -454,11 +607,11 @@ class PanelsViewModel @Inject constructor(
                         }
                         state.copy(
                             isPanelLoading = false,
-                            successMessage = "Painel salvo!",
                             panelResponse = state.panelResponse?.copy(panel = panel),
                             catalogPanels = updatedCatalog,
                         )
                     }
+                    onSaved?.invoke()
                 }
                 .onFailure { e ->
                     _uiState.update { it.copy(isPanelLoading = false, error = "Erro ao salvar: ${e.message}") }

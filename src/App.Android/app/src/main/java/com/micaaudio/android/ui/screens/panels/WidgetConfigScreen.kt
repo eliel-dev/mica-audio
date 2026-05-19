@@ -1,10 +1,8 @@
 package com.micaaudio.android.ui.screens.panels
 
 import android.net.Uri
-import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,34 +13,36 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.micaaudio.android.data.api.ModifierFieldType
 import com.micaaudio.android.data.api.PanelWidgetDefinition
 import com.micaaudio.android.data.api.WidgetModifier
 import com.micaaudio.android.ui.theme.MicaPrimary
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 // DOCS: docs/wiki/modules/paineis.md#editor-hub75
 // DOCS: docs/wiki/modules/device-server-protocol.md#atualizacao-2026-04-admin-api-e-winui-remote
@@ -61,6 +61,7 @@ fun WidgetConfigScreen(
     val mediaDeviceId = deviceId.ifBlank {
         state.selectedDeviceId ?: state.devices.firstOrNull()?.deviceId.orEmpty()
     }
+    val context = LocalContext.current
 
     LaunchedEffect(mediaDeviceId) {
         viewModel.loadMediaForDevice(mediaDeviceId)
@@ -71,7 +72,9 @@ fun WidgetConfigScreen(
         return
     }
 
-    val context = LocalContext.current
+    val hasMostradoresTab = widget.appId == "analogclock"
+    val hasMediaTab = widget.appId == "gifhub75"
+    var selectedTab by remember { mutableIntStateOf(if (hasMediaTab) 1 else 0) }
 
     val mediaPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -96,9 +99,14 @@ fun WidgetConfigScreen(
         val selectedIds = selectedMediaIds(widget)
         MediaGridScreen(
             mediaIds = state.deviceMedia,
-            mediaCache = state.deviceMediaCache,
             selectedIds = selectedIds,
             isLoading = state.isMediaLoading,
+            deviceId = mediaDeviceId,
+            serverUrl = state.serverUrl,
+            authToken = state.authToken,
+            totalBytes = state.mediaTotalBytes,
+            maxBytes = 8 * 1024 * 1024L,
+            viewModel = viewModel,
             onNavigateBack = { showMediaGrid = false },
             onAddMedia = { mediaPicker.launch("image/*") },
             onMediaClick = { mediaId ->
@@ -111,38 +119,76 @@ fun WidgetConfigScreen(
                     widget.copy(runtimeState = widget.runtimeState + ("mediaIds" to newIds))
                 )
             },
+            onDeleteMedia = { mediaId -> viewModel.deleteMedia(mediaDeviceId, mediaId) },
         )
         return
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(catalogItem?.name ?: widget.appId, fontWeight = FontWeight.Bold)
-                        Text(widget.appId, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(catalogItem?.name ?: widget.appId, fontWeight = FontWeight.Bold)
+                            Text(widget.appId, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
+                        }
+                    },
+                    actions = {
+                        TextButton(onClick = { viewModel.savePanel(); onNavigateBack() }) {
+                            Text("SALVAR", fontWeight = FontWeight.Bold)
+                        }
+                    },
+                )
+                if (hasMediaTab) {
+                    TabRow(selectedTabIndex = selectedTab) {
+                        Tab(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            text = { Text("Configurações") }
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = { Text("Mídias") }
+                        )
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
+                } else if (hasMostradoresTab) {
+                    TabRow(selectedTabIndex = selectedTab) {
+                        Tab(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            text = { Text("Configurações") }
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = { Text("Mostradores") }
+                        )
                     }
-                },
-                actions = {
-                    TextButton(onClick = { viewModel.savePanel(); onNavigateBack() }) {
-                        Text("SALVAR", fontWeight = FontWeight.Bold)
-                    }
-                    IconButton(onClick = {
-                        viewModel.removeWidget(widgetId)
-                        onNavigateBack()
-                    }) {
-                        Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
-                    }
-                },
-            )
+                }
+            }
         },
     ) { innerPadding ->
+        // ── Aba Mostradores (relógio): full-screen picker com previews ─────
+        if (hasMostradoresTab && selectedTab == 1) {
+            MostradoresTab(
+                selectedValue = widget.configValues["mostrador"] ?: "cyberterminal",
+                onSelect = { value ->
+                    viewModel.updateWidget(
+                        widget.copy(configValues = widget.configValues + ("mostrador" to value))
+                    )
+                },
+                modifier = Modifier.padding(innerPadding),
+            )
+            return@Scaffold
+        }
+
         LazyColumn(
             modifier = Modifier
                 .padding(innerPadding)
@@ -150,80 +196,66 @@ fun WidgetConfigScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // ── Posição e tamanho ────────────────────────────────────────────
-            item {
-                val panelW = state.panelResponse?.panel?.width ?: 128
-                val panelH = state.panelResponse?.panel?.height ?: 64
-                SectionCard(title = "Posição e tamanho") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StepperField(
-                            label = "X", value = widget.x, modifier = Modifier.weight(1f),
-                            min = 0, max = panelW - widget.width.coerceAtLeast(1),
-                        ) { viewModel.updateWidget(widget.copy(x = it)) }
-                        StepperField(
-                            label = "Y", value = widget.y, modifier = Modifier.weight(1f),
-                            min = 0, max = panelH - widget.height.coerceAtLeast(1),
-                        ) { viewModel.updateWidget(widget.copy(y = it)) }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StepperField(
-                            label = "Largura", value = widget.width, modifier = Modifier.weight(1f),
-                            min = 1, max = panelW - widget.x,
-                        ) { viewModel.updateWidget(widget.copy(width = it)) }
-                        StepperField(
-                            label = "Altura", value = widget.height, modifier = Modifier.weight(1f),
-                            min = 1, max = panelH - widget.y,
-                        ) { viewModel.updateWidget(widget.copy(height = it)) }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    StepperField(
-                        label = "Z-Index (camada)", value = widget.zIndex,
-                        modifier = Modifier.fillMaxWidth(), min = 0, max = 99,
-                    ) { viewModel.updateWidget(widget.copy(zIndex = it)) }
-                }
-            }
-
             // ── Configurações (modifiers dinâmicos) ──────────────────────────
-            if (!catalogItem?.modifiers.isNullOrEmpty()) {
+            if (selectedTab == 0 && !catalogItem?.modifiers.isNullOrEmpty()) {
                 item {
+                    val mediaCount = selectedMediaIds(widget).size
                     SectionCard(title = "Configurações") {
-                        catalogItem!!.modifiers.forEachIndexed { index, modifier ->
-                            if (index > 0) Spacer(Modifier.height(12.dp))
-                            ModifierField(
-                                modifier = modifier,
-                                currentValue = widget.configValues[modifier.key] ?: modifier.defaultValue ?: "",
-                                currentToggle = (widget.configValues[modifier.key] ?: if (modifier.defaultToggle == true) "true" else "false") == "true",
-                                onValueChange = { newVal ->
-                                    viewModel.updateWidget(
-                                        widget.copy(configValues = widget.configValues + (modifier.key to newVal))
-                                    )
-                                },
-                            )
-                        }
+                        catalogItem!!.modifiers
+                            .filter { modifier ->
+                                when (modifier.key) {
+                                    // Ocultar opções de slideshow se houver apenas 1 mídia ou menos
+                                    "slideshowInterval", "slideshowShuffle" -> mediaCount > 1
+                                    // O mostrador tem aba dedicada para o relógio — não duplicar na lista.
+                                    "mostrador" -> !hasMostradoresTab
+                                    else -> true
+                                }
+                            }
+                            .forEachIndexed { index, modifier ->
+                                if (index > 0) Spacer(Modifier.height(12.dp))
+                                ModifierField(
+                                    modifier = modifier,
+                                    currentValue = widget.configValues[modifier.key] ?: modifier.defaultValue ?: "",
+                                    currentToggle = (widget.configValues[modifier.key] ?: if (modifier.defaultToggle == true) "true" else "false") == "true",
+                                    onValueChange = { newVal ->
+                                        viewModel.updateWidget(
+                                            widget.copy(configValues = widget.configValues + (modifier.key to newVal))
+                                        )
+                                    },
+                                )
+                            }
                     }
                 }
             }
 
             // ── Mídia (só para gifhub75) ─────────────────────────────────────
-            if (widget.appId == "gifhub75") {
+            if (selectedTab == 1 && widget.appId == "gifhub75") {
                 item {
                     val selectedIds = selectedMediaIds(widget)
 
                     SectionCard(title = "Mídia") {
                         if (selectedIds.isNotEmpty()) {
                             Text(
-                                "Selecionada(s):",
+                                "Mídias no Widget:",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Spacer(Modifier.height(6.dp))
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(selectedIds) { id ->
+                            Spacer(Modifier.height(8.dp))
+
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                maxItemsInEachRow = 4
+                            ) {
+                                selectedIds.forEach { id ->
                                     MediaChip(
                                         label = id,
                                         selected = true,
+                                        deviceId = mediaDeviceId,
+                                        serverUrl = state.serverUrl,
+                                        authToken = state.authToken,
                                         onClick = {
                                             val newIds = (selectedIds - id).joinToString(",")
                                             viewModel.updateWidget(
@@ -233,7 +265,14 @@ fun WidgetConfigScreen(
                                     )
                                 }
                             }
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(16.dp))
+                        } else {
+                            Text(
+                                "Nenhuma mídia selecionada.",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
                         }
 
                         OutlinedButton(
@@ -242,56 +281,7 @@ fun WidgetConfigScreen(
                         ) {
                             Icon(Icons.Default.Image, null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Abrir grade de mídia")
-                        }
-                        Spacer(Modifier.height(12.dp))
-
-                        Text(
-                            "Biblioteca do servidor:",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(6.dp))
-
-                        if (state.isMediaLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        } else if (state.deviceMedia.isEmpty()) {
-                            Text(
-                                "Nenhuma mídia no servidor para este dispositivo.",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                state.deviceMedia.forEach { mediaId ->
-                                    val isSelected = mediaId in selectedIds
-                                    ServerMediaItem(
-                                        mediaId = mediaId,
-                                        isSelected = isSelected,
-                                        onClick = {
-                                            val newIds = if (isSelected) {
-                                                (selectedIds - mediaId).joinToString(",")
-                                            } else {
-                                                (selectedIds + mediaId).joinToString(",")
-                                            }
-                                            viewModel.updateWidget(
-                                                widget.copy(runtimeState = widget.runtimeState + ("mediaIds" to newIds))
-                                            )
-                                        },
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = { mediaPicker.launch("image/*") },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Adicionar mídia do dispositivo")
+                            Text("Abrir galeria de imagens")
                         }
                     }
                 }
@@ -306,63 +296,157 @@ fun WidgetConfigScreen(
 @Composable
 private fun MediaGridScreen(
     mediaIds: List<String>,
-    mediaCache: Map<String, String>,
     selectedIds: List<String>,
     isLoading: Boolean,
+    deviceId: String,
+    serverUrl: String,
+    authToken: String,
+    totalBytes: Long = 0L,
+    maxBytes: Long = 8 * 1024 * 1024L,
+    viewModel: PanelsViewModel,
     onNavigateBack: () -> Unit,
     onAddMedia: () -> Unit,
     onMediaClick: (String) -> Unit,
+    onDeleteMedia: (String) -> Unit = {},
 ) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Mídia", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onAddMedia) {
-                        Icon(Icons.Default.Add, "Adicionar mídia")
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        when {
-            isLoading -> Box(
-                Modifier.fillMaxSize().padding(innerPadding),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
-            }
-
-            mediaIds.isEmpty() -> Box(
-                Modifier.fillMaxSize().padding(innerPadding),
-                contentAlignment = Alignment.Center,
-            ) {
-                OutlinedButton(onClick = onAddMedia) {
-                    Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Adicionar mídia")
+            Column {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text("Galeria de Imagens", fontWeight = FontWeight.Bold)
+                            if (selectedTab == 0 && !isLoading && mediaIds.isNotEmpty()) {
+                                Text(
+                                    "${formatBytes(totalBytes)} / ${formatBytes(maxBytes)}",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
+                        }
+                    },
+                )
+                TabRow(selectedTabIndex = selectedTab) {
+                    Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Servidor") })
+                    Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("GIPHY") })
+                    Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Local") })
                 }
             }
+        },
+    ) { innerPadding ->
+        when (selectedTab) {
+            0 -> { // Servidor
+                if (isLoading) {
+                    Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else if (mediaIds.isEmpty()) {
+                    Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                        Text("Nenhuma mídia no servidor.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(112.dp),
+                        modifier = Modifier.fillMaxSize().padding(innerPadding),
+                        contentPadding = PaddingValues(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        gridItems(mediaIds, key = { it }) { mediaId ->
+                            MediaGridItem(
+                                mediaId = mediaId,
+                                deviceId = deviceId,
+                                serverUrl = serverUrl,
+                                authToken = authToken,
+                                isSelected = mediaId in selectedIds,
+                                onClick = { onMediaClick(mediaId) },
+                                onDelete = { onDeleteMedia(mediaId) },
+                            )
+                        }
+                    }
+                }
+            }
+            1 -> { // GIPHY
+                GiphyTab(
+                    results = state.giphyResults,
+                    isLoading = state.isGiphyLoading,
+                    onSearch = { viewModel.searchGiphy(it) },
+                    onImport = { viewModel.importGiphyToDevice(deviceId, it) },
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
+            2 -> { // Local
+                Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Image, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                        Spacer(Modifier.height(16.dp))
+                        Text("Selecione imagens do seu dispositivo", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(24.dp))
+                        Button(onClick = onAddMedia) {
+                            Icon(Icons.Default.Add, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Selecionar e Enviar")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
-            else -> LazyVerticalGrid(
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GiphyTab(
+    results: List<com.micaaudio.android.data.api.GiphyItem>,
+    isLoading: Boolean,
+    onSearch: (String) -> Unit,
+    onImport: (com.micaaudio.android.data.api.GiphyItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var query by remember { mutableStateOf("") }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it; onSearch(it) },
+            placeholder = { Text("Pesquisar no GIPHY...") },
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            leadingIcon = { Icon(Icons.Default.Image, null) },
+            singleLine = true
+        )
+
+        if (isLoading) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else if (results.isEmpty()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("Nenhum resultado.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            LazyVerticalGrid(
                 columns = GridCells.Adaptive(112.dp),
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                gridItems(mediaIds, key = { it }) { mediaId ->
-                    MediaGridItem(
-                        mediaId = mediaId,
-                        filePath = mediaCache[mediaId],
-                        isSelected = mediaId in selectedIds,
-                        onClick = { onMediaClick(mediaId) },
-                    )
+                gridItems(results, key = { it.id }) { item ->
+                    Card(
+                        modifier = Modifier.aspectRatio(1f).clickable { onImport(item) },
+                        colors = CardDefaults.cardColors(containerColor = Color.Black)
+                    ) {
+                        AsyncImage(
+                            model = item.previewUrl,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                 }
             }
         }
@@ -372,19 +456,35 @@ private fun MediaGridScreen(
 @Composable
 private fun MediaGridItem(
     mediaId: String,
-    filePath: String?,
+    deviceId: String,
+    serverUrl: String,
+    authToken: String,
     isSelected: Boolean,
     onClick: () -> Unit,
+    onDelete: () -> Unit = {},
 ) {
-    val imageBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, filePath) {
-        value = withContext(Dispatchers.IO) {
-            filePath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
-        }
+    var showConfirm by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val imageUrl = "$serverUrl/api/v1/admin/devices/$deviceId/media/$mediaId"
+
+    if (showConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            title = { Text("Excluir mídia?") },
+            text = { Text("\"$mediaId\" será removido do servidor permanentemente.") },
+            confirmButton = {
+                TextButton(onClick = { showConfirm = false; onDelete() }) { Text("Excluir", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirm = false }) { Text("Cancelar") }
+            },
+        )
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .aspectRatio(1f)
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected)
@@ -394,53 +494,53 @@ private fun MediaGridItem(
         ),
         border = if (isSelected) CardDefaults.outlinedCardBorder() else null,
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clip(MaterialTheme.shapes.small)
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center,
-            ) {
-                val bitmap = imageBitmap
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = mediaId,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Icon(
-                        Icons.Default.Image,
-                        null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(32.dp),
-                    )
-                }
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .setHeader("Authorization", "Bearer $authToken")
+                    .crossfade(enable = true)
+                    .build(),
+                contentDescription = mediaId,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                placeholder = rememberVectorPainter(Icons.Default.Image),
+                error = rememberVectorPainter(Icons.Default.Image),
+            )
 
-                if (isSelected) {
-                    Surface(
-                        color = MicaPrimary,
-                        shape = MaterialTheme.shapes.small,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
-                    ) {
-                        Icon(
-                            Icons.Default.Check,
-                            null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp).padding(2.dp),
-                        )
-                    }
+            if (isSelected) {
+                Surface(
+                    color = MicaPrimary,
+                    shape = CircleShape,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Check,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp).padding(2.dp),
+                    )
                 }
             }
-            Text(
-                mediaId,
-                fontSize = 11.sp,
-                maxLines = 2,
-                modifier = Modifier.padding(8.dp),
-            )
+
+            // Delete button (top-left)
+            IconButton(
+                onClick = { showConfirm = true },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .size(28.dp)
+                    .background(Color.Black.copy(alpha = 0.3f), CircleShape),
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    "Excluir",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
         }
     }
 }
@@ -454,6 +554,52 @@ private fun selectedMediaIds(widget: PanelWidgetDefinition): List<String> {
             ?.takeIf { it.isNotEmpty() }
             ?.let { listOf(it) }
         ?: emptyList()
+}
+
+/** Formats a byte count as a human-readable string (e.g. "1.2 MB", "450 KB"). */
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1_048_576L -> "%.1f MB".format(bytes / 1_048_576.0)
+    bytes >= 1_024L     -> "%.0f KB".format(bytes / 1_024.0)
+    else                -> "$bytes B"
+}
+
+/**
+ * Horizontal bar showing used / max storage with a filled progress indicator.
+ * e.g. "1.2 MB / 8.0 MB"
+ */
+@Composable
+private fun StorageCounterBar(usedBytes: Long, maxBytes: Long) {
+    val fraction = if (maxBytes > 0L) (usedBytes.toFloat() / maxBytes.toFloat()).coerceIn(0f, 1f) else 0f
+    val colorScheme = MaterialTheme.colorScheme
+    val barColor = when {
+        fraction >= 0.9f -> colorScheme.error
+        fraction >= 0.7f -> MaterialTheme.colorScheme.tertiary
+        else             -> MicaPrimary
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "Armazenamento no servidor",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "${formatBytes(usedBytes)} / ${formatBytes(maxBytes)}",
+                fontSize = 12.sp,
+                color = colorScheme.onSurfaceVariant,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { fraction },
+            modifier = Modifier.fillMaxWidth(),
+            color = barColor,
+            trackColor = colorScheme.surfaceContainerHighest,
+        )
+    }
 }
 
 @Composable
@@ -472,41 +618,6 @@ private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Un
             Column(modifier = Modifier.padding(16.dp)) {
                 content()
             }
-        }
-    }
-}
-
-@Composable
-private fun StepperField(
-    label: String,
-    value: Int,
-    modifier: Modifier = Modifier,
-    min: Int = 0,
-    max: Int = Int.MAX_VALUE,
-    onValueChange: (Int) -> Unit,
-) {
-    Column(modifier) {
-        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(2.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            FilledTonalIconButton(
-                onClick = { onValueChange((value - 1).coerceAtLeast(min)) },
-                modifier = Modifier.size(32.dp),
-            ) { Icon(Icons.Default.Remove, null, Modifier.size(14.dp)) }
-            OutlinedTextField(
-                value = value.toString(),
-                onValueChange = { it.toIntOrNull()?.coerceIn(min, max)?.let(onValueChange) },
-                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-                singleLine = true,
-                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                ),
-            )
-            FilledTonalIconButton(
-                onClick = { onValueChange((value + 1).coerceAtMost(max)) },
-                modifier = Modifier.size(32.dp),
-            ) { Icon(Icons.Default.Add, null, Modifier.size(14.dp)) }
         }
     }
 }
@@ -613,59 +724,146 @@ private fun ModifierField(
 }
 
 @Composable
-private fun MediaChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun MediaChip(
+    label: String,
+    selected: Boolean,
+    deviceId: String,
+    serverUrl: String,
+    authToken: String,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val imageUrl = "$serverUrl/api/v1/admin/devices/$deviceId/media/$label"
     val containerColor = if (selected) MicaPrimary else MaterialTheme.colorScheme.surfaceContainerHigh
-    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+
     Surface(
-        shape = MaterialTheme.shapes.small,
+        shape = RoundedCornerShape(8.dp),
         color = containerColor,
-        contentColor = contentColor,
         modifier = Modifier
+            .size(56.dp)
             .clickable(onClick = onClick)
             .border(
                 1.dp,
                 if (selected) MicaPrimary else MaterialTheme.colorScheme.outline,
-                MaterialTheme.shapes.small,
+                RoundedCornerShape(8.dp),
             ),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (selected) Icon(Icons.Default.Check, null, modifier = Modifier.size(14.dp))
-            Text(label.take(20), fontSize = 12.sp)
+        Box(contentAlignment = Alignment.Center) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .setHeader("Authorization", "Bearer $authToken")
+                    .crossfade(enable = true)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                placeholder = rememberVectorPainter(Icons.Default.Image),
+                error = rememberVectorPainter(Icons.Default.Image),
+            )
+
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MicaPrimary.copy(alpha = 0.3f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Check,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ServerMediaItem(mediaId: String, isSelected: Boolean, onClick: () -> Unit) {
-    val containerColor = if (isSelected)
-        MaterialTheme.colorScheme.primaryContainer
-    else
-        MaterialTheme.colorScheme.surfaceContainerLow
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = containerColor,
+private fun ServerMediaItem(
+    mediaId: String,
+    isSelected: Boolean,
+    deviceId: String,
+    serverUrl: String,
+    authToken: String,
+    onClick: () -> Unit,
+    onDelete: () -> Unit = {},
+) {
+    var showConfirm by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val imageUrl = "$serverUrl/api/v1/admin/devices/$deviceId/media/$mediaId"
+
+    if (showConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            title = { Text("Excluir mídia?") },
+            text = { Text("A mídia será removida do servidor permanentemente.") },
+            confirmButton = {
+                TextButton(onClick = { showConfirm = false; onDelete() }) { Text("Excluir", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirm = false }) { Text("Cancelar") }
+            },
+        )
+    }
+
+    Card(
         modifier = Modifier
-            .fillMaxWidth()
+            .size(72.dp)
             .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected)
+                MaterialTheme.colorScheme.primaryContainer
+            else
+                MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        border = if (isSelected) CardDefaults.outlinedCardBorder() else null,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                Icons.Default.Image,
-                null,
-                tint = if (isSelected) MicaPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .setHeader("Authorization", "Bearer $authToken")
+                    .crossfade(enable = true)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                placeholder = rememberVectorPainter(Icons.Default.Image),
+                error = rememberVectorPainter(Icons.Default.Image),
             )
-            Text(mediaId, fontSize = 13.sp, modifier = Modifier.weight(1f))
+
             if (isSelected) {
-                Icon(Icons.Default.Check, null, tint = MicaPrimary, modifier = Modifier.size(18.dp))
+                Surface(
+                    color = MicaPrimary,
+                    shape = CircleShape,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Check,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp).padding(2.dp),
+                    )
+                }
+            }
+
+            // Botão excluir discreto
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(2.dp)
+                    .size(20.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .clickable { showConfirm = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Delete, null, tint = Color.White, modifier = Modifier.size(12.dp))
             }
         }
     }

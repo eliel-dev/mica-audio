@@ -51,4 +51,10 @@ public interface IServerMediaStore
     /// Returns an empty list when the device has no media.
     /// </summary>
     IReadOnlyList<string> ListMediaIds(string deviceId);
+
+    /// <summary>
+    /// Returns a map of mediaId → file size in bytes for every media file stored
+    /// for the device. Returns an empty dictionary when the device has no media.
+    /// </summary>
+    IReadOnlyDictionary<string, long> GetMediaSizes(string deviceId);
 }

@@ -51,7 +51,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 
 - `PanelsFrameComposer` cria um unico framebuffer RGBA `128x64` por apresentacao e compoe os widgets em ordem de `ZIndex`.
 - `CreatePosterAsync(...)` separa poster render de playback render para manter a galeria leve e previsivel.
-- `analogclock` e renderizado nativamente no compositor com texto `5x7` e barra de segundos.
+- `analogclock` e renderizado nativamente pelo `WatchfaceLibrary` em canvas virtual `128x64`, com 9 mostradores HUB75 (`cyberterminal`, `flipclock`, `neotokyo`, `relogiochuva`, `aurora`, `gridscifi`, `retroambar`, `cosmico`, `monocromatico`) e animacoes sutis baseadas no relogio.
 - `gifhub75` usa decodificacao propria por widget, inclusive para arquivos estaticos e slideshow local por pasta.
 - GIF animado agora preserva os delays reais do arquivo por frame; o compositor resolve o frame ativo por timeline da midia, nao mais por indice global fixo.
 - O decoder de `gifhub75` coalesce os frames animados antes do formatter/blit, respeitando transparencia e disposal para evitar ghosting no preview e no transporte `WebP`.
@@ -117,6 +117,8 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 - [PanelsFrameComposer](../../../src/App.WinUI/Services/Panels/PanelsFrameComposer.cs#L1)
 - [PanelsMediaCache](../../../src/App.WinUI/Services/Panels/PanelsMediaCache.cs#L1)
 - [PanelsAnimatedWebpEncoder](../../../src/App.WinUI/Services/Panels/PanelsAnimatedWebpEncoder.cs#L1)
+- [WatchfaceLibrary](../../../src/Panels.Composition/ServerSide/WatchfaceLibrary.cs#L1)
+- [Android WatchfaceMostradoresTab](../../../src/App.Android/app/src/main/java/com/micaaudio/android/ui/screens/panels/WatchfaceMostradoresTab.kt#L1)
 - [PanelsPlaybackService](../../../src/App.WinUI/Services/Panels/PanelsPlaybackService.cs#L1)
 - [PanelsDeviceSessionService](../../../src/App.WinUI/Services/Devices/PanelsDeviceSessionService.cs#L1)
 - [ShellPage](../../../src/App.WinUI/Views/ShellPage.xaml.cs#L1)

@@ -352,6 +352,62 @@ public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDev
     }
 
     /// <summary>
+    /// Returns storage stats for all media files uploaded for a device.
+    /// Returns null when the request fails (server unreachable or no media store).
+    /// </summary>
+    public async Task<MediaStorageInfo?> ListMediaAsync(
+        string deviceId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return null;
+        }
+
+        try
+        {
+            var path = $"/api/v1/admin/devices/{Uri.EscapeDataString(deviceId.Trim())}/media";
+            using var response = await httpClient.GetAsync(path, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var mediaIds = new List<string>();
+            if (root.TryGetProperty("mediaIds", out var idsEl))
+            {
+                foreach (var el in idsEl.EnumerateArray())
+                {
+                    if (el.GetString() is { } id) mediaIds.Add(id);
+                }
+            }
+
+            var fileSizes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            if (root.TryGetProperty("fileSizes", out var sizesEl))
+            {
+                foreach (var kv in sizesEl.EnumerateObject())
+                {
+                    fileSizes[kv.Name] = kv.Value.GetInt64();
+                }
+            }
+
+            var totalBytes = root.TryGetProperty("totalBytes", out var totalEl)
+                ? totalEl.GetInt64()
+                : fileSizes.Values.Sum();
+
+            return new MediaStorageInfo(mediaIds, fileSizes, totalBytes);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Removes a previously uploaded media file. Returns true when the file
     /// existed and was deleted, false when it was already absent.
     /// </summary>
@@ -611,4 +667,20 @@ public sealed partial class RemoteDeviceServerClient : IDeviceServerClient, IDev
 
     [LoggerMessage(EventId = 1300, Level = LogLevel.Warning, Message = "Remote device event stream connection failed.")]
     private static partial void LogRemoteEventConnectionFailed(ILogger logger, Exception exception);
+}
+
+/// <summary>
+/// Media storage statistics for a single device returned by <see cref="RemoteDeviceServerClient.ListMediaAsync"/>.
+/// </summary>
+public sealed class MediaStorageInfo(
+    IReadOnlyList<string> mediaIds,
+    IReadOnlyDictionary<string, long> fileSizes,
+    long totalBytes)
+{
+    public static MediaStorageInfo Empty { get; } = new([], new Dictionary<string, long>(), 0L);
+
+    public IReadOnlyList<string> MediaIds { get; } = mediaIds;
+    public IReadOnlyDictionary<string, long> FileSizes { get; } = fileSizes;
+    public long TotalBytes { get; } = totalBytes;
+    public int FileCount => MediaIds.Count;
 }

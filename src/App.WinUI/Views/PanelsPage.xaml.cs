@@ -148,6 +148,7 @@ public sealed partial class PanelsPage : Page, IDisposable
             QueueInitialGalleryPosterBatch();
             UpdateGalleryCardStates();
             ClearEditorPreview();
+            _ = RefreshMediaStorageAsync();
         }
         catch (OperationCanceledException)
         {
@@ -691,6 +692,7 @@ public sealed partial class PanelsPage : Page, IDisposable
     private void OnTargetDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateGalleryCardStates();
+        _ = RefreshMediaStorageAsync();
     }
 
     private void OnDeviceOpsStateChanged(object? sender, EventArgs e)
@@ -1658,6 +1660,7 @@ public sealed partial class PanelsPage : Page, IDisposable
         if (!isGifWidget)
         {
             GifSourcePathText.Text = string.Empty;
+            DeleteMediaButton.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -1668,7 +1671,150 @@ public sealed partial class PanelsPage : Page, IDisposable
         GifSourcePathText.Text = selectedWidget!.RuntimeState.TryGetValue("sourcePath", out var path)
             ? path
             : string.Empty;
+
+        // Show delete button only when the widget has mediaIds stored on the server
+        var hasServerMedia = selectedWidget.RuntimeState.TryGetValue("mediaIds", out var ids)
+            && !string.IsNullOrWhiteSpace(ids);
+        DeleteMediaButton.Visibility = hasServerMedia ? Visibility.Visible : Visibility.Collapsed;
+        if (hasServerMedia)
+        {
+            var count = ids!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length;
+            DeleteMediaButton.Content = count == 1 ? "Excluir do servidor (1 arquivo)" : $"Excluir do servidor ({count} arquivos)";
+        }
     }
+
+    private async void OnDeleteMediaFromServerClicked(object sender, RoutedEventArgs e)
+    {
+        if (selectedWidget is null) return;
+        if (!selectedWidget.RuntimeState.TryGetValue("mediaIds", out var ids) || string.IsNullOrWhiteSpace(ids))
+            return;
+
+        var deviceId = GetSelectedDeviceId();
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            SetStatus("Nenhum dispositivo selecionado para excluir mídia.", isError: true);
+            return;
+        }
+
+        var mediaIdList = ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var dialog = new ContentDialog
+        {
+            Title = "Excluir mídia do servidor",
+            Content = $"Isso irá remover {mediaIdList.Length} arquivo(s) do servidor para o dispositivo '{deviceId}'. A ação não pode ser desfeita.",
+            PrimaryButtonText = "Excluir",
+            CloseButtonText = "Cancelar",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        SetStatus("Excluindo mídia do servidor…");
+        var serverClient = await CreateMediaClientAsync().ConfigureAwait(true);
+        if (serverClient is null)
+        {
+            SetStatus("Não foi possível conectar ao servidor.", isError: true);
+            return;
+        }
+
+        var deleted = 0;
+        foreach (var mediaId in mediaIdList)
+        {
+            try
+            {
+                await serverClient.DeleteMediaAsync(deviceId, mediaId).ConfigureAwait(true);
+                deleted++;
+            }
+            catch (Exception ex)
+            {
+                App.ReportError($"Falha ao excluir mídia {mediaId}", ex);
+            }
+        }
+
+        // Clear server media references from the widget
+        selectedWidget.RuntimeState.Remove("mediaIds");
+        selectedWidget.RuntimeState.Remove("mediaId");
+        MarkDirty($"{deleted} arquivo(s) de mídia excluído(s) do servidor.");
+        UpdateWidgetSourceUi();
+        _ = RefreshMediaStorageAsync();
+    }
+
+    private async Task RefreshMediaStorageAsync()
+    {
+        var deviceId = GetSelectedDeviceId();
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            MediaStorageTextBlock.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        try
+        {
+            var serverClient = await CreateMediaClientAsync().ConfigureAwait(true);
+            if (serverClient is null)
+            {
+                MediaStorageTextBlock.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var info = await serverClient.ListMediaAsync(deviceId).ConfigureAwait(true);
+            if (info is null || info.FileCount == 0)
+            {
+                MediaStorageTextBlock.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            MediaStorageTextBlock.Text = $"Mídia: {info.FileCount} arquivo(s) · {FormatBytes(info.TotalBytes)}";
+            MediaStorageTextBlock.Visibility = Visibility.Visible;
+        }
+        catch
+        {
+            MediaStorageTextBlock.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>
+    /// Creates a lightweight <see cref="Device.Client.Remote.RemoteDeviceServerClient"/>
+    /// using the current server address and stored admin token.
+    /// Returns null when credentials are unavailable.
+    /// </summary>
+    private async Task<Device.Client.Remote.RemoteDeviceServerClient?> CreateMediaClientAsync()
+    {
+        try
+        {
+            var baseAddress = deviceOps.GetServerBaseAddress();
+            if (string.IsNullOrWhiteSpace(baseAddress)) return null;
+
+            var adminToken = await secretStore.LoadAdminTokenAsync().ConfigureAwait(true);
+#pragma warning disable CA2000 // HttpClient ownership transferred to RemoteDeviceServerClient via ownsHttpClient:true
+            var httpClient = new System.Net.Http.HttpClient();
+#pragma warning restore CA2000
+            if (!string.IsNullOrWhiteSpace(adminToken))
+            {
+                httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
+            }
+
+            return new Device.Client.Remote.RemoteDeviceServerClient(
+                httpClient,
+                new Device.Client.Remote.RemoteDeviceServerClientOptions { BaseAddress = baseAddress },
+                ownsHttpClient: true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        >= 1_048_576 => $"{bytes / 1_048_576.0:F1} MB",
+        >= 1_024     => $"{bytes / 1_024.0:F0} KB",
+        _            => $"{bytes} B",
+    };
 
     private string ResolveWidgetLayerDisplayLabel(PanelWidgetDefinition widget)
     {

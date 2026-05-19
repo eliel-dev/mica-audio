@@ -62,7 +62,9 @@ public sealed partial class DeviceServerHost
         }
 
         var mediaIds = mediaStore.ListMediaIds(deviceId);
-        return Results.Ok(new { deviceId, mediaIds });
+        var fileSizes = mediaStore.GetMediaSizes(deviceId);
+        var totalBytes = fileSizes.Values.Sum();
+        return Results.Ok(new { deviceId, mediaIds, fileSizes, totalBytes });
     }
 
     private IResult HandleAdminDownloadMedia(HttpContext ctx, string deviceId, string mediaId)

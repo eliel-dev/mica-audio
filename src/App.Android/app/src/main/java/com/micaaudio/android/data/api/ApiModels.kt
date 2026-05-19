@@ -286,6 +286,10 @@ data class WidgetRuntime(
 data class MediaListResponse(
     val deviceId: String = "",
     val mediaIds: List<String> = emptyList(),
+    /** Map of mediaId → file size in bytes (added in server ≥ 1.1). */
+    val fileSizes: Map<String, Long> = emptyMap(),
+    /** Sum of all file sizes in bytes. */
+    val totalBytes: Long = 0L,
 )
 
 // ── GIPHY ─────────────────────────────────────────────────────────────────────

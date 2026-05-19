@@ -59,7 +59,7 @@ public sealed class AppModifierStateStoreTests
                     Values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
                         ["format24h"] = "true",
-                        ["fontColor"] = "cyan",
+                        ["mostrador"] = "cyberterminal",
                     },
                 });
 
@@ -69,7 +69,7 @@ public sealed class AppModifierStateStoreTests
 
             Assert.NotNull(draft);
             Assert.Equal("true", draft!.Values["format24h"]);
-            Assert.Equal("cyan", draft.Values["fontColor"]);
+            Assert.Equal("cyberterminal", draft.Values["mostrador"]);
 
             await reloaded.ClearDraftAsync("device-x", "analogclock");
             Assert.Null(await reloaded.GetDraftAsync("device-x", "analogclock"));
