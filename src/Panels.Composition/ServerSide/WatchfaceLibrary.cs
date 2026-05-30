@@ -15,7 +15,7 @@ public static partial class WatchfaceLibrary
     public static IReadOnlyList<string> All { get; } =
     [
         "cyberterminal", "flipclock", "neotokyo", "relogiochuva", "aurora",
-        "gridscifi", "retroambar", "cosmico", "monocromatico",
+        "gridscifi", "retroambar", "cosmico", "monocromatico", "cyberpunk",
     ];
 
     public static bool IsKnown(string? mostrador) =>
@@ -55,6 +55,7 @@ public static partial class WatchfaceLibrary
             case "retroambar":    DrawRetroAmbar(ctx);    break;
             case "cosmico":       DrawCosmico(ctx);        break;
             case "monocromatico": DrawMonocromatico(ctx); break;
+            case "cyberpunk":     DrawCyberpunk(ctx);     break;
             default:              DrawCyberTerminal(ctx);  break;
         }
 
@@ -120,6 +121,8 @@ public static partial class WatchfaceLibrary
             if (width <= 0 || height <= 0) return;
             for (var row = 0; row < height; row++) HLine(x, y + row, width, color);
         }
+
+        public void Clear(RgbaColor color) => FillRect(0, 0, VirtualWidth, VirtualHeight, color);
 
         public void Line(int x0, int y0, int x1, int y1, RgbaColor color)
         {

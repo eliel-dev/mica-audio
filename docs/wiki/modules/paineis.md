@@ -51,7 +51,7 @@ A sessao `Paineis` e uma experiencia `galeria -> editor dedicado` para layouts H
 
 - `PanelsFrameComposer` cria um unico framebuffer RGBA `128x64` por apresentacao e compoe os widgets em ordem de `ZIndex`.
 - `CreatePosterAsync(...)` separa poster render de playback render para manter a galeria leve e previsivel.
-- `analogclock` e renderizado nativamente pelo `WatchfaceLibrary` em canvas virtual `128x64`, com 9 mostradores HUB75 (`cyberterminal`, `flipclock`, `neotokyo`, `relogiochuva`, `aurora`, `gridscifi`, `retroambar`, `cosmico`, `monocromatico`) e animacoes sutis baseadas no relogio.
+- `analogclock` e renderizado nativamente pelo `WatchfaceLibrary` em canvas virtual `128x64`, com 10 mostradores HUB75 (`cyberterminal`, `flipclock`, `neotokyo`, `relogiochuva`, `aurora`, `gridscifi`, `retroambar`, `cosmico`, `monocromatico`, `cyberpunk`) e animacoes sutis baseadas no relogio. O mostrador `cyberpunk` oferece uma recriacao fiel com efeito glitch de aberracao cromatica (RGB split), grid tecnologico, spline de divisao do sistema e logs de status RAM/BIO.PRT altamente detalhados e animados.
 - `gifhub75` usa decodificacao propria por widget, inclusive para arquivos estaticos e slideshow local por pasta.
 - GIF animado agora preserva os delays reais do arquivo por frame; o compositor resolve o frame ativo por timeline da midia, nao mais por indice global fixo.
 - O decoder de `gifhub75` coalesce os frames animados antes do formatter/blit, respeitando transparencia e disposal para evitar ghosting no preview e no transporte `WebP`.

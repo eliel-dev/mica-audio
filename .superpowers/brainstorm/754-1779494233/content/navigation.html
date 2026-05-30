@@ -1,0 +1,352 @@
+<h2>Navegação entre watchfaces</h2>
+<p class="subtitle">Como selecionar as 10 watchfaces? A aba atual tem os 10 tabs comprimidos. Veja 3 abordagens:</p>
+
+<style>
+.wf-editor {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #252b38;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0b0d13;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  color: #d8e3f5;
+  height: 200px;
+}
+.wf-hdr {
+  height: 38px;
+  background: #141720;
+  border-bottom: 1px solid #252b38;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.wf-logo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border-right: 1px solid #252b38;
+  height: 100%;
+  flex-shrink: 0;
+}
+.wf-logo-mark {
+  width: 16px; height: 16px;
+  background: linear-gradient(135deg, #00d4ff, #7c5be6);
+  border-radius: 4px;
+}
+.wf-logo-name {
+  font-size: 10px; font-weight: 700; letter-spacing: .05em; color: #d8e3f5;
+}
+.wf-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.wf-canvas {
+  flex: 1;
+  background: #0b0d13;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image: radial-gradient(circle, rgba(255,255,255,.03) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+.wf-canvas-inner {
+  width: 128px; height: 64px;
+  background: #0d0f15;
+  border: 1px solid #252b38;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+/* Cyberpunk mini preview */
+.cyber-hdr { position: absolute; top: 0; left: 0; right: 0; height: 10px; background: #fccd00; }
+.cyber-time { position: absolute; top: 16px; left: 4px; font-size: 16px; font-weight: 900; color: #f5f8fa; letter-spacing: -1px; }
+.cyber-footer { position: absolute; bottom: 0; left: 0; right: 0; height: 10px; background: #ff1840; }
+.wf-sidebar {
+  width: 110px;
+  background: #141720;
+  border-left: 1px solid #252b38;
+  font-size: 10px;
+}
+.wf-side-hdr {
+  padding: 5px 8px;
+  border-bottom: 1px solid #252b38;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #5e6e8c;
+}
+.wf-layer {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 8px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+.wf-layer.sel { background: rgba(0,212,255,.06); border-left-color: #00d4ff; }
+.wf-layer-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+.wf-layer-name { font-size: 9px; }
+
+/* ─── Approach A: Scrollable tabs ─── */
+.tabs-scroll {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  overflow-x: auto;
+  padding: 0 6px;
+  gap: 2px;
+  scrollbar-width: none;
+}
+.tabs-scroll::-webkit-scrollbar { display: none; }
+.tab-a {
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  white-space: nowrap;
+  color: #5e6e8c;
+  cursor: pointer;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+.tab-a.active { color: #00d4ff; background: rgba(0,212,255,.08); border-color: rgba(0,212,255,.22); }
+.tab-scroll-hint {
+  font-size: 10px; color: #5e6e8c; padding: 0 6px; flex-shrink: 0;
+}
+
+/* ─── Approach B: Left sidebar nav ─── */
+.left-nav {
+  width: 80px;
+  background: #0f1118;
+  border-right: 1px solid #252b38;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.left-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 4px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid #1a1e2a;
+}
+.left-nav-item.active {
+  border-left-color: #00d4ff;
+  background: rgba(0,212,255,.06);
+}
+.left-nav-thumb {
+  width: 60px; height: 30px;
+  background: #0d0f15;
+  border-radius: 2px;
+  border: 1px solid #252b38;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+.left-nav-label {
+  font-size: 8px;
+  color: #5e6e8c;
+  text-align: center;
+  letter-spacing: .04em;
+}
+.left-nav-item.active .left-nav-label { color: #00d4ff; }
+
+/* ─── Approach C: Dropdown ─── */
+.wf-select-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+}
+.wf-select {
+  flex: 1;
+  background: #0b0d13;
+  border: 1px solid #252b38;
+  color: #d8e3f5;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  outline: none;
+  font-family: inherit;
+}
+.wf-select:focus { border-color: #00d4ff; }
+.wf-breadcrumb {
+  font-size: 10px;
+  color: #5e6e8c;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.wf-breadcrumb span { color: #d8e3f5; }
+
+/* Mini cyberpunk colored blocks */
+.mini-cyber { background: #0d0f15; }
+.mini-cyber .top { height: 30%; background: #fccd00; }
+.mini-cyber .mid { height: 40%; background: #131820; }
+.mini-cyber .bot { height: 30%; background: #ff1840; }
+.mini-aurora { background: linear-gradient(to bottom, #040a1c, #051020); }
+.mini-aurora .band { height: 12px; background: linear-gradient(to right, rgba(22,190,120,.5), rgba(90,58,215,.5)); margin-top: 4px; }
+.mini-flip { background: #080400; display: flex; align-items: center; justify-content: center; gap: 2px; }
+.mini-flip .panel { width: 22px; height: 20px; background: #0f0700; border: 1px solid #824208; border-radius: 1px; }
+.mini-neo { background: linear-gradient(to bottom, #060214, #160030 60%, #0a0528); }
+.mini-terminal { background: #000c0f; border: 1px solid #26e0ef; }
+
+.card-image {
+  background: #0f1118;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+</style>
+
+<div class="options">
+
+  <!-- Option A -->
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Tabs horizontais (melhorado)</h3>
+      <p>Mantém os tabs mas adiciona seta de scroll, ícone por watchface e indicador visual mais limpo</p>
+      <div class="card-image">
+        <div class="wf-editor">
+          <div class="wf-hdr">
+            <div class="wf-logo"><div class="wf-logo-mark"></div><span class="wf-logo-name">MICA</span></div>
+            <div class="tabs-scroll">
+              <div class="tab-a active">⚡ CYBER</div>
+              <div class="tab-a">🌌 AURORA</div>
+              <div class="tab-a">💻 TERM</div>
+              <div class="tab-a">⏱ FLIP</div>
+              <div class="tab-a">🌃 TOKYO</div>
+              <div class="tab-a">🌧 CHUVA</div>
+              <div class="tab-a">🛸 SCI-FI</div>
+              <span class="tab-scroll-hint">›</span>
+            </div>
+          </div>
+          <div class="wf-body">
+            <div class="wf-canvas">
+              <div class="wf-canvas-inner mini-cyber">
+                <div class="top"></div><div class="mid"></div><div class="bot"></div>
+              </div>
+            </div>
+            <div class="wf-sidebar">
+              <div class="wf-side-hdr">Camadas</div>
+              <div class="wf-layer sel"><div class="wf-layer-dot" style="background:#fccd00"></div><span class="wf-layer-name">Background</span></div>
+              <div class="wf-layer"><div class="wf-layer-dot" style="background:#00d4ff"></div><span class="wf-layer-name">Header</span></div>
+              <div class="wf-layer"><div class="wf-layer-dot" style="background:#fff"></div><span class="wf-layer-name">Horário</span></div>
+              <div class="wf-layer"><div class="wf-layer-dot" style="background:#ff1840"></div><span class="wf-layer-name">Rodapé</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Prós</h4><ul><li>Familiar, não muda o layout</li><li>Fácil de implementar</li></ul></div>
+        <div class="cons"><h4>Contras</h4><ul><li>10 tabs ainda é muito</li><li>Tabs com emoji ficam barulhentos</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Painel lateral esquerdo com miniaturas</h3>
+      <p>Remove os tabs do header e abre um painel lateral com preview de cada watchface</p>
+      <div class="card-image">
+        <div class="wf-editor">
+          <div class="wf-hdr" style="height:38px">
+            <div class="wf-logo"><div class="wf-logo-mark"></div><span class="wf-logo-name">MICA EDITOR</span></div>
+            <div class="wf-breadcrumb" style="padding:0 12px">
+              <span style="color:#5e6e8c">Watchface:</span>
+              <span>Cyberpunk</span>
+            </div>
+          </div>
+          <div class="wf-body">
+            <div class="left-nav">
+              <div class="left-nav-item active">
+                <div class="left-nav-thumb mini-cyber"><div class="top"></div><div class="mid"></div><div class="bot"></div></div>
+                <span class="left-nav-label">CYBER</span>
+              </div>
+              <div class="left-nav-item">
+                <div class="left-nav-thumb mini-aurora"><div class="band"></div></div>
+                <span class="left-nav-label">AURORA</span>
+              </div>
+              <div class="left-nav-item">
+                <div class="left-nav-thumb mini-flip"><div class="panel"></div><div class="panel"></div></div>
+                <span class="left-nav-label">FLIP</span>
+              </div>
+              <div class="left-nav-item">
+                <div class="left-nav-thumb mini-neo"></div>
+                <span class="left-nav-label">TOKYO</span>
+              </div>
+            </div>
+            <div class="wf-canvas">
+              <div class="wf-canvas-inner mini-cyber">
+                <div class="top"></div><div class="mid"></div><div class="bot"></div>
+              </div>
+            </div>
+            <div class="wf-sidebar">
+              <div class="wf-side-hdr">Camadas</div>
+              <div class="wf-layer sel"><div class="wf-layer-dot" style="background:#fccd00"></div><span class="wf-layer-name">Background</span></div>
+              <div class="wf-layer"><div class="wf-layer-dot" style="background:#00d4ff"></div><span class="wf-layer-name">Header</span></div>
+              <div class="wf-layer"><div class="wf-layer-dot" style="background:#fff"></div><span class="wf-layer-name">Horário</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Prós</h4><ul><li>Thumbnails visuais das watchfaces</li><li>Escalável para + faces</li></ul></div>
+        <div class="cons"><h4>Contras</h4><ul><li>Ocupa espaço horizontal do canvas</li><li>Maior refactor</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Dropdown no header (compacto)</h3>
+      <p>Substitui os tabs por um select elegante, liberando todo o espaço do header</p>
+      <div class="card-image">
+        <div class="wf-editor">
+          <div class="wf-hdr">
+            <div class="wf-logo"><div class="wf-logo-mark"></div><span class="wf-logo-name">MICA</span></div>
+            <div class="wf-select-wrap">
+              <select class="wf-select">
+                <option>⚡ Cyberpunk</option>
+                <option>🌌 Aurora</option>
+                <option>💻 CyberTerminal</option>
+              </select>
+              <div style="font-size:9px;color:#5e6e8c;font-family:monospace">1–0 para trocar</div>
+            </div>
+          </div>
+          <div class="wf-body">
+            <div class="wf-canvas">
+              <div class="wf-canvas-inner mini-cyber">
+                <div class="top"></div><div class="mid"></div><div class="bot"></div>
+              </div>
+            </div>
+            <div class="wf-sidebar">
+              <div class="wf-side-hdr">Camadas</div>
+              <div class="wf-layer sel"><div class="wf-layer-dot" style="background:#fccd00"></div><span class="wf-layer-name">Background</span></div>
+              <div class="wf-layer"><div class="wf-layer-dot" style="background:#00d4ff"></div><span class="wf-layer-name">Header</span></div>
+              <div class="wf-layer"><div class="wf-layer-dot" style="background:#fff"></div><span class="wf-layer-name">Horário</span></div>
+              <div class="wf-layer"><div class="wf-layer-dot" style="background:#ff1840"></div><span class="wf-layer-name">Rodapé</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Prós</h4><ul><li>Header muito mais limpo</li><li>Mínimo esforço de implementação</li></ul></div>
+        <div class="cons"><h4>Contras</h4><ul><li>Menos visível — precisa abrir o dropdown</li><li>Sem preview visual</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+</div>

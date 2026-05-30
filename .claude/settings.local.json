@@ -99,7 +99,14 @@
       "Read(//mnt/c/Users/eliels/**)",
       "Read(//mnt/c/Users/eliels/Documents/GitHub/**)",
       "Bash(claude mcp *)",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(scripts/start-server.sh *)",
+      "Bash(C:/Users/eliels/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/start-server.sh *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git reset *)",
+      "Bash(findstr /c:\"function r\" \"C:\\\\Users\\\\eliels\\\\Documents\\\\GitHub\\\\mica-audio\\\\tools\\\\watchface-editor.html\")",
+      "Bash(bash \"C:/Users/eliels/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/start-server.sh\" --project-dir \"C:/Users/eliels/Documents/GitHub/mica-audio\")"
     ]
   },
   "hooks": {

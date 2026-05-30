@@ -40,7 +40,8 @@
             { "label": "Grid Sci-Fi",            "value": "gridscifi"      },
             { "label": "Retro Ambar",            "value": "retroambar"     },
             { "label": "Cosmico",                "value": "cosmico"        },
-            { "label": "Monocromatico",          "value": "monocromatico"  }
+            { "label": "Monocromatico",          "value": "monocromatico"  },
+            { "label": "Cyberpunk 2077",         "value": "cyberpunk"      }
           ]
         }
       ],

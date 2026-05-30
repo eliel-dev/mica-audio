@@ -1,0 +1,46 @@
+<h2>Como o editor envia parâmetros para o app?</h2>
+<p class="subtitle">Escolha como a comunicação entre o browser e o WinUI vai funcionar</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117;padding:16px;font-family:monospace;font-size:11px;color:#8b949e;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="background:#1f6feb;color:#fff;padding:3px 8px;border-radius:4px;font-size:10px">Browser</span>
+        <span style="color:#58a6ff">──── HTTP PUT ────▶</span>
+        <span style="background:#238636;color:#fff;padding:3px 8px;border-radius:4px;font-size:10px">C# App</span>
+      </div>
+      <div style="color:#3fb950;font-size:10px;margin-top:8px">slider muda → fetch() imediato → frame seguinte já usa o novo parâmetro</div>
+      <div style="color:#8b949e;font-size:10px">latência: &lt;5ms</div>
+    </div>
+    <div class="card-body">
+      <h3>A — HTTP endpoint (Recomendado)</h3>
+      <p>Adiciona um endpoint <code>PUT /api/watchface-params/{nome}</code> ao servidor existente do app. O editor web faz <code>fetch()</code> a cada mudança de slider. O app aplica os novos parâmetros no próximo frame de render — sem arquivo, sem polling.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Vantagens</h4><ul><li>Instantâneo (&lt;5ms)</li><li>Sem escrita em disco</li><li>Fácil de expandir</li></ul></div>
+        <div class="cons"><h4>Limitações</h4><ul><li>Adiciona ~20 linhas ao servidor C#</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117;padding:16px;font-family:monospace;font-size:11px;color:#8b949e;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="background:#1f6feb;color:#fff;padding:3px 8px;border-radius:4px;font-size:10px">Browser</span>
+        <span style="color:#58a6ff">──▶ JSON ──▶</span>
+        <span style="background:#6e40c9;color:#fff;padding:3px 8px;border-radius:4px;font-size:10px">FileSystemWatcher</span>
+        <span style="color:#58a6ff">──▶</span>
+        <span style="background:#238636;color:#fff;padding:3px 8px;border-radius:4px;font-size:10px">C# App</span>
+      </div>
+      <div style="color:#3fb950;font-size:10px;margin-top:8px">slider muda → salva arquivo → watcher detecta → reload → frame usa novo parâmetro</div>
+      <div style="color:#8b949e;font-size:10px">latência: ~50-200ms</div>
+    </div>
+    <div class="card-body">
+      <h3>B — FileSystemWatcher + JSON</h3>
+      <p>O editor salva <code>watchface-params.json</code> em disco (via File System Access API do browser). O C# usa <code>FileSystemWatcher</code> para detectar mudanças e recarregar os parâmetros automaticamente.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Vantagens</h4><ul><li>Arquivo editável manualmente</li><li>Sem mudança no servidor HTTP</li></ul></div>
+        <div class="cons"><h4>Limitações</h4><ul><li>Latência de 50-200ms</li><li>Requer permissão de arquivo no browser</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

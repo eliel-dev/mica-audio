@@ -1,0 +1,52 @@
+<h2>Como construir o editor de watchfaces?</h2>
+<p class="subtitle">Escolha a abordagem que melhor se encaixa no seu fluxo de trabalho</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117;padding:16px;font-family:monospace;font-size:12px;color:#58a6ff;min-height:100px;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center">
+      <div style="font-size:28px">🌐</div>
+      <div style="color:#e6edf3;font-size:13px;font-weight:600">Arquivo HTML único</div>
+      <div style="color:#8b949e;font-size:11px;text-align:center">Abre no browser, sem instalar nada</div>
+    </div>
+    <div class="card-body">
+      <h3>A — Web Standalone</h3>
+      <p>Um único <code>watchface-editor.html</code> que você abre direto no Chrome. Canvas 128×64 simulando a matriz LED, controles de parâmetros, e botão "Exportar JSON". Sem servidor, sem dependências.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Vantagens</h4><ul><li>Zero setup</li><li>Funciona offline</li><li>Fácil de compartilhar</li></ul></div>
+        <div class="cons"><h4>Limitações</h4><ul><li>Preview estático (sem animação real do C#)</li><li>Exporta JSON, você aplica manualmente</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117;padding:16px;font-family:monospace;font-size:12px;color:#58a6ff;min-height:100px;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center">
+      <div style="font-size:28px">🔄</div>
+      <div style="color:#e6edf3;font-size:13px;font-weight:600">Web + Hot Reload</div>
+      <div style="color:#8b949e;font-size:11px;text-align:center">Editor web conversa com o app C#</div>
+    </div>
+    <div class="card-body">
+      <h3>B — Editor com Live Preview</h3>
+      <p>Editor web local que salva um <code>watchface-params.json</code> monitorado pelo app WinUI. O app recarrega os parâmetros em tempo real e você vê a animação de verdade (C# / Win2D) enquanto ajusta os sliders.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Vantagens</h4><ul><li>Preview real (animação C# idêntica)</li><li>Fluxo contínuo: ajuste → veja na hora</li></ul></div>
+        <div class="cons"><h4>Limitações</h4><ul><li>Precisa de pequena mudança no app C#</li><li>App precisa estar aberto ao lado</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117;padding:16px;font-family:monospace;font-size:12px;color:#58a6ff;min-height:100px;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center">
+      <div style="font-size:28px">🖥️</div>
+      <div style="color:#e6edf3;font-size:13px;font-weight:600">Reimplementação em JS</div>
+      <div style="color:#8b949e;font-size:11px;text-align:center">Porta o render C# para JavaScript</div>
+    </div>
+    <div class="card-body">
+      <h3>C — Canvas JS Animado</h3>
+      <p>Reimplementa o render de cada watchface em JavaScript (Canvas API). Editor web completo com animações reais rodando no browser, sem precisar do app C# aberto. Exporta parâmetros para aplicar no C#.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Vantagens</h4><ul><li>Animação real no browser</li><li>Completamente independente</li></ul></div>
+        <div class="cons"><h4>Limitações</h4><ul><li>Maior esforço inicial (portar 10 watchfaces)</li><li>Risk de divergência C# ↔ JS</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

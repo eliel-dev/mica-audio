@@ -1,0 +1,130 @@
+<h2>Layout do editor — qual formato prefere?</h2>
+<p class="subtitle">Ambos usam HTTP endpoint. A diferença é se o editor tem preview próprio ou só controles.</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">A — Controles + Preview JS (no browser)</div>
+    <div class="mockup-body" style="background:#0d1117;padding:12px;font-family:monospace;font-size:11px">
+      <div style="display:flex;gap:10px;height:260px">
+        <!-- Left: controls -->
+        <div style="width:55%;display:flex;flex-direction:column;gap:6px">
+          <div style="color:#58a6ff;font-size:10px;border-bottom:1px solid #30363d;padding-bottom:4px">
+            ▼ CYBERPUNK &nbsp;&nbsp; ○ AURORA
+          </div>
+          <div style="color:#8b949e;font-size:10px">CORES</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="width:14px;height:14px;background:#fccd00;border-radius:2px"></div>
+            <div style="color:#e6edf3;font-size:10px;flex:1">Accent</div>
+            <div style="color:#8b949e;font-size:10px">252, 205, 0</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="width:14px;height:14px;background:#ff1840;border-radius:2px"></div>
+            <div style="color:#e6edf3;font-size:10px;flex:1">Alert</div>
+            <div style="color:#8b949e;font-size:10px">255, 24, 64</div>
+          </div>
+          <div style="color:#8b949e;font-size:10px;margin-top:4px">ANIMAÇÃO</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="color:#e6edf3;font-size:10px">Glitch prob. <span style="color:#58a6ff">15%</span></div>
+            <input type="range" min="0" max="100" value="15" style="width:100%;accent-color:#58a6ff">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="color:#e6edf3;font-size:10px">Mem bar speed <span style="color:#58a6ff">1000ms</span></div>
+            <input type="range" min="100" max="5000" value="1000" style="width:100%;accent-color:#58a6ff">
+          </div>
+          <div style="color:#8b949e;font-size:10px;margin-top:4px">LAYOUT</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="color:#e6edf3;font-size:10px">Time Y <span style="color:#58a6ff">20px</span></div>
+            <input type="range" min="0" max="40" value="20" style="width:100%;accent-color:#58a6ff">
+          </div>
+        </div>
+        <!-- Right: canvas preview -->
+        <div style="width:45%;display:flex;flex-direction:column;gap:6px">
+          <div style="color:#8b949e;font-size:10px">PREVIEW (JS)</div>
+          <div style="background:#0c0e12;border:1px solid #30363d;width:100%;aspect-ratio:2/1;display:flex;align-items:center;justify-content:center;border-radius:4px;overflow:hidden;position:relative">
+            <canvas width="128" height="64" style="width:100%;height:100%;image-rendering:pixelated"></canvas>
+            <div style="position:absolute;bottom:4px;right:4px;color:#8b949e;font-size:9px">128×64</div>
+          </div>
+          <div style="color:#8b949e;font-size:9px;text-align:center">aprox. — preview real no WinUI</div>
+          <button style="background:#1f6feb;color:#fff;border:none;border-radius:4px;padding:6px;font-size:10px;cursor:pointer;margin-top:auto">Exportar JSON</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">B — Só controles (preview real no WinUI)</div>
+    <div class="mockup-body" style="background:#0d1117;padding:12px;font-family:monospace;font-size:11px">
+      <div style="display:flex;flex-direction:column;gap:6px;height:260px">
+        <div style="color:#58a6ff;font-size:10px;border-bottom:1px solid #30363d;padding-bottom:4px">
+          ▼ CYBERPUNK &nbsp;&nbsp; ○ AURORA
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <!-- Colors -->
+          <div>
+            <div style="color:#8b949e;font-size:10px;margin-bottom:4px">CORES</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <div style="width:14px;height:14px;background:#fccd00;border-radius:2px"></div>
+              <div style="color:#e6edf3;font-size:10px">Accent</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <div style="width:14px;height:14px;background:#ff1840;border-radius:2px"></div>
+              <div style="color:#e6edf3;font-size:10px">Alert</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="width:14px;height:14px;background:#0c0e12;border:1px solid #30363d;border-radius:2px"></div>
+              <div style="color:#e6edf3;font-size:10px">Background</div>
+            </div>
+          </div>
+          <!-- Animation -->
+          <div>
+            <div style="color:#8b949e;font-size:10px;margin-bottom:4px">ANIMAÇÃO</div>
+            <div style="margin-bottom:6px">
+              <div style="color:#e6edf3;font-size:10px">Glitch <span style="color:#58a6ff">15%</span></div>
+              <input type="range" min="0" max="100" value="15" style="width:100%;accent-color:#58a6ff">
+            </div>
+            <div>
+              <div style="color:#e6edf3;font-size:10px">Mem speed <span style="color:#58a6ff">1000</span></div>
+              <input type="range" min="100" max="5000" value="1000" style="width:100%;accent-color:#58a6ff">
+            </div>
+          </div>
+        </div>
+        <!-- Layout section spans full width -->
+        <div style="border-top:1px solid #30363d;padding-top:6px">
+          <div style="color:#8b949e;font-size:10px;margin-bottom:4px">LAYOUT</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <div style="color:#e6edf3;font-size:10px">Time Y <span style="color:#58a6ff">20px</span></div>
+              <input type="range" min="0" max="40" value="20" style="width:100%;accent-color:#58a6ff">
+            </div>
+            <div>
+              <div style="color:#e6edf3;font-size:10px">Divider X <span style="color:#58a6ff">72px</span></div>
+              <input type="range" min="60" max="100" value="72" style="width:100%;accent-color:#58a6ff">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:auto;display:flex;gap:6px">
+          <button style="background:#1f6feb;color:#fff;border:none;border-radius:4px;padding:6px 10px;font-size:10px;cursor:pointer;flex:1">Aplicar</button>
+          <button style="background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:6px 10px;font-size:10px;cursor:pointer;flex:1">Exportar JSON</button>
+        </div>
+        <div style="color:#8b949e;font-size:9px;text-align:center">preview ao vivo no app WinUI ao lado</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:16px">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Controles + Preview JS no browser</h3>
+      <p>Mais autossuficiente — funciona sem o WinUI aberto. Preview aproximado em JS, preview real no app.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Só controles, preview no WinUI</h3>
+      <p>Mais simples de construir, preview 100% fiel pois é o render real do C#. Requer o app aberto.</p>
+    </div>
+  </div>
+</div>
