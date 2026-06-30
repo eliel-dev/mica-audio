@@ -446,7 +446,78 @@ public partial class MainPage : Page
     private bool IsPresetNavigationBlockedByFocus(DependencyObject? element) { if (element is null) { return false; } if (element is TextBox or ComboBox or Slider or ToggleSwitch or Button) { return true; } return IsInsideElementTree(element, SettingsSplitView.Pane as DependencyObject); }
     private static bool IsInsideElementTree(DependencyObject? element, DependencyObject? root) { if (element is null || root is null) { return false; } var current = element; while (current is not null) { if (ReferenceEquals(current, root)) { return true; } current = VisualTreeHelper.GetParent(current); } return false; }
     private void ToggleFullscreen(bool enable) { appWindow ??= GetAppWindow(); if (appWindow is null) { return; } fullscreen = enable; if (fullscreen) { appWindow.SetPresenter(AppWindowPresenterKind.FullScreen); } else { appWindow.SetPresenter(AppWindowPresenterKind.Overlapped); } UpdateFullscreenUiState(); }
-    private void UpdateFullscreenUiState() { App.SetShellChromeHidden(fullscreen); ControlsPanel.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible; SettingsButton.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible; VisualizerLayout.Margin = fullscreen ? new Thickness(0) : new Thickness(12, 0, 12, 12); MainCanvasBorder.CornerRadius = fullscreen ? new CornerRadius(0) : new CornerRadius(12); HubPreviewPanel.CornerRadius = fullscreen ? new CornerRadius(0) : new CornerRadius(12); if (fullscreen) { SettingsSplitView.IsPaneOpen = false; SyncSettingsButtonState(); ShowFullscreenButtonOverlay(restartAutoHide: true); } else { HideFullscreenButtonOverlay(); } UpdateHubPreviewVisibility(); }
+    private void UpdateFullscreenUiState()
+    {
+        App.SetShellChromeHidden(fullscreen);
+        ControlsPanel.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible;
+        SettingsButton.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible;
+        VisualizerLayout.Margin = fullscreen ? new Thickness(0) : new Thickness(12, 0, 12, 12);
+        MainCanvasBorder.CornerRadius = fullscreen ? new CornerRadius(0) : new CornerRadius(12);
+        HubPreviewPanel.CornerRadius = fullscreen ? new CornerRadius(0) : new CornerRadius(12);
+
+        // Ajustes de fundo para evitar bordas claras em tela cheia e permitir preto profundo em OLED
+        // Ajuste de backgrounds de elementos XAML para reduzir bordas visíveis em fullscreen
+        if (fullscreen)
+        {
+            // Root frame
+            if (App.MainWindow?.Content is Frame rf)
+            {
+                rf.Background = new SolidColorBrush(Microsoft.UI.Colors.Black);
+            }
+
+            // SplitView (root do layout) e layout principal
+            SettingsSplitView.Background = new SolidColorBrush(Microsoft.UI.Colors.Black);
+            VisualizerLayout.Background = new SolidColorBrush(Microsoft.UI.Colors.Black);
+        }
+        else
+        {
+            // Restaura brush configurada (mica/backdrop quando aplicavel) ou fallback definido em recursos
+            if (App.MainWindow?.Content is Frame rf)
+            {
+                if (App.Current?.Resources.TryGetValue("AppFallbackSurfaceBaseBrush", out var fallbackObj) == true && fallbackObj is Brush fallbackBrush)
+                {
+                    rf.Background = fallbackBrush;
+                }
+                else if (App.Current?.Resources.TryGetValue("AppSurfaceBaseBrush", out var primaryObj) == true && primaryObj is Brush primaryBrush)
+                {
+                    rf.Background = primaryBrush;
+                }
+                else
+                {
+                    rf.Background = null;
+                }
+            }
+
+            if (App.Current?.Resources.TryGetValue("AppSurfaceBaseBrush", out var rootBg) == true && rootBg is Brush rootBrush)
+            {
+                SettingsSplitView.Background = rootBrush;
+                VisualizerLayout.Background = rootBrush;
+            }
+            else if (App.Current?.Resources.TryGetValue("AppFallbackSurfaceBaseBrush", out var fallbackBg) == true && fallbackBg is Brush fb)
+            {
+                SettingsSplitView.Background = fb;
+                VisualizerLayout.Background = fb;
+            }
+            else
+            {
+                SettingsSplitView.Background = null;
+                VisualizerLayout.Background = null;
+            }
+        }
+
+        if (fullscreen)
+        {
+            SettingsSplitView.IsPaneOpen = false;
+            SyncSettingsButtonState();
+            ShowFullscreenButtonOverlay(restartAutoHide: true);
+        }
+        else
+        {
+            HideFullscreenButtonOverlay();
+        }
+
+        UpdateHubPreviewVisibility();
+    }
     private PresetDefinition BuildRuntimePreset() { return BuildRuntimePreset(GetRenderRuntimeSettings()); }
     private void BuildPresetNavigationOrder() { presetNavigationOrder.Clear(); foreach (var preset in PresetNavigationHelper.BuildOrder(presetsById.Values)) { presetNavigationOrder.Add(preset); } }
     private void UpdateCurrentPresetIndex() { currentPresetIndex = PresetNavigationHelper.ResolveIndex(presetNavigationOrder, currentPresetId); if (currentPresetIndex < 0 || currentPresetIndex >= presetNavigationOrder.Count) { return; } var resolvedPreset = presetNavigationOrder[currentPresetIndex]; if (!string.Equals(currentPresetId, resolvedPreset.PresetId, StringComparison.OrdinalIgnoreCase)) { activePreset = resolvedPreset; currentPresetId = resolvedPreset.PresetId; } }
