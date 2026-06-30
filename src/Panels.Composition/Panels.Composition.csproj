@@ -15,7 +15,7 @@
   <ItemGroup>
     <!-- Cross-platform GIF/image decoder for server-side widget rendering.
          Q8-AnyCPU runs on Linux (Docker) without native libs. -->
-    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.12.0" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.14.0" />
   </ItemGroup>
 
 </Project>
