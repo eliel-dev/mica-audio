@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="MQTTnet" Version="5.2.0.1603" />
     <Content Include="..\Device.Server\wwwroot\dashboard\**\*">
       <Link>wwwroot\dashboard\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
