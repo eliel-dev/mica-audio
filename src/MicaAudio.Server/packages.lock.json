@@ -2,6 +2,12 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
+      "MQTTnet": {
+        "type": "Direct",
+        "requested": "[5.2.0.1603, )",
+        "resolved": "5.2.0.1603",
+        "contentHash": "iNuWVo/568aRo2ExEN2qkC4J5b07ckKqt+9Uok2kIbbK7PMBsXvYiKVENPHmOBWFB5ExhlNQb/qQ8M9/IYRTdQ=="
+      },
       "Magick.NET-Q8-AnyCPU": {
         "type": "Transitive",
         "resolved": "14.12.0",
@@ -14,11 +20,6 @@
         "type": "Transitive",
         "resolved": "14.12.0",
         "contentHash": "QPyuk1Lxp1xgSTP8xomnoZjeOtUeTSoeSuEckhGaUAi6GdZ5d2PmZqzr0O4m/zPbC4So/yg5rr2QO4vYD6fB5g=="
-      },
-      "MQTTnet": {
-        "type": "Transitive",
-        "resolved": "5.1.0.1559",
-        "contentHash": "9mkk0H+76CToIzp9ru5Uj5BuC3P5hQdkhvXM+CLmmTDdZWqajjICCHuUMbDd1yVBt9BWL77Rvzt0A+/PA4WMCA=="
       },
       "MQTTnet.Server": {
         "type": "Transitive",
@@ -101,6 +102,7 @@
           "Device.Client.Abstractions": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )",
           "Device.Server.Abstractions": "[1.0.0, )",
+          "MQTTnet": "[5.2.0.1603, )",
           "MQTTnet.Server": "[5.1.0.1559, )",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.15.0, )",
           "OpenTelemetry.Extensions.Hosting": "[1.15.0, )",

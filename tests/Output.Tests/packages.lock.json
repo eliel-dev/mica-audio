@@ -52,9 +52,9 @@
       },
       "MQTTnet": {
         "type": "Direct",
-        "requested": "[5.1.0.1559, )",
-        "resolved": "5.1.0.1559",
-        "contentHash": "9mkk0H+76CToIzp9ru5Uj5BuC3P5hQdkhvXM+CLmmTDdZWqajjICCHuUMbDd1yVBt9BWL77Rvzt0A+/PA4WMCA=="
+        "requested": "[5.2.0.1603, )",
+        "resolved": "5.2.0.1603",
+        "contentHash": "iNuWVo/568aRo2ExEN2qkC4J5b07ckKqt+9Uok2kIbbK7PMBsXvYiKVENPHmOBWFB5ExhlNQb/qQ8M9/IYRTdQ=="
       },
       "OpenTelemetry.Exporter.OpenTelemetryProtocol": {
         "type": "Direct",
@@ -634,6 +634,7 @@
           "Device.Client.Abstractions": "[1.0.0, )",
           "Device.Protocol": "[1.0.0, )",
           "Device.Server.Abstractions": "[1.0.0, )",
+          "MQTTnet": "[5.2.0.1603, )",
           "MQTTnet.Server": "[5.1.0.1559, )",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.15.0, )",
           "OpenTelemetry.Extensions.Hosting": "[1.15.0, )",
@@ -659,6 +660,7 @@
           "Device.Protocol": "[1.0.0, )",
           "Device.Server": "[1.0.0, )",
           "Device.Server.Abstractions": "[1.0.0, )",
+          "MQTTnet": "[5.2.0.1603, )",
           "Panels.Composition": "[1.0.0, )"
         }
       },
