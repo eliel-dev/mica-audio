@@ -4,11 +4,11 @@
     "net10.0": {
       "MQTTnet.Server": {
         "type": "Direct",
-        "requested": "[5.1.0.1559, )",
-        "resolved": "5.1.0.1559",
-        "contentHash": "pSYkUvtP7F/EohPvStM+PMJlgmVyF1v0wB29KEr0t5x4MXY9kTDqWcCG9L+5sD4Phz6md+C+Fe4heBbh15+gSQ==",
+        "requested": "[5.2.0.1603, )",
+        "resolved": "5.2.0.1603",
+        "contentHash": "o0zmNXtDJlDsa3796C6HBrSwwVDOzQRibK9vpixFk38Gu6ZWT+BDBRekgDQ+OjRk3ornjSqkKzBqBzMDLJ2Zdw==",
         "dependencies": {
-          "MQTTnet": "5.1.0.1559"
+          "MQTTnet": "5.2.0.1603"
         }
       },
       "OpenTelemetry.Exporter.OpenTelemetryProtocol": {
@@ -68,8 +68,8 @@
       },
       "MQTTnet": {
         "type": "Transitive",
-        "resolved": "5.1.0.1559",
-        "contentHash": "9mkk0H+76CToIzp9ru5Uj5BuC3P5hQdkhvXM+CLmmTDdZWqajjICCHuUMbDd1yVBt9BWL77Rvzt0A+/PA4WMCA=="
+        "resolved": "5.2.0.1603",
+        "contentHash": "iNuWVo/568aRo2ExEN2qkC4J5b07ckKqt+9Uok2kIbbK7PMBsXvYiKVENPHmOBWFB5ExhlNQb/qQ8M9/IYRTdQ=="
       },
       "OpenTelemetry": {
         "type": "Transitive",
