@@ -4,16 +4,16 @@
     "net10.0": {
       "Magick.NET-Q8-AnyCPU": {
         "type": "Transitive",
-        "resolved": "14.12.0",
-        "contentHash": "YGEgNTZ6DaMhXgJYLClRrmEe6CMsEL5E8hy4c2iH/aEmj41ojFAtA/PIXYH1AOYINNEUX/83nLp/y5obt9P/vw==",
+        "resolved": "14.15.0",
+        "contentHash": "GYcT4dC2Dxgq/FN/PwVY+PHJEuZc5ZfQm0bj0BmvmSRXPjPPJzdOV8tbcMyNUQtHcRnsp6E/mJ5Tf62I8in3bg==",
         "dependencies": {
-          "Magick.NET.Core": "14.12.0"
+          "Magick.NET.Core": "14.15.0"
         }
       },
       "Magick.NET.Core": {
         "type": "Transitive",
-        "resolved": "14.12.0",
-        "contentHash": "QPyuk1Lxp1xgSTP8xomnoZjeOtUeTSoeSuEckhGaUAi6GdZ5d2PmZqzr0O4m/zPbC4So/yg5rr2QO4vYD6fB5g=="
+        "resolved": "14.15.0",
+        "contentHash": "xgD1zqb4KQ1gMQcd3eIRp8hFMHBxzW9fOpLLDR7BWN0oCwZ0i6NW7rIUiCdsEi/NuZi1UlCLWBHh3v7Y2E3LIw=="
       },
       "MQTTnet": {
         "type": "Transitive",
@@ -123,7 +123,7 @@
       "panels.composition": {
         "type": "Project",
         "dependencies": {
-          "Magick.NET-Q8-AnyCPU": "[14.12.0, )",
+          "Magick.NET-Q8-AnyCPU": "[14.15.0, )",
           "MicaAudio.Core": "[1.0.0, )"
         }
       }
