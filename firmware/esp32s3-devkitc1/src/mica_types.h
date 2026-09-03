@@ -23,8 +23,11 @@
 constexpr uint8_t kBinsCount = MICA_STREAM_BINS;
 constexpr size_t kStreamFrameSize = 145;
 constexpr size_t kStreamFrame128x64Rgb565Size = 16400;
+constexpr size_t kStreamFrameV3Size = 149;
+constexpr size_t kStreamFrameV3Frame128x64Rgb565Size = 16404;
 constexpr size_t kExpectedWebSocketMaxDataSize = 32768;
 constexpr uint8_t kStreamVersion = 2;
+constexpr uint8_t kStreamVersionOwned = 3;
 constexpr uint8_t kStreamBinsMessageType = 1;
 constexpr uint8_t kStreamFrame128x64Rgb565MessageType = 2;
 constexpr const char* kPanelsBatchExpectedContentType = "image/webp";
@@ -65,6 +68,11 @@ constexpr uint8_t kSlowCommandQueueDepth = 2;
 constexpr uint8_t kMaxControlCommandsPerLoop = 4;
 constexpr uint8_t kMaxAsyncEventsPerLoop = 8;
 constexpr uint32_t kTaskWatchdogTimeoutMs = 30000;
+constexpr unsigned long kSessionOwnerHeartbeatIntervalMs = 2000;
+constexpr unsigned long kSessionOwnerExpiryMs = 6000;
+constexpr unsigned long kSessionLockLeaseDefaultMs = 15000;
+constexpr unsigned long kSessionLockLeaseMaxMs = 15000;
+constexpr unsigned long kSessionLeaseTickMs = 250;
 
 // ---------------------------------------------------------------------------
 // Matrix dimensions
@@ -242,6 +250,14 @@ enum class Hub75FallbackState : uint8_t {
   Updating = 4,
   NoModeActive = 5,  // server reported no panel active (client explicitly cleared)
   FirstRun = 6,      // device never had a panel
+  ClientDisconnected = 7,
+};
+
+enum class ClientSessionMode : uint8_t {
+  Idle = 0,
+  Visualizer = 1,
+  Panels = 2,
+  ClockFallback = 3,
 };
 
 enum class Hub75BinsVisualStyle : uint8_t {
@@ -255,6 +271,7 @@ enum class Hub75BinsVisualStyle : uint8_t {
   RadialOrbit = 7,
   Atmosphere = 8,
   LaunchpadGrid = 9,
+  LvglWatchface = 10,
 };
 
 enum class Hub75BinsPaletteFamily : uint8_t {
@@ -373,7 +390,31 @@ struct ControlCommandEnvelope {
   ControlCommandSource source = ControlCommandSource::Mqtt;
   String command;
   String commandId;
+  String clientId;
+  uint32_t ownerEpoch = 0;
+  String lockToken;
   String payloadJson;
+};
+
+struct ClientLockLease {
+  bool held = false;
+  String clientId;
+  String token;
+  String reason;
+  unsigned long acquiredAtMs = 0;
+  unsigned long lastHeartbeatAtMs = 0;
+  unsigned long expiresAtMs = 0;
+};
+
+struct DeviceSessionShadowState {
+  ClientSessionMode mode = ClientSessionMode::ClockFallback;
+  String activeClientId;
+  uint32_t activeOwnerEpoch = 0;
+  unsigned long activeOwnerExpiresAtMs = 0;
+  ClientLockLease lock;
+  uint32_t shadowVersion = 0;
+  unsigned long lastMutationAtMs = 0;
+  bool dirty = false;
 };
 
 struct SlowCommandRequest {

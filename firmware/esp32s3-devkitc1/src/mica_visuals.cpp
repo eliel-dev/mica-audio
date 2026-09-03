@@ -2,7 +2,9 @@
 #include "mica_display.h"
 #include "mica_globals.h"
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <freertos/semphr.h>
+#include <lvgl.h>
 #include <math.h>
 #include <string.h>
 
@@ -29,6 +31,8 @@ Hub75BinsVisualStyle decodeBinsVisualStyle(uint8_t flags) {
       return Hub75BinsVisualStyle::Atmosphere;
     case 9u:
       return Hub75BinsVisualStyle::LaunchpadGrid;
+    case 10u:
+      return Hub75BinsVisualStyle::LvglWatchface;
     default:
       return Hub75BinsVisualStyle::LegacyFallback;
   }
@@ -521,6 +525,218 @@ bool drawLaunchpadGridVisual(const uint8_t* bins) {
 }
 
 // ---------------------------------------------------------------------------
+// LVGL Watchface PoC
+// ---------------------------------------------------------------------------
+static lv_disp_draw_buf_t gLvglDrawBuf;
+static lv_color_t* gLvglBuffer = nullptr;
+static lv_disp_drv_t gLvglDispDrv;
+static lv_disp_t* gLvglDisp = nullptr;
+static bool gLvglInitialized = false;
+
+static lv_obj_t* gWatchfaceScreen = nullptr;
+static lv_obj_t* gHourHandLine = nullptr;
+static lv_obj_t* gMinHandLine = nullptr;
+static lv_obj_t* gSecHandLine = nullptr;
+static lv_point_t gHourPoints[2];
+static lv_point_t gMinPoints[2];
+static lv_point_t gSecPoints[2];
+static lv_obj_t* gDigitalTimeLabel = nullptr;
+static lv_obj_t* gTitleLabel = nullptr;
+static lv_obj_t* gSubTitleLabel = nullptr;
+
+static void lvglFlushCallback(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* color_p) {
+  if (gMatrixReady && gMatrix != nullptr) {
+    const uint16_t* rgb565Frame = reinterpret_cast<const uint16_t*>(color_p);
+
+    if (gMatrixBufferModes[gMatrixShadowBackBufferIndex] != MatrixBufferMode::Frame) {
+      const uint8_t firstBufIdx = gMatrixShadowBackBufferIndex;
+      gMatrix->writeFrameRGB565(rgb565Frame);
+      memcpy(gMatrixShadowFrames[firstBufIdx], rgb565Frame, sizeof(gFrameRgb565Buffers[0]));
+      memset(gMatrixShadowBarHeights[firstBufIdx], 0, sizeof(gMatrixShadowBarHeights[firstBufIdx]));
+      gMatrixBufferModes[firstBufIdx] = MatrixBufferMode::Frame;
+      commitMatrixFrame();
+    }
+
+    const uint8_t bufferIndex = gMatrixShadowBackBufferIndex;
+    gMatrix->writeFrameRGB565(rgb565Frame);
+    memcpy(gMatrixShadowFrames[bufferIndex], rgb565Frame, sizeof(gFrameRgb565Buffers[0]));
+    memset(gMatrixShadowBarHeights[bufferIndex], 0, sizeof(gMatrixShadowBarHeights[bufferIndex]));
+    gMatrixBufferModes[bufferIndex] = MatrixBufferMode::Frame;
+    commitMatrixFrame();
+  }
+  lv_disp_flush_ready(drv);
+}
+
+void initLvglWatchface() {
+  if (gLvglInitialized) {
+    return;
+  }
+
+  lv_init();
+
+  constexpr size_t kPixelCount = static_cast<size_t>(kMatrixWidth) * static_cast<size_t>(kMatrixHeight);
+  constexpr size_t kBufBytes = kPixelCount * sizeof(lv_color_t);
+
+  gLvglBuffer = static_cast<lv_color_t*>(
+      heap_caps_malloc(kBufBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (gLvglBuffer == nullptr) {
+    gLvglBuffer = static_cast<lv_color_t*>(
+        heap_caps_malloc(kBufBytes, MALLOC_CAP_8BIT));
+  }
+
+  if (gLvglBuffer == nullptr) {
+    Serial.println("[lvgl] Erro: falha ao alocar buffer de render para LVGL");
+    return;
+  }
+
+  memset(gLvglBuffer, 0, kBufBytes);
+  lv_disp_draw_buf_init(&gLvglDrawBuf, gLvglBuffer, nullptr, kPixelCount);
+
+  lv_disp_drv_init(&gLvglDispDrv);
+  gLvglDispDrv.hor_res = kMatrixWidth;
+  gLvglDispDrv.ver_res = kMatrixHeight;
+  gLvglDispDrv.flush_cb = lvglFlushCallback;
+  gLvglDispDrv.draw_buf = &gLvglDrawBuf;
+  gLvglDispDrv.full_refresh = 1;
+  gLvglDisp = lv_disp_drv_register(&gLvglDispDrv);
+
+  gWatchfaceScreen = lv_obj_create(nullptr);
+  lv_obj_set_style_bg_color(gWatchfaceScreen, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(gWatchfaceScreen, LV_OPA_COVER, 0);
+
+  // Hour tick marks (center at 88, 31, radius 23)
+  for (int mark = 0; mark < 12; mark++) {
+    float angle = mark * 2.0f * (float)M_PI / 12.0f - (float)M_PI / 2.0f;
+    int px = static_cast<int>(roundf(88.0f + cosf(angle) * 23.0f));
+    int py = static_cast<int>(roundf(31.0f + sinf(angle) * 23.0f));
+
+    lv_obj_t* dot = lv_obj_create(gWatchfaceScreen);
+    lv_obj_remove_style_all(dot);
+    lv_obj_set_pos(dot, px, py);
+    lv_obj_set_size(dot, 2, 2);
+    lv_obj_set_style_bg_color(dot, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+  }
+
+  // Dial center cap
+  lv_obj_t* centerCap = lv_obj_create(gWatchfaceScreen);
+  lv_obj_remove_style_all(centerCap);
+  lv_obj_set_pos(centerCap, 87, 30);
+  lv_obj_set_size(centerCap, 3, 3);
+  lv_obj_set_style_bg_color(centerCap, lv_color_hex(0xffffff), 0);
+  lv_obj_set_style_bg_opa(centerCap, LV_OPA_COVER, 0);
+
+  // Hands styles
+  static lv_style_t styleHour;
+  lv_style_init(&styleHour);
+  lv_style_set_line_width(&styleHour, 2);
+  lv_style_set_line_color(&styleHour, lv_color_hex(0xeeeeee));
+  lv_style_set_line_rounded(&styleHour, true);
+
+  static lv_style_t styleMin;
+  lv_style_init(&styleMin);
+  lv_style_set_line_width(&styleMin, 2);
+  lv_style_set_line_color(&styleMin, lv_color_hex(0xcccccc));
+  lv_style_set_line_rounded(&styleMin, true);
+
+  static lv_style_t styleSec;
+  lv_style_init(&styleSec);
+  lv_style_set_line_width(&styleSec, 1);
+  lv_style_set_line_color(&styleSec, lv_color_hex(0x71caed));
+  lv_style_set_line_rounded(&styleSec, false);
+
+  gHourPoints[0] = {88, 31};
+  gHourPoints[1] = {88, 19};
+  gHourHandLine = lv_line_create(gWatchfaceScreen);
+  lv_line_set_points(gHourHandLine, gHourPoints, 2);
+  lv_obj_add_style(gHourHandLine, &styleHour, 0);
+
+  gMinPoints[0] = {88, 31};
+  gMinPoints[1] = {88, 13};
+  gMinHandLine = lv_line_create(gWatchfaceScreen);
+  lv_line_set_points(gMinHandLine, gMinPoints, 2);
+  lv_obj_add_style(gMinHandLine, &styleMin, 0);
+
+  gSecPoints[0] = {88, 31};
+  gSecPoints[1] = {88, 10};
+  gSecHandLine = lv_line_create(gWatchfaceScreen);
+  lv_line_set_points(gSecHandLine, gSecPoints, 2);
+  lv_obj_add_style(gSecHandLine, &styleSec, 0);
+
+  // Labels
+  gTitleLabel = lv_label_create(gWatchfaceScreen);
+  lv_label_set_text(gTitleLabel, "MICA");
+  lv_obj_set_style_text_color(gTitleLabel, lv_color_hex(0x71caed), 0);
+  lv_obj_set_style_text_font(gTitleLabel, &lv_font_montserrat_10, 0);
+  lv_obj_set_pos(gTitleLabel, 6, 6);
+
+  gSubTitleLabel = lv_label_create(gWatchfaceScreen);
+  lv_label_set_text(gSubTitleLabel, "WATCHFACE");
+  lv_obj_set_style_text_color(gSubTitleLabel, lv_color_hex(0x666666), 0);
+  lv_obj_set_style_text_font(gSubTitleLabel, &lv_font_montserrat_10, 0);
+  lv_obj_set_pos(gSubTitleLabel, 6, 18);
+
+  gDigitalTimeLabel = lv_label_create(gWatchfaceScreen);
+  lv_label_set_text(gDigitalTimeLabel, "00:00");
+  lv_obj_set_style_text_color(gDigitalTimeLabel, lv_color_hex(0xffffff), 0);
+  lv_obj_set_style_text_font(gDigitalTimeLabel, &lv_font_montserrat_16, 0);
+  lv_obj_set_pos(gDigitalTimeLabel, 6, 34);
+
+  lv_scr_load(gWatchfaceScreen);
+  gLvglInitialized = true;
+  Serial.println("[lvgl] Watchface PoC inicializada com sucesso.");
+}
+
+bool drawLvglWatchfaceVisual() {
+  if (!gMatrixReady) {
+    return false;
+  }
+  if (!gLvglInitialized) {
+    initLvglWatchface();
+    if (!gLvglInitialized) {
+      return false;
+    }
+  }
+
+  const unsigned long nowMs = millis();
+  const int seconds = (nowMs / 1000UL) % 60UL;
+  const int minutes = (nowMs / 60000UL) % 60UL;
+  const int hours = (nowMs / 3600000UL) % 12UL;
+
+  const float hh = (hours + minutes / 60.0f) / 12.0f;
+  const float mm = minutes / 60.0f;
+  const float ss = seconds / 60.0f;
+
+  constexpr float kCenterX = 88.0f;
+  constexpr float kCenterY = 31.0f;
+
+  gHourPoints[0] = {static_cast<lv_coord_t>(kCenterX), static_cast<lv_coord_t>(kCenterY)};
+  gHourPoints[1] = {
+      static_cast<lv_coord_t>(roundf(kCenterX + cosf(hh * 2.0f * (float)M_PI - (float)M_PI / 2.0f) * 12.0f)),
+      static_cast<lv_coord_t>(roundf(kCenterY + sinf(hh * 2.0f * (float)M_PI - (float)M_PI / 2.0f) * 12.0f))};
+  lv_line_set_points(gHourHandLine, gHourPoints, 2);
+
+  gMinPoints[0] = {static_cast<lv_coord_t>(kCenterX), static_cast<lv_coord_t>(kCenterY)};
+  gMinPoints[1] = {
+      static_cast<lv_coord_t>(roundf(kCenterX + cosf(mm * 2.0f * (float)M_PI - (float)M_PI / 2.0f) * 18.0f)),
+      static_cast<lv_coord_t>(roundf(kCenterY + sinf(mm * 2.0f * (float)M_PI - (float)M_PI / 2.0f) * 18.0f))};
+  lv_line_set_points(gMinHandLine, gMinPoints, 2);
+
+  gSecPoints[0] = {static_cast<lv_coord_t>(kCenterX), static_cast<lv_coord_t>(kCenterY)};
+  gSecPoints[1] = {
+      static_cast<lv_coord_t>(roundf(kCenterX + cosf(ss * 2.0f * (float)M_PI - (float)M_PI / 2.0f) * 21.0f)),
+      static_cast<lv_coord_t>(roundf(kCenterY + sinf(ss * 2.0f * (float)M_PI - (float)M_PI / 2.0f) * 21.0f))};
+  lv_line_set_points(gSecHandLine, gSecPoints, 2);
+
+  lv_label_set_text_fmt(gDigitalTimeLabel, "%02d:%02d", hours ? hours : 12, minutes);
+
+  lv_obj_invalidate(gWatchfaceScreen);
+  lv_timer_handler();
+
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher + frame render
 // ---------------------------------------------------------------------------
 bool drawBinsVisual() {
@@ -567,6 +783,8 @@ bool drawBinsVisual() {
       return drawAtmosphereVisual(binsSnapshot, palette, levelSnapshot);
     case Hub75BinsVisualStyle::LaunchpadGrid:
       return drawLaunchpadGridVisual(binsSnapshot);
+    case Hub75BinsVisualStyle::LvglWatchface:
+      return drawLvglWatchfaceVisual();
     case Hub75BinsVisualStyle::LegacyFallback:
     default:
       return drawBars();

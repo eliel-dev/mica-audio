@@ -34,6 +34,8 @@ bool drawHistoryScanVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette);
 bool drawRadialOrbitVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette);
 bool drawAtmosphereVisual(const uint8_t* bins, Hub75BinsPaletteFamily palette, uint8_t level);
 bool drawLaunchpadGridVisual(const uint8_t* bins);
+void initLvglWatchface();
+bool drawLvglWatchfaceVisual();
 
 // ---------------------------------------------------------------------------
 // Dispatcher + frame render

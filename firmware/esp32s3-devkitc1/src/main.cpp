@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <esp32s3/rom/rtc.h>
+#include <lvgl.h>
 
 #include "mica_config.h"
 #include "mica_globals.h"
@@ -140,6 +141,10 @@ bool processRenderFrame() {
 
   bool presented = false;
   bool presentedStreamPayload = false;
+#if defined(MICA_FORCE_LVGL_WATCHFACE)
+  presented = drawLvglWatchfaceVisual();
+  presentedStreamPayload = presented;
+#else
   if (gHub75FallbackState != Hub75FallbackState::None) {
     const bool isUpdating = gHub75FallbackState == Hub75FallbackState::Updating;
     if (gHub75FallbackDirty || isUpdating) {
@@ -163,6 +168,7 @@ bool processRenderFrame() {
       presented = clearConnectivityFallbackFrame();
     }
   }
+#endif
 
   if (presented) {
     if (presentedStreamPayload) {
@@ -221,6 +227,7 @@ void setup() {
   logBootMemorySnapshot("after_sta_connect");
 
   initializeHub75RuntimeFromPrefs();
+  initLvglWatchface();
 
   if (bootWifiConnected) {
     if (autoRegisterIfNeeded()) {
@@ -248,6 +255,13 @@ void setup() {
 
 void loop() {
   const uint32_t loopStartedUs = micros();
+  static unsigned long lastLvglTickMs = 0;
+  const unsigned long currentMs = millis();
+  if (currentMs != lastLvglTickMs) {
+    lv_tick_inc(currentMs - lastLvglTickMs);
+    lastLvglTickMs = currentMs;
+  }
+
   processSerialProvisioning();
   processQueuedControlCommands();
   processAsyncControlEvents();
